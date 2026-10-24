@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "sqlb/auth/filesystem use database/sql; the skill and ubgo/lock use pgx. Recommendation: database/sql through sqlb for one code path on SQLite/Postgres/MySQL; pgx-only extras (LISTEN/NOTIFY wake-ups) in an optional sqlstore/pgnotify module.\n\nDecided 2026-10-11: database/sql through ubgo/sqlb (sqlstore uses it; pgx is used only as a database/sql driver).",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T05:41:07.030983000Z",
+  "created_at": "2026-10-07T08:12:03.525513000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a1156b6a4577e385dda570e1da35f7",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Decide: database/sql via sqlb vs pgx for the SQL store",
+  "updated_at": "2026-10-11T05:41:07.030985000Z"
+}

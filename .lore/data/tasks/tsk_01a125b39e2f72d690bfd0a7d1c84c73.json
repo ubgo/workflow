@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Built in batch/ (core module, stdlib only) on the run-finished hook: a Manager (batch.New(client, store); Attach before Start; Dispatch, Progress, Cancel, RunFinished) with a Store interface and MemoryStore, keyed on job labels carrying the batch ID and job index. Needs a client with CapRunFinished. Semantics: Catch fires on the first failure even with AllowFailures; AllowFailures only stops the batch from cancelling its other jobs.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T05:32:47.421379000Z",
+  "created_at": "2026-10-10T12:04:50.863180000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a125b39e2f72d690bfd0a7d1c84c73",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Batch: a group of jobs with Then, Catch and Finally workflows",
+  "updated_at": "2026-10-11T05:32:47.421501000Z"
+}

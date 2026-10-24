@@ -1,0 +1,48 @@
+# Manual only, on purpose.
+#
+# The repository is private, where GitHub Actions minutes are metered, and a
+# workflow that goes red for billing rather than for code teaches everyone to
+# ignore the gate. `task check` on a developer machine is the real gate; this
+# workflow exists for the times a clean-machine run is worth the minutes.
+#
+# To restore automatic runs when there is budget, replace the `on:` block with:
+#
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+#     workflow_dispatch:
+
+name: test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: task check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # docsync compares cited code against its acked history.
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          # go.work declares the highest module minimum (hatchet, go 1.26).
+          go-version: "1.26"
+          cache: true
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: install the docsync CLI
+        run: go install github.com/ubgo/docsync/cli/cmd/ds@latest
+      # check:run is the body of `task check` without the machine-wide testlock
+      # wrapper, which exists only on a developer machine. The Hatchet live
+      # suite and the Postgres and MySQL sqlstore runs skip without their servers.
+      - name: task check (gofmt, vet, race tests of every module, Go minimum per module, docs drift)
+        run: task check:run

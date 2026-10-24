@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Built in wave 2 by wf-sql: sqlstore/, its own module; full conformance suite incl. restart and crash cases green on SQLite, Postgres and MySQL 8; declares CapDurable and CapRunFinished; durable batch.Store. Release blocker: sqlb untagged, resolved by replace.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T05:32:47.680159000Z",
+  "created_at": "2026-10-11T05:32:47.561946000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a129730a497e868c9c9cb12eacbae3",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "SQL driver: sqlstore module through ubgo/sqlb (SQLite, Postgres, MySQL 8)",
+  "updated_at": "2026-10-11T05:32:47.680161000Z"
+}

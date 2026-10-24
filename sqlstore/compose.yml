@@ -1,0 +1,42 @@
+# The throwaway MySQL and Postgres the sqlstore engine tests run against. It is this
+# module's own, never the shared local dev stack (Postgres is the host's
+# Postgres.app): `task test:mysql` starts the mysql profile, runs, and removes
+# the container and its data with `docker compose down -v`, pass or fail,
+# through a Taskfile defer registered before the start. No volume is named,
+# and the port binds to 127.0.0.1 on 33072, a number neither the shared stack
+# nor ubgo/auth (33070) nor ubgo/filesystem (33071) uses. The project name
+# and port are fixed, so run one MySQL suite at a time per machine (the task
+# takes the machine-wide testlock).
+name: ubgo-workflow-sqlstore
+
+services:
+  mysql:
+    profiles: [mysql]
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: workflow
+      MYSQL_DATABASE: workflow
+    ports: ["127.0.0.1:33072:3306"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pworkflow"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  # The Postgres 18 the sqlstore Postgres tests run against (task test:pg):
+  # database ubgo_workflow_test, superuser postgres, so the tests can create
+  # their per-test tables and schemas. Port 35432 on 127.0.0.1 is free on the
+  # dev server and unused by the shared stack (Postgres.app is on 5432).
+  postgres:
+    profiles: [postgres]
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: workflow
+      POSTGRES_DB: ubgo_workflow_test
+    ports: ["127.0.0.1:35432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ubgo_workflow_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 60

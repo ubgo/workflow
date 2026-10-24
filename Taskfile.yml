@@ -1,0 +1,177 @@
+version: '3'
+
+# A test piped into grep or tee still fails the task.
+set: [pipefail]
+
+# The Hatchet driver's own tasks, runnable from the root as hatchet:<task>
+# (hatchet:test:live runs the conformance suite against the shared stack's
+# Hatchet engine).
+includes:
+  hatchet:
+    taskfile: ./hatchet/Taskfile.yml
+    dir: ./hatchet
+  # The SQL driver's tasks, runnable as sqlstore:<task> (sqlstore:test:pg
+  # adds the host Postgres to the SQLite run).
+  sqlstore:
+    taskfile: ./sqlstore/Taskfile.yml
+    dir: ./sqlstore
+
+# The heavy tasks (test, vet, check) run under the machine-wide `testlock`
+# (~/.local/bin), so two suites never run at once on this machine; a nested
+# call passes straight through. Each public task takes the lock and runs its
+# internal :run twin. Every module in go.work is covered: `go list -m` lists
+# the workspace modules and each gets a /... pattern.
+
+tasks:
+  build:
+    desc: Compile every package of every module in go.work
+    cmds: ['go build $(go list -m | sed "s|$|/...|")']
+
+  test:
+    desc: Run the tests of every module in go.work with the race detector (the Hatchet live suite skips without a token; see hatchet:test:live)
+    cmds: ['testlock task test:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  # -race because the drivers and the fake clock are concurrent code.
+  test:run:
+    cmds: ['go test -race $(go list -m | sed "s|$|/...|")']
+
+  vet:
+    desc: Run go vet over every module in go.work
+    cmds: ['testlock task vet:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  vet:run:
+    cmds: ['go vet $(go list -m | sed "s|$|/...|")']
+
+  fmt:
+    desc: Format every Go file with gofmt
+    cmds: ['gofmt -w .']
+
+  fmt:check:
+    desc: Fail when any Go file is not gofmt clean
+    cmds: ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)']
+
+  gomin:
+    desc: Vet every module, test files included, under the Go toolchain its go.mod declares (core, sqlstore, admin, redis and cli go 1.24.0, otel and sentry go 1.25.0, hatchet, bench and examples go 1.26.0), so a stated minimum is proven rather than claimed; downloads a missing toolchain once
+    cmds: ['testlock task gomin:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  # GOWORK=off: go.work declares the highest version (1.26.0), which an older
+  # toolchain refuses, so each module is vetted on its own.
+  gomin:run:
+    env:
+      GOWORK: 'off'
+    cmds:
+      - |
+        find . -name go.mod -not -path './.cover/*' | sort | while read -r f; do
+          d=$(dirname "$f"); v=$(awk '/^go /{print $2}' "$f")
+          case $v in *.*.*) ;; *) v=$v.0 ;; esac
+          echo "go$v $d"
+          (cd "$d" && GOTOOLCHAIN=go$v go vet ./...) || exit 1
+        done
+
+  check:
+    desc: The gate - gofmt check, vet, race tests of every module (the examples module included), the Go minimum per module, then the doc checks (wrap, links, snippets, words, drift)
+    cmds: ['testlock task check:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  check:run:
+    cmds:
+      - task: fmt:check
+      - task: vet:run
+      - task: test:run
+      - task: gomin:run
+      - task: docs:wrap
+      - task: docs:links
+      - task: docs:snippets
+      - task: docs:words
+      - task: docs:drift
+
+  # The Redis driver against a throwaway Redis 8 from the root compose.yml
+  # (profile redis, 127.0.0.1:36379), removed after the run pass or fail.
+  # Without WFTEST_REDIS_URL its live tests skip, so `task test` and `check`
+  # need no Redis. -count=1 because the result depends on a live service, not
+  # only on the code.
+  redis:test:
+    desc: Redis driver race tests against a throwaway Redis (compose.yml redis profile), each test under its own key prefix; WFTEST_REDIS_URL set to a URL runs against that Redis instead and starts nothing
+    cmds: ['testlock task redis:test:run']
+
+  # Called through testlock by the public task above; no desc keeps it off
+  # task --list. The defer is registered BEFORE the profile starts. With
+  # WFTEST_REDIS_URL set by the caller (e.g. the Mac shared stack,
+  # redis://localhost:7012/0) no container is started.
+  redis:test:run:
+    dir: redis
+    cmds:
+      - defer: {task: redis:down}
+      - |
+        if [ -z "$WFTEST_REDIS_URL" ]; then
+          up_redis() { for i in 1 2 3 4 5; do docker compose -f ../compose.yml --profile redis up -d --wait && return 0; docker compose -f ../compose.yml --profile redis down -v --remove-orphans >/dev/null 2>&1; sleep 3; done; return 1; }  # retried: rootless Docker can report a just-freed port as in use
+          up_redis || exit 1
+          export WFTEST_REDIS_URL=redis://127.0.0.1:36379/0
+        fi
+        go test -race -count=1 ./...
+
+  redis:down:
+    desc: Remove the throwaway Redis (redis:test already does this after every run)
+    cmds: ['docker compose -f compose.yml --profile redis down -v --remove-orphans']
+
+  # Not part of check: benchmarks measure, they do not gate, and a run
+  # takes minutes against several services. Run it on a quiet machine.
+  bench:
+    desc: Run the benchmarks (memory, sqlstore on SQLite, Postgres and Postgres with LISTEN/NOTIFY, Redis, Hatchet) one system at a time and print a results table; REDIS_ADDR overrides the Redis address; see docs/reference/benchmarks.md
+    dir: bench
+    cmds: ['sh ./run.sh {{.CLI_ARGS}}']
+
+  docs:drift:
+    desc: docsync - fail when code a doc sentence cites (ds:block links) changed since the sentence was acked; needs the ds CLI (go install github.com/ubgo/docsync/cli/cmd/ds@latest)
+    cmds:
+      - 'command -v ds >/dev/null || { echo "docs:drift needs the ds CLI: go install github.com/ubgo/docsync/cli/cmd/ds@latest"; exit 1; }'
+      - ds check
+
+  examples:test:
+    desc: Vet and test the examples module (every program under examples/ and the doc checkers); task test covers it too, this runs it alone
+    cmds: ['testlock task examples:test:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  examples:test:run:
+    dir: examples
+    cmds:
+      - go vet ./...
+      - go test ./...
+
+  # The four doc checkers live in examples/internal/doccheck (no extra
+  # module in go.work). Each takes repo-relative paths.
+
+  docs:wrap:
+    desc: Fail on hard-wrapped prose in any Markdown file git tracks or would track (every paragraph, bullet and table row is one physical line; ignored private overlays are skipped)
+    cmds:
+      - git ls-files --cached --others --exclude-standard -z -- '*.md' ':!.lore/*' | xargs -0 go run ./examples/internal/doccheck/mdwrap
+
+  docs:links:
+    desc: Fail when a relative link or #anchor in README.md, docs/ or examples/ does not resolve
+    cmds:
+      - go run ./examples/internal/doccheck/mdlinks -root . README.md docs examples
+
+  docs:snippets:
+    desc: 'Fail when a code block marked <!-- snippet: path#region --> in README.md, docs/ or examples/ differs from that region of the source file'
+    cmds:
+      - go run ./examples/internal/doccheck/snippets -root . README.md docs examples
+
+  docs:words:
+    desc: Fail when a forbidden word appears in the Markdown under docs/ and examples/, the top-level public Markdown files or any Go file git tracks or would track (ignored private overlays such as docsi are skipped); the list comes from FORBIDDEN_WORDS or the private docsi/forbidden-words.txt (one word per line), and the check is skipped when neither exists
+    vars:
+      # The list itself is private: writing the names here would publish
+      # the very words the check keeps out of the public tree.
+      WORDS:
+        sh: 'if [ -n "${FORBIDDEN_WORDS:-}" ]; then echo "$FORBIDDEN_WORDS"; elif [ -f docsi/forbidden-words.txt ]; then grep -v "^#" docsi/forbidden-words.txt | tr "\n" "," ; fi'
+    cmds:
+      - |
+        if [ -z "{{.WORDS}}" ]; then echo "docs:words: no word list (FORBIDDEN_WORDS or docsi/forbidden-words.txt), skipped"; exit 0; fi
+        git ls-files --cached --others --exclude-standard -z -- '*.go' 'docs/*.md' 'examples/*.md' README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md | xargs -0 go run ./examples/internal/doccheck/words -words "{{.WORDS}}"
+
+  docs:snippets:sync:
+    desc: Rewrite every stale marked code block in README.md, docs/ and examples/ from its source region
+    cmds:
+      - go run ./examples/internal/doccheck/snippets -root . -sync README.md docs examples

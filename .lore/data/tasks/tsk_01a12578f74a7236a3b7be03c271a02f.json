@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Integrator wf-core: go.work, Taskfile check, README, docsync, lore close-out.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-10T12:06:03.997282000Z",
+  "created_at": "2026-10-10T11:00:47.050144000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12578f74a7236a3b7be03c271a02f",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Integration pass: wire modules, go.work, gates, docs drift",
+  "updated_at": "2026-10-10T12:06:03.997295000Z"
+}

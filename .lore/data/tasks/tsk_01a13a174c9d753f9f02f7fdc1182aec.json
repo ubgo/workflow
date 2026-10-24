@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Hatchet live run 1 on 2026-10-14 (load 85+) failed TestConformance/reschedule 'Reschedule moves a delayed run earlier': the run read as cancelled. Passed 3/3 alone and in TestRescheduleLive. Suspect resolve() VisibilityLag path in hatchet/client.go (near line 817) after Reschedule moves a run to within seconds. A one-off live failure is not assumed a flake: reproduce under load, then fix or document.",
+  "commitment": "accepted",
+  "completed_at": null,
+  "created_at": "2026-10-14T11:06:07.901342000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a13a174c9d753f9f02f7fdc1182aec",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "todo",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Hatchet: conformance reschedule case read the run as cancelled once under load",
+  "updated_at": "2026-10-14T11:06:07.901342000Z"
+}

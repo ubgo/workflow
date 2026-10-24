@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Four P2 features still partial after batch 5. Details in the feature catalogue (private notes).",
+  "commitment": "accepted",
+  "completed_at": null,
+  "created_at": "2026-10-14T11:15:34.752203256Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a13a1ff2e07329889fa8fc7e36ef0d",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "todo",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "P2 partials: WX-01, LO-11, MQ-15, MQ-16",
+  "updated_at": "2026-10-14T11:15:34.752203607Z"
+}

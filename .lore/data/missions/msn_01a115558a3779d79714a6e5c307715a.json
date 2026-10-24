@@ -1,0 +1,14 @@
+{
+  "_table": "missions",
+  "_v": 1,
+  "body": "Owner request (Aman Bansal, 2026-10-07): build a universal Go package, usable as a library, for schedules, cron jobs and background work, with ubgo/sqlb as the data layer and ubgo/auth as the structural template. Hatchet is the main engine but sits behind the library as an adapter, so the same cron and scheduling code works anywhere: in-process, SQLite, Postgres, and distributed when needed. First step: a full mission, a feature study and a brainstorm before any code. References: template ubgo/auth; data layer ubgo/sqlb. Backends: in-process, SQLite, Postgres (sqlb), Hatchet as an adapter; single-node or distributed.",
+  "completed_at": null,
+  "created_at": "2026-10-07T07:48:09.911640000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "id": "msn_01a115558a3779d79714a6e5c307715a",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "status": "active",
+  "target_date": null,
+  "title": "ubgo/workflow: the one scheduler, cron and durable-job library every Go app needs",
+  "updated_at": "2026-10-07T07:48:09.911640000Z"
+}

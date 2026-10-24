@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "While a run is in flight Hatchet's workflow idempotency (STATUS method) gives atomic uniqueness; uniqueness after the run ends needs a unique index in a table. Only MemoryUnique exists today. Recommendation: a SQL UniqueStore in sqlstore, constructible from a plain *sql.DB, on its own table via a numbered migration (ADR-0005, proposed, private notes).",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T16:51:07.290617000Z",
+  "created_at": "2026-10-10T10:37:26.125814000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a1256396ed7c7b8a935489d3eb4771",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Decide: where the uniqueness table lives (uniqueness that outlives a run)",
+  "updated_at": "2026-10-11T16:51:07.290619000Z"
+}

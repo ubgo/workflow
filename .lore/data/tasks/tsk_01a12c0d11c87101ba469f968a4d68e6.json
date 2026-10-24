@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Built and uncommitted (2026-10-11): workflowtest.Fake, sqlstore UniqueStore (ADR-0005) and BatchStore open-flag, batch callback retry with default retry loop and GroupRunner, hatchet BatchSource and bulk GroupRunner, notify.go clock comment. Waiting on testlock: wf-sql pg+mysql suites, wf-hatchet TestBatchCrashLive and full hatchet:test:live. Then wf-docs runs task check once; close tsk_01a129aac2a17ba8929c2beae0036bbf on a live pass; run the code-standards pass; ask the owner before committing. Owner questions open: deprecate workflowtest.NewRecorder(nil) in favour of NewFake; build the durable Hatchet batch coordinator (needs a report-function GroupRunner and the batch store shared with workers; wf-hatchet's design note).",
+  "commitment": "accepted",
+  "completed_at": "2026-10-12T04:51:26.589966000Z",
+  "created_at": "2026-10-11T17:40:16.456061000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12c0d11c87101ba469f968a4d68e6",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Wave 5 wrap-up: finish queued tests, task check, commit",
+  "updated_at": "2026-10-12T04:51:26.589968000Z"
+}

@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner wf-cron. cron/ package, DST gaps and overlaps tested, own parser with no third-party cron dependency.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-10T11:05:58.561331000Z",
+  "created_at": "2026-10-10T11:00:46.374045000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12578f4a670bfb28c8be13f7d7cbf",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Cron parser: own 5-field parser and next-run maths with time zones",
+  "updated_at": "2026-10-10T11:05:58.561333000Z"
+}

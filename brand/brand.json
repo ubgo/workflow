@@ -1,0 +1,35 @@
+{
+  "name": "workflow",
+  "repo": "ubgo/workflow",
+  "tagline": "Cron, delayed jobs, background queues and multi-step workflows for Go, behind one interface",
+  "description": "Embeddable Go library for cron schedules, delayed and background jobs with retries, and multi-step workflows behind one Client interface, with swappable drivers: in-memory, SQL (SQLite, Postgres, MySQL 8) and Hatchet. Each driver declares its capabilities and a shared conformance suite proves them.",
+  "homepage": "",
+  "language": "go",
+  "kind": "library",
+  "license": "Apache-2.0",
+  "author": {
+    "name": "Aman Bansal",
+    "email": "khanakia@gmail.com",
+    "github": "khanakia"
+  },
+  "positioning": {
+    "category": "Go job queue, scheduler and workflow library",
+    "audience": "Go developers building product backends (SaaS, sync pipelines, webhook delivery, notifications) and desktop or CLI apps that need a scheduler on an embedded SQLite file",
+    "wedge": "Every Go app rebuilds cron, a job queue, retries and multi-step workflows, and each library it picks locks it into one backend. ubgo/workflow puts them behind one interface, so the same handlers run in memory in tests, on SQLite, Postgres or MySQL in production, or on Hatchet, and a backend that cannot do something says so instead of faking it.",
+    "differentiators": [
+      "One Client interface for schedules, jobs and workflows, with in-memory, SQL and Hatchet drivers",
+      "Honest capabilities: Start refuses a workflow that needs a capability the driver lacks, and an unsupported field returns ErrUnsupported naming it",
+      "A shared conformance suite every driver runs, plus multi-client tests on the SQL driver: each step claimed once, one cron tick per schedule across three clients, a dead worker's lease reclaimed",
+      "SQLite, Postgres and MySQL 8 on database/sql through ubgo/sqlb, with versioned migrations and transactional enqueue inside the app's own transaction",
+      "Own cron parser evaluated in an explicit time zone, and an injected clock for tests",
+      "Standard-library-only core, enforced by a dependency guard test",
+      "Batches with callbacks, unique and debounced jobs, claim check for big payloads, failover between backends, a transactional outbox and OpenTelemetry middleware as optional packages"
+    ]
+  },
+  "topics": [
+    "go", "golang", "job-queue", "background-jobs", "task-queue", "cron",
+    "scheduler", "workflow", "workflow-engine", "durable-execution",
+    "sqlite", "postgres", "mysql", "hatchet", "opentelemetry",
+    "retries", "outbox-pattern", "library"
+  ]
+}

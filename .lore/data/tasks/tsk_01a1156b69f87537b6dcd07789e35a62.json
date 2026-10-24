@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "The team's Go skill mandates a third-party cron package and forbids custom cron; this library is a cron. Recommendation: record an exception in this repo's project notes (and the skill) naming ubgo/workflow as the scheduler. Source: the local-references conflict callouts.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T15:36:15.481096000Z",
+  "created_at": "2026-10-07T08:12:03.448339000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a1156b69f87537b6dcd07789e35a62",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Decide: exception to the ubgo-golang-v2 cron-package rule for this repo",
+  "updated_at": "2026-10-11T15:36:15.481137000Z"
+}

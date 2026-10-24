@@ -1,0 +1,20 @@
+{
+  "_table": "decisions",
+  "_v": 1,
+  "archived_at": null,
+  "body": "RetryPolicy.DiscardOnExhaust with CapDiscardExhausted; default stays failed so operators still see failures. The brief's retryable state is the existing StatusRetrying. State machine is a doc comment on Status plus an exported transition table walked by a test. No migration: the flag rides in the existing retry JSON doc.",
+  "confidence": null,
+  "created_at": "2026-10-14T16:06:01.280220084Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "id": "dec_01a13b29db407369a580fa8f5f0a1f39",
+  "last_validated_at": null,
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "source_kind": "manual",
+  "source_ref": null,
+  "status": "accepted",
+  "superseded_by_id": null,
+  "title": "Discard on exhaustion is opt-in; no new retryable status",
+  "trust_score": 0.5,
+  "updated_at": "2026-10-14T16:06:01.280220475Z"
+}

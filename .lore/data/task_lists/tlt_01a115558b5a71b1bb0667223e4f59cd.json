@@ -1,0 +1,11 @@
+{
+  "_table": "task_lists",
+  "_v": 1,
+  "body": "Research and design before any code.",
+  "created_at": "2026-10-07T07:48:10.202098000Z",
+  "id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "status_str": "active",
+  "title": "Exploration and brainstorm",
+  "updated_at": "2026-10-07T07:48:10.202100000Z"
+}

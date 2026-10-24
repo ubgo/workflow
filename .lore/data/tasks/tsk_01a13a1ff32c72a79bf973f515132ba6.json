@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Rows in the feature catalogue (private notes). Scope to be chosen by the owner before building (propose in/defer/skip first).",
+  "commitment": "accepted",
+  "completed_at": null,
+  "created_at": "2026-10-14T11:15:34.828170331Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a13a1ff32c72a79bf973f515132ba6",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "todo",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "P3 and P4 feature rows (not started)",
+  "updated_at": "2026-10-14T11:15:34.828170672Z"
+}

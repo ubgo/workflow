@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner: \"or job or scheduler\" / \"every possible method in the world ever invented\".",
+  "commitment": "accepted",
+  "completed_at": "2026-10-07T08:55:07.085425000Z",
+  "created_at": "2026-10-07T08:36:14.105982000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a115818c997f038b3f9bdd9b35b5f0",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-07T08:36:14.180907000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Research: every job and scheduling method ever invented",
+  "updated_at": "2026-10-07T08:55:07.085476000Z"
+}

@@ -1,0 +1,20 @@
+{
+  "_table": "decisions",
+  "_v": 1,
+  "archived_at": null,
+  "body": "Separate from per-client Workers. Chosen: derive the in-flight count from running rows with a live lease plus a per-queue lock row to serialise claimers, so lease expiry frees a dead worker's slot; no counter table, no migration. Alternative: a counter table, which leaks slots on a crash. Hatchet and Redis refuse a non-zero Limit: Hatchet has only per-worker slots, Redis would need a lease-scored slot set.",
+  "confidence": null,
+  "created_at": "2026-10-14T16:06:01.141419189Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "id": "dec_01a13b29dab5766c856a18e07c7ba3f1",
+  "last_validated_at": null,
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "source_kind": "manual",
+  "source_ref": null,
+  "status": "accepted",
+  "superseded_by_id": null,
+  "title": "Queue limit is cluster-wide (QueueConfig.Limit, CapQueueLimitGlobal)",
+  "trust_score": 0.5,
+  "updated_at": "2026-10-14T16:06:01.141419351Z"
+}

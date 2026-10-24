@@ -1,0 +1,39 @@
+// go 1.26.0 because the hatchet module requires it (the Hatchet SDK
+// declares go 1.26.0); the core module itself stays at go 1.24.0.
+go 1.26.0
+
+// ./hatchet is a separate module so an app that never uses Hatchet never
+// downloads its SDK.
+use (
+	.
+	// ./admin is a separate module so the admin HTTP API stays opt-in; it
+	// needs only the standard library and the core.
+	./admin
+	// ./bench is a separate module so the benchmark harness and its
+	// database drivers never reach a library module's dependencies.
+	./bench
+	// ./cli is a separate module so the command line client stays
+	// stdlib-only: it talks to the admin API over HTTP and imports nothing
+	// from the library.
+	./cli
+	// ./cli/e2e is test-only: it proves the CLI against the real admin
+	// handler without the cli module requiring the library.
+	./cli/e2e
+	// ./examples holds the programs the docs/ guides copy their code from
+	// and the doc checkers; a module of its own so their dependencies never
+	// reach a library module.
+	./examples
+	./hatchet
+	// ./otel is a separate module so an app without OpenTelemetry never
+	// downloads its SDK.
+	./otel
+	// ./redis is a separate module so an app without Redis never downloads
+	// go-redis.
+	./redis
+	// ./sentry is a separate module so an app that does not report to
+	// Sentry never downloads sentry-go.
+	./sentry
+	// ./sqlstore is a separate module so an app without SQL never downloads
+	// sqlb or a database driver.
+	./sqlstore
+)

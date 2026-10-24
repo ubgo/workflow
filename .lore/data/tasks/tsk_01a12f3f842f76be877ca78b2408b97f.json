@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": null,
+  "commitment": "accepted",
+  "completed_at": "2026-10-12T09:01:07.541311000Z",
+  "created_at": "2026-10-12T08:34:14.191441000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12f3f842f76be877ca78b2408b97f",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-12T08:34:44.354102000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "No-hardwire sqlstore and outbox: error classifier, migration SQL export, schema, ID generator, tunings, keep-last-N retention, outbox dead entries (I4 I5 I6 I8 C1 C5 C6)",
+  "updated_at": "2026-10-12T09:01:07.541351000Z"
+}

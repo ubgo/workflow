@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner wf-core. Root package workflow + clock/, deps_test, Taskfile, docsync.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-10T11:04:18.148120000Z",
+  "created_at": "2026-10-10T11:00:46.233998000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12578f41a700099c8d3d63dccf658",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-10T11:00:52.954889000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Core API: Client, specs, caps, errors, clock, Validate, Define",
+  "updated_at": "2026-10-10T11:04:18.148133000Z"
+}

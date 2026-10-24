@@ -1,0 +1,7 @@
+# Test and example fixtures, not credentials.
+# The hatchet-pause hits are the expected program output line about a rejected bad API credential.
+examples/hatchet-pause/README.md:generic-api-key:16
+examples/hatchet-pause/main_test.go:generic-api-key:14
+# Made-up AWS and Stripe key shapes that the SecretGuard test must refuse.
+flow_test.go:aws-access-token:382
+flow_test.go:stripe-access-token:384

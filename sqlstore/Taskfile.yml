@@ -1,0 +1,87 @@
+version: '3'
+
+# The SQL driver module. SQLite tests need nothing; the Postgres tests run
+# against a throwaway Postgres from compose.yml (test:pg) or the host's
+# Postgres.app (test:pg:host, the Mac), in a dedicated database,
+# ubgo_workflow_test, each test in its own table prefix. Heavy runs take the machine-wide testlock.
+
+set: [pipefail]
+
+vars:
+  PG_DB: ubgo_workflow_test
+  PG_DSN: postgres://{{.USER}}@localhost:5432/ubgo_workflow_test?sslmode=disable
+  # compose.yml's throwaway Postgres (profile postgres), superuser.
+  PG_COMPOSE_DSN: postgres://postgres:workflow@127.0.0.1:35432/ubgo_workflow_test?sslmode=disable
+  # compose.yml's throwaway MySQL (profile mysql); credentials are the
+  # container's own and live for one run.
+  MYSQL_DSN: root:workflow@tcp(127.0.0.1:33072)/workflow
+
+tasks:
+  test:
+    desc: Race tests on SQLite (the Postgres cases skip without WFTEST_PG_DSN; see test:pg)
+    cmds: ['testlock go test -race ./...']
+
+  test:pg:
+    desc: Race tests on SQLite and Postgres 18 (compose.yml's throwaway postgres profile, removed after the run pass or fail)
+    cmds: ['testlock task test:pg:run']
+
+  # Called through testlock by the public task above; no desc keeps it off
+  # task --list. The defer is registered BEFORE the profile starts.
+  test:pg:run:
+    cmds:
+      - defer: {task: pg:down}
+      - task: up
+        vars: {PROFILE: postgres}
+      - 'WFTEST_PG_DSN="{{.PG_COMPOSE_DSN}}" go test -race -timeout 20m ./...'
+
+  pg:down:
+    desc: Remove the throwaway Postgres and its data (test:pg already does this after every run)
+    cmds: ['docker compose --profile postgres down -v --remove-orphans']
+
+  test:pg:host:
+    desc: Race tests on SQLite and the host's Postgres.app (the Mac shared stack; creates the ubgo_workflow_test database when missing)
+    deps: [db:create]
+    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 20m ./..."']
+
+  test:mysql:
+    desc: Race tests on SQLite and MySQL 8 (compose.yml's throwaway mysql profile, removed after the run pass or fail)
+    cmds: ['testlock task test:mysql:run']
+
+  # Called through testlock by the public task above; no desc keeps it off
+  # task --list. The defer is registered BEFORE the profile starts, so a
+  # failed `up --wait` still removes the container.
+  test:mysql:run:
+    cmds:
+      - defer: {task: mysql:down}
+      - task: up
+        vars: {PROFILE: mysql}
+      - 'WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -timeout 20m ./...'
+
+  # `up --wait` is retried: on rootless Docker a port released by the previous
+  # run's container can still read as in use for a moment ("address already
+  # in use"), which has nothing to do with the code under test.
+  up:
+    internal: true
+    cmds:
+      - |
+        for i in 1 2 3 4 5; do docker compose --profile {{.PROFILE}} up -d --wait && exit 0; docker compose --profile {{.PROFILE}} down -v --remove-orphans >/dev/null 2>&1; sleep 3; done; exit 1
+
+  mysql:down:
+    desc: Remove the throwaway MySQL and its data (test:mysql already does this after every run)
+    cmds: ['docker compose --profile mysql down -v --remove-orphans']
+
+  db:create:
+    desc: Create the ubgo_workflow_test database in the host Postgres when it does not exist (idempotent)
+    cmds:
+      - psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='{{.PG_DB}}'" | grep -q 1 || psql -d postgres -c "CREATE DATABASE {{.PG_DB}};"
+
+  vet:
+    desc: go vet over the module, test files included
+    cmds: ['go vet ./...']
+
+  check:
+    desc: gofmt, vet and the race tests on SQLite and Postgres
+    cmds:
+      - test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - task: vet
+      - task: test:pg

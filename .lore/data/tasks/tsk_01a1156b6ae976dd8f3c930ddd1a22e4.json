@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Queue correctness (one row per cron tick, unique jobs) rests on unique indexes; the skill bans DB-level business validation. Recommendation: record them as structural invariants.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T15:36:15.667719000Z",
+  "created_at": "2026-10-07T08:12:03.689446000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a1156b6ae976dd8f3c930ddd1a22e4",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Decide: unique indexes count as structural, not business validation",
+  "updated_at": "2026-10-11T15:36:15.667721000Z"
+}

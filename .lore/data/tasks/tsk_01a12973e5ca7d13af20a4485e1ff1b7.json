@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Migrate(ctx) creates the tables, but there is no record of which schema version a database is at, so a later column or index change has no safe upgrade path. Add a ledger table (version, applied_at), numbered migrations applied in order inside a transaction where the engine allows it, and a refusal to start against a database newer than the code. Note: sqlb contrib/migrate is unimportable until sqlb is tagged.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T11:04:48.045238000Z",
+  "created_at": "2026-10-11T05:33:43.754856000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12973e5ca7d13af20a4485e1ff1b7",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "sqlstore: schema versioning and a migration ledger",
+  "updated_at": "2026-10-11T11:04:48.045254000Z"
+}

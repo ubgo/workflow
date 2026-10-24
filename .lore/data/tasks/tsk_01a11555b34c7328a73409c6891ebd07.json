@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner request: write the mission and the project context file.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-07T08:12:03.284951000Z",
+  "created_at": "2026-10-07T07:48:20.428205000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a11555b34c7328a73409c6891ebd07",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-07T07:49:57.450944000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Write the project context file and MISSION.md",
+  "updated_at": "2026-10-07T08:12:03.284953000Z"
+}

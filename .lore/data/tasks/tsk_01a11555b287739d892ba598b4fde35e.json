@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner request: a full mission and feature catalogue. Output kept in the private planning notes.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-07T08:03:51.430836000Z",
+  "created_at": "2026-10-07T07:48:20.231235000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a11555b287739d892ba598b4fde35e",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-07T07:49:57.335955000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Research: ranked P0-P4 feature catalogue for scheduling/cron/jobs",
+  "updated_at": "2026-10-07T08:03:51.430883000Z"
+}

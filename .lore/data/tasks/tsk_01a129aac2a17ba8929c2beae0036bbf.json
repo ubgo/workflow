@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Follows tsk_01a12973e6b172a7b63aeafef55516fb (Batch on Hatchet). That wave ships the status-poll safety net (option A) behind the new completion-source seam. Later, evaluate a native completion source built on Hatchet parent/child workflows (option B) or guaranteed run-end delivery on Hatchet (declaring CapRunFinished once every terminal run, cancelled ones and ends while no worker ran included, is proven live), and pick the best.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-12T04:04:57.906662000Z",
+  "created_at": "2026-10-11T06:33:39.233760000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a129aac2a17ba8929c2beae0036bbf",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Revisit Batch on Hatchet: the best possible way",
+  "updated_at": "2026-10-12T04:04:57.906674000Z"
+}

@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Owner request: use ubgo/auth as the structural reference, study an existing Hatchet-based app, use sqlb as the data layer. Output kept in the private planning notes.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-07T07:59:51.242495000Z",
+  "created_at": "2026-10-07T07:48:20.329256000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a11555b2e973fbbb83e9ea09cc1dcc",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-07T07:49:57.395959000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
+  "title": "Research: local references (ubgo/auth template, existing Hatchet usage, sqlb)",
+  "updated_at": "2026-10-07T07:59:51.242508000Z"
+}

@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Deferred by the owner on 2026-10-13. Brokers are transports and trigger sources, never the source of truth: a broker backend is store + dispatcher + broker. The library keeps schedules and long delays in its own store and hands due work to the broker; declare what a broker-only setup cannot do (SQS: 15 min max delay, 5 min FIFO dedup, 1 MiB payload). Separate module per broker so its SDK never reaches the core.",
+  "commitment": "someday",
+  "completed_at": null,
+  "created_at": "2026-10-13T14:27:56.166400000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a135a9b2867626aadfa15083e81a9f",
+  "mission_id": null,
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "todo",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Message broker transports: SQS, SNS, EventBridge (and NATS/RabbitMQ later)",
+  "updated_at": "2026-10-13T14:27:56.166400000Z"
+}

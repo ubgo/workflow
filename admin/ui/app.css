@@ -1,0 +1,169 @@
+/* Workflow admin UI. Hand-written, no framework: compact rows for
+   operators who scan many runs. Colours are tokens on :root, redefined
+   for dark mode by the system setting or the Theme button (data-theme). */
+:root {
+  --bg: #ffffff; --bg2: #f6f7f9; --bg3: #eceef2; --fg: #16181d; --muted: #6b7280;
+  --line: #e2e5ea; --accent: #2563eb; --accent-fg: #ffffff;
+  --ok: #15803d; --ok-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2;
+  --warn: #a16207; --warn-bg: #fef3c7; --info: #1d4ed8; --info-bg: #dbeafe;
+  --dim: #4b5563; --dim-bg: #e5e7eb;
+  /* Chart series, one per run end; checked for colour-blind separation
+     (blue, orange, violet, yellow). Light and dark are separate steps. */
+  --c-succeeded: #2a78d6; --c-failed: #eb6834; --c-cancelled: #6250d6; --c-discarded: #eda100;
+  --grid: #e2e5ea;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1115; --bg2: #161920; --bg3: #1f232c; --fg: #e5e7eb; --muted: #9aa1ad;
+    --line: #2a2f3a; --accent: #3b82f6; --accent-fg: #ffffff;
+    --ok: #4ade80; --ok-bg: #12301f; --bad: #f87171; --bad-bg: #3a1717;
+    --warn: #facc15; --warn-bg: #352b0c; --info: #93c5fd; --info-bg: #172a4a;
+    --dim: #c0c6d0; --dim-bg: #2a2f3a;
+    --c-succeeded: #3987e5; --c-failed: #d95926; --c-cancelled: #9085e9; --c-discarded: #c98500;
+    --grid: #2a2f3a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1115; --bg2: #161920; --bg3: #1f232c; --fg: #e5e7eb; --muted: #9aa1ad;
+  --line: #2a2f3a; --accent: #3b82f6; --accent-fg: #ffffff;
+  --ok: #4ade80; --ok-bg: #12301f; --bad: #f87171; --bad-bg: #3a1717;
+  --warn: #facc15; --warn-bg: #352b0c; --info: #93c5fd; --info-bg: #172a4a;
+  --dim: #c0c6d0; --dim-bg: #2a2f3a;
+  --c-succeeded: #3987e5; --c-failed: #d95926; --c-cancelled: #9085e9; --c-discarded: #c98500;
+  --grid: #2a2f3a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, .mono, pre, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.pad { padding: 12px 16px; }
+.grow { flex: 1; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.nowrap { white-space: nowrap; }
+
+.bar {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+  border-bottom: 1px solid var(--line); background: var(--bg2); position: sticky; top: 0; z-index: 5;
+}
+.brand { font-weight: 600; margin-right: 8px; }
+nav { display: flex; gap: 2px; overflow-x: auto; }
+nav a { color: var(--fg); padding: 4px 8px; border-radius: 4px; white-space: nowrap; }
+nav a:hover { background: var(--bg3); text-decoration: none; }
+nav a.on { background: var(--accent); color: var(--accent-fg); }
+nav a.on kbd { color: var(--accent-fg); border-color: transparent; }
+kbd { color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 3px; font-size: 10px; }
+
+.btn {
+  height: 24px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: var(--bg3); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.danger { color: var(--bad); }
+.btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+input, select {
+  height: 24px; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px;
+  background: var(--bg); color: var(--fg); font: inherit; font-size: 12px;
+}
+input:focus, select:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.toolbar label { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.w-sm { width: 110px; } .w-md { width: 140px; } .w-lg { width: 200px; }
+.btn.linkbtn { display: inline-flex; align-items: center; }
+.btn.linkbtn:hover { text-decoration: none; }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.chips .btn { height: 22px; padding: 0 6px; }
+h2 { font-size: 13px; font-weight: 600; margin: 0; padding: 10px 16px 6px; }
+
+.tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+/* Not sticky: the table sits in an overflow-x wrapper (wide tables on a
+   phone), which would pin a sticky header inside the wrapper, over row 1. */
+th { font-weight: 500; color: var(--muted); background: var(--bg2); white-space: nowrap; font-size: 12px; }
+td.mono { white-space: nowrap; }
+th:first-child, td:first-child { padding-left: 16px; }
+th:last-child, td:last-child { padding-right: 16px; }
+tbody tr:hover { background: var(--bg2); }
+tr.click { cursor: pointer; }
+td.err { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bad); }
+td.acts { white-space: nowrap; text-align: right; }
+td.acts .btn { height: 20px; padding: 0 6px; font-size: 11px; }
+.empty { padding: 24px 16px; color: var(--muted); }
+
+.badge { display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 18px; white-space: nowrap; }
+.s-succeeded { color: var(--ok); background: var(--ok-bg); }
+.s-failed { color: var(--bad); background: var(--bad-bg); }
+.s-retrying, .s-waiting { color: var(--warn); background: var(--warn-bg); }
+.s-running, .s-queued { color: var(--info); background: var(--info-bg); }
+.s-scheduled, .s-cancelled, .s-discarded, .s-paused { color: var(--dim); background: var(--dim-bg); }
+.label { display: inline-block; margin: 0 2px 2px 0; padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; }
+
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 16px; }
+.pager .btn { min-width: 26px; }
+.pager .gap { color: var(--muted); padding: 0 2px; }
+.pager .count { margin-right: 8px; font-variant-numeric: tabular-nums; }
+
+dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; margin: 0; padding: 8px 16px; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+pre.box { margin: 4px 16px 12px; padding: 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+.section { border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+td.errcell { color: var(--bad); overflow-wrap: anywhere; }
+td.errcell details { color: var(--fg); }
+td.errcell pre.box { margin: 4px 0; }
+details.out { margin: 0 16px 4px; }
+details.out summary { cursor: pointer; padding: 2px 0; }
+details.out pre.box { margin: 4px 0 8px; }
+
+.toast {
+  position: fixed; right: 16px; bottom: 16px; max-width: 420px; padding: 6px 10px; border-radius: 4px;
+  background: var(--fg); color: var(--bg); font-size: 12px; opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 10;
+}
+.toast.show { opacity: 1; }
+.toast.bad { background: var(--bad); color: #fff; }
+
+/* Bulk actions: the preview bar a dry run opens before the real call. */
+.bulkbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 16px; background: var(--warn-bg); border-bottom: 1px solid var(--line); }
+.bulkbar .sample { color: var(--muted); }
+
+/* Charts: SVG drawn by app.js; colours come from the tokens above. */
+.chartwrap { padding: 8px 16px; }
+svg.chart { display: block; width: 100%; height: 220px; }
+svg.chart .grid { stroke: var(--grid); stroke-width: 1; }
+svg.chart .axis { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+svg.chart .s-succeeded { fill: var(--c-succeeded); }
+svg.chart .s-failed { fill: var(--c-failed); }
+svg.chart .s-cancelled { fill: var(--c-cancelled); }
+svg.chart .s-discarded { fill: var(--c-discarded); }
+svg.chart .hit { fill: transparent; }
+svg.chart .hit:hover { fill: var(--bg3); fill-opacity: .5; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 0 16px 4px; font-size: 12px; }
+.legend .key { display: inline-flex; align-items: center; gap: 4px; }
+.legend .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw.c-succeeded { background: var(--c-succeeded); } .sw.c-failed { background: var(--c-failed); }
+.sw.c-cancelled { background: var(--c-cancelled); } .sw.c-discarded { background: var(--c-discarded); }
+.tiles { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px; }
+.tile { border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; min-width: 110px; }
+.tile .v { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile .k { color: var(--muted); font-size: 11px; }
+.readout { padding: 2px 16px; min-height: 18px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+progress { width: 160px; height: 8px; vertical-align: middle; accent-color: var(--accent); }
+
+@media (max-width: 640px) {
+  .bar { height: auto; flex-wrap: wrap; padding: 6px 16px; }
+  kbd { display: none; }
+}

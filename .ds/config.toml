@@ -1,0 +1,22 @@
+spec = "1.0"
+prefix = "ds"
+
+[scan]
+code = ["**"]
+docs = ["**/*.md"]
+exclude = ["**/testdata/**", "**/node_modules/**", "**/vendor/**", "dist/**", "public/**", "docsi/**", ".lore/**"]
+generated = ["**/*.pb.go", "**/gen/**", "**/*_gen.go", "**/*_gen.ts"]
+
+[include]
+mode = "repo"
+max_lines = 40
+
+[check]
+fuzzy_threshold = 0.8
+unacked = "error"
+
+[env]
+default = ""
+
+[owners]
+"@khanakia" = ["khanakia"]

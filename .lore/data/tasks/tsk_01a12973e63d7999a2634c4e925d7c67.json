@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "sqlstore/go.mod resolves github.com/ubgo/sqlb and its driver modules (contrib/driver-pgx, driver-sqlite, MySQL) through replace directives to a local checkout, so no consumer and no fresh clone can build sqlstore. Tag sqlb and each contrib module it needs, switch sqlstore to the tagged versions, remove the replaces, and remove the blocker note from README and the project notes.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T15:05:58.219485000Z",
+  "created_at": "2026-10-11T05:33:43.869624000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12973e63d7999a2634c4e925d7c67",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Tag ubgo/sqlb so sqlstore can drop its replace directives (release blocker)",
+  "updated_at": "2026-10-11T15:05:58.219746000Z"
+}

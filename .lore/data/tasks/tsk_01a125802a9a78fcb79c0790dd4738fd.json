@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "Raised by wf-hatchet. WaitSpec.Key is fixed on the Workflow definition, so two concurrent runs cannot wait on different keys (an order ID per run). Candidate: WaitSpec.KeyFrom ConcurrencyKey (Go func over the Job, or an engine expression such as Hatchet CEL). Hatchet's DAG wait condition is static too; check whether its event condition expression can reference run input before claiming it.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-10T11:09:44.384672000Z",
+  "created_at": "2026-10-10T11:08:38.938584000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a125802a9a78fcb79c0790dd4738fd",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Decide per-run wait keys: WaitSpec.Key is static per workflow",
+  "updated_at": "2026-10-10T11:09:44.384685000Z"
+}

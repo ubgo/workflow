@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "workflowtest/ package: one driver contract run against every driver.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-10T12:04:46.118589000Z",
+  "created_at": "2026-10-10T11:00:46.653338000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12578f5bd75349b62d1893997320e",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "high",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": "2026-10-10T11:05:58.287733000Z",
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Conformance suite: one contract run against every driver",
+  "updated_at": "2026-10-10T12:04:46.118591000Z"
+}

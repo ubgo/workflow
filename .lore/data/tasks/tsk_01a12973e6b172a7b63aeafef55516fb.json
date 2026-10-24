@@ -1,0 +1,23 @@
+{
+  "_table": "tasks",
+  "_v": 1,
+  "assigned_to_actor_id": null,
+  "body": "batch.Manager refuses the Hatchet client because Hatchet implements RunNotifier best-effort only (no CapRunFinished): it polls the run list, and worker hooks cannot see cancelled or dropped runs. Either give Hatchet guaranteed delivery (prove every terminal run, including cancelled ones and ends while no worker ran, on a live engine, then declare CapRunFinished) or add a documented polling fallback to batch that reconciles members through Client.Status, so a lost event cannot hang a batch.",
+  "commitment": "accepted",
+  "completed_at": "2026-10-11T07:21:23.419885000Z",
+  "created_at": "2026-10-11T05:33:43.985169000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "deferred_until": null,
+  "due_at": null,
+  "id": "tsk_01a12973e6b172a7b63aeafef55516fb",
+  "mission_id": "msn_01a115558a3779d79714a6e5c307715a",
+  "plan_id": null,
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_id": null,
+  "started_at": null,
+  "status": "done",
+  "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
+  "title": "Batch on Hatchet: guaranteed run-end delivery or a polling fallback",
+  "updated_at": "2026-10-11T07:21:23.420119000Z"
+}

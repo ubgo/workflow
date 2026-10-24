@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Workflow admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232563eb'/%3E%3Cpath d='M4 5h8M4 8h5M4 11h7' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <span class="brand">workflow</span>
+  <nav id="nav">
+    <a href="#/queues" data-view="queues">Queues <kbd>1</kbd></a>
+    <a href="#/runs" data-view="runs">Runs <kbd>2</kbd></a>
+    <a href="#/failures" data-view="failures">Failures <kbd>3</kbd></a>
+    <a href="#/discarded" data-view="discarded">Discarded <kbd>4</kbd></a>
+    <a href="#/schedules" data-view="schedules">Schedules <kbd>5</kbd></a>
+    <a href="#/charts" data-view="charts">Charts <kbd>6</kbd></a>
+    <a href="#/system" data-view="system">System <kbd>7</kbd></a>
+  </nav>
+  <span class="grow"></span>
+  <span id="caps" class="muted small"></span>
+  <button id="refresh" class="btn" type="button" title="Reload this view (r)">Refresh</button>
+  <button id="theme" class="btn" type="button" title="Switch light and dark">Theme</button>
+</header>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<main id="main"><p class="muted pad">Loading…</p></main>
+</body>
+</html>

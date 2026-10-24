@@ -1,0 +1,16 @@
+{
+  "_table": "commit_links",
+  "_v": 1,
+  "author": null,
+  "committed_at": null,
+  "created_at": "2026-10-11T11:04:50.658159000Z",
+  "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "entity_id": "tsk_01a12973e5ca7d13af20a4485e1ff1b7",
+  "entity_table": "tasks",
+  "id": "cml_cd975d27da2a7c32b1a804d570a62df6",
+  "message": null,
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "repo_path": null,
+  "sha": "58b0608f46b8b55adc71578e584468c0134b8ba2",
+  "updated_at": "2026-10-11T11:04:50.658159000Z"
+}

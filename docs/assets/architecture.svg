@@ -1,0 +1,129 @@
+<svg viewBox="0 0 864 736" width="864" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    text { font-family: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', system-ui, sans-serif; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,0 L8,4 L0,8 L2,4 z" fill="#22c55e"/>
+    </marker>
+  </defs>
+  <!-- White canvas so the figure reads as a card on dark pages. -->
+  <rect x="0" y="0" width="864" height="736" fill="#ffffff"/>
+  <text x="432" y="34" font-size="16" fill="#1e293b" text-anchor="middle">ubgo/workflow architecture</text>
+  <!-- group Optional layers, each over any Client: x=22 y=344 w=600 h=98, bottom=442 -->
+  <rect x="22" y="344" width="600" height="98" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6,4"/>
+  <text x="32" y="360" font-size="11" fill="#64748b">Optional layers, each over any Client</text>
+  <!-- group Drivers (pick one per Client): x=22 y=472 w=600 h=98, bottom=570 -->
+  <rect x="22" y="472" width="600" height="98" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6,4"/>
+  <text x="32" y="488" font-size="11" fill="#64748b">Drivers (pick one per Client)</text>
+  <!-- group Storage / engine: x=22 y=600 w=600 h=80, bottom=680 -->
+  <rect x="22" y="600" width="600" height="80" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6,4"/>
+  <text x="32" y="616" font-size="11" fill="#64748b">Storage / engine</text>
+  <!-- group Plugins and operations: x=652 y=140 w=190 h=540, bottom=680 -->
+  <rect x="652" y="140" width="190" height="540" rx="10" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="6,4"/>
+  <text x="662" y="156" font-size="11" fill="#64748b">Plugins and operations</text>
+  <path d="M164.5,115 L 164.5,129" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="152.5" y="128.5" font-size="10" fill="#1e40af" text-anchor="end">1  Enqueue · Schedule</text>
+  <path d="M164.5,217 L 164.5,231" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="152.5" y="230.5" font-size="10" fill="#1e40af" text-anchor="end">2  caps checked</text>
+  <path d="M164.5,319 L 164.5,333" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="152.5" y="332.5" font-size="10" fill="#1e40af" text-anchor="end">3  wrapped Enqueue</text>
+  <path d="M164.5,447 L 164.5,461" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="152.5" y="460.5" font-size="10" fill="#1e40af" text-anchor="end">4  driver Enqueue</text>
+  <path d="M164.5,575 L 164.5,589" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="152.5" y="588.5" font-size="10" fill="#1e40af" text-anchor="end">5  run stored</text>
+  <path d="M479.5,595 L 479.5,581" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="491.5" y="588.5" font-size="10" fill="#166534">6  worker claims run</text>
+  <path d="M479.5,467 L 479.5,453" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="491.5" y="460.5" font-size="10" fill="#166534">7  step, run events</text>
+  <path d="M479.5,339 L 479.5,325" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="491.5" y="332.5" font-size="10" fill="#166534">8  step attempt</text>
+  <path d="M479.5,237 L 479.5,223" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="491.5" y="230.5" font-size="10" fill="#166534">9  wrapped step</text>
+  <path d="M479.5,135 L 479.5,121" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="491.5" y="128.5" font-size="10" fill="#166534">10  step fn, run-finished</text>
+  <!-- app: x=22 y=56 w=600 h=54, right=622, bottom=110 -->
+  <rect x="22" y="56" width="600" height="54" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="322" y="78.2" font-size="12" fill="#1e40af" text-anchor="middle">Your app</text>
+  <text x="322" y="96.2" font-size="12" fill="#64748b" text-anchor="middle">Register(workflow) · Start(ctx) · Enqueue(job) · Schedule(cron) · step functions</text>
+  <!-- client API: x=22 y=140 w=600 h=72, right=622, bottom=212 -->
+  <rect x="22" y="140" width="600" height="72" rx="6" fill="#f3e8ff" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="322" y="162.2" font-size="12" fill="#6b21a8" text-anchor="middle">workflow.Client</text>
+  <text x="322" y="180.2" font-size="12" fill="#64748b" text-anchor="middle">Enqueue · Schedule · Signal · Status · Cancel · OnRunFinished</text>
+  <text x="322" y="198.2" font-size="12" fill="#64748b" text-anchor="middle">Capabilities(): a backend declares what it can do, the rest is refused</text>
+  <!-- enqueue mw: x=22 y=242 w=285 h=72, right=307, bottom=314 -->
+  <rect x="22" y="242" width="285" height="72" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="164.5" y="264.2" font-size="12" fill="#b45309" text-anchor="middle">Enqueue middleware</text>
+  <text x="164.5" y="282.2" font-size="12" fill="#64748b" text-anchor="middle">unique · debounce · route</text>
+  <text x="164.5" y="300.2" font-size="12" fill="#64748b" text-anchor="middle">claim check · otel span</text>
+  <!-- step mw: x=337 y=242 w=285 h=72, right=622, bottom=314 -->
+  <rect x="337" y="242" width="285" height="72" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="479.5" y="264.2" font-size="12" fill="#b45309" text-anchor="middle">Step middleware</text>
+  <text x="479.5" y="282.2" font-size="12" fill="#64748b" text-anchor="middle">logging · recovery · timeout</text>
+  <text x="479.5" y="300.2" font-size="12" fill="#64748b" text-anchor="middle">codec · throttling · otel span</text>
+  <!-- batch: x=37 y=372 w=173 h=54, right=210, bottom=426 -->
+  <rect x="37" y="372" width="173" height="54" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="123.5" y="394.2" font-size="12" fill="#b45309" text-anchor="middle">batch</text>
+  <text x="123.5" y="412.2" font-size="12" fill="#64748b" text-anchor="middle">Then · Catch · Finally</text>
+  <!-- failover: x=235 y=372 w=173 h=54, right=408, bottom=426 -->
+  <rect x="235" y="372" width="173" height="54" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="321.5" y="394.2" font-size="12" fill="#b45309" text-anchor="middle">failover</text>
+  <text x="321.5" y="412.2" font-size="12" fill="#64748b" text-anchor="middle">primary, then secondary</text>
+  <!-- outbox · EnqueueTx: x=433 y=372 w=173 h=54, right=606, bottom=426 -->
+  <rect x="433" y="372" width="173" height="54" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="519.5" y="394.2" font-size="12" fill="#b45309" text-anchor="middle">outbox · EnqueueTx</text>
+  <text x="519.5" y="412.2" font-size="12" fill="#64748b" text-anchor="middle">enqueue in your SQL tx</text>
+  <!-- memory: x=37 y=500 w=173 h=54, right=210, bottom=554 -->
+  <rect x="37" y="500" width="173" height="54" rx="6" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="123.5" y="522.2" font-size="12" fill="#166534" text-anchor="middle">memory</text>
+  <text x="123.5" y="540.2" font-size="12" fill="#64748b" text-anchor="middle">tests, one process</text>
+  <!-- sqlstore: x=235 y=500 w=173 h=54, right=408, bottom=554 -->
+  <rect x="235" y="500" width="173" height="54" rx="6" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="321.5" y="522.2" font-size="12" fill="#166534" text-anchor="middle">sqlstore</text>
+  <text x="321.5" y="540.2" font-size="12" fill="#64748b" text-anchor="middle">SQLite, Postgres, MySQL</text>
+  <!-- hatchet: x=433 y=500 w=173 h=54, right=606, bottom=554 -->
+  <rect x="433" y="500" width="173" height="54" rx="6" fill="#d1fae5" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="519.5" y="522.2" font-size="12" fill="#166534" text-anchor="middle">hatchet</text>
+  <text x="519.5" y="540.2" font-size="12" fill="#64748b" text-anchor="middle">Hatchet Go SDK</text>
+  <!-- in-process memory: x=37 y=628 w=173 h=36, right=210, bottom=664 -->
+  <rect x="37" y="628" width="173" height="36" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="123.5" y="650.2" font-size="12" fill="#1e293b" text-anchor="middle">in-process memory</text>
+  <!-- your SQL database: x=235 y=628 w=173 h=36, right=408, bottom=664 -->
+  <rect x="235" y="628" width="173" height="36" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="321.5" y="650.2" font-size="12" fill="#1e293b" text-anchor="middle">your SQL database</text>
+  <!-- Hatchet engine: x=433 y=628 w=173 h=36, right=606, bottom=664 -->
+  <rect x="433" y="628" width="173" height="36" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="519.5" y="650.2" font-size="12" fill="#1e293b" text-anchor="middle">Hatchet engine</text>
+  <!-- Plugins: x=667 y=184 w=160 h=72, right=827, bottom=256 -->
+  <rect x="667" y="184" width="160" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="747" y="206.2" font-size="12" fill="#1e293b" text-anchor="middle">Plugins</text>
+  <text x="747" y="224.2" font-size="12" fill="#64748b" text-anchor="middle">workflow.Use(c, …)</text>
+  <text x="747" y="242.2" font-size="12" fill="#64748b" text-anchor="middle">middleware + observers</text>
+  <!-- Migrations: x=667 y=286 w=160 h=72, right=827, bottom=358 -->
+  <rect x="667" y="286" width="160" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="747" y="308.2" font-size="12" fill="#1e293b" text-anchor="middle">Migrations</text>
+  <text x="747" y="326.2" font-size="12" fill="#64748b" text-anchor="middle">sqlstore Migrate(ctx)</text>
+  <text x="747" y="344.2" font-size="12" fill="#64748b" text-anchor="middle">versioned, explicit</text>
+  <!-- Retention: x=667 y=388 w=160 h=72, right=827, bottom=460 -->
+  <rect x="667" y="388" width="160" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="747" y="410.2" font-size="12" fill="#1e293b" text-anchor="middle">Retention</text>
+  <text x="747" y="428.2" font-size="12" fill="#64748b" text-anchor="middle">WithRetention · Prune</text>
+  <text x="747" y="446.2" font-size="12" fill="#64748b" text-anchor="middle">WithArchive</text>
+  <!-- Observability: x=667 y=490 w=160 h=72, right=827, bottom=562 -->
+  <rect x="667" y="490" width="160" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="747" y="512.2" font-size="12" fill="#1e293b" text-anchor="middle">Observability</text>
+  <text x="747" y="530.2" font-size="12" fill="#64748b" text-anchor="middle">otel spans per step</text>
+  <text x="747" y="548.2" font-size="12" fill="#64748b" text-anchor="middle">outcome metrics</text>
+  <!-- Testing (workflowtest): x=667 y=592 w=160 h=72, right=827, bottom=664 -->
+  <rect x="667" y="592" width="160" height="72" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="747" y="614.2" font-size="12" fill="#1e293b" text-anchor="middle">Testing (workflowtest)</text>
+  <text x="747" y="632.2" font-size="12" fill="#64748b" text-anchor="middle">conformance suite</text>
+  <text x="747" y="650.2" font-size="12" fill="#64748b" text-anchor="middle">Fake, Recorder</text>
+  <path d="M22,710 L 46,710" fill="none" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+  <text x="64" y="713.5" font-size="10" fill="#64748b">enqueue path, steps 1 to 5</text>
+  <path d="M242,710 L 266,710" fill="none" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="284" y="713.5" font-size="10" fill="#64748b">execution and results, steps 6 to 10</text>
+</svg>
