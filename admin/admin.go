@@ -114,6 +114,24 @@ func WithClock(clk clock.Clock) Option { return func(a *Admin) { a.clk = clk } }
 // it the stats are marked Truncated. Zero or less keeps DefaultMaxScan.
 func WithMaxScan(n int) Option { return func(a *Admin) { a.maxScan = n } }
 
+// WithRunQuerier makes the read operations (runs, run, failures,
+// discarded, queue stats, counts) read rq instead of the client, typically
+// a run recorder's store (recorder.Store), whose history outlives the
+// driver's own and covers a driver without a run query. caps is what rq's
+// queries honour (recorder.QueryCaps for a recorder store); a query
+// filter rq lacks is refused, as it would be by the client. Actions
+// (retry, cancel, delete, force, the bulk ones and the listings they act
+// on) still go to the client, which owns the runs. Run falls back to the
+// client's own RunQuerier for a run rq does not hold, so a run the
+// recorder never saw still opens. A nil rq keeps the client.
+func WithRunQuerier(rq workflow.RunQuerier, caps workflow.Caps) Option {
+	return func(a *Admin) {
+		if rq != nil {
+			a.rq, a.rqCaps = rq, caps
+		}
+	}
+}
+
 // Admin is the operations an admin screen or a CLI needs, over any
 // workflow.Client. It holds no state of its own: every call goes to the
 // client, so several Admins over one store agree.
@@ -131,6 +149,31 @@ type Admin struct {
 	maxBulk int
 	outputs OutputSource  // nil: no captured output is shown
 	metrics MetricsSource // nil: no historical charts
+
+	// rq, when set, answers the read operations (WithRunQuerier), with
+	// rqCaps the filters it honours.
+	rq     workflow.RunQuerier
+	rqCaps workflow.Caps
+}
+
+// readOps are the operations WithRunQuerier redirects.
+func readOp(op Operation) bool {
+	switch op {
+	case OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues:
+		return true
+	}
+	return false
+}
+
+// reader is the RunQuerier the read operations use and the capabilities
+// their queries are checked against: the WithRunQuerier querier when set,
+// else the client.
+func (a *Admin) reader() (workflow.RunQuerier, workflow.Caps) {
+	if a.rq != nil {
+		return a.rq, a.rqCaps
+	}
+	rq, _ := a.c.(workflow.RunQuerier)
+	return rq, a.c.Capabilities()
 }
 
 // New returns an Admin over c. It never fails: what c cannot do is
@@ -208,6 +251,11 @@ func (a *Admin) Supports(op Operation) bool { return a.check(op) == nil }
 func (a *Admin) check(op Operation) error {
 	have := a.c.Capabilities()
 	need := requirements[op]
+	if a.rq != nil && readOp(op) {
+		// The querier answers the run query; the client still says what
+		// statuses its runs can reach (CapRunStates for discarded).
+		have |= a.rqCaps
+	}
 	ok := have.Has(need)
 	if op == OpPause {
 		ok = have&need != 0
@@ -215,7 +263,8 @@ func (a *Admin) check(op Operation) error {
 	if ok {
 		switch op {
 		case OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues:
-			_, ok = a.c.(workflow.RunQuerier)
+			rq, _ := a.reader()
+			ok = rq != nil
 		case OpRetry:
 			_, ok = a.c.(workflow.RunRetrier)
 		case OpDelete:
@@ -278,10 +327,13 @@ func (a *Admin) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage
 	if err := a.validateQuery(q); err != nil {
 		return workflow.RunPage{}, err
 	}
-	return a.c.(workflow.RunQuerier).Runs(ctx, q)
+	rq, _ := a.reader()
+	return rq.Runs(ctx, q)
 }
 
-// Run returns one run. An unknown ref returns workflow.ErrNotFound.
+// Run returns one run. An unknown ref returns workflow.ErrNotFound. With
+// WithRunQuerier, a run the querier does not hold is looked up on the
+// client when the client can list runs.
 func (a *Admin) Run(ctx context.Context, ref workflow.RunRef) (workflow.RunInfo, error) {
 	if err := a.check(OpRun); err != nil {
 		return workflow.RunInfo{}, err
@@ -289,9 +341,17 @@ func (a *Admin) Run(ctx context.Context, ref workflow.RunRef) (workflow.RunInfo,
 	if ref.IsZero() {
 		return workflow.RunInfo{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
 	}
-	page, err := a.c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
+	rq, _ := a.reader()
+	page, err := rq.Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
 	if err != nil {
 		return workflow.RunInfo{}, err
+	}
+	if len(page.Runs) == 0 && a.rq != nil {
+		if crq, ok := a.c.(workflow.RunQuerier); ok && a.c.Capabilities().Has(workflow.CapRunQuery) {
+			if page, err = crq.Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1}); err != nil {
+				return workflow.RunInfo{}, err
+			}
+		}
 	}
 	if len(page.Runs) == 0 {
 		return workflow.RunInfo{}, fmt.Errorf("%w: admin: run %s", workflow.ErrNotFound, refString(ref))
@@ -299,14 +359,27 @@ func (a *Admin) Run(ctx context.Context, ref workflow.RunRef) (workflow.RunInfo,
 	return page.Runs[0], nil
 }
 
-// validateQuery checks q's shape, then refuses a filter the client
-// cannot serve (RunQuery.LabelPrefixes without CapLabelPrefix) with an
-// UnsupportedError, before the driver is asked.
+// validateQuery checks q's shape, then refuses a filter the reader (the
+// WithRunQuerier querier, else the client) cannot serve
+// (RunQuery.LabelPrefixes without CapLabelPrefix) with an
+// UnsupportedError, before it is asked.
 func (a *Admin) validateQuery(q workflow.RunQuery) error {
+	_, caps := a.reader()
+	return validateAgainst(caps, q)
+}
+
+// validateClientQuery is validateQuery against the client itself, for the
+// bulk actions, which always list on the client.
+func (a *Admin) validateClientQuery(q workflow.RunQuery) error {
+	return validateAgainst(a.c.Capabilities(), q)
+}
+
+// validateAgainst checks q's shape and its filters against caps.
+func validateAgainst(caps workflow.Caps, q workflow.RunQuery) error {
 	if err := workflow.ValidateRunQuery(q); err != nil {
 		return err
 	}
-	return workflow.CheckRunQuery(a.c.Capabilities(), q)
+	return workflow.CheckRunQuery(caps, q)
 }
 
 // Failures lists failed runs matching q. q.Statuses
@@ -337,7 +410,8 @@ func (a *Admin) listStatus(ctx context.Context, op Operation, st workflow.Status
 	if err := a.validateQuery(q); err != nil {
 		return workflow.RunPage{}, err
 	}
-	return a.c.(workflow.RunQuerier).Runs(ctx, q)
+	rq, _ := a.reader()
+	return rq.Runs(ctx, q)
 }
 
 // Retry re-runs a failed run from the step that failed; see
@@ -554,7 +628,7 @@ func (a *Admin) CountRuns(ctx context.Context, q workflow.RunQuery) (RunCount, e
 	if err := a.validateQuery(q); err != nil {
 		return RunCount{}, err
 	}
-	rq := a.c.(workflow.RunQuerier)
+	rq, _ := a.reader()
 	out := RunCount{Cursors: []string{""}}
 	for {
 		page, err := rq.Runs(ctx, q)
@@ -626,7 +700,7 @@ func (a *Admin) QueueStats(ctx context.Context) (QueueReport, error) {
 	if err := a.check(OpQueues); err != nil {
 		return QueueReport{}, err
 	}
-	rq := a.c.(workflow.RunQuerier)
+	rq, _ := a.reader()
 	byQueue := map[string]*QueueStat{}
 	q := workflow.RunQuery{Statuses: []workflow.Status{workflow.StatusQueued}, Limit: min(workflow.MaxRunsLimit, a.maxScan)}
 	scanned := 0

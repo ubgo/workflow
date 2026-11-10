@@ -142,7 +142,7 @@ func (a *Admin) bulk(ctx context.Context, q workflow.RunQuery, opts BulkOptions,
 	if opts.Max < 0 {
 		return BulkResult{}, fmt.Errorf("%w: admin: bulk Max %d is negative", workflow.ErrInvalid, opts.Max)
 	}
-	if err := a.validateQuery(q); err != nil {
+	if err := a.validateClientQuery(q); err != nil {
 		return BulkResult{}, err
 	}
 	bound := a.maxBulk
