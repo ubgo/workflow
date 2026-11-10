@@ -23,12 +23,12 @@ const prefix = "p_"
 
 var t0 = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
-// boom is the injected failure; it is not a contention error, so a write
+// errBoom is the injected failure; it is not a contention error, so a write
 // that hits it fails at once.
-var boom = errors.New("injected failure")
+var errBoom = errors.New("injected failure")
 
-// busy reads as SQLite contention to DefaultRetryable.
-var busy = errors.New("database is locked (5) (SQLITE_BUSY)")
+// errBusy reads as SQLite contention to DefaultRetryable.
+var errBusy = errors.New("database is locked (5) (SQLITE_BUSY)")
 
 // newStore opens a database through the fault wrapper and a migrated store
 // on it.
@@ -223,7 +223,7 @@ func TestWriteFailuresLeaveNoTrace(t *testing.T) {
 		write func(*sqlrecorder.Store) error
 		f     fault
 		// msg, when set, is a fragment of the error (a read or decode
-		// failure has no sentinel to match); else errors.Is(err, boom).
+		// failure has no sentinel to match); else errors.Is(err, errBoom).
 		msg string
 	}{
 		{"begin", upsertNew, fault{op: opBegin}, ""},
@@ -264,7 +264,7 @@ func TestWriteFailuresLeaveNoTrace(t *testing.T) {
 			s, db, in := newStore(t)
 			seedWrites(t, s)
 			before := dump(t, db, prefix)
-			c.f.err = boom
+			c.f.err = errBoom
 			f := in.add(c.f)
 			err := c.write(s)
 			switch {
@@ -272,7 +272,7 @@ func TestWriteFailuresLeaveNoTrace(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), c.msg) {
 					t.Fatalf("err = %v, want one naming %q", err, c.msg)
 				}
-			case !errors.Is(err, boom):
+			case !errors.Is(err, errBoom):
 				t.Fatalf("err = %v, want the injected failure", err)
 			}
 			if in.hits(f) != 1 {
@@ -306,7 +306,7 @@ func TestContentionRetry(t *testing.T) {
 			if o == opExec {
 				match = `INSERT INTO "p_labels"`
 			}
-			f := in.add(fault{op: o, match: match, times: 2, err: busy})
+			f := in.add(fault{op: o, match: match, times: 2, err: errBusy})
 			must(t, write(s, ctx))
 			if in.hits(f) != 2 || count(t, db, "p_runs") != 1 || count(t, db, "p_labels") != 1 {
 				t.Fatalf("op %d: hits %d, runs %d, labels %d", o, in.hits(f), count(t, db, "p_runs"), count(t, db, "p_labels"))
@@ -315,9 +315,9 @@ func TestContentionRetry(t *testing.T) {
 	}
 	t.Run("gives up", func(t *testing.T) {
 		s, db, in := newStore(t, sqlrecorder.WithTxAttempts(3))
-		f := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: busy})
+		f := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: errBusy})
 		err := write(s, ctx)
-		if !errors.Is(err, busy) || !strings.Contains(err.Error(), "gave up after 3 attempts") || in.hits(f) != 3 {
+		if !errors.Is(err, errBusy) || !strings.Contains(err.Error(), "gave up after 3 attempts") || in.hits(f) != 3 {
 			t.Fatalf("err = %v, hits %d", err, in.hits(f))
 		}
 		if count(t, db, "p_runs") != 0 {
@@ -333,8 +333,8 @@ func TestContentionRetry(t *testing.T) {
 			t.Fatalf("hits %d, runs %d", in.hits(f), count(t, db, "p_runs"))
 		}
 		in.reset()
-		g := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: busy})
-		if err := s.UpsertRun(ctx, recorder.RunWrite{Ref: rid("r2"), At: t0}); !errors.Is(err, busy) || in.hits(g) != 1 {
+		g := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: errBusy})
+		if err := s.UpsertRun(ctx, recorder.RunWrite{Ref: rid("r2"), At: t0}); !errors.Is(err, errBusy) || in.hits(g) != 1 {
 			t.Fatalf("a driver error the custom test refuses was retried: %v, hits %d", err, in.hits(g))
 		}
 	})
@@ -342,14 +342,14 @@ func TestContentionRetry(t *testing.T) {
 		c, cancel := context.WithCancel(ctx)
 		defer cancel()
 		s, db, in := newStore(t, sqlrecorder.WithRetryable(func(err error) bool {
-			if errors.Is(err, busy) {
+			if errors.Is(err, errBusy) {
 				cancel()
 				return true
 			}
 			return false
 		}))
-		f := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: busy})
-		if err := write(s, c); !errors.Is(err, busy) || in.hits(f) != 1 {
+		f := in.add(fault{op: opExec, match: `INSERT INTO "p_runs"`, err: errBusy})
+		if err := write(s, c); !errors.Is(err, errBusy) || in.hits(f) != 1 {
 			t.Fatalf("err = %v, hits %d", err, in.hits(f))
 		}
 		if count(t, db, "p_runs") != 0 {
@@ -389,7 +389,7 @@ func TestReadFailures(t *testing.T) {
 		name string
 		read func(*sqlrecorder.Store) error
 		f    fault
-		msg  string // a fragment of the error; the cause must also be boom unless sentinel is false
+		msg  string // a fragment of the error; the cause must also be errBoom unless sentinel is false
 		is   bool
 	}{
 		{"list query", records, fault{op: opQuery, match: list}, "list runs", true},
@@ -414,10 +414,10 @@ func TestReadFailures(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			s, _, in := newStore(t)
 			seedWrites(t, s)
-			c.f.err = boom
+			c.f.err = errBoom
 			f := in.add(c.f)
 			err := c.read(s)
-			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, boom)) {
+			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, errBoom)) {
 				t.Fatalf("err = %v, want %q (wrapping the cause: %v)", err, c.msg, c.is)
 			}
 			if in.hits(f) != 1 {

@@ -173,7 +173,7 @@ type txw struct {
 
 func (t *txw) Commit() error {
 	if f := t.in.fire(opCommit, ""); f != nil {
-		_ = t.Tx.Rollback()
+		_ = t.Rollback()
 		return f.err
 	}
 	return t.Tx.Commit()

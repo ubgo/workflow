@@ -142,10 +142,10 @@ func TestMigrateFailures(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			c.f.err = boom
+			c.f.err = errBoom
 			f := in.add(c.f)
 			err := s.Migrate(ctx)
-			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, boom)) {
+			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, errBoom)) {
 				t.Fatalf("err = %v, want %q", err, c.msg)
 			}
 			if in.hits(f) != 1 {
@@ -155,7 +155,7 @@ func TestMigrateFailures(t *testing.T) {
 	}
 	t.Run("contention clears", func(t *testing.T) {
 		s, db, in := unmigrated(t)
-		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, times: 2, err: busy})
+		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, times: 2, err: errBusy})
 		must(t, s.Migrate(ctx))
 		if in.hits(f) != 2 || len(schemaRows(t, db)) != 1 {
 			t.Fatalf("hits %d", in.hits(f))
@@ -165,7 +165,7 @@ func TestMigrateFailures(t *testing.T) {
 		// What a second process sees while the first switches a fresh
 		// SQLite file to WAL.
 		s, db, in := unmigrated(t)
-		f := in.add(fault{op: opQuery, match: `MAX("version")`, times: 2, err: busy})
+		f := in.add(fault{op: opQuery, match: `MAX("version")`, times: 2, err: errBusy})
 		must(t, s.Migrate(ctx))
 		if in.hits(f) != 2 || len(schemaRows(t, db)) != 1 {
 			t.Fatalf("hits %d", in.hits(f))
@@ -173,8 +173,8 @@ func TestMigrateFailures(t *testing.T) {
 	})
 	t.Run("contention gives up", func(t *testing.T) {
 		s, _, in := unmigrated(t, sqlrecorder.WithTxAttempts(2))
-		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, err: busy})
-		if err := s.Migrate(ctx); !errors.Is(err, busy) || in.hits(f) != 2 {
+		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, err: errBusy})
+		if err := s.Migrate(ctx); !errors.Is(err, errBusy) || in.hits(f) != 2 {
 			t.Fatalf("err = %v, hits %d", err, in.hits(f))
 		}
 	})
@@ -182,14 +182,14 @@ func TestMigrateFailures(t *testing.T) {
 		c, cancel := context.WithCancel(ctx)
 		defer cancel()
 		s, _, in := unmigrated(t, sqlrecorder.WithRetryable(func(err error) bool {
-			if errors.Is(err, busy) {
+			if errors.Is(err, errBusy) {
 				cancel()
 				return true
 			}
 			return false
 		}))
-		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, err: busy})
-		if err := s.Migrate(c); !errors.Is(err, busy) || in.hits(f) != 1 {
+		f := in.add(fault{op: opExec, match: `CREATE TABLE IF NOT EXISTS "p_runs"`, err: errBusy})
+		if err := s.Migrate(c); !errors.Is(err, errBusy) || in.hits(f) != 1 {
 			t.Fatalf("err = %v, hits %d", err, in.hits(f))
 		}
 	})
@@ -329,10 +329,10 @@ func TestPruneFailures(t *testing.T) {
 			s, db, in := newStore(t, sqlrecorder.WithClock(clk), sqlrecorder.WithRetention(c.ret))
 			seedPrune(t, s, clk)
 			before := dump(t, db, prefix)
-			c.f.err = boom
+			c.f.err = errBoom
 			f := in.add(c.f)
 			res, err := s.Prune(ctx)
-			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, boom)) {
+			if err == nil || !strings.Contains(err.Error(), c.msg) || (c.is && !errors.Is(err, errBoom)) {
 				t.Fatalf("err = %v, want %q", err, c.msg)
 			}
 			if in.hits(f) != 1 || res != (recorder.PruneResult{}) {
