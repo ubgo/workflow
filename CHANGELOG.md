@@ -1,8 +1,28 @@
 # Changelog
 
-All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
+All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify`, `sqlstore/pgxtx`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
 
 ## [Unreleased]
+
+## [sqlstore 0.1.1, otel 0.1.1] - 2026-11-10
+
+`sqlstore/v0.1.1`, `otel/v0.1.1`, and two new modules split out of sqlstore, `sqlstore/pgnotify/v0.1.0` and `sqlstore/pgxtx/v0.1.0`. A released module now requires only what its library code imports, so an app never downloads a package it does not use. No change to any library's behaviour; the other modules keep their tags.
+
+### Changed
+
+- `sqlstore` requires no database driver. Its go.mod listed the sqlb pgx, MySQL and SQLite driver modules, which only its tests used, and sqlb's `contrib/migrate` v0.1.0 brought the three drivers into any module importing it (fixed in `contrib/migrate/v0.1.1`, which sqlstore now requires). sqlstore requires only sqlb, `contrib/migrate` and the core; it takes the app's `*sql.DB` and a dialect, and the app brings the driver it opens the pool with.
+- `sqlstore/pgnotify` and `sqlstore/pgxtx` are their own modules at the same import paths, each requiring only pgx, so only an app that uses Postgres LISTEN/NOTIFY wake-ups or pgx transactions downloads pgx. `go get github.com/ubgo/workflow/sqlstore/pgnotify@latest` (or `pgxtx`) together with `sqlstore` v0.1.1 or later: v0.1.0 still carried both packages, and the two together are an ambiguous import.
+- `otel` requires only the OpenTelemetry API (`otel`, `metric`, `trace`). It listed the SDK (`otel/sdk`, `otel/sdk/metric`), which only its tests used; the app brings whichever SDK and exporters it runs.
+
+### Tests
+
+- `sqlstore/enginetest`, `otel/sdktest`: never-released test modules (`internal: true` in `.volt.yml`) holding the tests that need a database driver or the OpenTelemetry SDK. sqlstore's tests reach its unexported state through `sqlstore/internal/probe`, which only packages under `sqlstore/` can import. Every test passes unchanged on SQLite, Postgres 18 and MySQL 8; coverage is the same or higher (sqlstore 86.4%, was 86.2%; outbox 84.7%, pgnotify 75.8%, pgxtx 72.4%, otel 92.8%).
+- `task deps:check`, part of `task check`: fails when a released module's go.mod is not tidy without go.work, or requires a module none of its library packages import on Linux, macOS or Windows.
+- `recorder/e2e` and `recorder/sqlrecorder/sqlitetest` are marked `internal: true` too, so volt never offers to release them.
+
+### Examples
+
+- The examples print with `fmt.Println` and `fmt.Printf` and their tests read the output through `examples/internal/capture`; every deferred `Close`, `RemoveAll` and `Rollback` joins the function's error. The bench harness prints through a writer that returns its first error. `volt ci` (errcheck included) is clean on every module, examples and bench included, with no exclusions.
 
 ## [recorder/sqlrecorder 0.1.1] - 2026-11-10
 

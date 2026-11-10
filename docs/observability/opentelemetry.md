@@ -4,7 +4,7 @@ The `otel` module adds OpenTelemetry tracing and metrics to any driver as one st
 
 ## Before you start
 
-- `go get github.com/ubgo/workflow/otel@latest`. It is its own module (Go 1.25), so the OpenTelemetry SDK never becomes a dependency of the core.
+- `go get github.com/ubgo/workflow/otel@latest`. It is its own module (Go 1.25) and requires only the OpenTelemetry API, so it never becomes a dependency of the core and never brings an SDK: your app uses the SDK and exporters it already runs.
 - A `TracerProvider` and a `MeterProvider` from your app's OpenTelemetry setup. The example uses the SDK's in-memory span exporter and a manual metric reader, so it prints what a backend would receive.
 - The runnable program for this page is [examples/opentelemetry](../../examples/opentelemetry/).
 

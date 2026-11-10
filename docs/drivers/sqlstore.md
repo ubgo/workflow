@@ -4,7 +4,7 @@
 
 ## Before you start
 
-- `go get github.com/ubgo/workflow/sqlstore@latest` plus one database driver from sqlb's contrib modules (see [Pick a database](#pick-a-database)).
+- `go get github.com/ubgo/workflow/sqlstore@latest` plus one database driver from sqlb's contrib modules (see [Pick a database](#pick-a-database)). The module itself requires no database driver: it takes your `*sql.DB` and a dialect, so your app downloads only the driver it opens the pool with.
 - A workflow to run: [First workflow](../start/first-workflow.md).
 - The schema is applied by an explicit `Migrate` call; read [Migrations](../operations/migrations.md) before your first deploy.
 
@@ -131,6 +131,7 @@ worker, err := sqlstore.New(db, dialect,
 
 Polling stays on as the fallback, so a lost, late or duplicated notification changes when work starts, never whether it runs. Measured on the host Postgres with a one-second poll, enqueue on one client to step start on another, 15 samples each: polling p50 591 ms, p95 897 ms; with `pgnotify` p50 38 ms, p95 99 ms (a shared development machine under load).
 
+- `pgnotify` is its own module, so only an app that uses it downloads pgx: `go get github.com/ubgo/workflow/sqlstore/pgnotify@latest`. Upgrade `sqlstore` to v0.1.1 or later with it: v0.1.0 still carried the package, and the two together are an ambiguous import.
 - `pgnotify`'s `Listen` needs the pgx stdlib driver (`driverpgx.Open` uses it), because `database/sql` cannot wait for a notification; on another driver it returns `pgnotify.ErrDriver` and the client keeps polling. `Notify` works through any Postgres driver.
 - `Listen` holds one pool connection for as long as the client runs: size the pool one connection above the workers.
 - LISTEN does not work through a transaction-mode pooler (PgBouncer in transaction or statement mode); point the pool at Postgres itself or leave the notifier off.
@@ -168,7 +169,7 @@ Two stores keep workflow state in the same database. `Client.JournalStore()` is 
 
 ## Enqueue inside a pgx transaction
 
-`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`: `pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })` hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
+`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`, its own module (`go get github.com/ubgo/workflow/sqlstore/pgxtx@latest`, with `sqlstore` v0.1.1 or later): `pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })` hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
 
 ## Database errors
 

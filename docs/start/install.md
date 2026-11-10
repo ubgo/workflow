@@ -32,7 +32,7 @@ Packages that bring a third-party dependency are separate modules, so an app pay
 | Injected time, the cron parser, an embedded zone database | `github.com/ubgo/workflow/clock`, `github.com/ubgo/workflow/cron`, `github.com/ubgo/workflow/cron/tzdata` | core |
 | Publish and subscribe, signed inbound webhooks | `github.com/ubgo/workflow/events` | core |
 | Crons on one client, runs on another | `github.com/ubgo/workflow/hybrid` | core |
-| Durable runs on SQLite, Postgres or MySQL 8 | `github.com/ubgo/workflow/sqlstore` | `sqlstore` (needs `github.com/ubgo/sqlb` and a database driver) |
+| Durable runs on SQLite, Postgres or MySQL 8 | `github.com/ubgo/workflow/sqlstore` | `sqlstore` (needs `github.com/ubgo/sqlb`; it requires no database driver, you add the one you open the pool with) |
 | The transactional outbox in front of any client | `github.com/ubgo/workflow/sqlstore/outbox` | `sqlstore` |
 | Durable runs on Redis | `github.com/ubgo/workflow/redis` | `redis` (needs go-redis v9) |
 | Hatchet as the engine | `github.com/ubgo/workflow/hatchet` | `hatchet` (needs the Hatchet Go SDK, `github.com/hatchet-dev/hatchet` `sdks/go`) |

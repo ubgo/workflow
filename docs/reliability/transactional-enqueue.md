@@ -103,7 +103,7 @@ shipped {"order":3}
 
 ## Inside a pgx transaction
 
-If your transactions are pgx transactions rather than `database/sql` ones, wrap the enqueue in `pgxtx.Run` from `github.com/ubgo/workflow/sqlstore/pgxtx`: `err := pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { _, err := client.EnqueueTx(ctx, stx, job); return err })`. The `*sql.Tx` it hands you is a view over your `pgx.Tx`, so its statements, savepoints and error classification run on the pgx connection; its `Commit` and `Rollback` do nothing, and committing stays your call on the pgx transaction (then `client.Wake()`). It is Postgres only and valid only inside the function. `outbox.Write` takes the same view.
+If your transactions are pgx transactions rather than `database/sql` ones, wrap the enqueue in `pgxtx.Run` from `github.com/ubgo/workflow/sqlstore/pgxtx` (its own module, so only an app that uses it downloads pgx): `err := pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { _, err := client.EnqueueTx(ctx, stx, job); return err })`. The `*sql.Tx` it hands you is a view over your `pgx.Tx`, so its statements, savepoints and error classification run on the pgx connection; its `Commit` and `Rollback` do nothing, and committing stays your call on the pgx transaction (then `client.Wake()`). It is Postgres only and valid only inside the function. `outbox.Write` takes the same view.
 
 ## Pitfalls
 

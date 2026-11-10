@@ -1,7 +1,5 @@
 cel.dev/expr v0.25.2 h1:K6j46C81hXtZQfuX60cVWQFBJahKSE2gfRbNuvr5bFs=
 cel.dev/expr v0.25.2/go.mod h1:hrXvqGP6G6gyx8UAHSHJ5RGk//1Oj5nXQ2NI02Nrsg4=
-filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
-filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/RaveNoX/go-jsoncommentstrip v1.0.0/go.mod h1:78ihd09MekBnJnxpICcwzCMzGrKSKYe4AqU6PDYYpjk=
@@ -63,8 +61,6 @@ github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJn
 github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
 github.com/go-playground/validator/v10 v10.30.4 h1:9Rcod2ZPO6mOEG6b4GqyoHE/H6//Ze0RuhOo1hT1x0w=
 github.com/go-playground/validator/v10 v10.30.4/go.mod h1:numpT+RPLE91R9oYWMY/R9zRgJBewr3IXHko4OISPpk=
-github.com/go-sql-driver/mysql v1.10.1 h1:arlSnNLq6a5yxGxV7qg9lF4j0C+KwD6NbQyKr9QL6ME=
-github.com/go-sql-driver/mysql v1.10.1/go.mod h1:M+cqaI7+xxXGG9swrdeUIoPG3Y3KCkF0pZej+SK+nWk=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
@@ -190,14 +186,12 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/ubgo/sqlb v0.1.1 h1:/D1jcjUIjv5HaZuHRVwfyo5OYIbGkmvLe3vISIX2ta8=
 github.com/ubgo/sqlb v0.1.1/go.mod h1:OD0l9pgY+j8GjpFMHcN364SKaFnNXIuZk3FAzJHG71U=
-github.com/ubgo/sqlb/contrib/driver-mysql v0.1.0 h1:4L7P/FS9q1UYfwzG6F+/gnfJRqF7Sxjowt5cSvluZhw=
-github.com/ubgo/sqlb/contrib/driver-mysql v0.1.0/go.mod h1:9nww1UtdAU71Yz61E27KbYRvENtYsOF5ojL9GCEAHzA=
 github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0 h1:Lc2RiI7VPzSQ72SHS4guTFupgSE92FOpIGLrW7On7SY=
 github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0/go.mod h1:nISS7UdAB/3CWlB2XVvUeVU/92xwnPrVsC5eFwit3h0=
 github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0 h1:zKHbpLblDCaNAO8Orqu5dtNf3wpw4S0qbvTIwqWx26I=
 github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0/go.mod h1:GDLe0KjDQyWI5iTFGyuUegzxCIVZhDMh18mn/MJRrdc=
-github.com/ubgo/sqlb/contrib/migrate v0.1.0 h1:MjRAVcmeIBmbn6i+Bisk+i5VYxPzcJY1E1WxaRsG2XQ=
-github.com/ubgo/sqlb/contrib/migrate v0.1.0/go.mod h1:4+fByCL6mQ3yjkTlw8ZwgeHg+sNdG+jFCxb82rpZy9A=
+github.com/ubgo/sqlb/contrib/migrate v0.1.1 h1:AlioIxuAH+JH95oe2Qm7gKxHTYHBI7G7RpznSgjgWkU=
+github.com/ubgo/sqlb/contrib/migrate v0.1.1/go.mod h1:4+fByCL6mQ3yjkTlw8ZwgeHg+sNdG+jFCxb82rpZy9A=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasttemplate v1.2.2 h1:lxLXG0uE3Qnshl9QyaK6XJxMXlQZELvChBOCmQD0Loo=

@@ -25,11 +25,19 @@ use (
 	./examples
 	./hatchet
 	// ./otel is a separate module so an app without OpenTelemetry never
-	// downloads its SDK.
+	// downloads it; it needs only the OpenTelemetry API, and the app brings
+	// whichever SDK or exporter it runs.
 	./otel
+	// ./otel/sdktest is test-only: it proves otel against the OpenTelemetry
+	// SDK, so the SDK stays out of the otel module.
+	./otel/sdktest
 	// ./recorder is a separate module so an app that keeps no run history
 	// never compiles it; it needs only the standard library and the core.
 	./recorder
+	// ./recorder/e2e is test-only: it proves the recorder on every driver
+	// and sqlrecorder on every engine, so their clients stay out of the
+	// library modules.
+	./recorder/e2e
 	// ./recorder/sqlrecorder is a separate module so a recorder app that
 	// keeps runs in memory or its own store never compiles it; it needs
 	// database/sql only, no database driver.
@@ -38,10 +46,6 @@ use (
 	// on a real SQLite database, every error path included, so the SQLite
 	// driver stays out of the sqlrecorder module.
 	./recorder/sqlrecorder/sqlitetest
-	// ./recorder/e2e is test-only: it proves the recorder on every driver
-	// and sqlrecorder on every engine, so their clients stay out of the
-	// library modules.
-	./recorder/e2e
 	// ./redis is a separate module so an app without Redis never downloads
 	// go-redis.
 	./redis
@@ -49,6 +53,16 @@ use (
 	// Sentry never downloads sentry-go.
 	./sentry
 	// ./sqlstore is a separate module so an app without SQL never downloads
-	// sqlb or a database driver.
+	// sqlb; it takes a *sql.DB and a dialect and requires no database
+	// driver, so the app brings the one it already uses.
 	./sqlstore
+	// ./sqlstore/enginetest is test-only: it proves sqlstore, its outbox and
+	// pgxtx on SQLite, Postgres and MySQL, so those drivers stay out of the
+	// library modules.
+	./sqlstore/enginetest
+	// ./sqlstore/pgnotify and ./sqlstore/pgxtx are separate modules so only
+	// an app that opts into Postgres LISTEN/NOTIFY wake-ups or pgx
+	// transactions downloads pgx.
+	./sqlstore/pgnotify
+	./sqlstore/pgxtx
 )
