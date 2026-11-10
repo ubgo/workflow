@@ -1,0 +1,7 @@
+type StoreConfig struct {
+	// Retention is the store's retention.
+	Retention recorder.Retention
+
+	// Clock is the clock the store measures retention ages with.
+	Clock clock.Clock
+}

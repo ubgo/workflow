@@ -1,0 +1,7 @@
+func CaptureTee(h slog.Handler) CaptureOption {
+	return func(c *captureConfig) {
+		if h != nil {
+			c.tee = h
+		}
+	}
+}

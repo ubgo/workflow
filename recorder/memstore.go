@@ -15,6 +15,8 @@ import (
 // mutex, so it is for tests, single-process apps and as the reference the
 // store conformance suite (recordertest.RunStore) is written against. It
 // keeps nothing across a restart. It implements Pruner.
+//
+//ds:def id=rec-memorystore-smz35v44 owner=@khanakia stability=stable
 type MemoryStore struct {
 	clk       clock.Clock
 	retention Retention
@@ -38,6 +40,8 @@ type MemoryOption func(*MemoryStore)
 
 // WithMemoryClock sets the clock Prune measures ages with; clock.Real by
 // default.
+//
+//ds:def id=rec-withmemoryclock-mejrhz64 owner=@khanakia stability=stable
 func WithMemoryClock(c clock.Clock) MemoryOption {
 	return func(s *MemoryStore) {
 		if c != nil {
@@ -48,12 +52,16 @@ func WithMemoryClock(c clock.Clock) MemoryOption {
 
 // WithMemoryRetention sets the retention Prune applies (see Retention); none
 // by default, so Prune does nothing.
+//
+//ds:def id=rec-withmemoryretention-2a2a7wde owner=@khanakia stability=stable
 func WithMemoryRetention(r Retention) MemoryOption {
 	return func(s *MemoryStore) { s.retention = r }
 }
 
 // NewMemoryStore returns an empty MemoryStore. It fails only on an invalid
 // retention (ValidateRetention).
+//
+//ds:def id=rec-newmemorystore-5yrbgb94 owner=@khanakia stability=stable
 func NewMemoryStore(opts ...MemoryOption) (*MemoryStore, error) {
 	s := &MemoryStore{clk: clock.Real{}, runs: map[string]*RunRecord{}, bySched: map[workflow.ScheduledID]string{}}
 	for _, o := range opts {

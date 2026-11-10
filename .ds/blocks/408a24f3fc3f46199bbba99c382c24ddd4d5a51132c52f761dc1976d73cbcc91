@@ -1,0 +1,18 @@
+func New(db *sql.DB, d Dialect, opts ...Option) (*Store, error) {
+	if db == nil {
+		return nil, fmt.Errorf("%w: sqlrecorder.New: nil *sql.DB", workflow.ErrInvalid)
+	}
+	if err := d.validate(); err != nil {
+		return nil, err
+	}
+	s := &Store{db: db, d: d, prefix: DefaultTablePrefix, clk: clock.Real{}, attempts: DefaultTxAttempts, retryable: DefaultRetryable}
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		if err := o(s); err != nil {
+			return nil, err
+		}
+	}
+	return s, nil
+}

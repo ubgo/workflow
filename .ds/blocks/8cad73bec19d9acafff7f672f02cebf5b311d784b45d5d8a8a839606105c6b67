@@ -1,0 +1,3 @@
+func WithRedactor(red Redactor) Option {
+	return func(r *Recorder) error { r.redactor = red; return nil }
+}

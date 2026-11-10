@@ -23,6 +23,8 @@ import (
 //
 // It checks the job it is handed only: a chained job's source is its own
 // (the driver enqueues it later, past the middleware).
+//
+//ds:def id=mw-requiresource-3tsntxp2 owner=@khanakia stability=stable
 func RequireSource(allowed ...workflow.Source) workflow.EnqueueMiddleware {
 	var badAllowed error
 	for _, s := range allowed {

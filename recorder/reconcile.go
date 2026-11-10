@@ -13,22 +13,32 @@ import (
 // Defaults of a Reconciler.
 const (
 	// DefaultReconcileInterval is the pause between two passes of Run.
+	//
+	//ds:def id=rec-defaultreconcileinterval-6wpsuxsy owner=@khanakia stability=stable
 	DefaultReconcileInterval = 30 * time.Second
 
 	// DefaultStaleAfter is how long an unfinished run may go without any
 	// recorded activity before it is flagged stale.
+	//
+	//ds:def id=rec-defaultstaleafter-ecr2t7eq owner=@khanakia stability=stable
 	DefaultStaleAfter = 10 * time.Minute
 
 	// DefaultBackfillWindow is how far back each pass lists the client's
 	// runs looking for ones the recorder never saw.
+	//
+	//ds:def id=rec-defaultbackfillwindow-7nsg79u2 owner=@khanakia stability=stable
 	DefaultBackfillWindow = time.Hour
 
 	// DefaultReconcileBatch is how many unfinished records one pass checks,
 	// and the page size of the backfill listing.
+	//
+	//ds:def id=rec-defaultreconcilebatch-6zk3gwwh owner=@khanakia stability=stable
 	DefaultReconcileBatch = 100
 
 	// DefaultBackfillPages bounds the pages one backfill pass reads, so a
 	// huge window cannot make one pass unbounded.
+	//
+	//ds:def id=rec-defaultbackfillpages-mejfjkfb owner=@khanakia stability=stable
 	DefaultBackfillPages = 10
 )
 
@@ -54,6 +64,8 @@ const (
 // client to be a workflow.RunQuerier and are skipped otherwise
 // (ReconcileReport.BackfillSkipped). Run several Reconcilers over one store
 // safely: every write is an upsert.
+//
+//ds:def id=rec-reconciler-55m8wpc9 owner=@khanakia stability=stable
 type Reconciler struct {
 	client     workflow.Client
 	store      Store
@@ -72,22 +84,30 @@ type Reconciler struct {
 type ReconcileOption func(*Reconciler) error
 
 // WithInterval sets the pause between passes of Run.
+//
+//ds:def id=rec-withinterval-xygvejf4 owner=@khanakia stability=stable
 func WithInterval(d time.Duration) ReconcileOption {
 	return func(r *Reconciler) error { return positive("WithInterval", d, &r.interval) }
 }
 
 // WithStaleAfter sets how long an unfinished run may be silent before it is
 // flagged stale.
+//
+//ds:def id=rec-withstaleafter-94d6u87k owner=@khanakia stability=stable
 func WithStaleAfter(d time.Duration) ReconcileOption {
 	return func(r *Reconciler) error { return positive("WithStaleAfter", d, &r.staleAfter) }
 }
 
 // WithBackfillWindow sets how far back the backfill lists runs.
+//
+//ds:def id=rec-withbackfillwindow-tb9q9u8e owner=@khanakia stability=stable
 func WithBackfillWindow(d time.Duration) ReconcileOption {
 	return func(r *Reconciler) error { return positive("WithBackfillWindow", d, &r.window) }
 }
 
 // WithBackfill turns the backfill on or off (on by default).
+//
+//ds:def id=rec-withbackfill-euvuqmgs owner=@khanakia stability=stable
 func WithBackfill(on bool) ReconcileOption {
 	return func(r *Reconciler) error { r.backfill = on; return nil }
 }
@@ -96,6 +116,8 @@ func WithBackfill(on bool) ReconcileOption {
 // (a workflow, a tenant, labels), for a client whose engine other apps
 // share. Its From, Limit and Cursor are the Reconciler's own and are
 // ignored; the rest must pass workflow.ValidateRunQuery.
+//
+//ds:def id=rec-withbackfillquery-qc3kqct7 owner=@khanakia stability=stable
 func WithBackfillQuery(q workflow.RunQuery) ReconcileOption {
 	return func(r *Reconciler) error {
 		q.From, q.Limit, q.Cursor = time.Time{}, 0, ""
@@ -109,6 +131,8 @@ func WithBackfillQuery(q workflow.RunQuery) ReconcileOption {
 
 // WithBatch sets how many records one pass checks and the backfill page
 // size, from 1 to workflow.MaxRunsLimit.
+//
+//ds:def id=rec-withbatch-7wqg86rr owner=@khanakia stability=stable
 func WithBatch(n int) ReconcileOption {
 	return func(r *Reconciler) error {
 		if n < 1 || n > workflow.MaxRunsLimit {
@@ -120,6 +144,8 @@ func WithBatch(n int) ReconcileOption {
 }
 
 // WithBackfillPages bounds the pages one backfill pass reads.
+//
+//ds:def id=rec-withbackfillpages-eyrfe4qc owner=@khanakia stability=stable
 func WithBackfillPages(n int) ReconcileOption {
 	return func(r *Reconciler) error {
 		if n < 1 {
@@ -132,6 +158,8 @@ func WithBackfillPages(n int) ReconcileOption {
 
 // WithReconcileClock sets the clock the Reconciler measures with
 // (clock.Real by default); use the recorder's.
+//
+//ds:def id=rec-withreconcileclock-9n7x2xtd owner=@khanakia stability=stable
 func WithReconcileClock(c clock.Clock) ReconcileOption {
 	return func(r *Reconciler) error {
 		if c == nil {
@@ -145,6 +173,8 @@ func WithReconcileClock(c clock.Clock) ReconcileOption {
 // WithReconcileOnError is told about every error of a pass that did not
 // stop it (one run's check or write); Run also hands it a pass's error. By
 // default errors are dropped by Pass and logged by Run with slog.Default.
+//
+//ds:def id=rec-withreconcileonerror-muvwebjc owner=@khanakia stability=stable
 func WithReconcileOnError(fn func(ctx context.Context, err error)) ReconcileOption {
 	return func(r *Reconciler) error { r.onError = fn; return nil }
 }
@@ -160,6 +190,8 @@ func positive(name string, d time.Duration, dst *time.Duration) error {
 
 // NewReconciler returns a Reconciler of s against c. It fails on a nil
 // client or store, or an invalid option, with workflow.ErrInvalid.
+//
+//ds:def id=rec-newreconciler-su363hcv owner=@khanakia stability=stable
 func NewReconciler(c workflow.Client, s Store, opts ...ReconcileOption) (*Reconciler, error) {
 	if c == nil || s == nil {
 		return nil, fmt.Errorf("%w: recorder.NewReconciler needs a client and a store", workflow.ErrInvalid)
@@ -180,6 +212,8 @@ func NewReconciler(c workflow.Client, s Store, opts ...ReconcileOption) (*Reconc
 }
 
 // ReconcileReport is what one Pass did.
+//
+//ds:def id=rec-reconcilereport-bnz3pwpj owner=@khanakia stability=stable
 type ReconcileReport struct {
 	// Checked counts unfinished records compared with the client.
 	Checked int
@@ -203,6 +237,8 @@ type ReconcileReport struct {
 // could not read the store's pending records or the client's run listing;
 // a single run's failure is counted, handed to the error hook, and the
 // pass goes on.
+//
+//ds:def id=rec-reconciler-pass-526p96px owner=@khanakia stability=stable
 func (r *Reconciler) Pass(ctx context.Context) (ReconcileReport, error) {
 	var rep ReconcileReport
 	if err := r.check(ctx, &rep); err != nil {
@@ -217,6 +253,8 @@ func (r *Reconciler) Pass(ctx context.Context) (ReconcileReport, error) {
 // Run calls Pass every interval until ctx is cancelled and then returns
 // nil. A pass's error goes to the error hook (logged by default) and the
 // loop goes on.
+//
+//ds:def id=rec-reconciler-run-hkpv3q3x owner=@khanakia stability=stable
 func (r *Reconciler) Run(ctx context.Context) error {
 	var wait time.Duration // the first pass runs at once
 	for {

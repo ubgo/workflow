@@ -1,0 +1,38 @@
+type StepRecord struct {
+	// Step is the step name; Attempt is 1 for the first attempt. A snoozed
+	// attempt that runs again keeps its number, so its record is updated
+	// in place by the next try.
+	Step    string
+	Attempt int
+
+	// Status is where the attempt is.
+	Status StepStatus
+
+	// Input and Output are the step's input and output after redaction;
+	// nil when the recorder keeps no step bodies (WithStepBodies(false))
+	// or the body was larger than MaxPayload (InputSize and OutputSize say
+	// how big it was).
+	Input      []byte
+	Output     []byte
+	InputSize  int
+	OutputSize int
+
+	// Error is the attempt's error message and Stack its stack trace
+	// (workflow.StackOf), both empty unless Status is StepFailed or
+	// StepSnoozed.
+	Error string
+	Stack string
+
+	// Node ran the attempt (workflow.StepInfo.Node); empty on a driver
+	// without CapNodeIdentity.
+	Node string
+
+	// StartedAt and FinishedAt are on the recorder's clock; FinishedAt is
+	// zero while the attempt runs.
+	StartedAt  time.Time
+	FinishedAt time.Time
+
+	// Events is the attempt's timeline (workflow.RecordEvent), in the
+	// order recorded.
+	Events []EventRecord
+}

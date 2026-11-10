@@ -58,6 +58,8 @@ type driverEnv struct {
 //
 // Only Harness.New, Prefix, Wait and Poll are read; the recorder needs no
 // restart, crash or queue seams.
+//
+//ds:def id=rectest-rundriver-y5s57z34 owner=@khanakia stability=stable
 func RunDriver(t *testing.T, h workflowtest.Harness, opts ...DriverOption) {
 	t.Helper()
 	var cfg driverConfig
@@ -111,6 +113,8 @@ func RunDriver(t *testing.T, h workflowtest.Harness, opts ...DriverOption) {
 }
 
 // DriverOption configures RunDriver.
+//
+//ds:def id=rectest-driveroption-rbmxvkrq owner=@khanakia stability=stable
 type DriverOption func(*driverConfig)
 
 // driverConfig is what the options set.
@@ -121,6 +125,8 @@ type driverConfig struct {
 // WithStore makes RunDriver record into stores newStore builds instead of a
 // recorder.MemoryStore, so a store and a driver are proven together (the
 // SQL store next to the SQL driver, say).
+//
+//ds:def id=rectest-withstore-uh7nyewq owner=@khanakia stability=stable
 func WithStore(newStore NewStore) DriverOption {
 	return func(c *driverConfig) { c.newStore = newStore }
 }

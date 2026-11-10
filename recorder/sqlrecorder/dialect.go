@@ -11,15 +11,23 @@ import (
 // Dialect is the SQL engine the app's *sql.DB talks to. The store writes
 // plain SQL on database/sql for each, so this module imports no database
 // driver: the app opens the database with the driver it already uses.
+//
+//ds:def id=sqlrec-dialect-kbxe8aw4 owner=@khanakia stability=stable
 type Dialect string
 
 // The supported engines, the same three as the sqlstore driver.
 const (
 	// Postgres: PostgreSQL 13 or later.
+	//
+	//ds:def id=sqlrec-postgres-h97qy2kb owner=@khanakia stability=stable
 	Postgres Dialect = "postgres"
 	// MySQL: MySQL 8.0 or later (InnoDB).
+	//
+	//ds:def id=sqlrec-mysql-pq4wcncq owner=@khanakia stability=stable
 	MySQL Dialect = "mysql"
 	// SQLite: SQLite 3.35 or later.
+	//
+	//ds:def id=sqlrec-sqlite-pa63vhwe owner=@khanakia stability=stable
 	SQLite Dialect = "sqlite"
 )
 
@@ -27,6 +35,8 @@ const (
 var dialects = [...]Dialect{Postgres, MySQL, SQLite}
 
 // Dialects returns every supported dialect, as a fresh slice.
+//
+//ds:def id=sqlrec-dialects-f8qtn3z5 owner=@khanakia stability=stable
 func Dialects() []Dialect { return append([]Dialect(nil), dialects[:]...) }
 
 // Valid reports whether d is a supported dialect.
@@ -152,6 +162,8 @@ var retryableMarkers = []string{
 
 // DefaultRetryable reports whether err looks like a contention error worth
 // retrying the transaction for (see WithRetryable).
+//
+//ds:def id=sqlrec-defaultretryable-h3ustvp4 owner=@khanakia stability=stable
 func DefaultRetryable(err error) bool {
 	if err == nil {
 		return false

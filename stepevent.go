@@ -11,12 +11,18 @@ import (
 // or value and keeps at most MaxStepEventAttrs attributes.
 const (
 	// MaxStepEventMessage is the longest StepEvent.Message, in bytes.
+	//
+	//ds:def id=maxstepeventmessage-yfsr3k3h owner=@khanakia stability=stable
 	MaxStepEventMessage = 1 << 10
 
 	// MaxStepEventAttrs is the most attributes one StepEvent keeps.
+	//
+	//ds:def id=maxstepeventattrs-das9dx82 owner=@khanakia stability=stable
 	MaxStepEventAttrs = 32
 
 	// MaxStepEventValue is the longest attribute value, in bytes.
+	//
+	//ds:def id=maxstepeventvalue-ukkmnhkc owner=@khanakia stability=stable
 	MaxStepEventValue = 1 << 10
 )
 
@@ -24,6 +30,8 @@ const (
 // rows"), recorded from inside a step with RecordEvent and handed to every
 // StepEventSink bound on the step's ctx: a run recorder stores it with the
 // step, a tracer adds it as a span event, a log capture writes it.
+//
+//ds:def id=stepevent-f7gyzzpj owner=@khanakia stability=stable
 type StepEvent struct {
 	// Message is a short note for a person.
 	Message string
@@ -48,6 +56,8 @@ type StepEvent struct {
 }
 
 // EventAttr is one key/value pair of a StepEvent.
+//
+//ds:def id=eventattr-ruqhyudh owner=@khanakia stability=stable
 type EventAttr struct {
 	Key   string
 	Value string
@@ -56,11 +66,15 @@ type EventAttr struct {
 // StepEventSink receives the events a step records. A sink must be safe
 // for concurrent use (steps of one run may run in parallel) and must not
 // block: RecordEvent calls it on the step's goroutine.
+//
+//ds:def id=stepeventsink-f4enzkvf owner=@khanakia stability=stable
 type StepEventSink interface {
 	RecordStepEvent(ctx context.Context, e StepEvent)
 }
 
 // StepEventFunc adapts a function to StepEventSink.
+//
+//ds:def id=stepeventfunc-473b6uwj owner=@khanakia stability=stable
 type StepEventFunc func(ctx context.Context, e StepEvent)
 
 // RecordStepEvent calls f.
@@ -73,6 +87,8 @@ type stepEventKey struct{}
 // their own and every one sees every event, in binding order. Plugins and
 // middleware call it on the step ctx before the handler runs. A nil s
 // returns ctx unchanged.
+//
+//ds:def id=withstepeventsink-ehcpt8xf owner=@khanakia stability=stable
 func WithStepEventSink(ctx context.Context, s StepEventSink) context.Context {
 	if s == nil {
 		return ctx
@@ -86,6 +102,8 @@ func WithStepEventSink(ctx context.Context, s StepEventSink) context.Context {
 
 // HasStepEventSink reports whether any sink is bound on ctx, so a step can
 // skip building an expensive message nobody will read.
+//
+//ds:def id=hasstepeventsink-95trpj6t owner=@khanakia stability=stable
 func HasStepEventSink(ctx context.Context) bool {
 	sinks, _ := ctx.Value(stepEventKey{}).([]StepEventSink)
 	return len(sinks) > 0
@@ -96,12 +114,16 @@ func HasStepEventSink(ctx context.Context) bool {
 // line, not data the caller asked to keep (contrast ReportProgress, which
 // errors), so a step records events the same way with or without a
 // recorder. Values are rendered with slog.Value.String after Resolve.
+//
+//ds:def id=recordevent-k3aqhnwy owner=@khanakia stability=stable
 func RecordEvent(ctx context.Context, msg string, attrs ...slog.Attr) {
 	RecordEventLevel(ctx, slog.LevelInfo, msg, attrs...)
 }
 
 // RecordEventLevel is RecordEvent at a chosen level (a warning in a
 // timeline that a sink may colour or alert on).
+//
+//ds:def id=recordeventlevel-b9kyju7j owner=@khanakia stability=stable
 func RecordEventLevel(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
 	sinks, _ := ctx.Value(stepEventKey{}).([]StepEventSink)
 	if len(sinks) == 0 {

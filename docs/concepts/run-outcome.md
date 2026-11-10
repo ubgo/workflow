@@ -1,6 +1,6 @@
 # Run outcome
 
-A run's status says whether the worker ran it to the end; its outcome says whether the work succeeded. A sync that skipped because nothing changed, and one that finished with 3 bad rows out of 100, are both `succeeded`; their outcomes, `skipped` and `partial`, tell them apart. A step sets the outcome with `workflow.SetOutcome`, and a [run recorder](../observability/run-recorder.md) keeps it with the run, so a runs page can filter "succeeded, but partially" without parsing logs.
+A run's status says whether the worker ran it to the end; its outcome says whether the work succeeded. A sync that skipped because nothing changed, and one that finished with 3 bad rows out of 100, are both `succeeded`; their outcomes, `skipped` and `partial`, tell them apart. A step sets the outcome with [`workflow.SetOutcome`](ds:block?id=setoutcome-p5kkstu4), and a [run recorder](../observability/run-recorder.md) keeps it with the run, so a runs page can filter "succeeded, but partially" without parsing logs.
 
 ## Before you start
 
@@ -9,20 +9,20 @@ A run's status says whether the worker ran it to the end; its outcome says wheth
 
 ## Step 1: pick an outcome
 
-`workflow.Outcome` has four values; `workflow.Outcomes()` returns them as a fresh slice and `Outcome.Valid()` checks one:
+[`workflow.Outcome`](ds:block?id=outcome-ffx8k9qw) has four values; [`workflow.Outcomes()`](ds:block?id=outcomes-9nbtvx5s) returns them as a fresh slice and [`Outcome.Valid()`](ds:block?id=outcome-valid-fqa5433e) checks one:
 
 | Outcome | Constant | Use it when |
 |---|---|---|
-| `success` | `workflow.OutcomeSuccess` | the work was done in full |
-| `partial` | `workflow.OutcomePartial` | some of the work was done and some was not (bad rows, a page that failed); the run still succeeded |
-| `error` | `workflow.OutcomeError` | the work was not done |
-| `skipped` | `workflow.OutcomeSkipped` | there was nothing to do (no changes since the last sync, a feature turned off) |
+| `success` | [`workflow.OutcomeSuccess`](ds:block?id=outcomesuccess-x2k6rmg2) | the work was done in full |
+| `partial` | [`workflow.OutcomePartial`](ds:block?id=outcomepartial-6umpq82v) | some of the work was done and some was not (bad rows, a page that failed); the run still succeeded |
+| `error` | [`workflow.OutcomeError`](ds:block?id=outcomeerror-tbsjn5wb) | the work was not done |
+| `skipped` | [`workflow.OutcomeSkipped`](ds:block?id=outcomeskipped-c5b9by4k) | there was nothing to do (no changes since the last sync, a feature turned off) |
 
 Code that switches on an outcome keeps a default branch: a later version may add one.
 
 ## Step 2: set it from a step
 
-`workflow.SetOutcome(ctx, outcome, note)` records the run's outcome with an optional note for a person, at most `workflow.MaxOutcomeNote` (1 KiB). Any step of the run may call it, more than once; the last call in the run wins:
+`workflow.SetOutcome(ctx, outcome, note)` records the run's outcome with an optional note for a person, at most [`workflow.MaxOutcomeNote`](ds:block?id=maxoutcomenote-bgqr58x4) (1 KiB). Any step of the run may call it, more than once; the last call in the run wins:
 
 <!-- snippet: examples/step-events/main.go#step -->
 ```go
@@ -37,7 +37,7 @@ return func(ctx context.Context, _ []byte) ([]byte, error) {
 
 `SetOutcome` returns:
 
-- an error wrapping `workflow.ErrInvalid` for an outcome that is not one of the four, or a note over 1 KiB, checked first;
+- an error wrapping `workflow.ErrInvalid` for an outcome that is not one of the four, or a note over [1 KiB](ds:block?id=maxoutcomenote-bgqr58x4), checked first;
 - an `UnsupportedError` (matching `workflow.ErrUnsupported`) when nothing on the context keeps an outcome: no run recorder is applied, or the context is not a step's. The caller asked for data to be kept, so dropping it silently would be wrong, as with `ReportProgress`. A step that sets an outcome whether or not one is kept ignores the error;
 - the store's error when a recorder is applied and its write failed. Unlike the recorder's other writes, which never reach the step, this one does.
 
@@ -65,7 +65,7 @@ if err != nil {
 }
 ```
 
-A run that set no outcome gets `workflow.DefaultOutcome(status)` when it ends: `success` for `succeeded`, `error` for `failed` and `discarded`, and none for `cancelled` or an unfinished run. `RunRecord.OutcomeSet` tells a set outcome from a default one, and `RunRecord.OutcomeNote` holds the note:
+A run that set no outcome gets [`workflow.DefaultOutcome(status)`](ds:block?id=defaultoutcome-qffu2upr) when it ends: `success` for `succeeded`, `error` for `failed` and `discarded`, and none for `cancelled` or an unfinished run. `RunRecord.OutcomeSet` tells a set outcome from a default one, and `RunRecord.OutcomeNote` holds the note:
 
 <!-- snippet: examples/step-events/main.go#read -->
 ```go

@@ -1,0 +1,24 @@
+func (r *Recorder) EnqueueMiddleware() workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			ref, err := next(ctx, job)
+			if err != nil || ref.IsZero() {
+				return ref, err
+			}
+			now := r.clk.Now()
+			status := workflow.StatusQueued
+			if ref.RunID.IsZero() {
+				status = workflow.StatusScheduled
+			}
+			src, srcRef := r.sourceOf(job.Labels)
+			payload, size := r.body(PayloadInfo{Kind: PayloadInput, Workflow: job.Workflow}, job.Payload)
+			w := RunWrite{
+				Ref: ref, Workflow: job.Workflow, Queue: job.Queue, Tenant: job.Tenant, Labels: job.Labels,
+				Source: src, SourceRef: srcRef, Status: status, Payload: payload, PayloadSize: size,
+				Priority: job.Priority, RunAt: job.RunAt, EnqueuedAt: now, At: now,
+			}
+			r.write(ctx, OpUpsertRun, ref, func(wctx context.Context) error { return r.store.UpsertRun(wctx, w) })
+			return ref, nil
+		}
+	}
+}

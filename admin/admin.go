@@ -124,6 +124,8 @@ func WithMaxScan(n int) Option { return func(a *Admin) { a.maxScan = n } }
 // on) still go to the client, which owns the runs. Run falls back to the
 // client's own RunQuerier for a run rq does not hold, so a run the
 // recorder never saw still opens. A nil rq keeps the client.
+//
+//ds:def id=admin-withrunquerier-g356xuy3 owner=@khanakia stability=stable
 func WithRunQuerier(rq workflow.RunQuerier, caps workflow.Caps) Option {
 	return func(a *Admin) {
 		if rq != nil {

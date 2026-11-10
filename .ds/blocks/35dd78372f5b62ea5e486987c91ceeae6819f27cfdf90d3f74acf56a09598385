@@ -1,0 +1,3 @@
+func WithStore(newStore NewStore) DriverOption {
+	return func(c *driverConfig) { c.newStore = newStore }
+}

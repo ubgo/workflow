@@ -1,0 +1,1 @@
+	DefaultStaleAfter = 10 * time.Minute

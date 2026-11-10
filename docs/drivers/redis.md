@@ -75,7 +75,7 @@ if err != nil {
 
 ## Web nodes and operations
 
-`Enqueue` refuses a job carrying a label under a reserved prefix (`workflow.ReservedLabelPrefixes`) with an error matching `workflow.ErrInvalid`, through `workflow.CheckJobLabels`, unless the package that owns the label allowed it; labels the library writes on its own paths (a fired schedule, a chained job, a retry) are not checked.
+`Enqueue` refuses a job carrying a label under a reserved prefix ([`workflow.ReservedLabelPrefixes`](ds:block?id=reservedlabelprefixes-s6pnbs6s)) with an error matching `workflow.ErrInvalid`, through [`workflow.CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h), unless the package that owns the label allowed it; labels the library writes on its own paths (a fired schedule, a chained job, a retry) are not checked.
 
 `WithEnqueueOnly()` makes a client for web nodes: it enqueues and reads status without `Start` and runs nothing ([Deploy workers › Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)). `Register` is optional there.
 
@@ -153,14 +153,14 @@ This version changes how the driver behaves in four ways and changes its key lay
 
 ## Record run history
 
-A [run recorder](../observability/run-recorder.md) applied with `workflow.Use(client, rec.Plugin())` records every run of this driver. There is no Redis store for the recorder: keep the history in `sqlrecorder`, in `recorder.NewMemoryStore()` for one process, or in a store of your own.
+A [run recorder](../observability/run-recorder.md) applied with `workflow.Use(client, rec.Plugin())` records every run of this driver. There is no Redis store for the recorder: keep the history in `sqlrecorder`, in [`recorder.NewMemoryStore()`](ds:block?id=rec-newmemorystore-5yrbgb94) for one process, or in a store of your own.
 
 - **Every end is recorded.** The driver declares `CapRunFinished`: a client with observers claims each run end of its workflows under a lease and delivers it at least once, on one client, including ends that happened while no client was running. The recorder's upserts absorb the repeats.
 - **Records outlive the keys.** A finished run's keys expire after `WithRetention` (24 hours by default); the record stays until the recorder's own [retention](../observability/run-recorder.md#retention) removes it. An unfinished record whose run the driver no longer knows is flagged stale by the Reconciler, never cancelled.
-- **Web nodes take `EnqueuePlugin`.** A client built with `WithEnqueueOnly()` starts no worker, scheduler or subscription, so it delivers no run ends; apply `rec.EnqueuePlugin()` there and `rec.Plugin()` on the workers over a store both reach ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue)).
+- **Web nodes take `EnqueuePlugin`.** A client built with `WithEnqueueOnly()` starts no worker, scheduler or subscription, so it delivers no run ends; apply [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv) there and [`rec.Plugin()`](ds:block?id=rec-recorder-plugin-u7hfc2yc) on the workers over a store both reach ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue)).
 - **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a pass records runs enqueued past the recorder.
 
-The recorder's end-to-end suite runs its driver cases on this driver, recording into `recorder.MemoryStore`; the web-node split is proven on the SQL and Hatchet drivers.
+The recorder's end-to-end suite runs its driver cases on this driver, recording into [`recorder.MemoryStore`](ds:block?id=rec-memorystore-smz35v44); the web-node split is proven on the SQL and Hatchet drivers.
 
 ## Pitfalls
 

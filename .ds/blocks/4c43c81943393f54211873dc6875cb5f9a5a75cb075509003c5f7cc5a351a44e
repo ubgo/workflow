@@ -1,0 +1,24 @@
+func RequireSource(allowed ...workflow.Source) workflow.EnqueueMiddleware {
+	var badAllowed error
+	for _, s := range allowed {
+		if err := workflow.ValidateSource(s); err != nil {
+			badAllowed = fmt.Errorf("middleware.RequireSource: allowed %w", err)
+			break
+		}
+	}
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if badAllowed != nil {
+				return workflow.RunRef{}, badAllowed
+			}
+			src, _ := workflow.SourceOf(job.Labels)
+			if src == "" {
+				return workflow.RunRef{}, fmt.Errorf("%w: job for %q has no source; set one with workflow.WithSource", workflow.ErrInvalid, job.Workflow)
+			}
+			if len(allowed) > 0 && !slices.Contains(allowed, src) {
+				return workflow.RunRef{}, fmt.Errorf("%w: job for %q has source %q, not one of %v", workflow.ErrInvalid, job.Workflow, src, allowed)
+			}
+			return next(ctx, job)
+		}
+	}
+}

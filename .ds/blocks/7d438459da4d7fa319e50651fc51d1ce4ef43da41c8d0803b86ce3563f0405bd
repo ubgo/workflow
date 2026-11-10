@@ -1,0 +1,1 @@
+func (r *Recorder) EnqueuePlugin() workflow.Plugin { return enqueuePlugin{r} }

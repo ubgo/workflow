@@ -1,0 +1,9 @@
+type RetentionRule struct {
+	// Steps is the age after which a finished run's steps and events are
+	// dropped; zero keeps them.
+	Steps time.Duration
+
+	// Runs is the age after which a finished run is deleted; zero keeps
+	// it.
+	Runs time.Duration
+}

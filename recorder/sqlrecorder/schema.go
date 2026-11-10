@@ -12,6 +12,8 @@ import (
 // SchemaVersion is the version of the tables this release writes. Migrate
 // records it in the <prefix>schema table, so a later release knows which
 // steps to apply.
+//
+//ds:def id=sqlrec-schemaversion-scf4u7mm owner=@khanakia stability=stable
 const SchemaVersion = 1
 
 // The table names, after the prefix (WithTablePrefix).
@@ -180,6 +182,8 @@ func (s *Store) ddl() []string {
 // applies schema changes with its own migration tool instead. After running
 // them, the app inserts SchemaVersion into the <prefix>schema table, or
 // calls Migrate once, which then only records the version.
+//
+//ds:def id=sqlrec-store-migrationscripts-xbepgg67 owner=@khanakia stability=stable
 func (s *Store) MigrationScripts() []string { return s.ddl() }
 
 // Migrate creates the store's tables and indexes when they are missing and
@@ -187,6 +191,8 @@ func (s *Store) MigrationScripts() []string { return s.ddl() }
 // two processes running it at once both succeed. It refuses a database
 // whose recorded version is newer than this release knows (an older binary
 // against a newer schema), with an error naming both versions.
+//
+//ds:def id=sqlrec-store-migrate-63gjrdbn owner=@khanakia stability=stable
 func (s *Store) Migrate(ctx context.Context) error {
 	have, err := s.schemaVersion(ctx)
 	if err != nil {

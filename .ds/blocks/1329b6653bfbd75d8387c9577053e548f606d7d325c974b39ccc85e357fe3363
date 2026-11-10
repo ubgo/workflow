@@ -1,0 +1,1 @@
+func ReservedLabelPrefixes() []string { return slices.Clone(reservedLabelPrefixes[:]) }

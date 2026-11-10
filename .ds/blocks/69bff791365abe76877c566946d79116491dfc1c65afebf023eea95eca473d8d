@@ -1,0 +1,9 @@
+func WithBackfillPages(n int) ReconcileOption {
+	return func(r *Reconciler) error {
+		if n < 1 {
+			return fmt.Errorf("%w: recorder.WithBackfillPages(%d)", workflow.ErrInvalid, n)
+		}
+		r.pages = n
+		return nil
+	}
+}

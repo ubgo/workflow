@@ -23,6 +23,8 @@ import (
 // StoreConfig is what a store under test is built with. A store that has
 // no retention ignores Retention; the prune cases then skip (they run only
 // when the store implements recorder.Pruner).
+//
+//ds:def id=rectest-storeconfig-ehg5t6ys owner=@khanakia stability=stable
 type StoreConfig struct {
 	// Retention is the store's retention.
 	Retention recorder.Retention
@@ -32,6 +34,8 @@ type StoreConfig struct {
 }
 
 // NewStore builds a fresh, empty store for one subtest; cleanup goes on t.
+//
+//ds:def id=rectest-newstore-ppek35b3 owner=@khanakia stability=stable
 type NewStore func(t *testing.T, cfg StoreConfig) recorder.Store
 
 // t0 is the first instant of every store case.
@@ -52,6 +56,8 @@ type storeCase struct {
 // and paging, Pending and MarkChecked, copies on read, concurrent writes,
 // the refusal of malformed writes, and, when the store is a Pruner, the two
 // retention stages with archive.
+//
+//ds:def id=rectest-runstore-w3fd43ef owner=@khanakia stability=stable
 func RunStore(t *testing.T, newStore NewStore) {
 	t.Helper()
 	if newStore == nil {

@@ -1,0 +1,9 @@
+func WithRetryable(fn func(error) bool) Option {
+	return func(s *Store) error {
+		if fn == nil {
+			return fmt.Errorf("%w: sqlrecorder.WithRetryable(nil)", workflow.ErrInvalid)
+		}
+		s.retryable = fn
+		return nil
+	}
+}

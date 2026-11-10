@@ -1,0 +1,7 @@
+func CaptureOnly(keep func(workflow.StepInfo) bool) CaptureOption {
+	return func(c *captureConfig) {
+		if keep != nil {
+			c.only = keep
+		}
+	}
+}

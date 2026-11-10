@@ -21,6 +21,8 @@ import (
 // Ages are measured from the run's FinishedAt; unfinished runs are never
 // pruned. A zero duration keeps that stage forever. PerWorkflow overrides
 // both ages for a workflow name.
+//
+//ds:def id=rec-retention-gz6xhhm8 owner=@khanakia stability=stable
 type Retention struct {
 	RetentionRule
 
@@ -40,6 +42,8 @@ type Retention struct {
 }
 
 // RetentionRule is the two ages of a Retention.
+//
+//ds:def id=rec-retentionrule-33x6hwfr owner=@khanakia stability=stable
 type RetentionRule struct {
 	// Steps is the age after which a finished run's steps and events are
 	// dropped; zero keeps them.
@@ -51,9 +55,13 @@ type RetentionRule struct {
 }
 
 // DefaultPruneBatch is Retention.Batch when zero.
+//
+//ds:def id=rec-defaultprunebatch-4n8gxw2n owner=@khanakia stability=stable
 const DefaultPruneBatch = 500
 
 // MaxPruneBatch bounds Retention.Batch.
+//
+//ds:def id=rec-maxprunebatch-f8u6nphh owner=@khanakia stability=stable
 const MaxPruneBatch = 10000
 
 // Rule returns the rule for workflow wf: its PerWorkflow entry, else the
@@ -88,6 +96,8 @@ func (r Retention) IsZero() bool {
 
 // ValidateRetention refuses negative ages and a Batch outside [0,
 // MaxPruneBatch]. Errors wrap workflow.ErrInvalid.
+//
+//ds:def id=rec-validateretention-pwmvywwn owner=@khanakia stability=stable
 func ValidateRetention(r Retention) error {
 	check := func(name string, rule RetentionRule) error {
 		if rule.Steps < 0 || rule.Runs < 0 {
@@ -110,6 +120,8 @@ func ValidateRetention(r Retention) error {
 }
 
 // PruneResult is what one Prune did.
+//
+//ds:def id=rec-pruneresult-2nc4x76t owner=@khanakia stability=stable
 type PruneResult struct {
 	// StepsCleared counts runs whose steps stage one dropped.
 	StepsCleared int
@@ -126,6 +138,8 @@ type PruneResult struct {
 // each error to onError (nil ignores them), and returns nil when ctx ends.
 // It is the loop an app runs in a goroutine next to its client; a store's
 // Prune is also safe to call from a scheduled job instead.
+//
+//ds:def id=rec-pruneevery-7jzsmuxr owner=@khanakia stability=stable
 func PruneEvery(ctx context.Context, p Pruner, interval time.Duration, onError func(error)) error {
 	if p == nil || interval <= 0 {
 		return fmt.Errorf("%w: recorder.PruneEvery needs a Pruner and a positive interval", workflow.ErrInvalid)

@@ -9,7 +9,7 @@ A run's trigger source says what started it: a schedule, an operator pressing "r
 
 ## Step 1: name the source of a job
 
-`workflow.WithSource(job, source, ref)` returns a copy of the job whose labels carry the source and an optional reference within it (a webhook delivery ID, a chat thread, the user who pressed a button). The caller's `Labels` map is not changed. An empty `ref` removes a reference the job carried.
+[`workflow.WithSource(job, source, ref)`](ds:block?id=withsource-g5xwt2m5) returns a copy of the job whose labels carry the source and an optional reference within it (a webhook delivery ID, a chat thread, the user who pressed a button). The caller's `Labels` map is not changed. An empty `ref` removes a reference the job carried.
 
 <!-- snippet: examples/trigger-source/main.go#enqueue -->
 ```go
@@ -25,13 +25,13 @@ if _, err := c.Enqueue(ctx, job); err != nil {
 }
 ```
 
-The first two enqueues are refused by `middleware.RequireSource` ([Step 4](#step-4-refuse-a-job-without-a-source)); the third is accepted.
+The first two enqueues are refused by [`middleware.RequireSource`](ds:block?id=mw-requiresource-3tsntxp2) ([Step 4](#step-4-refuse-a-job-without-a-source)); the third is accepted.
 
-The two labels are `workflow.LabelSource` and `workflow.LabelSourceRef`, both under the reserved prefix `ubgo.workflow/`. They are the only reserved labels an app may set itself: every driver's `Enqueue` lets them through `workflow.CheckJobLabels` when their values are valid, and refuses them with `workflow.ErrInvalid` otherwise.
+The two labels are [`workflow.LabelSource`](ds:block?id=labelsource-m6wjahhr) and [`workflow.LabelSourceRef`](ds:block?id=labelsourceref-qfv7bbhp), both under the reserved prefix `ubgo.workflow/`. They are the only reserved labels an app may set itself: every driver's `Enqueue` lets them through [`workflow.CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h) when their values are valid, and refuses them with `workflow.ErrInvalid` otherwise.
 
 ## Step 2: keep source names valid
 
-A source must pass `workflow.ValidateSource`: non-empty, at most `workflow.MaxSourceLen` (64) bytes, only lower-case letters, digits and `. _ -`, so it is safe as a filter value, a metric label and a URL segment. A reference is any text up to `workflow.MaxSourceRefLen` (256) bytes. `WithSource` itself never fails: an invalid source is refused when the job is enqueued, and `ValidateSource` lets a caller check earlier. Its error wraps `workflow.ErrInvalid`.
+A source must pass [`workflow.ValidateSource`](ds:block?id=validatesource-73nzwq5k): non-empty, at most [`workflow.MaxSourceLen`](ds:block?id=maxsourcelen-sx2rxxmg) (64) bytes, only lower-case letters, digits and `. _ -`, so it is safe as a filter value, a metric label and a URL segment. A reference is any text up to [`workflow.MaxSourceRefLen`](ds:block?id=maxsourcereflen-gygg9xx4) (256) bytes. `WithSource` itself never fails: an invalid source is refused when the job is enqueued, and `ValidateSource` lets a caller check earlier. Its error wraps `workflow.ErrInvalid`.
 
 <!-- snippet: examples/trigger-source/main.go#validate -->
 ```go
@@ -41,18 +41,18 @@ fmt.Fprintln(out, "library sources:", workflow.LibrarySources())
 
 ## Step 3: read the source back
 
-`workflow.SourceOf(labels)` returns the source and its reference. An explicit `LabelSource` wins. Otherwise it derives one from the labels the library already stamps, most specific first, and returns `""` when nothing says where the run came from:
+[`workflow.SourceOf(labels)`](ds:block?id=sourceof-7mrryr2k) returns the source and its reference. An explicit `LabelSource` wins. Otherwise it derives one from the labels the library already stamps, most specific first, and returns `""` when nothing says where the run came from:
 
 | Source | Constant | Derived from | Reference |
 |---|---|---|---|
-| `schedule-manual` | `workflow.SourceScheduleManual` | `LabelTrigger` = `manual` (`TriggerSchedule`) | the schedule ID |
-| `schedule` | `workflow.SourceSchedule` | `LabelSchedule` (a schedule or a declared cron fired the run) | the schedule ID |
-| `child` | `workflow.SourceChild` | `LabelParentRun` (a step spawned the run) | the parent run ID |
-| `batch` | `workflow.SourceBatch` | the batch ID label (`batch`) | the batch ID |
-| `event` | `workflow.SourceEvent` | the event label (`events.Bus`) | the event name |
-| `external` | `workflow.SourceExternal` | never derived: a run recorder's Reconciler gives it to a run it found on the engine but never saw enqueued | |
+| `schedule-manual` | [`workflow.SourceScheduleManual`](ds:block?id=sourceschedulemanual-rjzgkf9k) | `LabelTrigger` = `manual` (`TriggerSchedule`) | the schedule ID |
+| `schedule` | [`workflow.SourceSchedule`](ds:block?id=sourceschedule-q6meeq7a) | `LabelSchedule` (a schedule or a declared cron fired the run) | the schedule ID |
+| `child` | [`workflow.SourceChild`](ds:block?id=sourcechild-yqm4kgby) | `LabelParentRun` (a step spawned the run) | the parent run ID |
+| `batch` | [`workflow.SourceBatch`](ds:block?id=sourcebatch-3pgw8v9a) | the batch ID label (`batch`) | the batch ID |
+| `event` | [`workflow.SourceEvent`](ds:block?id=sourceevent-4czra9fx) | the event label (`events.Bus`) | the event name |
+| `external` | [`workflow.SourceExternal`](ds:block?id=sourceexternal-pq4saxv5) | never derived: a run recorder's Reconciler gives it to a run it found on the engine but never saw enqueued | |
 
-`workflow.LibrarySources()` returns these six as a fresh slice. A step reads the source from its `StepInfo.Labels`, and a run-finished observer from `RunEvent.Labels`:
+[`workflow.LibrarySources()`](ds:block?id=librarysources-crdb5g3y) returns these six as a fresh slice. A step reads the source from its `StepInfo.Labels`, and a run-finished observer from `RunEvent.Labels`:
 
 <!-- snippet: examples/trigger-source/main.go#step -->
 ```go

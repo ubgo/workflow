@@ -17,13 +17,19 @@ const (
 	// DefaultMaxPayload is the largest body (input, step input and
 	// output, result) a Recorder stores; a larger one is recorded by size
 	// only.
+	//
+	//ds:def id=rec-defaultmaxpayload-43z9t84h owner=@khanakia stability=stable
 	DefaultMaxPayload = 64 << 10
 
 	// DefaultWriteTimeout bounds one store write, so a slow store delays a
 	// step by at most this much.
+	//
+	//ds:def id=rec-defaultwritetimeout-wbngg5vx owner=@khanakia stability=stable
 	DefaultWriteTimeout = 5 * time.Second
 
 	// DefaultPluginName is the name Plugin reports to workflow.Use.
+	//
+	//ds:def id=rec-defaultpluginname-wtsqd67u owner=@khanakia stability=stable
 	DefaultPluginName = "recorder"
 )
 
@@ -44,6 +50,8 @@ const (
 // recorder never fails a run. It runs on the goroutine that made the write
 // (a step's, an enqueuer's, the driver's run-finished goroutine), so it
 // must return quickly.
+//
+//ds:def id=rec-errorfunc-nrd8pzfd owner=@khanakia stability=stable
 type ErrorFunc func(ctx context.Context, op WriteOp, ref workflow.RunRef, err error)
 
 // Recorder turns the three seams every driver runs (enqueue middleware,
@@ -51,6 +59,8 @@ type ErrorFunc func(ctx context.Context, op WriteOp, ref workflow.RunRef, err er
 // with New and apply it with workflow.Use(client, rec.Plugin()); a
 // Recorder is safe for concurrent use and keeps no state of its own besides
 // its configuration, so one Recorder may serve several clients.
+//
+//ds:def id=rec-recorder-dss7wy23 owner=@khanakia stability=stable
 type Recorder struct {
 	store         Store
 	clk           clock.Clock
@@ -70,6 +80,8 @@ type Option func(*Recorder) error
 
 // WithClock sets the clock the recorder stamps writes with; clock.Real by
 // default. Use the driver's clock so records and the driver agree.
+//
+//ds:def id=rec-withclock-w2ezubpp owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option {
 	return func(r *Recorder) error {
 		if c == nil {
@@ -82,6 +94,8 @@ func WithClock(c clock.Clock) Option {
 
 // WithRedactor scrubs every body and event attribute before it is stored
 // (see Redactor, JSONPaths). None by default.
+//
+//ds:def id=rec-withredactor-k5xefkav owner=@khanakia stability=stable
 func WithRedactor(red Redactor) Option {
 	return func(r *Recorder) error { r.redactor = red; return nil }
 }
@@ -90,6 +104,8 @@ func WithRedactor(red Redactor) Option {
 // by default). A larger body is recorded by its size only. Zero stores no
 // bodies at all, only sizes, for apps whose payloads must never be copied;
 // a negative value is invalid.
+//
+//ds:def id=rec-withmaxpayload-3f6m2zdh owner=@khanakia stability=stable
 func WithMaxPayload(n int) Option {
 	return func(r *Recorder) error {
 		if n < 0 {
@@ -102,12 +118,16 @@ func WithMaxPayload(n int) Option {
 
 // WithStepBodies says whether step inputs and outputs are stored (true by
 // default). The run's own input and result follow WithMaxPayload only.
+//
+//ds:def id=rec-withstepbodies-7dpfqzyb owner=@khanakia stability=stable
 func WithStepBodies(keep bool) Option {
 	return func(r *Recorder) error { r.stepBodies = keep; return nil }
 }
 
 // WithErrorHistory bounds the attempt errors kept per run
 // (workflow.DefaultErrorHistory by default); zero keeps none.
+//
+//ds:def id=rec-witherrorhistory-3fap7agv owner=@khanakia stability=stable
 func WithErrorHistory(n int) Option {
 	return func(r *Recorder) error {
 		if n < 0 {
@@ -121,6 +141,8 @@ func WithErrorHistory(n int) Option {
 // WithDefaultSource is the source recorded for a run whose labels say
 // nothing (workflow.SourceOf returns ""). Empty by default, which records
 // no source. Must pass workflow.ValidateSource when set.
+//
+//ds:def id=rec-withdefaultsource-x3dq62wb owner=@khanakia stability=stable
 func WithDefaultSource(s workflow.Source) Option {
 	return func(r *Recorder) error {
 		if s != "" {
@@ -136,12 +158,16 @@ func WithDefaultSource(s workflow.Source) Option {
 // WithResultReader reads a succeeded run's result from rr (usually the
 // client, on a driver with workflow.CapResult) when the run ends, so the
 // record holds it. Without it the record holds the step outputs only.
+//
+//ds:def id=rec-withresultreader-wrjsqy26 owner=@khanakia stability=stable
 func WithResultReader(rr workflow.ResultReader) Option {
 	return func(r *Recorder) error { r.results = rr; return nil }
 }
 
 // WithOnError is told about every failed write. By default a failure is
 // logged with slog.Default at warn level.
+//
+//ds:def id=rec-withonerror-r4hkn36k owner=@khanakia stability=stable
 func WithOnError(fn ErrorFunc) Option {
 	return func(r *Recorder) error {
 		if fn == nil {
@@ -155,6 +181,8 @@ func WithOnError(fn ErrorFunc) Option {
 // WithWriteTimeout bounds each store write (DefaultWriteTimeout by
 // default). Writes run on a context detached from the caller's
 // cancellation, so a step whose ctx was cancelled still records its end.
+//
+//ds:def id=rec-withwritetimeout-rn35n8vw owner=@khanakia stability=stable
 func WithWriteTimeout(d time.Duration) Option {
 	return func(r *Recorder) error {
 		if d <= 0 {
@@ -167,6 +195,8 @@ func WithWriteTimeout(d time.Duration) Option {
 
 // WithName sets the plugin name (DefaultPluginName by default), so two
 // recorders, say one per store, can be applied to one client.
+//
+//ds:def id=rec-withname-cuvqnswq owner=@khanakia stability=stable
 func WithName(name string) Option {
 	return func(r *Recorder) error {
 		if name == "" {
@@ -179,6 +209,8 @@ func WithName(name string) Option {
 
 // New returns a Recorder writing to s. It fails on a nil store or an
 // invalid option, with an error wrapping workflow.ErrInvalid.
+//
+//ds:def id=rec-new-wrqg5nug owner=@khanakia stability=stable
 func New(s Store, opts ...Option) (*Recorder, error) {
 	if s == nil {
 		return nil, fmt.Errorf("%w: recorder.New: nil Store", workflow.ErrInvalid)
@@ -205,6 +237,8 @@ func logError(ctx context.Context, op WriteOp, ref workflow.RunRef, err error) {
 }
 
 // Store returns the store the recorder writes to.
+//
+//ds:def id=rec-recorder-store-2gdjppvt owner=@khanakia stability=stable
 func (r *Recorder) Store() Store { return r.store }
 
 // Plugin returns the workflow.Plugin that applies the recorder to a client:
@@ -212,6 +246,8 @@ func (r *Recorder) Store() Store { return r.store }
 // middleware, one step middleware and one run-finished observer, so the
 // client must implement workflow.RunNotifier (every bundled driver does,
 // except in enqueue-only mode: use EnqueuePlugin there).
+//
+//ds:def id=rec-recorder-plugin-u7hfc2yc owner=@khanakia stability=stable
 func (r *Recorder) Plugin() workflow.Plugin { return plugin{r} }
 
 // EnqueuePlugin returns a workflow.Plugin with the recorder's enqueue
@@ -221,6 +257,8 @@ func (r *Recorder) Plugin() workflow.Plugin { return plugin{r} }
 // accepted run with its source and input; the worker processes, wrapped
 // with Plugin over the same store, record the steps and the end into the
 // same record (every write is an upsert keyed by the run).
+//
+//ds:def id=rec-recorder-enqueueplugin-rn5k8npv owner=@khanakia stability=stable
 func (r *Recorder) EnqueuePlugin() workflow.Plugin { return enqueuePlugin{r} }
 
 // enqueuePlugin is the workflow.Plugin EnqueuePlugin returns.
@@ -307,6 +345,8 @@ func (r *Recorder) sourceOf(labels map[string]string) (workflow.Source, string) 
 // RunID with StatusQueued. A failed enqueue records nothing, and a failed
 // write never fails the enqueue. Chained jobs are recorded when their
 // first step starts, since the driver enqueues them past the middleware.
+//
+//ds:def id=rec-recorder-enqueuemiddleware-tkqchzg3 owner=@khanakia stability=stable
 func (r *Recorder) EnqueueMiddleware() workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -338,6 +378,8 @@ func (r *Recorder) EnqueueMiddleware() workflow.EnqueueMiddleware {
 // the run). A ctx without workflow.StepInfo (a handler called outside a
 // driver) passes through unrecorded. The handler's output and error are
 // returned unchanged.
+//
+//ds:def id=rec-recorder-stepmiddleware-tbta9pzy owner=@khanakia stability=stable
 func (r *Recorder) StepMiddleware() workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -427,6 +469,8 @@ func (o outcomeSetter) SetOutcome(ctx context.Context, oc workflow.Outcome, note
 // plugin registers, exported for an app that wires the seams by hand.
 // Delivery is at least once and the write is an upsert, so a repeat is
 // harmless. With WithResultReader it reads a succeeded run's result first.
+//
+//ds:def id=rec-recorder-onrunfinished-9a8agy3p owner=@khanakia stability=stable
 func (r *Recorder) OnRunFinished(ctx context.Context, ev workflow.RunEvent) {
 	now := r.clk.Now()
 	src, srcRef := r.sourceOf(ev.Labels)

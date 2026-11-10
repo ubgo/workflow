@@ -12,9 +12,13 @@ import (
 
 // Redacted is the value a JSONPaths redactor writes in place of a sensitive
 // value (as a JSON string in a body, as is in an event attribute).
+//
+//ds:def id=rec-redacted-uvn3fy6r owner=@khanakia stability=stable
 const Redacted = "[REDACTED]"
 
 // PayloadKind is which body or field a Redactor is asked about.
+//
+//ds:def id=rec-payloadkind-2vp35d73 owner=@khanakia stability=stable
 type PayloadKind string
 
 // The kinds of data a Recorder stores and so redacts.
@@ -33,6 +37,8 @@ const (
 
 // PayloadInfo says what is about to be stored, so one Redactor can treat
 // workflows, steps and kinds differently.
+//
+//ds:def id=rec-payloadinfo-9axyr3hj owner=@khanakia stability=stable
 type PayloadInfo struct {
 	Kind     PayloadKind
 	Workflow string
@@ -46,6 +52,8 @@ type PayloadInfo struct {
 //
 // Event messages are not redacted: a message is the step author's own
 // text. Put values in attributes, which are.
+//
+//ds:def id=rec-redactor-x3e2p5bt owner=@khanakia stability=stable
 type Redactor interface {
 	// RedactPayload returns body as it may be stored.
 	RedactPayload(info PayloadInfo, body []byte) []byte
@@ -72,6 +80,8 @@ type jsonPaths struct {
 // nothing to redact is stored byte for byte; one with a match is
 // re-encoded, so its object keys come out sorted. An empty path or segment
 // is an error wrapping workflow.ErrInvalid.
+//
+//ds:def id=rec-jsonpaths-66ph5w5h owner=@khanakia stability=stable
 func JSONPaths(paths ...string) (Redactor, error) {
 	jp := &jsonPaths{}
 	for _, p := range paths {
@@ -214,6 +224,8 @@ type perWorkflow struct {
 // PerWorkflow returns a Redactor that uses byName[info.Workflow] when the
 // workflow has an entry and fallback otherwise; a nil fallback stores the
 // data of other workflows unchanged. The map is copied.
+//
+//ds:def id=rec-perworkflow-vx8puukg owner=@khanakia stability=stable
 func PerWorkflow(byName map[string]Redactor, fallback Redactor) Redactor {
 	m := make(map[string]Redactor, len(byName))
 	for k, v := range byName {
@@ -252,6 +264,8 @@ type chain []Redactor
 
 // Chain returns a Redactor that applies rs in order, each to what the one
 // before returned; nil entries are skipped.
+//
+//ds:def id=rec-chain-ryg3zfvp owner=@khanakia stability=stable
 func Chain(rs ...Redactor) Redactor {
 	var c chain
 	for _, r := range rs {

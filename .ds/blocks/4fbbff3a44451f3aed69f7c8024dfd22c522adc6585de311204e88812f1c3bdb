@@ -1,0 +1,9 @@
+func WithMaxPayload(n int) Option {
+	return func(r *Recorder) error {
+		if n < 0 {
+			return fmt.Errorf("%w: recorder.WithMaxPayload(%d)", workflow.ErrInvalid, n)
+		}
+		r.maxPayload = n
+		return nil
+	}
+}

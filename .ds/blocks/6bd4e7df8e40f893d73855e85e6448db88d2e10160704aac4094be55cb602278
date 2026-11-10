@@ -1,0 +1,10 @@
+func (r *Reconciler) Pass(ctx context.Context) (ReconcileReport, error) {
+	var rep ReconcileReport
+	if err := r.check(ctx, &rep); err != nil {
+		return rep, err
+	}
+	if err := r.backfillPass(ctx, &rep); err != nil {
+		return rep, err
+	}
+	return rep, nil
+}

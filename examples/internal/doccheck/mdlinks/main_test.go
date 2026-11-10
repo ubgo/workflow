@@ -39,7 +39,7 @@ func TestRun(t *testing.T) {
 	write("docs/b.md", strings.Join([]string{
 		"# B",
 		"[ok](a.md) [ok](a.md#same) [ok](a.md#same-1) [ok](a.md#custom) [ok](#b)",
-		"[ok](../examples/x/) [ok](https://example.com/nope) `[code](missing.md)`",
+		"[ok](../examples/x/) [ok](https://example.com/nope) [ok](ds" + ":block?id=x) `[code](missing.md)`",
 		"```",
 		"[fenced](missing.md)",
 		"```",

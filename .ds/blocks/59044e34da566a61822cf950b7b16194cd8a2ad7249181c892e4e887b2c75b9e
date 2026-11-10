@@ -1,0 +1,1 @@
+type OutcomeFunc func(ctx context.Context, o Outcome, note string) error

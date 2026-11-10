@@ -1,10 +1,10 @@
 # Task output
 
-A nightly export, a weekly cleanup or a report job writes a few log lines and ends. When it fails at 02:00, someone wants to read those lines in the morning, from a file or a mail, without searching the app's log stream. `middleware.CaptureOutput` collects what a step logs and how it ended and hands the result, after each attempt, to a sink you choose: a file the output replaces or extends, any `io.Writer`, or your own function that mails it, posts it to a chat or stores it. It is step middleware, so it works on every driver and for any job, not only scheduled ones.
+A nightly export, a weekly cleanup or a report job writes a few log lines and ends. When it fails at 02:00, someone wants to read those lines in the morning, from a file or a mail, without searching the app's log stream. [`middleware.CaptureOutput`](ds:block?id=mw-captureoutput-fk79ecqu) collects what a step logs and how it ended and hands the result, after each attempt, to a sink you choose: a file the output replaces or extends, any `io.Writer`, or your own function that mails it, posts it to a chat or stores it. It is step middleware, so it works on every driver and for any job, not only scheduled ones.
 
 ## Before you start
 
-- Steps whose output you want to capture log through `middleware.OutputLogger(ctx, fallback)` instead of a logger they hold. Outside a capture it returns `fallback` (or `slog.Default()` when nil), so the same step logs normally when capture is off.
+- Steps whose output you want to capture log through [`middleware.OutputLogger(ctx, fallback)`](ds:block?id=mw-outputlogger-r8mzkh57) instead of a logger they hold. Outside a capture it returns `fallback` (or `slog.Default()` when nil), so the same step logs normally when capture is off.
 - The example is [`examples/task-output`](../../examples/task-output). Run it with `go run ./task-output` from `examples/`.
 
 ## Step 1: log through OutputLogger
@@ -31,16 +31,16 @@ func report(night *int) workflow.Handler {
 
 ## Step 2: choose a sink and wrap the steps
 
-A sink is an `OutputSink`, one method `Deliver(ctx, Output) error`. The built-ins:
+A sink is an [`OutputSink`](ds:block?id=mw-outputsink-hvdavs34), one method `Deliver(ctx, Output) error`. The built-ins:
 
 | Sink | What it does |
 |---|---|
-| `FileSink(path, FileReplace)` | Writes each attempt's output to the file, replacing what was there, so it holds the latest run only |
+| [`FileSink(path, FileReplace)`](ds:block?id=mw-filesink-9kuvzn2m) | Writes each attempt's output to the file, replacing what was there, so it holds the latest attempt only |
 | `FileSink(path, FileAppend)` | Appends each attempt's output to the file |
-| `WriterSink(w)` | Writes each attempt's output to any `io.Writer` |
-| `OutputSinkFunc(fn)` | Your function: mail, chat, object storage, a database row |
+| [`WriterSink(w)`](ds:block?id=mw-writersink-83q2bj4g) | Writes each attempt's output to any `io.Writer` |
+| [`OutputSinkFunc(fn)`](ds:block?id=mw-outputsinkfunc-r8g32sem) | Your function: mail, chat, object storage, a database row |
 
-The file sinks create the file with mode 0600, since output holds whatever a step logged. Every built-in writes the text of `middleware.FormatOutput`, which your own sink can reuse. The example appends every night to a file and mails the failures; mail is the app's own function, since the library sends none:
+The file sinks create the file with mode 0600, since output holds whatever a step logged. Every built-in writes the text of [`middleware.FormatOutput`](ds:block?id=mw-formatoutput-pa32eb3b), which your own sink can reuse. The example appends every night to a file and mails the failures; mail is the app's own function, since the library sends none:
 
 <!-- snippet: examples/task-output/main.go#sink -->
 ```go
@@ -67,7 +67,7 @@ c := memory.New(memory.WithClock(clk), memory.WithMiddleware(capture))
 
 ## Step 3: read the output
 
-Each delivery is one `middleware.Output`: the attempt's `StepInfo` (workflow, step, run ID, attempt), `Started` and `Finished`, the `Records` logged at or above the capture level, `Err`, and `Result` only with `CaptureResult`. Events the step records with `workflow.RecordEvent` are records too, at their own level and with their attributes ([Step middleware › Capture step events](../middleware/step-middleware.md#capture-step-events)). In text it reads:
+Each delivery is one [`middleware.Output`](ds:block?id=mw-output-2dtvhf27): the attempt's `StepInfo` (workflow, step, run ID, attempt), `Started` and `Finished`, the `Records` logged at or above the capture level, `Err`, and `Result` only with [`CaptureResult`](ds:block?id=mw-captureresult-ndqzbck8). Events the step records with [`workflow.RecordEvent`](ds:block?id=recordevent-k3aqhnwy) are records too, at their own level and with their attributes ([Step middleware › Capture step events](../middleware/step-middleware.md#capture-step-events)). In text it reads:
 
 ```text
 --- nightly-report.log
@@ -154,12 +154,12 @@ admin sees 2 attempts
 | Option | Effect |
 |---|---|
 | `CaptureResult()` | Adds the step's result bytes to `Output.Result`. Off by default, because a result may hold payload data you want kept out of files and mail |
-| `CaptureOnlyFailures()` | Delivers only attempts that returned an error |
-| `CaptureLevel(l)` | Keeps records at or above `l`; the default is Info |
-| `CaptureTee(h)` | Also passes every record to your own `slog.Handler`, so the lines still reach the app's log |
-| `CaptureOnly(fn)` | Captures only the attempts `fn(StepInfo)` returns true for, such as one workflow's steps |
-| `CaptureOnSinkError(fn)` | Receives the sink's errors; the default drops them |
-| `CaptureClock(clk)` | The clock that stamps `Started`, `Finished` and record times |
+| [`CaptureOnlyFailures()`](ds:block?id=mw-captureonlyfailures-8m9wnbcu) | Delivers only attempts that returned an error |
+| [`CaptureLevel(l)`](ds:block?id=mw-capturelevel-kubw9m9x) | Keeps records at or above `l`; the default is Info |
+| [`CaptureTee(h)`](ds:block?id=mw-capturetee-zz3fu929) | Also passes every record to your own `slog.Handler`, so the lines still reach the app's log |
+| [`CaptureOnly(fn)`](ds:block?id=mw-captureonly-dg48nfv6) | Captures only the attempts `fn(StepInfo)` returns true for, such as one workflow's steps |
+| [`CaptureOnSinkError(fn)`](ds:block?id=mw-captureonsinkerror-dw8mkrgv) | Receives the sink's errors; the default drops them |
+| [`CaptureClock(clk)`](ds:block?id=mw-captureclock-nhpcdu3p) | The clock that stamps `Started`, `Finished` and record times |
 
 ## Pitfalls
 

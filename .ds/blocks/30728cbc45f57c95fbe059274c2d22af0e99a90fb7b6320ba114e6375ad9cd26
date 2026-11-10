@@ -1,0 +1,9 @@
+func WithClock(c clock.Clock) Option {
+	return func(s *Store) error {
+		if c == nil {
+			return fmt.Errorf("%w: sqlrecorder.WithClock(nil)", workflow.ErrInvalid)
+		}
+		s.clk = c
+		return nil
+	}
+}

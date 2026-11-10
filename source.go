@@ -21,10 +21,14 @@ import "maps"
 // input: anything that can enqueue can claim any source.
 const (
 	// LabelSource holds the run's Source.
+	//
+	//ds:def id=labelsource-m6wjahhr owner=@khanakia stability=stable
 	LabelSource = LabelPrefixInternal + "source"
 
 	// LabelSourceRef holds a free-form reference within the source: a
 	// webhook delivery ID, a chat thread, the user who pressed a button.
+	//
+	//ds:def id=labelsourceref-qfv7bbhp owner=@khanakia stability=stable
 	LabelSourceRef = LabelPrefixInternal + "source-ref"
 )
 
@@ -32,9 +36,13 @@ const (
 // key, not a payload.
 const (
 	// MaxSourceLen is the longest Source, in bytes.
+	//
+	//ds:def id=maxsourcelen-sx2rxxmg owner=@khanakia stability=stable
 	MaxSourceLen = 64
 
 	// MaxSourceRefLen is the longest source reference, in bytes.
+	//
+	//ds:def id=maxsourcereflen-gygg9xx4 owner=@khanakia stability=stable
 	MaxSourceRefLen = 256
 )
 
@@ -42,6 +50,8 @@ const (
 // from labels it already writes (SourceOf); an app names its own ("api",
 // "webhook", "slack", "admin") with WithSource. A Source passes
 // ValidateSource: lower-case letters, digits and . _ - only.
+//
+//ds:def id=source-ehzk2bkd owner=@khanakia stability=stable
 type Source string
 
 // The sources SourceOf derives from the library's own labels, and the one
@@ -49,24 +59,36 @@ type Source string
 const (
 	// SourceSchedule: a schedule or a declared cron fired the run
 	// (LabelSchedule).
+	//
+	//ds:def id=sourceschedule-q6meeq7a owner=@khanakia stability=stable
 	SourceSchedule Source = "schedule"
 
 	// SourceScheduleManual: ScheduleTriggerer started a schedule's run by
 	// hand (LabelTrigger = LabelTriggerManual).
+	//
+	//ds:def id=sourceschedulemanual-rjzgkf9k owner=@khanakia stability=stable
 	SourceScheduleManual Source = "schedule-manual"
 
 	// SourceChild: a step spawned the run (LabelParentRun).
+	//
+	//ds:def id=sourcechild-yqm4kgby owner=@khanakia stability=stable
 	SourceChild Source = "child"
 
 	// SourceBatch: the run is a member of a batch (batch.LabelBatch).
+	//
+	//ds:def id=sourcebatch-3pgw8v9a owner=@khanakia stability=stable
 	SourceBatch Source = "batch"
 
 	// SourceEvent: an events.Bus subscription started the run
 	// (events.LabelEvent).
+	//
+	//ds:def id=sourceevent-4czra9fx owner=@khanakia stability=stable
 	SourceEvent Source = "event"
 
 	// SourceExternal: a run recorder found the run on the engine without
 	// having seen it enqueued (an engine UI, its CLI, a crash window).
+	//
+	//ds:def id=sourceexternal-pq4saxv5 owner=@khanakia stability=stable
 	SourceExternal Source = "external"
 )
 
@@ -76,6 +98,8 @@ var derivedSources = [...]Source{SourceSchedule, SourceScheduleManual, SourceChi
 
 // LibrarySources returns every source the library itself names, as a fresh
 // slice. App sources are not in it.
+//
+//ds:def id=librarysources-crdb5g3y owner=@khanakia stability=stable
 func LibrarySources() []Source { return append([]Source(nil), derivedSources[:]...) }
 
 // The label keys SourceOf reads that are owned by packages the core cannot
@@ -89,6 +113,8 @@ const (
 // ValidateSource checks s: non-empty, at most MaxSourceLen bytes, only
 // lower-case letters, digits and . _ - (so it is safe as a filter value, a
 // metric label and a URL segment). Errors wrap ErrInvalid.
+//
+//ds:def id=validatesource-73nzwq5k owner=@khanakia stability=stable
 func ValidateSource(s Source) error {
 	if s == "" {
 		return invalidf("source is empty")
@@ -120,6 +146,8 @@ func validateSourceRef(ref string) error {
 // enqueued, and ValidateSource tells a caller earlier.
 //
 //	job = workflow.WithSource(job, "webhook", deliveryID)
+//
+//ds:def id=withsource-g5xwt2m5 owner=@khanakia stability=stable
 func WithSource(job Job, source Source, ref string) Job {
 	labels := make(map[string]string, len(job.Labels)+2)
 	maps.Copy(labels, job.Labels)
@@ -141,6 +169,8 @@ func WithSource(job Job, source Source, ref string) Job {
 // natural ID (the schedule, the parent run, the batch, the event name).
 // It returns "" when nothing says where the run came from; a caller picks
 // its own default (a run recorder's default source).
+//
+//ds:def id=sourceof-7mrryr2k owner=@khanakia stability=stable
 func SourceOf(labels map[string]string) (source Source, ref string) {
 	if s, ok := labels[LabelSource]; ok && s != "" {
 		return Source(s), labels[LabelSourceRef]

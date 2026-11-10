@@ -34,6 +34,8 @@ import (
 //   - Run returns workflow.ErrNotFound for a run the store does not hold.
 //
 // Methods may be called concurrently.
+//
+//ds:def id=rec-store-pgu7xhxs owner=@khanakia stability=stable
 type Store interface {
 	// UpsertRun records that a run was accepted (the enqueue seam) or found
 	// on the client (the Reconciler's backfill).
@@ -244,6 +246,8 @@ type Check struct {
 }
 
 // RecordPage is one page of Records.
+//
+//ds:def id=rec-recordpage-8ehzyqwp owner=@khanakia stability=stable
 type RecordPage struct {
 	Runs []RunRecord
 	Next string
@@ -251,6 +255,8 @@ type RecordPage struct {
 
 // Pruner is the optional retention of a Store: MemoryStore and
 // sqlrecorder.Store implement it, configured with a Retention.
+//
+//ds:def id=rec-pruner-tz43nn4x owner=@khanakia stability=stable
 type Pruner interface {
 	Prune(ctx context.Context) (PruneResult, error)
 }

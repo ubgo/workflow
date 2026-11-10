@@ -1,0 +1,6 @@
+type OutputRecord struct {
+	Time    time.Time
+	Level   slog.Level
+	Message string
+	Attrs   []slog.Attr
+}

@@ -1,0 +1,3 @@
+func WithReconcileOnError(fn func(ctx context.Context, err error)) ReconcileOption {
+	return func(r *Reconciler) error { r.onError = fn; return nil }
+}

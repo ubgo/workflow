@@ -1,0 +1,12 @@
+func DefaultRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, m := range retryableMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
+}

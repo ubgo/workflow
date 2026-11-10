@@ -47,11 +47,11 @@ _, err := client.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[strin
 fmt.Fprintln(out, "same order again:", errors.Is(err, workflow.ErrDuplicate))
 ```
 
-The stock enqueue middleware: `Route` (below), `RequireSource` ([below](#require-a-trigger-source)), `Unique` and `UniqueUntilFinished` ([unique jobs](../reliability/unique-jobs.md)), `Debounce` ([debounce](../reliability/debounce.md)), `EncodeEnqueue` and `WithCodec` ([payload codecs](codecs.md)), `ClaimCheck.Enqueue` ([claim check](../reliability/claim-check.md)), and the OpenTelemetry `Instrumentation.Enqueue` ([OpenTelemetry](../observability/opentelemetry.md)).
+The stock enqueue middleware: `Route` (below), [`RequireSource`](ds:block?id=mw-requiresource-3tsntxp2) ([below](#require-a-trigger-source)), `Unique` and `UniqueUntilFinished` ([unique jobs](../reliability/unique-jobs.md)), `Debounce` ([debounce](../reliability/debounce.md)), `EncodeEnqueue` and `WithCodec` ([payload codecs](codecs.md)), `ClaimCheck.Enqueue` ([claim check](../reliability/claim-check.md)), and the OpenTelemetry `Instrumentation.Enqueue` ([OpenTelemetry](../observability/opentelemetry.md)).
 
 ### Some middleware goes in a chain once
 
-The library's own packages write labels under reserved prefixes onto the jobs they pass down (`workflow.ReservedLabelPrefixes()`): `ubgo.workflow/` for the middleware package's unique locks and claim-check references, `workflow.batch.` for batches, `otel.` for trace context. Each package refuses an incoming job that already carries a label under its own prefix, with an error wrapping `workflow.ErrInvalid`, instead of silently overwriting it, because a forged label could free another job's lock or choose the trace a run joins. A consequence: `Unique` (and `UniqueUntilFinished`) and the OpenTelemetry `Enqueue` must each appear in a chain once, since the second copy sees the first copy's labels:
+The library's own packages write labels under reserved prefixes onto the jobs they pass down ([`workflow.ReservedLabelPrefixes()`](ds:block?id=reservedlabelprefixes-s6pnbs6s)): `ubgo.workflow/` for the middleware package's unique locks and claim-check references, `workflow.batch.` for batches, `otel.` for trace context. Each package refuses an incoming job that already carries a label under its own prefix, with an error wrapping `workflow.ErrInvalid`, instead of silently overwriting it, because a forged label could free another job's lock or choose the trace a run joins. A consequence: `Unique` (and `UniqueUntilFinished`) and the OpenTelemetry `Enqueue` must each appear in a chain once, since the second copy sees the first copy's labels:
 
 <!-- snippet: examples/middleware-stack/main.go#twice -->
 ```go
@@ -70,7 +70,7 @@ A label the job already carries wins over the rule's, as an explicit choice shou
 
 ## Require a trigger source
 
-`middleware.RequireSource(allowed...)` refuses, with an error wrapping `workflow.ErrInvalid`, a job whose [trigger source](../concepts/trigger-source.md) cannot be told: one that carries no source set with `workflow.WithSource` and no label the library stamps (a schedule fire, a spawned child, a batch member, an event). With allowed sources given, the job's source must also be one of them, so a typo such as `webook` is refused at the enqueue site instead of becoming a filter value nobody looks for. The program is [examples/trigger-source](../../examples/trigger-source/):
+`middleware.RequireSource(allowed...)` refuses, with an error wrapping `workflow.ErrInvalid`, a job whose [trigger source](../concepts/trigger-source.md) cannot be told: one that carries no source set with [`workflow.WithSource`](ds:block?id=withsource-g5xwt2m5) and no label the library stamps (a schedule fire, a spawned child, a batch member, an event). With allowed sources given, the job's source must also be one of them, so a typo such as `webook` is refused at the enqueue site instead of becoming a filter value nobody looks for. The program is [examples/trigger-source](../../examples/trigger-source/):
 
 <!-- snippet: examples/trigger-source/main.go#require -->
 ```go
@@ -99,7 +99,7 @@ typo: workflow: invalid spec: job for "nightly-report" has source "webook", not 
 
 - **Where it goes.** Put it in the enqueuing client's chain: `middleware.WrapClient`, or a plugin applied with `workflow.Use` (the [run recorder](../observability/run-recorder.md#wire-it-in) example adds it as a one-line plugin, so no run reaches the history without its source). A refused job reaches neither the driver nor the middleware after it.
 - **What it checks.** The job it is handed, only. A chained job, a cron fire, a child and a retried run are enqueued by the driver past enqueue middleware, so they are never refused here.
-- **The allow-list.** Each allowed source must pass `workflow.ValidateSource`; otherwise every enqueue returns that error, so a bad list fails on the first call rather than never matching. A derived source (`schedule`, `child`, `batch`, `event`) is checked against the list too, so list the ones that reach this client.
+- **The allow-list.** Each allowed source must pass [`workflow.ValidateSource`](ds:block?id=validatesource-73nzwq5k); otherwise every enqueue returns that error, so a bad list fails on the first call rather than never matching. A derived source (`schedule`, `child`, `batch`, `event`) is checked against the list too, so list the ones that reach this client.
 
 ## Unique until a step starts
 
@@ -179,7 +179,7 @@ third, while the first runs: accepted
 - [Unique jobs](../reliability/unique-jobs.md), [Debounce](../reliability/debounce.md), [Claim check](../reliability/claim-check.md): stock enqueue middleware.
 - [Payload codecs](codecs.md): `EncodeEnqueue` and `WithCodec`.
 - [Reserved names](../reference/names.md#labels): every reserved label prefix.
-- [Trigger source](../concepts/trigger-source.md): `WithSource`, `SourceOf` and the sources the library derives.
+- [Trigger source](../concepts/trigger-source.md): `WithSource`, [`SourceOf`](ds:block?id=sourceof-7mrryr2k) and the sources the library derives.
 - Example: [examples/middleware-stack](../../examples/middleware-stack/).
 - Example: [examples/release-jobs](../../examples/release-jobs/) (`UniqueUntilStarted`).
 - Example: [examples/trigger-source](../../examples/trigger-source/) (`RequireSource`).

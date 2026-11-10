@@ -1,0 +1,1 @@
+func (r *Recorder) Plugin() workflow.Plugin { return plugin{r} }

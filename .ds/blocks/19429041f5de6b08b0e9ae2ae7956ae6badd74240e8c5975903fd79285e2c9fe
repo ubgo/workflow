@@ -1,0 +1,1 @@
+const MaxOutcomeNote = 1 << 10

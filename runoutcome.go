@@ -11,22 +11,32 @@ import "context"
 //
 // Code that switches on it must keep a default branch: a later version may
 // add outcomes.
+//
+//ds:def id=outcome-ffx8k9qw owner=@khanakia stability=stable
 type Outcome string
 
 // The outcomes.
 const (
 	// OutcomeSuccess: the work was done in full.
+	//
+	//ds:def id=outcomesuccess-x2k6rmg2 owner=@khanakia stability=stable
 	OutcomeSuccess Outcome = "success"
 
 	// OutcomePartial: some of the work was done, some was not (bad rows,
 	// a page that failed); the run still succeeded.
+	//
+	//ds:def id=outcomepartial-6umpq82v owner=@khanakia stability=stable
 	OutcomePartial Outcome = "partial"
 
 	// OutcomeError: the work was not done.
+	//
+	//ds:def id=outcomeerror-tbsjn5wb owner=@khanakia stability=stable
 	OutcomeError Outcome = "error"
 
 	// OutcomeSkipped: there was nothing to do (no changes since the last
 	// sync, a feature turned off).
+	//
+	//ds:def id=outcomeskipped-c5b9by4k owner=@khanakia stability=stable
 	OutcomeSkipped Outcome = "skipped"
 )
 
@@ -35,9 +45,13 @@ const (
 var outcomes = [...]Outcome{OutcomeSuccess, OutcomePartial, OutcomeError, OutcomeSkipped}
 
 // Outcomes returns every outcome, as a fresh slice.
+//
+//ds:def id=outcomes-9nbtvx5s owner=@khanakia stability=stable
 func Outcomes() []Outcome { return append([]Outcome(nil), outcomes[:]...) }
 
 // Valid reports whether o is one of the Outcome constants.
+//
+//ds:def id=outcome-valid-fqa5433e owner=@khanakia stability=stable
 func (o Outcome) Valid() bool {
 	for _, k := range outcomes {
 		if o == k {
@@ -48,12 +62,16 @@ func (o Outcome) Valid() bool {
 }
 
 // MaxOutcomeNote is the longest note SetOutcome accepts, in bytes.
+//
+//ds:def id=maxoutcomenote-bgqr58x4 owner=@khanakia stability=stable
 const MaxOutcomeNote = 1 << 10
 
 // DefaultOutcome is the outcome of a run that ended with status and set
 // none: OutcomeSuccess for StatusSucceeded, OutcomeError for StatusFailed
 // and StatusDiscarded, and "" for every other status (a cancelled or
 // unfinished run has no outcome yet).
+//
+//ds:def id=defaultoutcome-qffu2upr owner=@khanakia stability=stable
 func DefaultOutcome(status Status) Outcome {
 	switch status {
 	case StatusSucceeded:
@@ -66,11 +84,15 @@ func DefaultOutcome(status Status) Outcome {
 
 // OutcomeSetter stores the outcome a step sets. A run recorder binds one on
 // the step's ctx (WithOutcomeSetter); drivers keep none.
+//
+//ds:def id=outcomesetter-333q6fdk owner=@khanakia stability=stable
 type OutcomeSetter interface {
 	SetOutcome(ctx context.Context, o Outcome, note string) error
 }
 
 // OutcomeFunc adapts a function to OutcomeSetter.
+//
+//ds:def id=outcomefunc-efjp6shx owner=@khanakia stability=stable
 type OutcomeFunc func(ctx context.Context, o Outcome, note string) error
 
 // SetOutcome calls f.
@@ -82,6 +104,8 @@ type outcomeSetterKey struct{}
 
 // WithOutcomeSetter returns a ctx carrying s. A run recorder's step
 // middleware calls it.
+//
+//ds:def id=withoutcomesetter-ezuw22j7 owner=@khanakia stability=stable
 func WithOutcomeSetter(ctx context.Context, s OutcomeSetter) context.Context {
 	return context.WithValue(ctx, outcomeSetterKey{}, s)
 }
@@ -93,6 +117,8 @@ func WithOutcomeSetter(ctx context.Context, s OutcomeSetter) context.Context {
 // returns an UnsupportedError, as ReportProgress does: the caller asked
 // for data to be kept, so dropping it silently would be a lie. A step that
 // sets an outcome whether or not one is recorded can ignore that error.
+//
+//ds:def id=setoutcome-p5kkstu4 owner=@khanakia stability=stable
 func SetOutcome(ctx context.Context, o Outcome, note string) error {
 	if !o.Valid() {
 		return invalidf("outcome %q is not one of %v", o, outcomes)

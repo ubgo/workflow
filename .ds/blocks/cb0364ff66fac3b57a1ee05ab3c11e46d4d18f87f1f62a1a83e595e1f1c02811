@@ -1,0 +1,4 @@
+type EventAttr struct {
+	Key   string
+	Value string
+}

@@ -1,0 +1,11 @@
+type PruneResult struct {
+	// StepsCleared counts runs whose steps stage one dropped.
+	StepsCleared int
+
+	// RunsDeleted counts runs stage two deleted.
+	RunsDeleted int
+
+	// Archived counts runs handed to Archive (equal to RunsDeleted when
+	// Archive is set).
+	Archived int
+}

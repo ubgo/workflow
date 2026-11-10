@@ -1,0 +1,16 @@
+func (r *Reconciler) Run(ctx context.Context) error {
+	var wait time.Duration // the first pass runs at once
+	for {
+		t := r.clk.NewTimer(wait)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil
+		case <-t.C():
+		}
+		if _, err := r.Pass(ctx); err != nil && ctx.Err() == nil {
+			r.report(ctx, err, true)
+		}
+		wait = r.interval
+	}
+}

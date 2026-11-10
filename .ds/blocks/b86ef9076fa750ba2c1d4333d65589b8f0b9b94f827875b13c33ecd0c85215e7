@@ -1,0 +1,1 @@
+func (s *Store) MigrationScripts() []string { return s.ddl() }

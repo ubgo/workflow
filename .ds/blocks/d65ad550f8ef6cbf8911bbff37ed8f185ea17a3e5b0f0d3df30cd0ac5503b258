@@ -1,0 +1,12 @@
+func WithSource(job Job, source Source, ref string) Job {
+	labels := make(map[string]string, len(job.Labels)+2)
+	maps.Copy(labels, job.Labels)
+	labels[LabelSource] = string(source)
+	if ref == "" {
+		delete(labels, LabelSourceRef)
+	} else {
+		labels[LabelSourceRef] = ref
+	}
+	job.Labels = labels
+	return job
+}

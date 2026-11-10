@@ -1,0 +1,10 @@
+func NewMemoryStore(opts ...MemoryOption) (*MemoryStore, error) {
+	s := &MemoryStore{clk: clock.Real{}, runs: map[string]*RunRecord{}, bySched: map[workflow.ScheduledID]string{}}
+	for _, o := range opts {
+		o(s)
+	}
+	if err := ValidateRetention(s.retention); err != nil {
+		return nil, err
+	}
+	return s, nil
+}

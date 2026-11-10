@@ -1,0 +1,9 @@
+func WithClock(c clock.Clock) Option {
+	return func(r *Recorder) error {
+		if c == nil {
+			return fmt.Errorf("%w: recorder.WithClock(nil)", workflow.ErrInvalid)
+		}
+		r.clk = c
+		return nil
+	}
+}

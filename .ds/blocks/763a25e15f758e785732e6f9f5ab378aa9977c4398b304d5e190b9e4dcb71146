@@ -1,0 +1,51 @@
+func RunDriver(t *testing.T, h workflowtest.Harness, opts ...DriverOption) {
+	t.Helper()
+	var cfg driverConfig
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
+	if h.New == nil {
+		t.Fatal("recordertest: Harness.New is nil")
+	}
+	nonce := make([]byte, 4)
+	if _, err := rand.Read(nonce); err != nil {
+		t.Fatal(err)
+	}
+	prefix := h.Prefix
+	if prefix == "" {
+		prefix = "rectest"
+	}
+	prefix += "-" + hex.EncodeToString(nonce)
+	cases := []struct {
+		name string
+		run  func(e *driverEnv)
+	}{
+		{"records_run_steps_events_outcome", driverCaseSuccess},
+		{"records_retries_and_failure", driverCaseFailure},
+		{"redacts_and_bounds_bodies", driverCaseRedaction},
+		{"delayed_run_cancelled", driverCaseDelayedCancel},
+		{"reconciler_backfills_external_run", driverCaseBackfill},
+		{"reconciler_finishes_and_flags", driverCaseReconcile},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := h.New(t)
+			if in.Client == nil {
+				t.Fatal("recordertest: Harness.New returned a nil Client")
+			}
+			e := &driverEnv{t: t, base: in.Client, clk: in.Clock, prefix: prefix + "-" + c.name, wait: realWait, poll: realPoll, newStore: cfg.newStore}
+			if in.Clock != nil {
+				e.wait, e.poll = fakeWait, fakePoll
+			}
+			if h.Wait > 0 {
+				e.wait = h.Wait
+			}
+			if h.Poll > 0 {
+				e.poll = h.Poll
+			}
+			c.run(e)
+		})
+	}
+}

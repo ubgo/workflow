@@ -1,0 +1,20 @@
+type Query struct {
+	workflow.RunQuery
+
+	// Sources matches runs whose Source is any of these; empty matches
+	// any.
+	Sources []workflow.Source
+
+	// Outcomes matches runs whose Outcome is any of these; empty matches
+	// any. An unfinished run with no outcome set matches none.
+	Outcomes []workflow.Outcome
+
+	// Search matches runs where it is a case-insensitive substring of the
+	// RunID, the ScheduledID, the workflow name or the SourceRef; empty
+	// matches any. It is a lookup box for an operator, not a full-text
+	// index: a store may scan to answer it.
+	Search string
+
+	// OnlyStale matches only runs the Reconciler flagged stale.
+	OnlyStale bool
+}

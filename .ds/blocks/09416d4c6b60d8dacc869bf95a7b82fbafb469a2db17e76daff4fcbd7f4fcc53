@@ -1,0 +1,17 @@
+type Retention struct {
+	RetentionRule
+
+	// PerWorkflow overrides RetentionRule for the named workflows.
+	PerWorkflow map[string]RetentionRule
+
+	// Archive, when set, is handed every record before stage two deletes
+	// it (with its steps, when stage one left any). An error stops the
+	// prune and deletes nothing of that batch, so nothing is lost when an
+	// archive is down; the next prune tries again.
+	Archive func(ctx context.Context, runs []RunRecord) error
+
+	// Batch is how many runs one prune step handles at a time, so a big
+	// backlog never holds one long transaction. Zero means
+	// DefaultPruneBatch.
+	Batch int
+}

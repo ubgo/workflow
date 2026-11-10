@@ -18,6 +18,8 @@ import (
 // one (WithResultReader) or nil, Errors is the attempt error history, and
 // AttemptedBy the nodes that ran attempts. NextAttempt, NextAttemptAt and
 // Progress stay zero: a recorder does not see them.
+//
+//ds:def id=rec-runrecord-xjfqvqc3 owner=@khanakia stability=stable
 type RunRecord struct {
 	workflow.RunInfo
 
@@ -101,6 +103,8 @@ func (r RunRecord) Clone() RunRecord {
 //
 // Code that switches on it must keep a default branch: a later version may
 // add statuses.
+//
+//ds:def id=rec-stepstatus-nxdj7ers owner=@khanakia stability=stable
 type StepStatus string
 
 // The step attempt statuses.
@@ -130,6 +134,8 @@ func StepStatuses() []StepStatus { return slices.Clone(stepStatuses[:]) }
 func (s StepStatus) Valid() bool { return slices.Contains(stepStatuses[:], s) }
 
 // StepRecord is one step attempt.
+//
+//ds:def id=rec-steprecord-tsk32v93 owner=@khanakia stability=stable
 type StepRecord struct {
 	// Step is the step name; Attempt is 1 for the first attempt. A snoozed
 	// attempt that runs again keeps its number, so its record is updated
@@ -192,6 +198,8 @@ func (s StepRecord) Clone() StepRecord {
 }
 
 // EventRecord is one stored step event.
+//
+//ds:def id=rec-eventrecord-9fe3wk9x owner=@khanakia stability=stable
 type EventRecord struct {
 	// Seq orders the events of one attempt; the store assigns it (1, 2,
 	// ...).

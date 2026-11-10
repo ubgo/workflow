@@ -1,6 +1,6 @@
 # run-recorder
 
-A run history the app owns, on the in-memory driver: `recorder.New` over a SQLite store from `recorder/sqlrecorder`, applied with `workflow.Use` next to a one-line plugin adding `middleware.RequireSource()`. A job without a source is refused; a job from a webhook is recorded with its source and delivery ID, its two steps with their outputs, a timeline event, the partial outcome the second step set, and its input with the card number redacted. The program then reads the record back, lists runs by source and outcome, reads the same run through `admin.WithRunQuerier`, and runs one Reconciler pass.
+A run history the app owns, on the in-memory driver: [`recorder.New`](ds:block?id=rec-new-wrqg5nug) over a SQLite store from `recorder/sqlrecorder`, applied with `workflow.Use` next to a one-line plugin adding [`middleware.RequireSource()`](ds:block?id=mw-requiresource-3tsntxp2). A job without a source is refused; a job from a webhook is recorded with its source and delivery ID, its two steps with their outputs, a timeline event, the partial outcome the second step set, and its input with the card number redacted. The program then reads the record back, lists runs by source and outcome, reads the same run through [`admin.WithRunQuerier`](ds:block?id=admin-withrunquerier-g356xuy3), and runs one Reconciler pass.
 
 ```sh
 cd examples

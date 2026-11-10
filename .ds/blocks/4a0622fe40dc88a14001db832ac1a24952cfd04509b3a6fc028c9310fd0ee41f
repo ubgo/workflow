@@ -1,0 +1,1 @@
+type NewStore func(t *testing.T, cfg StoreConfig) recorder.Store

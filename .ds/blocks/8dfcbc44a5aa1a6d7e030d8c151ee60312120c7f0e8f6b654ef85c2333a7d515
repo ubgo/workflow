@@ -1,0 +1,13 @@
+type EventRecord struct {
+	// Seq orders the events of one attempt; the store assigns it (1, 2,
+	// ...).
+	Seq int
+
+	// Message, Level and Attrs are workflow.StepEvent's, after redaction.
+	Message string
+	Level   slog.Level
+	Attrs   []workflow.EventAttr
+
+	// At is when it was recorded, on the recorder's clock.
+	At time.Time
+}

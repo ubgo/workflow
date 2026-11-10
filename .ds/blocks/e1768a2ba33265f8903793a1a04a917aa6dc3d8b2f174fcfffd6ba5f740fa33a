@@ -1,0 +1,8 @@
+func ReservedLabel(key string) (prefix string, ok bool) {
+	for _, p := range reservedLabelPrefixes {
+		if strings.HasPrefix(key, p) {
+			return p, true
+		}
+	}
+	return "", false
+}

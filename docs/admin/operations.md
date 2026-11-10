@@ -12,7 +12,7 @@ Use it from Go (a CLI, a support tool, a cron job) as on this page, or over HTTP
 
 ## Step 1: wrap the client
 
-`admin.New(client, opts...)` never fails. `admin.WithClock(clk)` sets the clock wait times are measured on (the real clock by default) and `admin.WithMaxScan(n)` bounds how many queued runs one queue report reads (`admin.DefaultMaxScan`, 10,000). `admin.WithRunQuerier(rq, caps)` makes the read operations (runs, run, failures, discarded, queue stats, counts) read `rq` instead of the client, typically a run recorder's store with `recorder.QueryCaps`, while every action still goes to the client; a run `rq` does not hold is looked up on the client ([Record run history](../observability/run-recorder.md#read-the-history)).
+`admin.New(client, opts...)` never fails. `admin.WithClock(clk)` sets the clock wait times are measured on (the real clock by default) and `admin.WithMaxScan(n)` bounds how many queued runs one queue report reads (`admin.DefaultMaxScan`, 10,000). [`admin.WithRunQuerier(rq, caps)`](ds:block?id=admin-withrunquerier-g356xuy3) makes the read operations (runs, run, failures, discarded, queue stats, counts) read `rq` instead of the client, typically a run recorder's store with [`recorder.QueryCaps`](ds:block?id=rec-querycaps-x2zk9xju), while every action still goes to the client; a run `rq` does not hold is looked up on the client ([Record run history](../observability/run-recorder.md#read-the-history)).
 
 <!-- snippet: examples/admin/main.go#mount -->
 ```go

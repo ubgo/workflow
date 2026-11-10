@@ -1,0 +1,1 @@
+	DefaultWriteTimeout = 5 * time.Second

@@ -1,0 +1,9 @@
+func WithOnError(fn ErrorFunc) Option {
+	return func(r *Recorder) error {
+		if fn == nil {
+			return fmt.Errorf("%w: recorder.WithOnError(nil)", workflow.ErrInvalid)
+		}
+		r.onError = fn
+		return nil
+	}
+}

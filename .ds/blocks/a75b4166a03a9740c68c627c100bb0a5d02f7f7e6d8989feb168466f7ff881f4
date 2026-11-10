@@ -1,0 +1,14 @@
+func ValidateLabels(labels map[string]string) error {
+	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if settable, err := checkAppReserved(k, labels[k]); settable {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if p, ok := ReservedLabel(k); ok {
+			return invalidf("label %q uses the reserved prefix %q", k, p)
+		}
+	}
+	return nil
+}

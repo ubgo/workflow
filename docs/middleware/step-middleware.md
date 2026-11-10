@@ -171,9 +171,9 @@ In the example, two failed `call-api` runs open the `call-api` circuit, the thir
 
 ## Capture step events
 
-A step records timeline events with `workflow.RecordEvent` ([Step events](../concepts/step-events.md)), and step middleware is where they are received: middleware binds a `workflow.StepEventSink` on the step's context with `workflow.WithStepEventSink` before calling the handler, and every event the step records reaches every sink bound, outermost middleware's first.
+A step records timeline events with [`workflow.RecordEvent`](ds:block?id=recordevent-k3aqhnwy) ([Step events](../concepts/step-events.md)), and step middleware is where they are received: middleware binds a [`workflow.StepEventSink`](ds:block?id=stepeventsink-f4enzkvf) on the step's context with [`workflow.WithStepEventSink`](ds:block?id=withstepeventsink-ehcpt8xf) before calling the handler, and every event the step records reaches every sink bound, outermost middleware's first.
 
-`middleware.CaptureOutput` ([Task output](../schedules/output.md)) binds one: each event becomes a captured `OutputRecord` with the event's level, message and attributes (as string values), next to the lines the step logged through `OutputLogger`, under the same capture level, and is delivered to the output sink after the attempt. The program is [examples/step-events](../../examples/step-events/); `printEvents` is a sink of the app's own, bound by a short middleware:
+[`middleware.CaptureOutput`](ds:block?id=mw-captureoutput-fk79ecqu) ([Task output](../schedules/output.md)) binds one: each event becomes a captured [`OutputRecord`](ds:block?id=mw-outputrecord-52f27mzr) with the event's level, message and attributes (as string values), next to the lines the step logged through [`OutputLogger`](ds:block?id=mw-outputlogger-r8mzkh57), under the same capture level, and is delivered to the output sink after the attempt. The program is [examples/step-events](../../examples/step-events/); `printEvents` is a sink of the app's own, bound by a short middleware:
 
 <!-- snippet: examples/step-events/main.go#sink -->
 ```go
@@ -207,7 +207,7 @@ outcome kept: false unsupported: true
 2026-01-05T02:00:00Z WARN rows rejected bad=3 first=row-17
 ```
 
-`printEvents` sees each event as it is recorded; `CaptureOutput` delivers them with the attempt. A run recorder's step middleware is a third sink ([Record run history](../observability/run-recorder.md#step-events-and-outcome)), and it also binds the outcome setter `workflow.SetOutcome` needs ([Run outcome](../concepts/run-outcome.md)). Events are not passed to the `CaptureTee` handler, which receives only `OutputLogger` records.
+`printEvents` sees each event as it is recorded; `CaptureOutput` delivers them with the attempt. A run recorder's step middleware is a third sink ([Record run history](../observability/run-recorder.md#step-events-and-outcome)), and it also binds the outcome setter [`workflow.SetOutcome`](ds:block?id=setoutcome-p5kkstu4) needs ([Run outcome](../concepts/run-outcome.md)). Events are not passed to the [`CaptureTee`](ds:block?id=mw-capturetee-zz3fu929) handler, which receives only `OutputLogger` records.
 
 ## Try it
 

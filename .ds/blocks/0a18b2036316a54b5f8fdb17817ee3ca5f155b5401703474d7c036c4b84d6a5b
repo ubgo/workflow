@@ -1,0 +1,1 @@
+func Outcomes() []Outcome { return append([]Outcome(nil), outcomes[:]...) }

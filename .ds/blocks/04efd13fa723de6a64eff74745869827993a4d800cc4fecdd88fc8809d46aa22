@@ -1,0 +1,25 @@
+func FormatOutput(w io.Writer, out Output) error {
+	var b strings.Builder
+	status := "ok"
+	if out.Err != nil {
+		status = "error: " + out.Err.Error()
+	}
+	if out.HasInfo {
+		fmt.Fprintf(&b, "== %s %s/%s attempt %d [%s] %s\n", out.Finished.UTC().Format(time.RFC3339),
+			out.Info.Workflow, out.Info.Step, out.Info.Attempt, out.Info.RunID, status)
+	} else {
+		fmt.Fprintf(&b, "== %s %s\n", out.Finished.UTC().Format(time.RFC3339), status)
+	}
+	for _, r := range out.Records {
+		fmt.Fprintf(&b, "%s %s %s", r.Time.UTC().Format(time.RFC3339), r.Level, r.Message)
+		for _, a := range r.Attrs {
+			fmt.Fprintf(&b, " %s=%v", a.Key, a.Value)
+		}
+		b.WriteByte('\n')
+	}
+	if out.Result != nil {
+		fmt.Fprintf(&b, "result: %s\n", out.Result)
+	}
+	_, err := io.WriteString(w, b.String())
+	return err
+}

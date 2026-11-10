@@ -18,6 +18,8 @@ import (
 // records the step wrote through OutputLogger, how it ended, and its
 // result bytes when CaptureResult was given. For a scheduled task or a
 // Func (one step) one Output is one run attempt.
+//
+//ds:def id=mw-output-2dtvhf27 owner=@khanakia stability=stable
 type Output struct {
 	// Info is the attempt's StepInfo; HasInfo is false when the ctx
 	// carried none (a handler called outside a driver).
@@ -41,6 +43,8 @@ type Output struct {
 }
 
 // OutputRecord is one captured log record.
+//
+//ds:def id=mw-outputrecord-52f27mzr owner=@khanakia stability=stable
 type OutputRecord struct {
 	Time    time.Time
 	Level   slog.Level
@@ -53,12 +57,16 @@ type OutputRecord struct {
 // result, so a slow sink holds the worker; a sink that sends mail or calls
 // a network service should hand off to its own goroutine or queue. Its
 // error never changes the step's result; it goes to CaptureOnSinkError.
+//
+//ds:def id=mw-outputsink-hvdavs34 owner=@khanakia stability=stable
 type OutputSink interface {
 	Deliver(ctx context.Context, out Output) error
 }
 
 // OutputSinkFunc adapts a function to OutputSink: the way to mail output,
 // post it to a chat or store it anywhere the library does not know.
+//
+//ds:def id=mw-outputsinkfunc-r8g32sem owner=@khanakia stability=stable
 type OutputSinkFunc func(ctx context.Context, out Output) error
 
 // Deliver calls f.
@@ -67,6 +75,8 @@ func (f OutputSinkFunc) Deliver(ctx context.Context, out Output) error { return 
 // FormatOutput writes out as text: one header line naming the run, step,
 // attempt and outcome, one line per record, then the result when it was
 // captured. It is the format WriterSink and FileSink use.
+//
+//ds:def id=mw-formatoutput-pa32eb3b owner=@khanakia stability=stable
 func FormatOutput(w io.Writer, out Output) error {
 	var b strings.Builder
 	status := "ok"
@@ -95,6 +105,8 @@ func FormatOutput(w io.Writer, out Output) error {
 
 // WriterSink writes each Output to w with FormatOutput, one delivery at a
 // time.
+//
+//ds:def id=mw-writersink-83q2bj4g owner=@khanakia stability=stable
 func WriterSink(w io.Writer) OutputSink {
 	var mu sync.Mutex
 	return OutputSinkFunc(func(_ context.Context, out Output) error {
@@ -105,14 +117,20 @@ func WriterSink(w io.Writer) OutputSink {
 }
 
 // FileMode says whether FileSink replaces or extends its file.
+//
+//ds:def id=mw-filemode-nev3zxnq owner=@khanakia stability=stable
 type FileMode int
 
 // The file modes.
 const (
 	// FileReplace truncates the file on every delivery, so it holds the
 	// latest attempt's output only.
+	//
+	//ds:def id=mw-filereplace-b9xx9kf3 owner=@khanakia stability=stable
 	FileReplace FileMode = iota
 	// FileAppend appends every delivery to the file.
+	//
+	//ds:def id=mw-fileappend-qkmtw7sw owner=@khanakia stability=stable
 	FileAppend
 )
 
@@ -123,6 +141,8 @@ const fileSinkPerm = 0o600
 // FileSink writes each Output to the file at path with FormatOutput,
 // creating it when missing (mode 0600). Deliveries from one sink are
 // serialised; two sinks on one path are not.
+//
+//ds:def id=mw-filesink-9kuvzn2m owner=@khanakia stability=stable
 func FileSink(path string, mode FileMode) OutputSink {
 	var mu sync.Mutex
 	return OutputSinkFunc(func(_ context.Context, out Output) error {
@@ -161,13 +181,19 @@ type captureConfig struct {
 
 // CaptureResult includes the step's output bytes in Output.Result. Off by
 // default: a result can hold payload data.
+//
+//ds:def id=mw-captureresult-ndqzbck8 owner=@khanakia stability=stable
 func CaptureResult() CaptureOption { return func(c *captureConfig) { c.result = true } }
 
 // CaptureOnlyFailures delivers only attempts that returned an error.
+//
+//ds:def id=mw-captureonlyfailures-8m9wnbcu owner=@khanakia stability=stable
 func CaptureOnlyFailures() CaptureOption { return func(c *captureConfig) { c.failOnly = true } }
 
 // CaptureLevel keeps records at or above l; the default is slog.LevelInfo.
 // Nil is ignored.
+//
+//ds:def id=mw-capturelevel-kubw9m9x owner=@khanakia stability=stable
 func CaptureLevel(l slog.Leveler) CaptureOption {
 	return func(c *captureConfig) {
 		if l != nil {
@@ -178,6 +204,8 @@ func CaptureLevel(l slog.Leveler) CaptureOption {
 
 // CaptureTee also passes every record OutputLogger receives to h (the
 // app's normal log handler), whatever the capture level. Nil is ignored.
+//
+//ds:def id=mw-capturetee-zz3fu929 owner=@khanakia stability=stable
 func CaptureTee(h slog.Handler) CaptureOption {
 	return func(c *captureConfig) {
 		if h != nil {
@@ -189,6 +217,8 @@ func CaptureTee(h slog.Handler) CaptureOption {
 // CaptureOnly captures only the attempts keep returns true for, such as
 // one workflow's steps; others run untouched. An attempt without a
 // StepInfo is passed the zero StepInfo. Nil is ignored.
+//
+//ds:def id=mw-captureonly-dg48nfv6 owner=@khanakia stability=stable
 func CaptureOnly(keep func(workflow.StepInfo) bool) CaptureOption {
 	return func(c *captureConfig) {
 		if keep != nil {
@@ -199,6 +229,8 @@ func CaptureOnly(keep func(workflow.StepInfo) bool) CaptureOption {
 
 // CaptureOnSinkError receives the sink's errors; the default drops them,
 // since a sink failure must never fail the step. Nil is ignored.
+//
+//ds:def id=mw-captureonsinkerror-dw8mkrgv owner=@khanakia stability=stable
 func CaptureOnSinkError(fn func(ctx context.Context, out Output, err error)) CaptureOption {
 	return func(c *captureConfig) {
 		if fn != nil {
@@ -209,6 +241,8 @@ func CaptureOnSinkError(fn func(ctx context.Context, out Output, err error)) Cap
 
 // CaptureClock sets the clock Started, Finished and record times are read
 // from; the default is the real clock. Nil is ignored.
+//
+//ds:def id=mw-captureclock-nhpcdu3p owner=@khanakia stability=stable
 func CaptureClock(clk clock.Clock) CaptureOption {
 	return func(c *captureConfig) {
 		if clk != nil {
@@ -252,6 +286,8 @@ func (c *capture) RecordStepEvent(_ context.Context, e workflow.StepEvent) {
 // sink after the attempt, the way a scheduler sends a task's output to a
 // file or by mail. It never changes the step's result. A nil sink makes it
 // a no-op.
+//
+//ds:def id=mw-captureoutput-fk79ecqu owner=@khanakia stability=stable
 func CaptureOutput(sink OutputSink, opts ...CaptureOption) workflow.Middleware {
 	cfg := captureConfig{clk: clock.Real{}, level: slog.LevelInfo, onSinkErr: func(context.Context, Output, error) {}}
 	for _, o := range opts {
@@ -294,6 +330,8 @@ func CaptureOutput(sink OutputSink, opts ...CaptureOption) workflow.Middleware {
 // the step running on ctx (and passes to the CaptureTee handler). Outside
 // a capture it returns fallback, or slog.Default() when fallback is nil,
 // so a step can always log through it.
+//
+//ds:def id=mw-outputlogger-r8mzkh57 owner=@khanakia stability=stable
 func OutputLogger(ctx context.Context, fallback *slog.Logger) *slog.Logger {
 	if cp, ok := ctx.Value(captureKey{}).(*capture); ok {
 		return slog.New(&captureHandler{cp: cp})

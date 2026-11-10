@@ -27,6 +27,8 @@ import (
 // Each rule is applied to its workflows: a PerWorkflow entry to its name,
 // the default rule to every workflow without one. A zero age keeps that
 // stage. Unfinished runs are never touched.
+//
+//ds:def id=sqlrec-store-prune-843j2gjz owner=@khanakia stability=stable
 func (s *Store) Prune(ctx context.Context) (recorder.PruneResult, error) {
 	var res recorder.PruneResult
 	if s.retention.IsZero() {

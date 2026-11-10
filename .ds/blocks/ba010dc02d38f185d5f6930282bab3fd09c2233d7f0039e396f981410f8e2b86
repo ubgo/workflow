@@ -1,0 +1,20 @@
+func ValidateRetention(r Retention) error {
+	check := func(name string, rule RetentionRule) error {
+		if rule.Steps < 0 || rule.Runs < 0 {
+			return fmt.Errorf("%w: recorder retention %s: negative age", workflow.ErrInvalid, name)
+		}
+		return nil
+	}
+	if err := check("default", r.RetentionRule); err != nil {
+		return err
+	}
+	for wf, rule := range r.PerWorkflow {
+		if err := check(fmt.Sprintf("for %q", wf), rule); err != nil {
+			return err
+		}
+	}
+	if r.Batch < 0 || r.Batch > MaxPruneBatch {
+		return fmt.Errorf("%w: recorder retention: Batch %d is outside [0, %d]", workflow.ErrInvalid, r.Batch, MaxPruneBatch)
+	}
+	return nil
+}

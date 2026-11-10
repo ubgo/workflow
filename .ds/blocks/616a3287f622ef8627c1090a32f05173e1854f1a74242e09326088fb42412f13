@@ -1,0 +1,9 @@
+func WithWriteTimeout(d time.Duration) Option {
+	return func(r *Recorder) error {
+		if d <= 0 {
+			return fmt.Errorf("%w: recorder.WithWriteTimeout(%s)", workflow.ErrInvalid, d)
+		}
+		r.writeTimeout = d
+		return nil
+	}
+}

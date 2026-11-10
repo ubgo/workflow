@@ -1,0 +1,7 @@
+func WithMemoryClock(c clock.Clock) MemoryOption {
+	return func(s *MemoryStore) {
+		if c != nil {
+			s.clk = c
+		}
+	}
+}

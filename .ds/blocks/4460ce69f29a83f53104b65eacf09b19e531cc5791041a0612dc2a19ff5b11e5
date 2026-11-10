@@ -1,0 +1,18 @@
+func NewReconciler(c workflow.Client, s Store, opts ...ReconcileOption) (*Reconciler, error) {
+	if c == nil || s == nil {
+		return nil, fmt.Errorf("%w: recorder.NewReconciler needs a client and a store", workflow.ErrInvalid)
+	}
+	r := &Reconciler{
+		client: c, store: s, clk: clock.Real{}, interval: DefaultReconcileInterval, staleAfter: DefaultStaleAfter,
+		window: DefaultBackfillWindow, batch: DefaultReconcileBatch, pages: DefaultBackfillPages, backfill: true,
+	}
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		if err := o(r); err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
+}

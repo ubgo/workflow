@@ -1,0 +1,6 @@
+type PayloadInfo struct {
+	Kind     PayloadKind
+	Workflow string
+	// Step is empty for PayloadInput and PayloadResult.
+	Step string
+}

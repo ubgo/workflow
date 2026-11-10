@@ -21,10 +21,14 @@ import (
 const (
 	// DefaultTablePrefix starts every table name: wf_rec_runs,
 	// wf_rec_steps, wf_rec_events, wf_rec_labels and wf_rec_schema.
+	//
+	//ds:def id=sqlrec-defaulttableprefix-af54bca4 owner=@khanakia stability=stable
 	DefaultTablePrefix = "wf_rec_"
 
 	// DefaultTxAttempts is how many times a write transaction runs before
 	// a contention error (see DefaultRetryable) is returned.
+	//
+	//ds:def id=sqlrec-defaulttxattempts-a3fk8dhr owner=@khanakia stability=stable
 	DefaultTxAttempts = 8
 
 	// maxPrefix bounds the table prefix, so every table and index name
@@ -51,6 +55,8 @@ var prefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 // filters behave the same on every engine.
 //
 // It implements recorder.Store, recorder.Pruner and workflow.RunQuerier.
+//
+//ds:def id=sqlrec-store-3zs4cjtw owner=@khanakia stability=stable
 type Store struct {
 	db        *sql.DB
 	d         Dialect
@@ -80,6 +86,8 @@ type Option func(*Store) error
 // by default): lower-case letters, digits and underscores, starting with a
 // letter, at most 32 characters. Two stores with different prefixes share
 // one database without meeting.
+//
+//ds:def id=sqlrec-withtableprefix-avt2n8sd owner=@khanakia stability=stable
 func WithTablePrefix(p string) Option {
 	return func(s *Store) error {
 		if len(p) > maxPrefix || !prefixPattern.MatchString(p) {
@@ -92,6 +100,8 @@ func WithTablePrefix(p string) Option {
 
 // WithRetention sets the retention Prune applies (see recorder.Retention);
 // none by default, so Prune does nothing.
+//
+//ds:def id=sqlrec-withretention-jvnmngh9 owner=@khanakia stability=stable
 func WithRetention(r recorder.Retention) Option {
 	return func(s *Store) error {
 		if err := recorder.ValidateRetention(r); err != nil {
@@ -104,6 +114,8 @@ func WithRetention(r recorder.Retention) Option {
 
 // WithClock sets the clock Prune measures ages with (clock.Real by
 // default).
+//
+//ds:def id=sqlrec-withclock-dbbcdpey owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option {
 	return func(s *Store) error {
 		if c == nil {
@@ -116,6 +128,8 @@ func WithClock(c clock.Clock) Option {
 
 // WithTxAttempts sets how many times a write transaction runs on a
 // contention error (DefaultTxAttempts by default, at least 1).
+//
+//ds:def id=sqlrec-withtxattempts-dqc6w5mx owner=@khanakia stability=stable
 func WithTxAttempts(n int) Option {
 	return func(s *Store) error {
 		if n < 1 {
@@ -129,6 +143,8 @@ func WithTxAttempts(n int) Option {
 // WithRetryable replaces DefaultRetryable, the test of whether a failed
 // transaction is retried, for a driver whose contention errors read
 // differently.
+//
+//ds:def id=sqlrec-withretryable-cx2mmux2 owner=@khanakia stability=stable
 func WithRetryable(fn func(error) bool) Option {
 	return func(s *Store) error {
 		if fn == nil {
@@ -143,6 +159,8 @@ func WithRetryable(fn func(error) bool) Option {
 // for dialect d. It does not touch the database: call Migrate before the
 // first write. It fails on a nil db, an unknown dialect or an invalid
 // option, with workflow.ErrInvalid.
+//
+//ds:def id=sqlrec-new-yw65j5ct owner=@khanakia stability=stable
 func New(db *sql.DB, d Dialect, opts ...Option) (*Store, error) {
 	if db == nil {
 		return nil, fmt.Errorf("%w: sqlrecorder.New: nil *sql.DB", workflow.ErrInvalid)

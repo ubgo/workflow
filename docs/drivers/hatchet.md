@@ -470,17 +470,17 @@ Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's worka
 
 The engine keeps its runs as long as its own retention says, lists them the way it sees them, and keeps no step timeline. A [run recorder](../observability/run-recorder.md) keeps a history your app owns next to it: `workflow.Use(hatchet.New(cfg), rec.Plugin())`, then register and start through the client `Use` returned. What differs on this driver:
 
-- **Run ends are best effort: run the Reconciler.** The driver implements `OnRunFinished` by polling the engine's run list and does not claim `CapRunFinished`, so a run end can be missed: a run that was older than `Config.RunFinishedWindow` when it ended, a run that ended while no process was polling and was created more than `Config.RunFinishedCatchUp` before the next `Start`, a delayed start cancelled before it fired (only the process that cancelled it reports that). Run `recorder.NewReconciler(c, store)` with `go rc.Run(ctx)` next to the client: each pass reads unfinished records back from the engine and finishes them.
+- **Run ends are best effort: run the Reconciler.** The driver implements `OnRunFinished` by polling the engine's run list and does not claim `CapRunFinished`, so a run end can be missed: a run that was older than `Config.RunFinishedWindow` when it ended, a run that ended while no process was polling and was created more than `Config.RunFinishedCatchUp` before the next `Start`, a delayed start cancelled before it fired (only the process that cancelled it reports that). Run [`recorder.NewReconciler(c, store)`](ds:block?id=rec-newreconciler-su363hcv) with `go rc.Run(ctx)` next to the client: each pass reads unfinished records back from the engine and finishes them.
 - **The record outlives the engine's retention.** Once the engine prunes a run, the record still answers; an unfinished record whose run the engine no longer knows is flagged stale, never cancelled.
 - **The record keeps every attempt's error.** The driver claims no `CapErrorHistory`, so `RunInfo.Errors` is empty here, while the recorder's step middleware stores each failed attempt with its error on the record.
-- **Results.** The driver declares `CapResult`, so `recorder.WithResultReader(c)` stores a succeeded run's result on the record.
-- **Backfill costs engine calls.** The Reconciler lists the engine's runs of the backfill window, and `Runs` reads each listed run in full. On an engine other apps share, scope it with `recorder.WithBackfillQuery(workflow.RunQuery{Workflow: ...})` or `Tenant`, and keep `RunQuery.LabelPrefixes` out of it: the driver refuses them (no `CapLabelPrefix`).
+- **Results.** The driver declares `CapResult`, so [`recorder.WithResultReader(c)`](ds:block?id=rec-withresultreader-wrjsqy26) stores a succeeded run's result on the record.
+- **Backfill costs engine calls.** The Reconciler lists the engine's runs of the backfill window, and `Runs` reads each listed run in full. On an engine other apps share, scope it with [`recorder.WithBackfillQuery(workflow.RunQuery{Workflow: ...})`](ds:block?id=rec-withbackfillquery-qc3kqct7) or `Tenant`, and keep `RunQuery.LabelPrefixes` out of it: the driver refuses them (no `CapLabelPrefix`).
 
-The recorder's end-to-end suite runs its driver cases against a live engine (with `HATCHET_CLIENT_TOKEN` set), recording into `recorder.MemoryStore`.
+The recorder's end-to-end suite runs its driver cases against a live engine (with `HATCHET_CLIENT_TOKEN` set), recording into [`recorder.MemoryStore`](ds:block?id=rec-memorystore-smz35v44).
 
 ### Record runs from web nodes
 
-A client built with `Config.EnqueueOnly` refuses `OnRunFinished`, so `workflow.Use(web, rec.Plugin())` fails there with an error matching `workflow.ErrUnsupported`. Give the web node the recorder's enqueue half, `rec.EnqueuePlugin()`, and the worker processes the full plugin, over one store every process reaches:
+A client built with `Config.EnqueueOnly` refuses `OnRunFinished`, so `workflow.Use(web, rec.Plugin())` fails there with an error matching `workflow.ErrUnsupported`. Give the web node the recorder's enqueue half, [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv), and the worker processes the full plugin, over one store every process reaches:
 
 ```go
 rec, err := recorder.New(store) // a store every process reaches: sqlrecorder on a shared database

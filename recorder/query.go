@@ -16,13 +16,19 @@ import (
 // the basic ones. Stores pass it to workflow.CheckRunQuery (through
 // ValidateQuery), and a caller that wants to know before it asks, an admin
 // view, can read it.
+//
+//ds:def id=rec-querycaps-x2zk9xju owner=@khanakia stability=stable
 const QueryCaps = workflow.CapRunQuery | workflow.CapLabelPrefix | workflow.CapTenant | workflow.CapDueQuery
 
 // MaxSearchLen is the longest Query.Search, in bytes.
+//
+//ds:def id=rec-maxsearchlen-ve8yffru owner=@khanakia stability=stable
 const MaxSearchLen = 256
 
 // Query is a workflow.RunQuery plus the filters only a recorder can answer,
 // because only it knows a run's source and outcome.
+//
+//ds:def id=rec-query-7ufc7wgu owner=@khanakia stability=stable
 type Query struct {
 	workflow.RunQuery
 
@@ -48,6 +54,8 @@ type Query struct {
 // workflow.CheckRunQuery against QueryCaps for the embedded query, known
 // sources and outcomes, and Search within MaxSearchLen. Errors wrap
 // workflow.ErrInvalid or workflow.ErrUnsupported.
+//
+//ds:def id=rec-validatequery-nz2h9e24 owner=@khanakia stability=stable
 func ValidateQuery(q Query) error {
 	if err := workflow.ValidateRunQuery(q.RunQuery); err != nil {
 		return err

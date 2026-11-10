@@ -157,7 +157,8 @@ func (c *checker) links(file string) ([]link, error) {
 // resolve returns "" when target resolves from the page at from, or why it
 // does not.
 func (c *checker) resolve(from, target string) string {
-	if strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") {
+	// Links in the ds scheme are docsync citations; ds check resolves them.
+	if strings.Contains(target, "://") || strings.HasPrefix(target, "mailto:") || strings.HasPrefix(target, "ds:") {
 		return ""
 	}
 	file, frag, _ := strings.Cut(target, "#")

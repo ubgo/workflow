@@ -1,0 +1,8 @@
+func (o Outcome) Valid() bool {
+	for _, k := range outcomes {
+		if o == k {
+			return true
+		}
+	}
+	return false
+}

@@ -1,0 +1,18 @@
+type ReconcileReport struct {
+	// Checked counts unfinished records compared with the client.
+	Checked int
+	// Finished counts records the pass finished because the client
+	// reported them terminal.
+	Finished int
+	// Stale counts records flagged stale by this pass.
+	Stale int
+	// Missing counts records the client did not know (also flagged stale).
+	Missing int
+	// Backfilled counts runs the backfill upserted (new or filled).
+	Backfilled int
+	// BackfillSkipped is true when the client is not a RunQuerier, so no
+	// backfill ran.
+	BackfillSkipped bool
+	// Errors counts per-run errors that did not stop the pass.
+	Errors int
+}

@@ -1,0 +1,22 @@
+type StepEvent struct {
+	// Message is a short note for a person.
+	Message string
+
+	// Attrs are the event's key/value pairs, values already rendered as
+	// strings so every sink stores the same text. Order is the caller's.
+	Attrs []EventAttr
+
+	// Level is the slog level the caller gave (slog.LevelInfo by default
+	// with RecordEvent, any level with RecordEventLevel).
+	Level slog.Level
+
+	// At is when it was recorded. RecordEvent leaves it zero, because the
+	// core reads no wall clock on a step's path (a fake clock in a test
+	// must see the same time a sink stores); each sink stamps it from its
+	// own clock when zero.
+	At time.Time
+
+	// Step is the StepInfo of the attempt that recorded it; zero outside
+	// a driver-run step.
+	Step StepInfo
+}

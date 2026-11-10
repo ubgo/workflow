@@ -1,6 +1,6 @@
 # Step events
 
-A step event is one line of a step's timeline: "fetched 4,000 rows", "retrying the upload", "3 rows rejected". A step records it with `workflow.RecordEvent`, and the library hands it to every sink bound on the step's context: a [run recorder](../observability/run-recorder.md) stores it with the step attempt, [`middleware.CaptureOutput`](../schedules/output.md) keeps it with the step's captured log, and your own middleware can print it, add it to a span or count it. A step records events the same way whether anything listens or not.
+A step event is one line of a step's timeline: "fetched 4,000 rows", "retrying the upload", "3 rows rejected". A step records it with [`workflow.RecordEvent`](ds:block?id=recordevent-k3aqhnwy), and the library hands it to every sink bound on the step's context: a [run recorder](../observability/run-recorder.md) stores it with the step attempt, [`middleware.CaptureOutput`](../schedules/output.md) keeps it with the step's captured log, and your own middleware can print it, add it to a span or count it. A step records events the same way whether anything listens or not.
 
 ## Before you start
 
@@ -9,7 +9,7 @@ A step event is one line of a step's timeline: "fetched 4,000 rows", "retrying t
 
 ## Step 1: record events from a step
 
-`workflow.RecordEvent(ctx, msg, attrs...)` records `msg` with `slog` attributes at `slog.LevelInfo`; `workflow.RecordEventLevel(ctx, level, msg, attrs...)` takes a level, so a sink can colour or alert on a warning:
+`workflow.RecordEvent(ctx, msg, attrs...)` records `msg` with `slog` attributes at `slog.LevelInfo`; [`workflow.RecordEventLevel(ctx, level, msg, attrs...)`](ds:block?id=recordeventlevel-b9kyju7j) takes a level, so a sink can colour or alert on a warning:
 
 <!-- snippet: examples/step-events/main.go#step -->
 ```go
@@ -22,21 +22,21 @@ return func(ctx context.Context, _ []byte) ([]byte, error) {
 }
 ```
 
-(`SetOutcome` is the subject of [Run outcome](run-outcome.md).) What a sink receives is a `workflow.StepEvent`:
+([`SetOutcome`](ds:block?id=setoutcome-p5kkstu4) is the subject of [Run outcome](run-outcome.md).) What a sink receives is a [`workflow.StepEvent`](ds:block?id=stepevent-f7gyzzpj):
 
 | Field | What it holds |
 |---|---|
-| `Message` | The text, cut to `workflow.MaxStepEventMessage` (1 KiB) without splitting a character |
-| `Attrs` | `[]workflow.EventAttr`, key and value as strings (each value rendered with `slog.Value.String` after `Resolve`), in the caller's order; at most `workflow.MaxStepEventAttrs` (32), each key and value cut to `workflow.MaxStepEventValue` (1 KiB) |
+| `Message` | The text, cut to [`workflow.MaxStepEventMessage`](ds:block?id=maxstepeventmessage-yfsr3k3h) (1 KiB) without splitting a character |
+| `Attrs` | `[]workflow.EventAttr`, key and value as strings (each value rendered with `slog.Value.String` after `Resolve`), in the caller's order; at most [`workflow.MaxStepEventAttrs`](ds:block?id=maxstepeventattrs-das9dx82) (32), each key and value cut to [`workflow.MaxStepEventValue`](ds:block?id=maxstepeventvalue-ukkmnhkc) (1 KiB) |
 | `Level` | The `slog.Level` given; Info with `RecordEvent` |
 | `At` | Zero: the core reads no wall clock on a step's path, so each sink stamps the time from its own clock |
 | `Step` | The `StepInfo` of the attempt that recorded it (workflow, step, run ID, attempt, labels); zero outside a driver-run step |
 
-With no sink bound, `RecordEvent` does nothing and returns nothing: an event is a log line, not data the caller asked to keep. `workflow.HasStepEventSink(ctx)` reports whether any sink is bound, so a step can skip building an expensive message nobody will read.
+With no sink bound, `RecordEvent` does nothing and returns nothing: an event is a log line, not data the caller asked to keep. [`workflow.HasStepEventSink(ctx)`](ds:block?id=hasstepeventsink-95trpj6t) reports whether any sink is bound, so a step can skip building an expensive message nobody will read.
 
 ## Step 2: bind a sink of your own
 
-A sink is a `workflow.StepEventSink`, one method `RecordStepEvent(ctx, StepEvent)`; `workflow.StepEventFunc` adapts a function. Step middleware binds it with `workflow.WithStepEventSink(ctx, sink)` before calling the handler:
+A sink is a [`workflow.StepEventSink`](ds:block?id=stepeventsink-f4enzkvf), one method `RecordStepEvent(ctx, StepEvent)`; [`workflow.StepEventFunc`](ds:block?id=stepeventfunc-473b6uwj) adapts a function. Step middleware binds it with [`workflow.WithStepEventSink(ctx, sink)`](ds:block?id=withstepeventsink-ehcpt8xf) before calling the handler:
 
 <!-- snippet: examples/step-events/main.go#sink -->
 ```go
@@ -60,8 +60,8 @@ A sink must be safe for concurrent use, since steps of one run may run in parall
 
 Two sinks ship with the library:
 
-- **The run recorder** (`recorder.Recorder`'s step middleware) stores each event on the step attempt that recorded it, with its level and attributes, after redaction. `RunRecord.Steps[i].Events` reads them back ([Record run history](../observability/run-recorder.md#step-events-and-outcome)).
-- **`middleware.CaptureOutput`** turns each event into a captured log record at the event's level, under the capture level like any record, so it reaches the output sink with the lines the step logged through `OutputLogger` ([Step middleware › Capture step events](../middleware/step-middleware.md#capture-step-events)).
+- **The run recorder** ([`recorder.Recorder`](ds:block?id=rec-recorder-dss7wy23)'s step middleware) stores each event on the step attempt that recorded it, with its level and attributes, after redaction. `RunRecord.Steps[i].Events` reads them back ([Record run history](../observability/run-recorder.md#step-events-and-outcome)).
+- **[`middleware.CaptureOutput`](ds:block?id=mw-captureoutput-fk79ecqu)** turns each event into a captured log record at the event's level, under the capture level like any record, so it reaches the output sink with the lines the step logged through [`OutputLogger`](ds:block?id=mw-outputlogger-r8mzkh57) ([Step middleware › Capture step events](../middleware/step-middleware.md#capture-step-events)).
 
 <!-- snippet: examples/step-events/main.go#capture -->
 ```go
@@ -99,11 +99,11 @@ The `event` lines come from the app's sink as each event is recorded; the block 
 
 ## Pitfalls
 
-- **Messages are not redacted; attributes are.** A recorder's redactor matches attribute keys (`recorder.JSONPaths`), never the message text, so put values in attributes, not in the message.
-- **Events are bounded, silently.** A longer message or value is cut and attributes past the 32nd are dropped, with no error: keep events short and put bulk data in the step's output.
-- **A slow sink slows the step.** Every sink runs on the step's goroutine; a recorder write is bounded by its `WithWriteTimeout` (5 seconds by default), a sink of your own by nothing. Hand slow work to a goroutine or a queue.
+- **Messages are not redacted; attributes are.** A recorder's redactor matches attribute keys ([`recorder.JSONPaths`](ds:block?id=rec-jsonpaths-66ph5w5h)), never the message text, so put values in attributes, not in the message.
+- **Events are bounded, silently.** A longer message or value is cut and attributes past the [32nd](ds:block?id=maxstepeventattrs-das9dx82) are dropped, with no error: keep events short and put bulk data in the step's output.
+- **A slow sink slows the step.** Every sink runs on the step's goroutine; a recorder write is bounded by its [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw) ([5 seconds](ds:block?id=rec-defaultwritetimeout-wbngg5vx) by default), a sink of your own by nothing. Hand slow work to a goroutine or a queue.
 - **Outside a driver there is no `Step`.** A handler called directly in a test gets events with a zero `StepInfo`, and the recorder records nothing for a context without one.
-- **Events are not logs.** `RecordEvent` does not write to `slog.Default()` or to the `CaptureTee` handler; log through your logger as well when the line must reach the app's log.
+- **Events are not logs.** `RecordEvent` does not write to `slog.Default()` or to the [`CaptureTee`](ds:block?id=mw-capturetee-zz3fu929) handler; log through your logger as well when the line must reach the app's log.
 
 ## Related
 
