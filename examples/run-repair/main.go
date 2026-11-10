@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"sync/atomic"
@@ -25,14 +24,14 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "run-repair:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	// snippet:client
 	c := memory.New(
 		memory.WithErrorHistory(10), // keep the newest 10 failed attempts per run; 0 turns it off
@@ -84,7 +83,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	defer c.Stop()
 
-	fmt.Fprintln(out, "-- error history")
+	fmt.Println("-- error history")
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "send-email"})
 	if err != nil {
 		return err
@@ -98,11 +97,11 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, e := range page.Runs[0].Errors { // oldest first
-		fmt.Fprintf(out, "  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
+		fmt.Printf("  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "-- force complete a failed run")
+	fmt.Println("-- force complete a failed run")
 	// snippet:complete
 	// The email went out by hand: record the run as done.
 	if err := c.ForceComplete(ctx, ref); err != nil {
@@ -113,9 +112,9 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "  send-email:", st)
+	fmt.Println("  send-email:", st)
 
-	fmt.Fprintln(out, "-- force fail a stuck run")
+	fmt.Println("-- force fail a stuck run")
 	stuck, err := c.Enqueue(ctx, workflow.Job{Workflow: "import-feed"})
 	if err != nil {
 		return err
@@ -135,11 +134,11 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	r := page.Runs[0]
-	fmt.Fprintf(out, "  import-feed: %s, %q, OnFailure ran %d times\n", r.Status, r.Error, onFailure.Load())
+	fmt.Printf("  import-feed: %s, %q, OnFailure ran %d times\n", r.Status, r.Error, onFailure.Load())
 
-	fmt.Fprintln(out, "-- a finished run cannot be forced")
+	fmt.Println("-- a finished run cannot be forced")
 	err = c.ForceFail(ctx, ref, "too late")
-	fmt.Fprintln(out, "  ErrWrongState:", errors.Is(err, workflow.ErrWrongState))
+	fmt.Println("  ErrWrongState:", errors.Is(err, workflow.ErrWrongState))
 	return nil
 }
 

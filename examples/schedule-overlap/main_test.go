@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: the
@@ -12,8 +13,8 @@ import (
 // ended, the triggered run carries the schedule's labels and the manual
 // mark, and the schedule list reports that trigger as its last fire.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- ticks
@@ -26,7 +27,7 @@ func TestRun(t *testing.T) {
 -- schedules
   crm-hourly overlap=skip last fire 10:05 run run-6 (succeeded), next 11:00
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

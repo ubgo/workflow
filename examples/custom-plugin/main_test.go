@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ubgo/workflow/examples/internal/capture"
+
 	"github.com/ubgo/workflow"
 	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/memory"
@@ -16,11 +18,11 @@ import (
 
 // TestRun runs the program and checks the lines the guides show.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
 	want := []string{
 		`no tenant: workflow: invalid spec: job for "invoice" has no "tenant" label`,
 		`step invoice/send attempt 1 tenant=acme: ok`,
@@ -28,7 +30,7 @@ func TestRun(t *testing.T) {
 		`second job for acme: workflow: duplicate idempotency key: unique key "acme/invoice" is held`,
 	}
 	if len(lines) != len(want) {
-		t.Fatalf("output =\n%s\nwant %d lines", out.String(), len(want))
+		t.Fatalf("output =\n%s\nwant %d lines", out, len(want))
 	}
 	for i, w := range want {
 		prefix, suffix, _ := strings.Cut(w, "?")
@@ -73,7 +75,7 @@ func TestKVUniqueOneWinner(t *testing.T) {
 
 // TestUseRefusesDuplicateNames checks the refusal the plugins guide names.
 func TestUseRefusesDuplicateNames(t *testing.T) {
-	log := &lineLog{out: &strings.Builder{}}
+	log := &lineLog{}
 	p := &tenancy{log: log, unique: kvUnique{kv: newMemKV(clock.Real{})}}
 	_, err := workflow.Use(memory.New(), p, p)
 	if !errors.Is(err, workflow.ErrDuplicatePlugin) {

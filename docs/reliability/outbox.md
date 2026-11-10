@@ -28,7 +28,11 @@ tx, err := db.BeginTx(ctx, nil)
 if err != nil {
 	return err
 }
-defer tx.Rollback() // a no-op once committed
+defer func() {
+	if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+		err = errors.Join(err, rbErr)
+	}
+}()
 if _, err := tx.ExecContext(ctx, "INSERT INTO orders (id, item) VALUES (1, 'book')"); err != nil {
 	return err
 }
@@ -83,7 +87,7 @@ relay, err := ob.NewRelay(target,
 	outbox.WithBackoff(workflow.Backoff{Initial: time.Minute, Factor: 2, Max: time.Hour}),
 	outbox.WithMaxAttempts(2), // dead after two failed enqueues; the default retries forever
 	outbox.WithOnDead(func(ctx context.Context, e outbox.DeadEntry, cause error) {
-		fmt.Fprintln(out, "dead:", e.Job.Workflow, "after", e.Attempts, "attempts:", cause)
+		fmt.Println("dead:", e.Job.Workflow, "after", e.Attempts, "attempts:", cause)
 	}))
 if err != nil {
 	return err
@@ -99,7 +103,7 @@ if err != nil {
 	return err
 }
 for _, e := range dead {
-	fmt.Fprintf(out, "listed: %s attempts=%d last error=%q\n", e.Job.Payload, e.Attempts, e.LastErr)
+	fmt.Printf("listed: %s attempts=%d last error=%q\n", e.Job.Payload, e.Attempts, e.LastErr)
 }
 down.Store(false) // the target is back
 for _, e := range dead {
@@ -117,7 +121,7 @@ The relay's duplicate protection is the key it sends with every enqueue, so `New
 <!-- snippet: examples/outbox/main.go#allow-duplicates -->
 ```go
 _, err := ob.NewRelay(noKeys)
-fmt.Fprintln(out, "refused without AllowDuplicates:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("refused without AllowDuplicates:", errors.Is(err, workflow.ErrUnsupported))
 relay, err := ob.NewRelay(noKeys, outbox.AllowDuplicates()) // a redelivered entry runs twice
 if err != nil {
 	return err

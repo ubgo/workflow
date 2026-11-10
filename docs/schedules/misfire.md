@@ -46,7 +46,7 @@ for _, name := range names {
 	for _, t := range policies[name].Due(hourly, last, now, time.UTC) {
 		ticks = append(ticks, t.Format("15:04"))
 	}
-	fmt.Fprintf(out, "  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
+	fmt.Printf("  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
 }
 ```
 

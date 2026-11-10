@@ -21,7 +21,7 @@ if err != nil {
 	return err
 }
 for _, info := range page.Runs {
-	fmt.Fprintf(out, "%s: %s, attempt %d at %s, last error %q\n",
+	fmt.Printf("%s: %s, attempt %d at %s, last error %q\n",
 		info.Workflow, info.Status, info.NextAttempt, info.NextAttemptAt.Sub(start), info.Error)
 }
 ```
@@ -43,7 +43,7 @@ if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "ship-order"}); err != nil {
 	return err
 }
 ev = <-ends
-fmt.Fprintf(out, "%s: %s, terminal %v, ErrDiscarded %v, ErrCancelled %v\n", ev.Workflow, ev.Status,
+fmt.Printf("%s: %s, terminal %v, ErrDiscarded %v, ErrCancelled %v\n", ev.Workflow, ev.Status,
 	ev.Status.IsTerminal(), errors.Is(ev.Err, workflow.ErrDiscarded), errors.Is(ev.Err, workflow.ErrCancelled))
 ```
 
@@ -65,7 +65,7 @@ if err != nil {
 	return err
 }
 for _, info := range dropped.Runs {
-	fmt.Fprintf(out, "admin discarded: %s, %q\n", info.Workflow, info.Error)
+	fmt.Printf("admin discarded: %s, %q\n", info.Workflow, info.Error)
 }
 ```
 
@@ -124,7 +124,7 @@ for _, discardedAs := range []workflow.Status{"", workflow.StatusSucceeded} {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "batch with DiscardedAs %q: %s ran; succeeded %d, failed %d, discarded %d\n",
+	fmt.Printf("batch with DiscardedAs %q: %s ran; succeeded %d, failed %d, discarded %d\n",
 		discardedAs, ran, p.Succeeded, p.Failed, p.Discarded)
 }
 ```

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -91,14 +90,13 @@ func (p *tenancy) RunFinishedObservers() []workflow.RunFinishedFunc {
 
 // snippet:end
 
-// lineLog collects lines from any goroutine and writes them in order.
+// lineLog prints lines from any goroutine, one whole line at a time.
 type lineLog struct {
-	mu  sync.Mutex
-	out io.Writer
+	mu sync.Mutex
 }
 
 func (l *lineLog) Printf(format string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	fmt.Fprintf(l.out, format+"\n", args...)
+	fmt.Printf(format+"\n", args...)
 }

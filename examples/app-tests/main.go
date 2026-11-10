@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "app-tests:", err)
 		os.Exit(1)
 	}
@@ -124,7 +123,7 @@ func startOn(ctx context.Context, c workflow.Client) error {
 
 // run is main without the process exit, so the test drives the same code:
 // the app on a Fake, then what the Fake recorded.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	fake := workflowtest.NewFake()
 	if err := startOn(ctx, fake); err != nil {
 		return err
@@ -150,19 +149,19 @@ func run(ctx context.Context, out io.Writer) error {
 		if !j.RunAt.IsZero() {
 			when = j.RunAt.Format(time.RFC3339)
 		}
-		fmt.Fprintf(out, "enqueued %s key=%q at %s\n", j.Workflow, j.IdempotencyKey, when)
+		fmt.Printf("enqueued %s key=%q at %s\n", j.Workflow, j.IdempotencyKey, when)
 	}
 	for _, ev := range fake.Signals() {
-		fmt.Fprintf(out, "signalled %s/%s\n", ev.Name, ev.Key)
+		fmt.Printf("signalled %s/%s\n", ev.Name, ev.Key)
 	}
-	fmt.Fprintln(out, "cancelled:", len(fake.Cancels()), "run(s)")
+	fmt.Println("cancelled:", len(fake.Cancels()), "run(s)")
 	for _, s := range fake.Schedules() {
-		fmt.Fprintf(out, "scheduled %s %q team=%s\n", s.Schedule.Workflow, s.Schedule.Cron, s.Schedule.Labels["team"])
+		fmt.Printf("scheduled %s %q team=%s\n", s.Schedule.Workflow, s.Schedule.Cron, s.Schedule.Labels["team"])
 	}
 	st, err := fake.Status(ctx, reminder)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "reminder status:", st)
+	fmt.Println("reminder status:", st)
 	return nil
 }

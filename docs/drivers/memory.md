@@ -51,8 +51,8 @@ The memory driver declares every capability but `CapDurable`, `CapEnqueueOnly` a
 <!-- snippet: examples/sqlite-worker/main.go#memory-caps -->
 ```go
 caps := c.Capabilities()
-fmt.Fprintln(out, "memory durable:", caps.Has(workflow.CapDurable))
-fmt.Fprintln(out, "memory cron:", caps.Has(workflow.CapCron))
+fmt.Println("memory durable:", caps.Has(workflow.CapDurable))
+fmt.Println("memory cron:", caps.Has(workflow.CapCron))
 ```
 
 How it behaves, from `memory/doc.go`:

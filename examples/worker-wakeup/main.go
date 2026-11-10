@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,7 +30,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "worker-wakeup:", err)
 		os.Exit(1)
 	}
@@ -71,12 +70,12 @@ func (b *localBus) Listen(ctx context.Context, channel string, wake func()) erro
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	db, dialect, notifier, prefix, cleanup, err := open(ctx)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
+	defer func() { err = errors.Join(err, cleanup()) }()
 
 	started := make(chan time.Time, 1)
 	wf := workflow.Workflow{Name: "welcome-email", Steps: []workflow.Step{{Name: "send", Run: func(context.Context, []byte) ([]byte, error) {
@@ -121,7 +120,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	select {
 	case s := <-started:
-		fmt.Fprintf(out, "started before the next poll (%s): %t\n", pollInterval, s.Sub(at) < pollInterval/2)
+		fmt.Printf("started before the next poll (%s): %t\n", pollInterval, s.Sub(at) < pollInterval/2)
 	case <-time.After(2 * pollInterval):
 		return errors.New("the job did not start")
 	}
@@ -130,7 +129,7 @@ func run(ctx context.Context, out io.Writer) error {
 
 // open returns Postgres with pgnotify when PG_DSN is set, else a SQLite
 // file with the in-process bus.
-func open(_ context.Context) (*sql.DB, sqlb.Dialect, sqlstore.Notifier, string, func(), error) {
+func open(_ context.Context) (*sql.DB, sqlb.Dialect, sqlstore.Notifier, string, func() error, error) {
 	if dsn := os.Getenv("PG_DSN"); dsn != "" {
 		db, err := driverpgx.Open(dsn)
 		if err != nil {
@@ -138,11 +137,11 @@ func open(_ context.Context) (*sql.DB, sqlb.Dialect, sqlstore.Notifier, string, 
 		}
 		// A fresh table prefix, dropped at the end.
 		prefix := "wakeup" + strconv.FormatInt(time.Now().UnixNano()%1e9, 36) + "_"
-		cleanup := func() {
+		cleanup := func() error {
 			if err := dropPrefix(context.Background(), db, prefix); err != nil {
 				fmt.Fprintln(os.Stderr, "worker-wakeup: drop tables:", err)
 			}
-			_ = db.Close()
+			return db.Close()
 		}
 		return db, sqlb.PostgresDialect{}, pgnotify.New(db), prefix, cleanup, nil
 	}
@@ -152,21 +151,20 @@ func open(_ context.Context) (*sql.DB, sqlb.Dialect, sqlstore.Notifier, string, 
 	}
 	db, err := driversqlite.Open(filepath.Join(dir, "jobs.db"))
 	if err != nil {
-		os.RemoveAll(dir)
-		return nil, nil, nil, "", nil, err
+		return nil, nil, nil, "", nil, errors.Join(err, os.RemoveAll(dir))
 	}
 	bus := &localBus{subs: map[string][]func(){}}
-	return db, sqlb.SQLiteDialect{}, bus, "wf_", func() { _ = db.Close(); os.RemoveAll(dir) }, nil
+	return db, sqlb.SQLiteDialect{}, bus, "wf_", func() error { return errors.Join(db.Close(), os.RemoveAll(dir)) }, nil
 }
 
 // dropPrefix drops every table under prefix in the current schema, so a
 // run against a shared Postgres leaves nothing behind.
-func dropPrefix(ctx context.Context, db *sql.DB, prefix string) error {
+func dropPrefix(ctx context.Context, db *sql.DB, prefix string) (err error) {
 	rows, err := db.QueryContext(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE $1`, prefix+"%")
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	var names []string
 	for rows.Next() {
 		var n string

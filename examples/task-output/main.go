@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,7 +28,7 @@ var start = time.Date(2026, 1, 5, 1, 0, 0, 0, time.UTC)
 const runTimeout = 10 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "task-output:", err)
 		os.Exit(1)
 	}
@@ -56,12 +55,12 @@ func report(night *int) workflow.Handler {
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "task-output-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	path := filepath.Join(dir, "nightly-report.log")
 	var mailbox strings.Builder
 	clk := clock.NewFake(start)
@@ -108,7 +107,7 @@ func run(ctx context.Context, out io.Writer) error {
 		clk.Advance(step) // to 02:00 on the next night
 		select {
 		case ev := <-ends:
-			fmt.Fprintf(out, "night %d: %s\n", i+1, ev.Status)
+			fmt.Printf("night %d: %s\n", i+1, ev.Status)
 		case <-time.After(runTimeout):
 			return fmt.Errorf("night %d did not finish within %s", i+1, runTimeout)
 		}
@@ -118,7 +117,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "--- %s\n%s", filepath.Base(path), b)
-	fmt.Fprintf(out, "--- mail\n%s", mailbox.String())
+	fmt.Printf("--- %s\n%s", filepath.Base(path), b)
+	fmt.Printf("--- mail\n%s", mailbox.String())
 	return nil
 }

@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: a
@@ -12,8 +13,8 @@ import (
 // listed and, once requeued, delivered; a target without idempotency keys
 // is refused unless AllowDuplicates, and then gets no entry-ID key.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- Write jobs inside your transaction
@@ -30,7 +31,7 @@ shipped {"order":4}
 refused without AllowDuplicates: true
 accepted: 1, idempotency key sent: ""
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

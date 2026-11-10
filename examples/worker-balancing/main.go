@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -29,14 +28,14 @@ var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 const loadPoll = time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -46,8 +45,8 @@ func run(ctx context.Context, out io.Writer) error {
 		{Queue: "imports", Depth: 40, Running: 4, Workers: 4, OldestWait: 9 * time.Second},
 	}
 	cfg := workflow.BalanceConfig{Total: 8} // eight workers to share; each queue keeps at least one
-	fmt.Fprintf(out, "by depth: %s\n", show(workflow.ByDepth(cfg).Balance(loads)))
-	fmt.Fprintf(out, "by wait:  %s\n", show(workflow.ByWait(cfg).Balance(loads)))
+	fmt.Printf("by depth: %s\n", show(workflow.ByDepth(cfg).Balance(loads)))
+	fmt.Printf("by wait:  %s\n", show(workflow.ByWait(cfg).Balance(loads)))
 	// snippet:end
 
 	// snippet:bounds
@@ -56,7 +55,7 @@ func run(ctx context.Context, out io.Writer) error {
 		Bounds:   map[string]workflow.QueueBounds{"emails": {Min: 3}, "imports": {Max: 6}},
 		MaxShift: 1, // move at most one worker per queue per round
 	}
-	fmt.Fprintf(out, "bounded:  %s\n", show(workflow.ByDepth(bounded).Balance(loads)))
+	fmt.Printf("bounded:  %s\n", show(workflow.ByDepth(bounded).Balance(loads)))
 	// snippet:end
 
 	// snippet:client
@@ -95,7 +94,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := waitRunning(ctx, c, "imports", 4); err != nil {
 		return err
 	}
-	if err := printLoads(ctx, out, c, "before"); err != nil {
+	if err := printLoads(ctx, c, "before"); err != nil {
 		return err
 	}
 
@@ -116,7 +115,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := waitRunning(ctx, c, "imports", 7); err != nil {
 		return err
 	}
-	return printLoads(ctx, out, c, "after one round")
+	return printLoads(ctx, c, "after one round")
 }
 
 // show prints a balancer's answer in queue order.
@@ -125,7 +124,7 @@ func show(m map[string]int) string {
 }
 
 // printLoads prints every queue's load.
-func printLoads(ctx context.Context, out io.Writer, c *memory.Client, when string) error {
+func printLoads(ctx context.Context, c *memory.Client, when string) error {
 	loads, err := c.QueueLoads(ctx)
 	if err != nil {
 		return err
@@ -134,7 +133,7 @@ func printLoads(ctx context.Context, out io.Writer, c *memory.Client, when strin
 	for _, l := range loads {
 		parts = append(parts, fmt.Sprintf("%s workers %d running %d waiting %d", l.Queue, l.Workers, l.Running, l.Depth))
 	}
-	fmt.Fprintf(out, "%s: %s\n", when, strings.Join(parts, "; "))
+	fmt.Printf("%s: %s\n", when, strings.Join(parts, "; "))
 	return nil
 }
 

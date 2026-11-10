@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -36,7 +35,7 @@ var (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "batch-tests:", err)
 		os.Exit(1)
 	}
@@ -171,7 +170,7 @@ func Register(c workflow.Client, resize func(context.Context, string) error, ste
 }
 
 // run is main without the process exit: the app on the memory driver.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
@@ -197,10 +196,10 @@ func run(ctx context.Context, out io.Writer) error {
 	if _, err := g.Upload(ctx, "ada", "a.png", "b.png"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "notified", <-notified)
+	fmt.Println("notified", <-notified)
 	if err := g.Publish(ctx, "summer"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "publish enqueued")
+	fmt.Println("publish enqueued")
 	return nil
 }

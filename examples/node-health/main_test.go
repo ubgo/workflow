@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // memoryOut is what the memory part prints: the probes before Start,
@@ -27,8 +28,8 @@ no HealthChecker: live=true ready=true check="the driver reports no health"
 // memory part runs; with it, a tick fired by the scheduler-only node runs
 // on the worker-only node and Nodes lists both with their modes.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := memoryOut + "REDIS_URL is not set: the scheduler and worker nodes are skipped\n"
@@ -38,7 +39,7 @@ node sched-1 mode=scheduler workers=0
 node worker-1 mode=worker workers=10
 `
 	}
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

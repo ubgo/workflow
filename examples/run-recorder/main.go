@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -36,8 +35,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "run-recorder:", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
-	if err := run(context.Background(), os.Stdout, filepath.Join(dir, "runs.db")); err != nil {
+	err = errors.Join(run(context.Background(), filepath.Join(dir, "runs.db")), os.RemoveAll(dir))
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "run-recorder:", err)
 		os.Exit(1)
 	}
@@ -74,14 +73,14 @@ func importOrders() workflow.Workflow {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer, path string) error {
+func run(ctx context.Context, path string) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:wire
 	store, err := sqlrecorder.New(db, sqlrecorder.SQLite) // the app's own *sql.DB
@@ -115,7 +114,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	// snippet:enqueue
 	payload := []byte(`{"shop":"s-1","card":{"number":"4111111111111111"}}`)
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "import-orders", Payload: payload})
-	fmt.Fprintln(out, "no source refused:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("no source refused:", errors.Is(err, workflow.ErrInvalid))
 
 	job := workflow.WithSource(workflow.Job{Workflow: "import-orders", Payload: payload}, "webhook", "delivery-42")
 	ref, err := c.Enqueue(ctx, job)
@@ -133,19 +132,19 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "run %s source=%s/%s outcome=%s (%s)\n", r.Status, r.Source, r.SourceRef, r.Outcome, r.OutcomeNote)
-	fmt.Fprintf(out, "input as stored: %s\n", r.Payload)
+	fmt.Printf("run %s source=%s/%s outcome=%s (%s)\n", r.Status, r.Source, r.SourceRef, r.Outcome, r.OutcomeNote)
+	fmt.Printf("input as stored: %s\n", r.Payload)
 	for _, s := range r.Steps {
-		fmt.Fprintf(out, "  step %s attempt %d %s output=%s\n", s.Step, s.Attempt, s.Status, s.Output)
+		fmt.Printf("  step %s attempt %d %s output=%s\n", s.Step, s.Attempt, s.Status, s.Output)
 		for _, e := range s.Events {
-			fmt.Fprintf(out, "    event %q %v\n", e.Message, e.Attrs)
+			fmt.Printf("    event %q %v\n", e.Message, e.Attrs)
 		}
 	}
 	page, err := store.Records(ctx, recorder.Query{Sources: []workflow.Source{"webhook"}, Outcomes: []workflow.Outcome{workflow.OutcomePartial}})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "webhook runs with a partial outcome:", len(page.Runs))
+	fmt.Println("webhook runs with a partial outcome:", len(page.Runs))
 	// snippet:end
 
 	// snippet:admin
@@ -154,7 +153,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "admin reads the recorder:", info.Status)
+	fmt.Println("admin reads the recorder:", info.Status)
 	// snippet:end
 
 	// snippet:reconcile
@@ -166,7 +165,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, rep.Finished, rep.Stale)
+	fmt.Printf("reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, rep.Finished, rep.Stale)
 	// snippet:end
 	return nil
 }

@@ -62,12 +62,12 @@ The error matches `workflow.ErrRecycle`, and `errors.As` gives the `*RecycleErro
 var rec *workflow.RecycleError
 switch {
 case errors.As(err, &rec):
-	fmt.Fprintf(out, "generation %d: recycled (%s), jobs done: %d\n", gen, rec.Reason, rec.Jobs)
+	fmt.Printf("generation %d: recycled (%s), jobs done: %d\n", gen, rec.Reason, rec.Jobs)
 	continue // a real worker exits 0 here and its supervisor starts a new process
 case err != nil:
 	return err
 }
-fmt.Fprintf(out, "generation %d: queue empty, jobs done: %d, exit\n", gen, done.Load()-before)
+fmt.Printf("generation %d: queue empty, jobs done: %d, exit\n", gen, done.Load()-before)
 ```
 
 ```text

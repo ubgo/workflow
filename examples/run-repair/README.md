@@ -39,7 +39,7 @@ if err != nil {
 	return err
 }
 for _, e := range page.Runs[0].Errors { // oldest first
-	fmt.Fprintf(out, "  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
+	fmt.Printf("  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
 }
 ```
 

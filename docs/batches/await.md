@@ -52,7 +52,7 @@ refs, err := batch.EnqueueMany(ctx, c, []workflow.Job{
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "started", len(refs), "runs")
+fmt.Println("started", len(refs), "runs")
 ```
 
 It picks the cheapest path the client offers: the client's own `EnqueueMany` when it implements `batch.ManyEnqueuer` (one transaction or one bulk request), else one `RunGroup` call on a `batch.GroupRunner` (the Hatchet driver) when no job has `RunAt` or an `IdempotencyKey`, else one `Enqueue` per job in order. On an error the refs it returns have a zero `RunRef` for each job that did not start, so the caller can retry exactly those.

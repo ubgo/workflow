@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -24,27 +23,27 @@ import (
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := drain(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := drain(ctx); err != nil {
 		return err
 	}
-	return stopWhenIdle(ctx, out)
+	return stopWhenIdle(ctx)
 }
 
-func drain(ctx context.Context, out io.Writer) error {
+func drain(ctx context.Context) error {
 	started, finish := make(chan struct{}), make(chan struct{})
 	c := memory.New()
 	err := c.Register(workflow.Workflow{Name: "resize-image", Steps: []workflow.Step{{Name: "resize", Run: func(context.Context, []byte) ([]byte, error) {
 		close(started)
 		<-finish // a long step; Drain lets it end on its own
-		fmt.Fprintln(out, "resize finished")
+		fmt.Println("resize finished")
 		return nil, nil
 	}}}})
 	if err != nil {
@@ -64,23 +63,23 @@ func drain(ctx context.Context, out io.Writer) error {
 	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if err := c.Drain(dctx); err != nil {
-		fmt.Fprintln(out, "some steps were cut off:", err)
+		fmt.Println("some steps were cut off:", err)
 	}
 	<-c.Done()
 	// snippet:end
-	fmt.Fprintln(out, "drained and stopped")
+	fmt.Println("drained and stopped")
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "resize-image"})
-	fmt.Fprintln(out, "enqueue after Drain:", err)
+	fmt.Println("enqueue after Drain:", err)
 	return nil
 }
 
-func stopWhenIdle(ctx context.Context, out io.Writer) error {
+func stopWhenIdle(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	// snippet:idle
 	c := memory.New(memory.WithClock(clk), memory.WithStopWhenIdle(time.Minute))
 	// snippet:end
 	err := c.Register(workflow.Workflow{Name: "backfill", Steps: []workflow.Step{{Name: "copy", Run: func(_ context.Context, in []byte) ([]byte, error) {
-		fmt.Fprintf(out, "backfill %s\n", in)
+		fmt.Printf("backfill %s\n", in)
 		return nil, nil
 	}}}})
 	if err != nil {
@@ -105,6 +104,6 @@ func stopWhenIdle(ctx context.Context, out io.Writer) error {
 	}
 	clk.Advance(time.Minute)
 	<-c.Done()
-	fmt.Fprintln(out, "idle for a minute: stopped")
+	fmt.Println("idle for a minute: stopped")
 	return nil
 }

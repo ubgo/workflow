@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guides show: a
 // release waits its own delay and counts as an attempt, and a unique lock
 // is held while the run waits and freed once its step starts.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- release while the API is in maintenance
@@ -30,7 +31,7 @@ first, runs in 5 minutes: accepted
 second, while the first waits: refused (ErrDuplicate)
 third, while the first runs: accepted
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

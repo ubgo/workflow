@@ -19,15 +19,15 @@ A `workflow.Middleware` is `func(next workflow.Handler) workflow.Handler`: it ge
 tag := func(name string) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
-			fmt.Fprintln(out, name, "before")
+			fmt.Println(name, "before")
 			res, err := next(ctx, in)
-			fmt.Fprintln(out, name, "after")
+			fmt.Println(name, "after")
 			return res, err
 		}
 	}
 }
 h := middleware.Chain(tag("a"), tag("b"))(func(context.Context, []byte) ([]byte, error) {
-	fmt.Fprintln(out, "handler")
+	fmt.Println("handler")
 	return nil, nil
 })
 _, err := h(ctx, nil)
@@ -82,7 +82,7 @@ var maintenance atomic.Bool // set by the app while the partner API is down
 inMaintenance := func(context.Context, []byte) bool { return maintenance.Load() }
 
 c := memory.New(memory.WithClock(clk), memory.WithMiddleware(
-	attempts(out), // outermost, so it sees each release as a failed attempt
+	attempts(), // outermost, so it sees each release as a failed attempt
 	middleware.Release(inMaintenance, 10*time.Minute),
 ))
 err := c.Register(workflow.Workflow{
@@ -117,7 +117,7 @@ st, err = waitDone(ctx, c, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "run: %s at %s\n", st, clk.Now().Format("15:04"))
+fmt.Printf("run: %s at %s\n", st, clk.Now().Format("15:04"))
 ```
 
 The `attempts` middleware in the example is outside `Release`, so it sees each release as a failed attempt; it tells a release from a failure with `errors.Is(err, middleware.ErrReleased)` and reads the delay with `workflow.RetryAfterDelay`, the same call the policy makes. A retry policy can match the sentinel too, for example a `NoRetryOn` that refuses to retry anything except a release.
@@ -130,7 +130,7 @@ The `attempts` middleware in the example is outside `Release`, so it sees each r
 
 <!-- snippet: examples/middleware-stack/main.go#throttle -->
 ```go
-circuits := &announcingCircuit{MemoryCircuit: middleware.NewMemoryCircuit(clk), out: out}
+circuits := &announcingCircuit{MemoryCircuit: middleware.NewMemoryCircuit(clk)}
 throttle, err := middleware.ThrottleErrors(middleware.ThrottleConfig{
 	Clock:     clk,
 	Store:     circuits, // nil means a MemoryCircuit of its own
@@ -149,7 +149,6 @@ The circuits live in a `CircuitStore`. The default, `middleware.NewMemoryCircuit
 ```go
 type announcingCircuit struct {
 	*middleware.MemoryCircuit
-	out io.Writer
 }
 
 func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middleware.CircuitPolicy) error {
@@ -161,7 +160,7 @@ func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middl
 		return err
 	}
 	if open {
-		fmt.Fprintf(a.out, "circuit %q open for %s\n", key, p.Cooldown)
+		fmt.Printf("circuit %q open for %s\n", key, p.Cooldown)
 	}
 	return nil
 }
@@ -182,7 +181,7 @@ A step records timeline events with [`workflow.RecordEvent`](ds:block?id=recorde
 printEvents := func(next workflow.Handler) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		sink := workflow.StepEventFunc(func(_ context.Context, e workflow.StepEvent) {
-			fmt.Fprintf(out, "event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
+			fmt.Printf("event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
 		})
 		return next(workflow.WithStepEventSink(ctx, sink), in)
 	}
@@ -194,7 +193,7 @@ printEvents := func(next workflow.Handler) workflow.Handler {
 // CaptureOutput is a sink too: events join the step's captured log.
 // The fake clock only makes the printed times fixed.
 stamp := clock.NewFake(time.Date(2026, 1, 5, 2, 0, 0, 0, time.UTC))
-capture := middleware.CaptureOutput(middleware.WriterSink(out), middleware.CaptureClock(stamp))
+capture := middleware.CaptureOutput(middleware.WriterSink(os.Stdout), middleware.CaptureClock(stamp))
 plain := memory.New(memory.WithMiddleware(printEvents, capture))
 ```
 

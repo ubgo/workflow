@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -38,12 +37,12 @@ var errBroken = errors.New("image is broken")
 
 func main() {
 	ctx := context.Background()
-	if err := run(ctx, os.Stdout); err != nil {
+	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "batches:", err)
 		os.Exit(1)
 	}
 	if os.Getenv(envToken) != "" {
-		if err := runHatchet(ctx, os.Stdout); err != nil {
+		if err := runHatchet(ctx); err != nil {
 			fmt.Fprintln(os.Stderr, "batches on Hatchet:", err)
 			os.Exit(1)
 		}
@@ -51,7 +50,7 @@ func main() {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -100,11 +99,11 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 		slices.Sort(got) // callbacks are separate runs and may finish in any order
 		for _, line := range got {
-			fmt.Fprintln(out, line)
+			fmt.Println(line)
 		}
 	}
 
-	fmt.Fprintln(out, "-- every job succeeds")
+	fmt.Println("-- every job succeeds")
 	// snippet:dispatch
 	id, err := m.Dispatch(ctx, batch.Batch{
 		Name: "thumbnails",
@@ -122,10 +121,10 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "dispatched", id)
+	fmt.Println("dispatched", id)
 	await(2)
 
-	fmt.Fprintln(out, "-- a job fails")
+	fmt.Println("-- a job fails")
 	_, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
 		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"slow"`)}, {Workflow: "resize", Payload: []byte(`"broken"`)}},
@@ -139,7 +138,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	await(2)
 
-	fmt.Fprintln(out, "-- the app cancels")
+	fmt.Println("-- the app cancels")
 	id, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
 		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"slow"`)}, {Workflow: "resize", Payload: []byte(`"slow"`)}},
@@ -155,14 +154,14 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "before cancel: %d of %d processed (%d%%)\n", p.Processed(), p.Total, p.Percent())
+	fmt.Printf("before cancel: %d of %d processed (%d%%)\n", p.Processed(), p.Total, p.Percent())
 	if err := m.Cancel(ctx, id); err != nil {
 		return err
 	}
 	// snippet:end
 	await(1)
 
-	fmt.Fprintln(out, "-- a Finally that failed to enqueue")
+	fmt.Println("-- a Finally that failed to enqueue")
 	id, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
 		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"a.png"`)}},
@@ -181,7 +180,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, pc := range st.Pending {
-		fmt.Fprintf(out, "pending %s: attempts=%d last error: %s\n", pc.Kind, pc.Attempts, pc.LastError)
+		fmt.Printf("pending %s: attempts=%d last error: %s\n", pc.Kind, pc.Attempts, pc.LastError)
 	}
 	clk.Advance(batch.DefaultCallbackRetry) // the failed attempt's claim ends
 	if err := m.RetryCallbacks(ctx); err != nil {
@@ -190,12 +189,12 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 	await(1)
 
-	fmt.Fprintln(out, "-- a reserved label")
+	fmt.Println("-- a reserved label")
 	// snippet:reserved
 	_, err = m.Dispatch(ctx, batch.Batch{
 		Jobs: []workflow.Job{{Workflow: "resize", Labels: map[string]string{batch.LabelBatch: "mine"}}},
 	})
-	fmt.Fprintln(out, "refused:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	return nil
 }

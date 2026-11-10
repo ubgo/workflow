@@ -49,7 +49,7 @@ if err := plain.Attach(ctx); err != nil {
 	return err
 }
 _, err = plain.Dispatch(ctx, batch.Batch{Jobs: jobs[:1]})
-fmt.Fprintln(out, "hatchet: coordinated batch without a LabelSource refused:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("hatchet: coordinated batch without a LabelSource refused:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 The coordinator trigger is idempotent per batch, so a resumed dispatch that calls `SpawnGroup` again gets the first coordinator back rather than a second one. A batch whose jobs' input and metadata exceed `hatchet.Config.BatchCoordinatorMaxInput` (default about 2 MiB, which fits the engine's default 4 MiB message) is declined with `ErrUnsupported` and started as bulk triggers instead. `BatchCoordinatorTimeout` bounds one attempt of the coordinator's task (and is how long a coordinator whose worker died waits before the engine retries it elsewhere); `BatchCoordinatorRetry` is its retry policy.

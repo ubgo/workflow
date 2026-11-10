@@ -43,7 +43,7 @@ if err != nil {
 	return err
 }
 if p := page.Runs[0].Progress; p != nil { // nil until a step reports
-	fmt.Fprintf(out, "  latest: %.0f%% %s\n", p.Percent, p.Message)
+	fmt.Printf("  latest: %.0f%% %s\n", p.Percent, p.Message)
 }
 ```
 

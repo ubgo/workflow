@@ -110,8 +110,9 @@ func known(name string) bool {
 	return false
 }
 
-func mainErr(ctx context.Context, args []string, out io.Writer) error {
-	o, err := parseFlags(args, out)
+func mainErr(ctx context.Context, args []string, w io.Writer) error {
+	out := &report{w: w}
+	o, err := parseFlags(args, w)
 	if err != nil {
 		return err
 	}
@@ -121,11 +122,11 @@ func mainErr(ctx context.Context, args []string, out io.Writer) error {
 	for _, name := range o.systems {
 		sys, skip := build(name, o, pg)
 		if skip != "" {
-			fmt.Fprintf(out, "\n%s: skipped (%s)\n", name, skip)
+			out.printf("\n%s: skipped (%s)\n", name, skip)
 			continue
 		}
 		load := waitForLoad(ctx, out, o)
-		fmt.Fprintf(out, "\n%s: running (load %.2f)\n", name, load)
+		out.printf("\n%s: running (load %.2f)\n", name, load)
 		r := run(ctx, name, sys, o.cfg)
 		// Each row as soon as it exists, so a later system that hangs or
 		// is interrupted does not lose the earlier numbers.
@@ -136,7 +137,7 @@ func mainErr(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 	printResults(out, results)
-	return nil
+	return out.err
 }
 
 // build returns the system for name, or why it is skipped.
@@ -167,7 +168,7 @@ func build(name string, o options, pg *pgServer) (system, string) {
 
 // waitForLoad waits while the 1-minute load average is above o.maxLoad,
 // up to o.loadWait, and returns the load it starts the system at.
-func waitForLoad(ctx context.Context, out io.Writer, o options) float64 {
+func waitForLoad(ctx context.Context, out *report, o options) float64 {
 	deadline := time.Now().Add(o.loadWait)
 	for {
 		load, err := loadAvg()
@@ -175,10 +176,10 @@ func waitForLoad(ctx context.Context, out io.Writer, o options) float64 {
 			return load
 		}
 		if time.Now().After(deadline) {
-			fmt.Fprintf(out, "load %.2f is still above %.0f after %s: running anyway\n", load, o.maxLoad, o.loadWait)
+			out.printf("load %.2f is still above %.0f after %s: running anyway\n", load, o.maxLoad, o.loadWait)
 			return load
 		}
-		fmt.Fprintf(out, "load %.2f is above %.0f: waiting\n", load, o.maxLoad)
+		out.printf("load %.2f is above %.0f: waiting\n", load, o.maxLoad)
 		select {
 		case <-ctx.Done():
 			return load
@@ -214,9 +215,9 @@ func sysctl(name string) (string, error) {
 
 // printEnv prints what a reader needs to judge the numbers: machine, OS,
 // Go, library and server versions, load, and the workload.
-func printEnv(ctx context.Context, out io.Writer, o options) {
-	fmt.Fprintln(out, "# ubgo/workflow bench")
-	fmt.Fprintln(out, "date:", time.Now().UTC().Format(time.RFC3339))
+func printEnv(ctx context.Context, out *report, o options) {
+	out.println("# ubgo/workflow bench")
+	out.println("date:", time.Now().UTC().Format(time.RFC3339))
 	cpu, _ := sysctl("machdep.cpu.brand_string")
 	mem, _ := sysctl("hw.memsize")
 	memGiB := ""
@@ -224,10 +225,10 @@ func printEnv(ctx context.Context, out io.Writer, o options) {
 		memGiB = fmt.Sprintf(", %d GiB", n>>30)
 	}
 	osver, _ := exec.Command("sw_vers", "-productVersion").Output()
-	fmt.Fprintf(out, "machine: %s, %d CPUs%s, %s/%s %s\n", cpu, runtime.NumCPU(), memGiB, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(string(osver)))
-	fmt.Fprintln(out, "go:", runtime.Version())
+	out.printf("machine: %s, %d CPUs%s, %s/%s %s\n", cpu, runtime.NumCPU(), memGiB, runtime.GOOS, runtime.GOARCH, strings.TrimSpace(string(osver)))
+	out.println("go:", runtime.Version())
 	if load, err := loadAvg(); err == nil {
-		fmt.Fprintf(out, "load (1 min) at start: %.2f\n", load)
+		out.printf("load (1 min) at start: %.2f\n", load)
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		for _, d := range bi.Deps {
@@ -236,13 +237,13 @@ func printEnv(ctx context.Context, out io.Writer, o options) {
 				if d.Replace != nil {
 					v = "working tree (" + d.Replace.Path + ")"
 				}
-				fmt.Fprintf(out, "lib: %s %s\n", d.Path, v)
+				out.printf("lib: %s %s\n", d.Path, v)
 			}
 		}
 	}
 	if o.pgDSN != "" {
 		if v, err := (&pgServer{admin: o.pgDSN}).version(ctx); err == nil {
-			fmt.Fprintln(out, "postgres server:", v)
+			out.println("postgres server:", v)
 		}
 	}
 	if o.redis != "" {
@@ -250,21 +251,23 @@ func printEnv(ctx context.Context, out io.Writer, o options) {
 		if info, err := rdb.Info(ctx, "server").Result(); err == nil {
 			for line := range strings.SplitSeq(info, "\n") {
 				if v, ok := strings.CutPrefix(strings.TrimSpace(line), "redis_version:"); ok {
-					fmt.Fprintln(out, "redis server:", v)
+					out.println("redis server:", v)
 				}
 			}
 		}
-		rdb.Close()
+		if err := rdb.Close(); err != nil {
+			out.println("redis close:", err)
+		}
 	}
 	c := o.cfg
 	producer := "the worker's own client"
 	if c.Separate {
 		producer = "a separate worker-less client"
 	}
-	fmt.Fprintf(out, "workload: %d jobs, concurrency %d, payload %d B, warm-up %d, %d latency probes after %s-%s idle pauses, enqueued through %s\n",
+	out.printf("workload: %d jobs, concurrency %d, payload %d B, warm-up %d, %d latency probes after %s-%s idle pauses, enqueued through %s\n",
 		c.Jobs, c.Concurrency, c.PayloadSize, c.Warmup, c.LatSamples, c.LatGapMin, c.LatGapMin+c.LatGapSpan, producer)
 	if o.pgPool > 0 {
-		fmt.Fprintf(out, "sqlstore Postgres pool: %d connections\n", o.pgPool)
+		out.printf("sqlstore Postgres pool: %d connections\n", o.pgPool)
 	}
 }
 
@@ -283,29 +286,49 @@ func interesting(path string) bool {
 }
 
 // printResults prints one Markdown table row per system.
-func printResults(out io.Writer, rs []result) {
-	fmt.Fprintf(out, "\n| System | Enqueue jobs/s | End-to-end jobs/s | Pickup p50 | p95 | p99 | max | Duplicates |\n")
-	fmt.Fprintf(out, "|---|---:|---:|---:|---:|---:|---:|---:|\n")
+func printResults(out *report, rs []result) {
+	out.printf("\n| System | Enqueue jobs/s | End-to-end jobs/s | Pickup p50 | p95 | p99 | max | Duplicates |\n")
+	out.printf("|---|---:|---:|---:|---:|---:|---:|---:|\n")
 	for _, r := range rs {
 		printRow(out, r)
 	}
 }
 
 // printRow prints one system's Markdown table row.
-func printRow(out io.Writer, r result) {
+func printRow(out *report, r result) {
 	switch {
 	case errors.Is(r.Err, errNoProducer):
-		fmt.Fprintf(out, "| %s | n/a: %v | | | | | | |\n", r.System, r.Err)
+		out.printf("| %s | n/a: %v | | | | | | |\n", r.System, r.Err)
 	case r.Err != nil:
 		// One table row: a joined error's lines become "; ".
 		msg := strings.ReplaceAll(r.Err.Error(), "\n", "; ")
-		fmt.Fprintf(out, "| %s | failed: %s | | | | | | |\n", r.System, msg)
+		out.printf("| %s | failed: %s | | | | | | |\n", r.System, msg)
 	default:
-		fmt.Fprintf(out, "| %s | %.0f | %.0f | %s | %s | %s | %s | %d |\n",
+		out.printf("| %s | %.0f | %.0f | %s | %s | %s | %s | %d |\n",
 			r.System, r.EnqueuePerS, r.E2EPerS, ms(r.P50), ms(r.P95), ms(r.P99), ms(r.Max), r.Dups)
 	}
 	if r.CleanupErr != nil {
-		fmt.Fprintf(out, "%s: cleanup failed, check for leftovers: %s\n", r.System, strings.ReplaceAll(r.CleanupErr.Error(), "\n", "; "))
+		out.printf("%s: cleanup failed, check for leftovers: %s\n", r.System, strings.ReplaceAll(r.CleanupErr.Error(), "\n", "; "))
+	}
+}
+
+// report prints the harness output and keeps the first write error, which
+// mainErr returns: a closed stdout fails the run instead of silently losing
+// the results table.
+type report struct {
+	w   io.Writer
+	err error
+}
+
+func (r *report) printf(format string, a ...any) {
+	if r.err == nil {
+		_, r.err = fmt.Fprintf(r.w, format, a...)
+	}
+}
+
+func (r *report) println(a ...any) {
+	if r.err == nil {
+		_, r.err = fmt.Fprintln(r.w, a...)
 	}
 }
 

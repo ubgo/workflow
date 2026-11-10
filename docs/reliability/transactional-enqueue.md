@@ -20,7 +20,11 @@ tx, err := db.BeginTx(ctx, nil)
 if err != nil {
 	return err
 }
-defer tx.Rollback() // a no-op once committed
+defer func() {
+	if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+		err = errors.Join(err, rbErr)
+	}
+}()
 if _, err := tx.ExecContext(ctx, "INSERT INTO orders (id, item) VALUES (1, 'book')"); err != nil {
 	return err
 }
@@ -59,7 +63,7 @@ if err := tx.Rollback(); err != nil { // the app decides not to commit
 	return err
 }
 _, err = c.Status(ctx, ref)
-fmt.Fprintln(out, "run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
 ```
 
 Idempotency keys follow the workflow's policy, as for `Enqueue`. A key held by an unfinished run, committed or written earlier in the same transaction, returns that run's `RunRef` and writes nothing. The keyed insert runs under a savepoint, so a duplicate key never aborts the caller's transaction, which stays usable for the app's next write:

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -25,7 +24,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "flow-children:", err)
 		os.Exit(1)
 	}
@@ -35,7 +34,7 @@ func main() {
 var await = workflow.AwaitOptions{Poll: 2 * time.Millisecond}
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -61,10 +60,10 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
-	if err := spawn(ctx, c, out, &notified); err != nil {
+	if err := spawn(ctx, c, &notified); err != nil {
 		return err
 	}
-	return awaitChildren(ctx, c, out)
+	return awaitChildren(ctx, c)
 }
 
 // resize is the child workflow's step: it fails for a file named bad.png.
@@ -97,7 +96,7 @@ func signupWorkflow(c workflow.Client) workflow.Workflow {
 	}}}}
 }
 
-func spawn(ctx context.Context, c workflow.Client, out io.Writer, notified *atomic.Int32) error {
+func spawn(ctx context.Context, c workflow.Client, notified *atomic.Int32) error {
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "signup"})
 	if err != nil {
 		return err
@@ -106,15 +105,15 @@ func spawn(ctx context.Context, c workflow.Client, out io.Writer, notified *atom
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "spawn:")
-	fmt.Fprintf(out, "  parent finished, children started: %s\n", res)
+	fmt.Println("spawn:")
+	fmt.Printf("  parent finished, children started: %s\n", res)
 	// snippet:children
 	page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Workflow: "notify"})
 	if err != nil {
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "  child of %s, parent run matches: %v\n",
+		fmt.Printf("  child of %s, parent run matches: %v\n",
 			r.Labels[workflow.LabelParentStep], r.Labels[workflow.LabelParentRun] == ref.RunID.String())
 	}
 	// snippet:end
@@ -123,7 +122,7 @@ func spawn(ctx context.Context, c workflow.Client, out io.Writer, notified *atom
 			return err
 		}
 	}
-	fmt.Fprintf(out, "  notifications sent: %d\n", notified.Load())
+	fmt.Printf("  notifications sent: %d\n", notified.Load())
 	return nil
 }
 
@@ -155,8 +154,8 @@ func albumWorkflow(c workflow.Client) workflow.Workflow {
 	}}}}
 }
 
-func awaitChildren(ctx context.Context, c workflow.Client, out io.Writer) error {
-	fmt.Fprintln(out, "await children:")
+func awaitChildren(ctx context.Context, c workflow.Client) error {
+	fmt.Println("await children:")
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "album", Payload: []byte(`["a.png","b.png","c.png"]`)})
 	if err != nil {
 		return err
@@ -165,12 +164,12 @@ func awaitChildren(ctx context.Context, c workflow.Client, out io.Writer) error 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  results in job order: %s\n", res)
+	fmt.Printf("  results in job order: %s\n", res)
 	page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  parent step attempts spent: %d\n", page.Runs[0].Attempts)
+	fmt.Printf("  parent step attempts spent: %d\n", page.Runs[0].Attempts)
 
 	// snippet:failed
 	ref, err = c.Enqueue(ctx, workflow.Job{Workflow: "album", Payload: []byte(`["a.png","bad.png"]`)})
@@ -180,8 +179,8 @@ func awaitChildren(ctx context.Context, c workflow.Client, out io.Writer) error 
 	_, err = workflow.AwaitResult(ctx, c, ref, await)
 	var failed *workflow.RunFailedError
 	if errors.As(err, &failed) {
-		fmt.Fprintf(out, "  a failed child fails the parent: %s\n", failed.Status)
-		fmt.Fprintf(out, "  parent error names the child: %v\n", strings.Contains(failed.Err, `await child "resize" #1`))
+		fmt.Printf("  a failed child fails the parent: %s\n", failed.Status)
+		fmt.Printf("  parent error names the child: %v\n", strings.Contains(failed.Err, `await child "resize" #1`))
 	}
 	// snippet:end
 	if failed == nil {

@@ -76,7 +76,7 @@ big := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repe
 _, err = app.Enqueue(ctx, big)
 var tooBig *workflow.PayloadTooLargeError
 if errors.As(err, &tooBig) {
-	fmt.Fprintf(out, "  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
+	fmt.Printf("  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
 }
 ```
 
@@ -94,7 +94,7 @@ Code that sizes its work against the real number (a batch splitter, the claim ch
 <!-- snippet: examples/typed-payloads/main.go#limiter -->
 ```go
 if l, ok := any(c).(workflow.PayloadLimiter); ok {
-	fmt.Fprintf(out, "  driver limit: %d bytes\n", l.PayloadLimit())
+	fmt.Printf("  driver limit: %d bytes\n", l.PayloadLimit())
 }
 ```
 

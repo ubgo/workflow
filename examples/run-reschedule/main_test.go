@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks its whole output: delayed runs due in the next hour, one moved by Reschedule, a finished run refused, and one step withdrawn with and without a fallback.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `due in the next hour:
@@ -26,7 +27,7 @@ cancel one step:
   sync-feed failed, ErrStepCancelled true
   cancel it again: ErrWrongState true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

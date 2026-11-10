@@ -125,7 +125,7 @@ var cp workflow.ChunkProgress
 if err := json.Unmarshal(p.Data, &cp); err != nil {
 	return err
 }
-fmt.Fprintf(out, "  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
+fmt.Printf("  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
 ```
 
 The step asked for progress, so a driver that keeps none is not silently ignored: the first report's `UnsupportedError` fails the step, marked permanent. The memory, SQL and Redis drivers keep progress; Hatchet does not.

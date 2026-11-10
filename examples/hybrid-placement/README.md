@@ -51,7 +51,7 @@ page, err := c.Runs(ctx, workflow.RunQuery{Workflow: "nightly-report"}) // run q
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "runs on the jobs client:", len(page.Runs))
+fmt.Println("runs on the jobs client:", len(page.Runs))
 ```
 
 What the split refuses:
@@ -63,9 +63,9 @@ err = c.Register(workflow.Workflow{
 	CronOverlap: workflow.OverlapSkip, // the scheduler would see only its forwarder runs
 	Steps:       []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 })
-fmt.Fprintln(out, "CronOverlap refused:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("CronOverlap refused:", errors.Is(err, workflow.ErrUnsupported))
 _, err = c.TriggerSchedule(ctx, "cron:nightly-report:0")
-fmt.Fprintln(out, "TriggerSchedule refused:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("TriggerSchedule refused:", errors.Is(err, workflow.ErrUnsupported))
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

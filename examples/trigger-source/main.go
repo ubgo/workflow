@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -33,14 +32,14 @@ var start = time.Date(2026, 1, 5, 1, 0, 0, 0, time.UTC)
 const runTimeout = 10 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "trigger-source:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -73,7 +72,7 @@ func run(ctx context.Context, out io.Writer) error {
 	wait := func(what string) error {
 		select {
 		case s := <-seen:
-			fmt.Fprintf(out, "%s: %s\n", what, s)
+			fmt.Printf("%s: %s\n", what, s)
 			return nil
 		case <-time.After(runTimeout):
 			return fmt.Errorf("%s: no run within %s", what, runTimeout)
@@ -82,10 +81,10 @@ func run(ctx context.Context, out io.Writer) error {
 
 	// snippet:enqueue
 	_, err := c.Enqueue(ctx, workflow.Job{Workflow: "nightly-report"})
-	fmt.Fprintln(out, "no source:", err)
+	fmt.Println("no source:", err)
 
 	_, err = c.Enqueue(ctx, workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webook", ""))
-	fmt.Fprintln(out, "typo:", err)
+	fmt.Println("typo:", err)
 
 	job := workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webhook", "delivery-42")
 	if _, err := c.Enqueue(ctx, job); err != nil {
@@ -111,8 +110,8 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 
 	// snippet:validate
-	fmt.Fprintln(out, "validate:", workflow.ValidateSource("Slack"))
-	fmt.Fprintln(out, "library sources:", workflow.LibrarySources())
+	fmt.Println("validate:", workflow.ValidateSource("Slack"))
+	fmt.Println("library sources:", workflow.LibrarySources())
 	// snippet:end
 	if !errors.Is(workflow.ValidateSource("Slack"), workflow.ErrInvalid) {
 		return errors.New("ValidateSource does not wrap ErrInvalid")

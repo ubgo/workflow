@@ -128,7 +128,7 @@ Your own sources are any name that passes [`workflow.ValidateSource`](ds:block?i
 ```go
 payload := []byte(`{"shop":"s-1","card":{"number":"4111111111111111"}}`)
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "import-orders", Payload: payload})
-fmt.Fprintln(out, "no source refused:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("no source refused:", errors.Is(err, workflow.ErrInvalid))
 
 job := workflow.WithSource(workflow.Job{Workflow: "import-orders", Payload: payload}, "webhook", "delivery-42")
 ref, err := c.Enqueue(ctx, job)
@@ -170,19 +170,19 @@ r, err := store.Run(ctx, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "run %s source=%s/%s outcome=%s (%s)\n", r.Status, r.Source, r.SourceRef, r.Outcome, r.OutcomeNote)
-fmt.Fprintf(out, "input as stored: %s\n", r.Payload)
+fmt.Printf("run %s source=%s/%s outcome=%s (%s)\n", r.Status, r.Source, r.SourceRef, r.Outcome, r.OutcomeNote)
+fmt.Printf("input as stored: %s\n", r.Payload)
 for _, s := range r.Steps {
-	fmt.Fprintf(out, "  step %s attempt %d %s output=%s\n", s.Step, s.Attempt, s.Status, s.Output)
+	fmt.Printf("  step %s attempt %d %s output=%s\n", s.Step, s.Attempt, s.Status, s.Output)
 	for _, e := range s.Events {
-		fmt.Fprintf(out, "    event %q %v\n", e.Message, e.Attrs)
+		fmt.Printf("    event %q %v\n", e.Message, e.Attrs)
 	}
 }
 page, err := store.Records(ctx, recorder.Query{Sources: []workflow.Source{"webhook"}, Outcomes: []workflow.Outcome{workflow.OutcomePartial}})
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "webhook runs with a partial outcome:", len(page.Runs))
+fmt.Println("webhook runs with a partial outcome:", len(page.Runs))
 ```
 
 The admin API reads the recorder when you give it one: listings, run detail, failures and queue stats come from the store, while actions (retry, cancel, delete, force, the bulk ones) still go to the client, which owns the runs. A run the store does not hold is looked up on the client:
@@ -194,7 +194,7 @@ info, err := a.Run(ctx, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "admin reads the recorder:", info.Status)
+fmt.Println("admin reads the recorder:", info.Status)
 ```
 
 ## Try it
@@ -258,7 +258,7 @@ rep, err := rc.Pass(ctx) // or go rc.Run(ctx) next to the client
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, rep.Finished, rep.Stale)
+fmt.Printf("reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, rep.Finished, rep.Stale)
 ```
 
 - **Check.** Each pass compares [a batch](ds:block?id=rec-defaultreconcilebatch-6zk3gwwh) of unfinished records (least recently checked first) with the client. A run the client reports terminal is finished on the record; a run the client still reports unfinished takes the client's status, and is flagged `Stale` when nothing was recorded for it for [`StaleAfter`](ds:block?id=rec-withstaleafter-94d6u87k); a run the client does not know is flagged `Stale`. Nothing is ever cancelled: `Stale` is for an operator, and any later write for the run clears it.

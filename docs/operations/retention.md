@@ -54,7 +54,7 @@ res, err := c.Prune(ctx)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "now: deleted %d, held undelivered %d, idempotency %d, batch %d\n",
+fmt.Printf("now: deleted %d, held undelivered %d, idempotency %d, batch %d\n",
 	res.Deleted, res.HeldUndelivered, res.HeldIdempotency, res.HeldBatch)
 ```
 

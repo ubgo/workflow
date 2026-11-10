@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // want is the program's whole output, the one its README and guides show.
@@ -18,11 +19,11 @@ library sources: [schedule schedule-manual child batch event external]
 
 // TestRun runs the program and checks every line it prints.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

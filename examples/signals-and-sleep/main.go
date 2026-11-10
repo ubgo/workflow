@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -54,14 +53,14 @@ type quoteIn struct {
 // snippet:end
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "signals-and-sleep:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	lines := make(chan string, 16)
 	finished := make(chan workflow.RunEvent, 16)
@@ -190,7 +189,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("run %s never reached %s", ref.RunID, want)
 	}
 
-	fmt.Fprintln(out, "wait and sleep:")
+	fmt.Println("wait and sleep:")
 	// snippet:enqueue-orders
 	refs := map[string]workflow.RunRef{}
 	for _, id := range []string{"A-1", "A-2"} {
@@ -210,7 +209,7 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 	}
-	fmt.Fprintf(out, "  both orders %s for payment\n", status(refs["A-1"]))
+	fmt.Printf("  both orders %s for payment\n", status(refs["A-1"]))
 
 	// snippet:signal
 	err := c.Signal(ctx, workflow.Event{
@@ -225,11 +224,11 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil { // A-2 is in its 24h cool-off
 		return err
 	}
-	fmt.Fprintf(out, "  paid A-2 at %s: A-2 %s (sleeping), A-1 %s\n", clk.Now().Format(layout), status(refs["A-2"]), status(refs["A-1"]))
+	fmt.Printf("  paid A-2 at %s: A-2 %s (sleeping), A-1 %s\n", clk.Now().Format(layout), status(refs["A-2"]), status(refs["A-1"]))
 	clk.Advance(24 * time.Hour)
-	fmt.Fprintln(out, " ", <-lines)
+	fmt.Println(" ", <-lines)
 	<-finished
-	fmt.Fprintf(out, "  A-2 %s, A-1 still %s\n", status(refs["A-2"]), status(refs["A-1"]))
+	fmt.Printf("  A-2 %s, A-1 still %s\n", status(refs["A-2"]), status(refs["A-1"]))
 
 	if err := c.Signal(ctx, workflow.Event{Name: "payment.succeeded", Key: "A-1", Payload: []byte(`{"Order":"A-1","Paid":40}`)}); err != nil {
 		return err
@@ -238,10 +237,10 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	clk.Advance(24 * time.Hour)
-	fmt.Fprintln(out, " ", <-lines)
+	fmt.Println(" ", <-lines)
 	<-finished
 
-	fmt.Fprintln(out, "give up after a timeout:")
+	fmt.Println("give up after a timeout:")
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "approval", Payload: []byte(`"expense 77"`)}); err != nil {
 		return err
 	}
@@ -249,18 +248,18 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	clk.Advance(72 * time.Hour)
-	fmt.Fprintln(out, " ", <-lines)
+	fmt.Println(" ", <-lines)
 	ev := <-finished
-	fmt.Fprintf(out, "  run %s, deadline exceeded %t\n", ev.Status, errors.Is(ev.Err, context.DeadlineExceeded))
+	fmt.Printf("  run %s, deadline exceeded %t\n", ev.Status, errors.Is(ev.Err, context.DeadlineExceeded))
 
-	fmt.Fprintln(out, "steps that depend on other steps:")
+	fmt.Println("steps that depend on other steps:")
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "quote", Payload: []byte(`"sku-9"`)}); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, " ", <-lines)
+	fmt.Println(" ", <-lines)
 	<-finished
 
-	fmt.Fprintln(out, "step timeout:")
+	fmt.Println("step timeout:")
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "export"}); err != nil {
 		return err
 	}
@@ -269,9 +268,9 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	clk.Advance(30 * time.Second)
 	ev = <-finished
-	fmt.Fprintf(out, "  run %s: %v\n", ev.Status, ev.Err)
+	fmt.Printf("  run %s: %v\n", ev.Status, ev.Err)
 
-	return refusals(ctx, out)
+	return refusals(ctx)
 }
 
 // refusals shows the per-run key form each driver refuses: the memory
@@ -279,8 +278,8 @@ func run(ctx context.Context, out io.Writer) error {
 // Hatchet driver cannot evaluate an expression to a key either and
 // refuses it at Register (it connects only at Start, so this runs
 // without a server).
-func refusals(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "refusals:")
+func refusals(ctx context.Context) error {
+	fmt.Println("refusals:")
 	// snippet:refusal
 	byExpr := workflow.Workflow{
 		Name: "order",
@@ -293,9 +292,9 @@ func refusals(ctx context.Context, out io.Writer) error {
 	if err := m.Register(byExpr); err != nil { // accepted here; Start validates the key
 		return err
 	}
-	fmt.Fprintln(out, "  memory:", m.Start(ctx))
+	fmt.Println("  memory:", m.Start(ctx))
 	m.Stop()
-	fmt.Fprintln(out, "  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
+	fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
 	// snippet:end
 	return nil
 }

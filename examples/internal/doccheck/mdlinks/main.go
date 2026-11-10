@@ -112,7 +112,9 @@ func (c *checker) run(w io.Writer, paths []string) (bad int, err error) {
 		for _, l := range links {
 			if msg := c.resolve(f, l.target); msg != "" {
 				bad++
-				fmt.Fprintf(w, "%s:%d: %s: %s\n", f, l.line, l.target, msg)
+				if _, err := fmt.Fprintf(w, "%s:%d: %s: %s\n", f, l.line, l.target, msg); err != nil {
+					return bad, err
+				}
 			}
 		}
 	}

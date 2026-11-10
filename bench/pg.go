@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/url"
 
@@ -44,12 +45,12 @@ func (p *pgServer) drop(ctx context.Context, name string) error {
 	return p.exec(ctx, `DROP DATABASE IF EXISTS "`+name+`" WITH (FORCE)`)
 }
 
-func (p *pgServer) exec(ctx context.Context, stmt string) error {
+func (p *pgServer) exec(ctx context.Context, stmt string) (err error) {
 	db, err := driverpgx.Open(p.admin)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	if _, err := db.ExecContext(ctx, stmt); err != nil {
 		return fmt.Errorf("%s: %w", stmt, err)
 	}
@@ -57,12 +58,12 @@ func (p *pgServer) exec(ctx context.Context, stmt string) error {
 }
 
 // version is the server's version string.
-func (p *pgServer) version(ctx context.Context) (string, error) {
+func (p *pgServer) version(ctx context.Context) (_ string, err error) {
 	db, err := driverpgx.Open(p.admin)
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	var v string
 	err = db.QueryRowContext(ctx, `SHOW server_version`).Scan(&v)
 	return v, err

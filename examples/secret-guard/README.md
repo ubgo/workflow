@@ -37,8 +37,8 @@ _, err = c.Enqueue(ctx, workflow.Job{
 	Workflow: "sync-shop",
 	Payload:  []byte(`{"shop":"acme","api_key":"shpat_live_value","note":"-----BEGIN RSA PRIVATE KEY-----"}`),
 })
-fmt.Fprintln(out, " ", err)
-fmt.Fprintln(out, "  ErrSecretInPayload:", errors.Is(err, workflow.ErrSecretInPayload), "ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println(" ", err)
+fmt.Println("  ErrSecretInPayload:", errors.Is(err, workflow.ErrSecretInPayload), "ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 The payload names the secret:
@@ -87,7 +87,7 @@ d := workflow.NewSecretDetector(workflow.SecretRules{
 	AllowRules: []string{"jwt"},        // this app passes signed links
 })
 for _, f := range d.Detect(workflow.Job{Payload: []byte(`{"page_token":"p2","password":"hunter2"}`)}) {
-	fmt.Fprintf(out, "  %s (%s)\n", f.Where, f.Rule)
+	fmt.Printf("  %s (%s)\n", f.Where, f.Rule)
 }
 ```
 

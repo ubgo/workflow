@@ -17,7 +17,7 @@ A `workflow.EnqueueMiddleware` is `func(next workflow.EnqueueFunc) workflow.Enqu
 audit := func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 		ref, err := next(ctx, job)
-		fmt.Fprintf(out, "enqueue %s tier=%q queue=%q err=%v\n", job.Workflow, job.Labels["tier"], job.Labels["queue"], err)
+		fmt.Printf("enqueue %s tier=%q queue=%q err=%v\n", job.Workflow, job.Labels["tier"], job.Labels["queue"], err)
 		return ref, err
 	}
 }
@@ -44,7 +44,7 @@ Because `Route` comes first, `audit` sees the `queue` label it added; because `U
 <!-- snippet: examples/middleware-stack/main.go#duplicate -->
 ```go
 _, err := client.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[string]string{"order": "o-7"}})
-fmt.Fprintln(out, "same order again:", errors.Is(err, workflow.ErrDuplicate))
+fmt.Println("same order again:", errors.Is(err, workflow.ErrDuplicate))
 ```
 
 The stock enqueue middleware: `Route` (below), [`RequireSource`](ds:block?id=mw-requiresource-3tsntxp2) ([below](#require-a-trigger-source)), `Unique` and `UniqueUntilFinished` ([unique jobs](../reliability/unique-jobs.md)), `Debounce` ([debounce](../reliability/debounce.md)), `EncodeEnqueue` and `WithCodec` ([payload codecs](codecs.md)), `ClaimCheck.Enqueue` ([claim check](../reliability/claim-check.md)), and the OpenTelemetry `Instrumentation.Enqueue` ([OpenTelemetry](../observability/opentelemetry.md)).
@@ -57,7 +57,7 @@ The library's own packages write labels under reserved prefixes onto the jobs th
 ```go
 twice := middleware.WrapClient(middleware.WrapClient(c, unique), unique)
 _, err = twice.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[string]string{"order": "o-8"}})
-fmt.Fprintln(out, "unique twice:", errors.Is(err, workflow.ErrInvalid), err)
+fmt.Println("unique twice:", errors.Is(err, workflow.ErrInvalid), err)
 ```
 
 Nothing reaches the driver, and the outer `Unique` releases the lock it took, so a corrected enqueue can pass. The claim check is the one exception the middleware package allows: `Unique` accepts the `ClaimCheckLabel` a claim check stamped before it.
@@ -81,10 +81,10 @@ c := middleware.WrapClient(mem, middleware.RequireSource("api", "webhook", "admi
 <!-- snippet: examples/trigger-source/main.go#enqueue -->
 ```go
 _, err := c.Enqueue(ctx, workflow.Job{Workflow: "nightly-report"})
-fmt.Fprintln(out, "no source:", err)
+fmt.Println("no source:", err)
 
 _, err = c.Enqueue(ctx, workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webook", ""))
-fmt.Fprintln(out, "typo:", err)
+fmt.Println("typo:", err)
 
 job := workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webhook", "delivery-42")
 if _, err := c.Enqueue(ctx, job); err != nil {

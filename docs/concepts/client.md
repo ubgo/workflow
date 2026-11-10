@@ -44,16 +44,15 @@ A wrapper you write gets all but the first and last by embedding `workflow.Forwa
 type audited struct {
 	workflow.Client
 	workflow.Forward
-	out io.Writer
 }
 
-func newAudited(inner workflow.Client, out io.Writer) *audited {
-	return &audited{Client: inner, Forward: workflow.Forward{Inner: inner}, out: out}
+func newAudited(inner workflow.Client) *audited {
+	return &audited{Client: inner, Forward: workflow.Forward{Inner: inner}}
 }
 
 // Enqueue is the one method the wrapper changes.
 func (a *audited) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-	fmt.Fprintf(a.out, "audit: enqueue %s\n", job.Workflow)
+	fmt.Printf("audit: enqueue %s\n", job.Workflow)
 	return a.Client.Enqueue(ctx, job)
 }
 ```
@@ -97,7 +96,7 @@ Cancelling the `Start` context cuts running steps off. A deploy wants the opposi
 dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 defer cancel()
 if err := c.Drain(dctx); err != nil {
-	fmt.Fprintln(out, "some steps were cut off:", err)
+	fmt.Println("some steps were cut off:", err)
 }
 <-c.Done()
 ```
@@ -122,18 +121,18 @@ if err := c.Register(wf); err != nil {
 	return err
 }
 _, err := c.Enqueue(ctx, workflow.Job{Workflow: "ping"})
-fmt.Fprintln(out, "before Start:", errors.Is(err, workflow.ErrNotStarted))
+fmt.Println("before Start:", errors.Is(err, workflow.ErrNotStarted))
 
 if err := c.Start(ctx); err != nil {
 	return err
 }
-fmt.Fprintln(out, "second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
-fmt.Fprintln(out, "Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
+fmt.Println("second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
+fmt.Println("Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
 
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "pnig"})
-fmt.Fprintln(out, "unknown workflow:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown workflow:", errors.Is(err, workflow.ErrNotFound))
 _, err = c.Status(ctx, workflow.RunRef{RunID: "no-such-run"})
-fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 ```
 
 ```text
@@ -159,14 +158,14 @@ bad := workflow.Workflow{Name: "import", Steps: []workflow.Step{
 	{Name: "load", After: []string{"parse"}, Run: func(ctx context.Context, in []byte) ([]byte, error) { return in, nil }},
 }}
 err := workflow.Validate(bad)
-fmt.Fprintln(out, "Validate:", err)
-fmt.Fprintln(out, "is ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("Validate:", err)
+fmt.Println("is ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
 
 err = memory.New().Register(bad) // every driver's Register validates
-fmt.Fprintln(out, "Register:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("Register:", errors.Is(err, workflow.ErrInvalid))
 
 err = workflow.ValidateSchedule(workflow.Schedule{Workflow: "digest", Cron: "0 9 * * *"})
-fmt.Fprintln(out, "ValidateSchedule:", err)
+fmt.Println("ValidateSchedule:", err)
 ```
 
 ```text

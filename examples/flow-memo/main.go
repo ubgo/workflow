@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -25,7 +24,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "flow-memo:", err)
 		os.Exit(1)
 	}
@@ -36,7 +35,7 @@ func main() {
 var await = workflow.AwaitOptions{Poll: 2 * time.Millisecond}
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -63,13 +62,13 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	sections := []func(context.Context, workflow.Client, io.Writer, *counter) error{memo, mapEach, loop, chunks, runData, choose}
+	sections := []func(context.Context, workflow.Client, *counter) error{memo, mapEach, loop, chunks, runData, choose}
 	for _, s := range sections {
-		if err := s(ctx, c, out, &calls); err != nil {
+		if err := s(ctx, c, &calls); err != nil {
 			return err
 		}
 	}
-	noJournal(ctx, out)
+	noJournal(ctx)
 
 	// The plugin forgets a run's entries when the run finishes.
 	for range 500 {
@@ -78,7 +77,7 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 		time.Sleep(2 * time.Millisecond)
 	}
-	fmt.Fprintf(out, "journal:\n  runs holding entries after every run finished: %d\n", len(journal.Runs()))
+	fmt.Printf("journal:\n  runs holding entries after every run finished: %d\n", len(journal.Runs()))
 	return nil
 }
 
@@ -131,13 +130,13 @@ func billWorkflow(calls *counter) workflow.Workflow {
 	// snippet:end
 }
 
-func memo(ctx context.Context, c workflow.Client, out io.Writer, calls *counter) error {
+func memo(ctx context.Context, c workflow.Client, calls *counter) error {
 	res, err := enqueueAndWait(ctx, c, workflow.Job{Workflow: "bill"})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "memo:")
-	fmt.Fprintf(out, "  result %s, charge ran %d time(s), step ran %d time(s)\n", res, calls.get("charge"), calls.get("mail"))
+	fmt.Println("memo:")
+	fmt.Printf("  result %s, charge ran %d time(s), step ran %d time(s)\n", res, calls.get("charge"), calls.get("mail"))
 	return nil
 }
 
@@ -167,14 +166,14 @@ func mapWorkflow(calls *counter) workflow.Workflow {
 	}
 }
 
-func mapEach(ctx context.Context, c workflow.Client, out io.Writer, calls *counter) error {
+func mapEach(ctx context.Context, c workflow.Client, calls *counter) error {
 	res, err := enqueueAndWait(ctx, c, workflow.Job{Workflow: "resize-all", Payload: []byte(`["a.png","b.png","c.png"]`)})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "map:")
-	fmt.Fprintf(out, "  result %s\n", res)
-	fmt.Fprintf(out, "  calls: a.png %d, b.png %d, c.png %d\n", calls.get("resize a.png"), calls.get("resize b.png"), calls.get("resize c.png"))
+	fmt.Println("map:")
+	fmt.Printf("  result %s\n", res)
+	fmt.Printf("  calls: a.png %d, b.png %d, c.png %d\n", calls.get("resize a.png"), calls.get("resize b.png"), calls.get("resize c.png"))
 	return nil
 }
 
@@ -201,14 +200,14 @@ func loopWorkflow(calls *counter) workflow.Workflow {
 	}
 }
 
-func loop(ctx context.Context, c workflow.Client, out io.Writer, calls *counter) error {
+func loop(ctx context.Context, c workflow.Client, calls *counter) error {
 	res, err := enqueueAndWait(ctx, c, workflow.Job{Workflow: "sync-pages"})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "loop:")
-	fmt.Fprintf(out, "  final cursor %s\n", res)
-	fmt.Fprintf(out, "  fetches: page 0 %d, page 1 %d, page 2 %d, page 3 %d\n", calls.get("page 0"), calls.get("page 1"), calls.get("page 2"), calls.get("page 3"))
+	fmt.Println("loop:")
+	fmt.Printf("  final cursor %s\n", res)
+	fmt.Printf("  fetches: page 0 %d, page 1 %d, page 2 %d, page 3 %d\n", calls.get("page 0"), calls.get("page 1"), calls.get("page 2"), calls.get("page 3"))
 	return nil
 }
 
@@ -236,7 +235,7 @@ func chunkWorkflow(calls *counter) workflow.Workflow {
 	}
 }
 
-func chunks(ctx context.Context, c workflow.Client, out io.Writer, calls *counter) error {
+func chunks(ctx context.Context, c workflow.Client, calls *counter) error {
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "export"})
 	if err != nil {
 		return err
@@ -245,8 +244,8 @@ func chunks(ctx context.Context, c workflow.Client, out io.Writer, calls *counte
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "chunks:")
-	fmt.Fprintf(out, "  rows %s; calls: offset 0 %d, offset 10 %d, offset 20 %d\n", res, calls.get("chunk 0"), calls.get("chunk 10"), calls.get("chunk 20"))
+	fmt.Println("chunks:")
+	fmt.Printf("  rows %s; calls: offset 0 %d, offset 10 %d, offset 20 %d\n", res, calls.get("chunk 0"), calls.get("chunk 10"), calls.get("chunk 20"))
 	// snippet:progress
 	page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
 	if err != nil {
@@ -257,7 +256,7 @@ func chunks(ctx context.Context, c workflow.Client, out io.Writer, calls *counte
 	if err := json.Unmarshal(p.Data, &cp); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
+	fmt.Printf("  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
 	// snippet:end
 	return nil
 }
@@ -291,12 +290,12 @@ func dataWorkflow() workflow.Workflow {
 	}
 }
 
-func runData(ctx context.Context, c workflow.Client, out io.Writer, _ *counter) error {
+func runData(ctx context.Context, c workflow.Client, _ *counter) error {
 	res, err := enqueueAndWait(ctx, c, workflow.Job{Workflow: "onboard"})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "run data:\n  %s\n", res)
+	fmt.Printf("run data:\n  %s\n", res)
 	return nil
 }
 
@@ -339,8 +338,8 @@ func choiceWorkflow() (workflow.Workflow, error) {
 	return wf, nil
 }
 
-func choose(ctx context.Context, c workflow.Client, out io.Writer, _ *counter) error {
-	fmt.Fprintln(out, "choice:")
+func choose(ctx context.Context, c workflow.Client, _ *counter) error {
+	fmt.Println("choice:")
 	wf, err := choiceWorkflow()
 	if err != nil {
 		return err
@@ -349,26 +348,26 @@ func choose(ctx context.Context, c workflow.Client, out io.Writer, _ *counter) e
 	for i, s := range wf.Steps {
 		names[i] = s.Name
 	}
-	fmt.Fprintf(out, "  steps: %s\n", strings.Join(names, ", "))
+	fmt.Printf("  steps: %s\n", strings.Join(names, ", "))
 	for _, amount := range []string{"40", "250"} {
 		res, err := enqueueAndWait(ctx, c, workflow.Job{Workflow: "refund", Payload: []byte(amount)})
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  %s: %s\n", amount, res)
+		fmt.Printf("  %s: %s\n", amount, res)
 	}
 	return nil
 }
 
 // noJournal shows the refusal when no journal is wired in: a handler run
 // inline without the Journal middleware.
-func noJournal(ctx context.Context, out io.Writer) {
+func noJournal(ctx context.Context) {
 	wf := workflow.Workflow{Name: "plain", Steps: []workflow.Step{{Name: "s", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 		_, err := workflow.Memo(ctx, "x", func(context.Context) (int, error) { return 1, nil })
 		return nil, err
 	}}}}
 	_, err := workflow.RunInline(ctx, wf, workflow.Job{})
-	fmt.Fprintf(out, "no journal:\n  ErrNoJournal=%v permanent=%v\n", errors.Is(err, workflow.ErrNoJournal), workflow.IsPermanent(err))
+	fmt.Printf("no journal:\n  ErrNoJournal=%v permanent=%v\n", errors.Is(err, workflow.ErrNoJournal), workflow.IsPermanent(err))
 }
 
 // enqueueAndWait enqueues job and returns the run's result.

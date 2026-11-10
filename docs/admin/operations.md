@@ -74,13 +74,13 @@ preview, err := adm.RetryAll(ctx, failed, admin.BulkOptions{DryRun: true})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
+fmt.Printf("dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
 
 res, err := adm.RetryAll(ctx, failed, admin.BulkOptions{})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
+fmt.Printf("retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
 ```
 
 A call returns an `admin.BulkResult`: `Matched` (up to the bound), `Done`, `Skipped` (runs that changed between the listing and the action: no longer in a state the action accepts, gone, or, for a retry, their idempotency key taken by another run), `Truncated` when more runs match than the bound, and `Sample`, the first `admin.BulkSample` (20) refs, newest first. One call acts on at most `WithMaxBulk(n)` runs (`admin.DefaultMaxBulk`, 1,000), so one request does a bounded amount of work; repeat it for the rest, since the runs acted on no longer match. `Limit` and `Cursor` on `q` are refused: a bulk call covers every match.
@@ -88,20 +88,20 @@ A call returns an `admin.BulkResult`: `Matched` (up to the bound), `Done`, `Skip
 <!-- snippet: examples/admin-bulk/main.go#delete -->
 ```go
 _, err = adm.DeleteAll(ctx, workflow.RunQuery{}, admin.BulkOptions{DryRun: true})
-fmt.Fprintln(out, "delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
 
 done := workflow.RunQuery{Workflow: "send-email", Statuses: []workflow.Status{workflow.StatusSucceeded}}
 preview, err = adm.DeleteAll(ctx, done, admin.BulkOptions{DryRun: true, Max: 3})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
+fmt.Printf("dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
 
 res, err = adm.DeleteAll(ctx, done, admin.BulkOptions{})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "deleted %d of %d\n", res.Done, res.Matched)
+fmt.Printf("deleted %d of %d\n", res.Done, res.Matched)
 ```
 
 ```text
@@ -152,7 +152,7 @@ if err != nil {
 	return err
 }
 for _, p := range series.Points {
-	fmt.Fprintf(out, "%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
+	fmt.Printf("%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
 }
 ```
 

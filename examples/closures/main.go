@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -28,14 +27,14 @@ import (
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -66,7 +65,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-ends
-	fmt.Fprintf(out, "closure %s: %s after %d attempts, workflow %q, label %q\n",
+	fmt.Printf("closure %s: %s after %d attempts, workflow %q, label %q\n",
 		ev.Labels[workflow.LabelClosure], ev.Status, attempts.Load(), ev.Workflow, workflow.LabelClosure)
 
 	// snippet:status
@@ -75,7 +74,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "Status: %s, step %q\n", st, workflow.ClosureStep)
+	fmt.Printf("Status: %s, step %q\n", st, workflow.ClosureStep)
 
 	// snippet:delayed
 	later, err := workflow.EnqueueClosure(ctx, c, workflow.ClosureJob{
@@ -91,16 +90,16 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev = <-ends
-	fmt.Fprintf(out, "closure %s: %s before it started\n", ev.Labels[workflow.LabelClosure], ev.Status)
+	fmt.Printf("closure %s: %s before it started\n", ev.Labels[workflow.LabelClosure], ev.Status)
 
 	_, err = workflow.EnqueueClosure(ctx, c, workflow.ClosureJob{Name: "no-fn"})
-	fmt.Fprintf(out, "closure without Fn: ErrInvalid %v\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("closure without Fn: ErrInvalid %v\n", errors.Is(err, workflow.ErrInvalid))
 
 	db, err := driversqlite.Memory()
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	sqlc, err := sqlstore.New(db, sqlb.SQLiteDialect{})
 	if err != nil {
 		return err
@@ -114,7 +113,7 @@ func run(ctx context.Context, out io.Writer) error {
 		_, err := workflow.EnqueueClosure(ctx, d.c, job)
 		var unsupported *workflow.UnsupportedError
 		if errors.As(err, &unsupported) {
-			fmt.Fprintf(out, "%s refuses: missing %s, ErrUnsupported %v\n", d.name, unsupported.Missing, errors.Is(err, workflow.ErrUnsupported))
+			fmt.Printf("%s refuses: missing %s, ErrUnsupported %v\n", d.name, unsupported.Missing, errors.Is(err, workflow.ErrUnsupported))
 		}
 	}
 	// snippet:end

@@ -15,7 +15,7 @@ The package is named `redis`, like go-redis itself, so import one of them under 
 <!-- snippet: examples/redis-worker/main.go#client -->
 ```go
 rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
-defer rdb.Close()
+defer func() { err = errors.Join(err, rdb.Close()) }()
 prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 newWorker := func() (*redis.Client, error) {
 	return redis.New(rdb,

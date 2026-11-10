@@ -61,7 +61,7 @@ drivers := []struct {
 }
 for _, d := range drivers {
 	caps := d.c.Capabilities()
-	fmt.Fprintf(out, "%-8s durable=%-5v %s\n", d.name, caps.Has(workflow.CapDurable), caps)
+	fmt.Printf("%-8s durable=%-5v %s\n", d.name, caps.Has(workflow.CapDurable), caps)
 }
 ```
 
@@ -90,10 +90,10 @@ digest := workflow.Workflow{
 	}}},
 }
 need := workflow.Requires(digest)
-fmt.Fprintln(out, "digest needs:", need)
+fmt.Println("digest needs:", need)
 for _, d := range drivers {
 	if missing := d.c.Capabilities().Missing(need); missing != 0 {
-		fmt.Fprintf(out, "  %s lacks %s\n", d.name, missing)
+		fmt.Printf("  %s lacks %s\n", d.name, missing)
 	}
 }
 ```
@@ -108,7 +108,7 @@ digest needs: Cron|RetryJitter|MisfireSkip|CronZone
 <!-- snippet: examples/capabilities/main.go#job -->
 ```go
 job := workflow.Job{Workflow: "digest", RunAt: time.Date(2026, 12, 1, 9, 0, 0, 0, kolkata), IdempotencyKey: "digest-2026-12-01"}
-fmt.Fprintln(out, "job needs:", workflow.RequiresJob(job))
+fmt.Println("job needs:", workflow.RequiresJob(job))
 ```
 
 ```text
@@ -122,9 +122,9 @@ A schedule made at run time goes through the same check. `workflow.RequiresSched
 <!-- snippet: examples/capabilities/main.go#schedule -->
 ```go
 nightly := workflow.Schedule{Name: "acme-nightly", Workflow: "digest", Cron: "0 2 * * *", Location: kolkata}
-fmt.Fprintln(out, "schedule needs:", workflow.RequiresSchedule(nightly))
-fmt.Fprintln(out, "on hatchet:", workflow.CheckScheduleCaps(hatchet.New(hatchet.Config{}).Capabilities(), nightly))
-fmt.Fprintln(out, "on memory: ", workflow.CheckScheduleCaps(memory.New().Capabilities(), nightly))
+fmt.Println("schedule needs:", workflow.RequiresSchedule(nightly))
+fmt.Println("on hatchet:", workflow.CheckScheduleCaps(hatchet.New(hatchet.Config{}).Capabilities(), nightly))
+fmt.Println("on memory: ", workflow.CheckScheduleCaps(memory.New().Capabilities(), nightly))
 ```
 
 ```text
@@ -141,9 +141,9 @@ A refusal is a `*workflow.UnsupportedError`: `Field` is the spec field or featur
 ```go
 err = workflow.CheckCaps(hatchet.New(hatchet.Config{}).Capabilities(), digest)
 if ue, ok := errors.AsType[*workflow.UnsupportedError](err); ok {
-	fmt.Fprintf(out, "refused: field=%s missing=%s reason=%q\n", ue.Field, ue.Missing, ue.Reason)
+	fmt.Printf("refused: field=%s missing=%s reason=%q\n", ue.Field, ue.Missing, ue.Reason)
 }
-fmt.Fprintln(out, "is ErrUnsupported:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("is ErrUnsupported:", errors.Is(err, workflow.ErrUnsupported))
 
 // The Hatchet driver also refuses at Register what its engine cannot
 // express, naming the field: here a Go key function, where Hatchet
@@ -153,7 +153,7 @@ perTenant := workflow.Workflow{
 	Concurrency: &workflow.Concurrency{Key: workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["tenant"] }), MaxRuns: 1},
 	Steps:       digest.Steps,
 }
-fmt.Fprintln(out, "hatchet Register:", hatchet.New(hatchet.Config{}).Register(perTenant))
+fmt.Println("hatchet Register:", hatchet.New(hatchet.Config{}).Register(perTenant))
 ```
 
 ```text

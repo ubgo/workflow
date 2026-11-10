@@ -55,7 +55,7 @@ second, err := c.Enqueue(ctx, job) // a retried HTTP request, a redelivered mess
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "second enqueue returned the first run:", second == first)
+fmt.Println("second enqueue returned the first run:", second == first)
 ```
 
 The key is free once the run has finished:
@@ -66,7 +66,7 @@ third, err := c.Enqueue(ctx, job) // the first run has finished: the key is free
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "after the run finished, a new run:", third != first)
+fmt.Println("after the run finished, a new run:", third != first)
 ```
 
 A workflow that requires a key:
@@ -74,7 +74,7 @@ A workflow that requires a key:
 <!-- snippet: examples/idempotency/main.go#required -->
 ```go
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "payout"})
-fmt.Fprintln(out, "payout without a key:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("payout without a key:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 A workflow that ignores keys:
@@ -89,7 +89,7 @@ b, err := c.Enqueue(ctx, workflow.Job{Workflow: "ping", IdempotencyKey: "same"})
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "ping with the same key twice, two runs:", a != b)
+fmt.Println("ping with the same key twice, two runs:", a != b)
 ```
 
 A driver without the capability refuses the key:
@@ -106,7 +106,7 @@ if err := f.Start(ctx); err != nil {
 	return err
 }
 _, err := f.Enqueue(ctx, workflow.Job{Workflow: "invoice", IdempotencyKey: "invoice:order-42"})
-fmt.Fprintln(out, "no CapIdempotencyKey:", err)
+fmt.Println("no CapIdempotencyKey:", err)
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

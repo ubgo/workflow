@@ -115,7 +115,7 @@ refused := []workflow.Workflow{
 }
 for _, wf := range refused {
 	err := c.Register(wf) // refused here, before anything connects
-	fmt.Fprintf(out, "%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
+	fmt.Printf("%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
 }
 ```
 
@@ -205,7 +205,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
+	fmt.Printf("failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
 }
 ```
 
@@ -237,14 +237,14 @@ again, err := c.Schedule(ctx, workflow.Schedule{Workflow: report, Name: "nightly
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "same name, same definition, same ID:", again == id)
+fmt.Println("same name, same definition, same ID:", again == id)
 list, err := c.Schedules(ctx)
 if err != nil {
 	return err
 }
 for _, s := range list {
 	if s.Workflow == report {
-		fmt.Fprintf(out, "schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
+		fmt.Printf("schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
 	}
 }
 ```
@@ -288,17 +288,17 @@ Without it the driver declares neither capability and refuses both calls before 
 ```go
 c := hatchet.New(hatchet.Config{}) // no API
 caps := c.Capabilities()
-fmt.Fprintf(out, "without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
+fmt.Printf("without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
 
 err := c.Pause(ctx, workflow.PauseWorkflow("reports"))
-fmt.Fprintf(out, "Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 err = c.PauseSchedule(ctx, workflow.ScheduleTarget{ID: "any"})
-fmt.Fprintf(out, "PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // NewAPI reads the tenant from the token, so a value that is not one
 // is refused at once.
 _, err = hatchet.NewAPI("not-a-token", "")
-fmt.Fprintf(out, "NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
+fmt.Printf("NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
 ```
 
 With it, after `Start`, pause a workflow and resume it:
@@ -316,7 +316,7 @@ paused, err := c.Paused(ctx)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
+fmt.Println("workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
 ```
 
 <!-- snippet: examples/hatchet-pause/main.go#resume-workflow -->
@@ -363,19 +363,19 @@ c := hatchet.New(hatchet.Config{})
 // Hatchet fixes a task's retries when it is declared: no deadline.
 err := c.Register(workflow.Workflow{Name: "until", Retry: workflow.RetryPolicy{Max: 3, Until: time.Hour},
 	Steps: []workflow.Step{{Name: "only", Run: noop}}})
-fmt.Fprintf(out, "Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // ... and no per-dispatch policy either.
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "any", Retry: &workflow.RetryPolicy{Max: 5}})
-fmt.Fprintf(out, "Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // Each queue is its own Hatchet worker: queues cannot be ordered.
 err = hatchet.New(hatchet.Config{Queues: []workflow.QueueConfig{{Name: "high", Priority: 10}}}).Start(ctx)
-fmt.Fprintf(out, "QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // The driver says what it cannot do, so an app can check first.
 for _, cp := range []workflow.Caps{workflow.CapPauseWorkflow, workflow.CapDeleteRun, workflow.CapDiscard} {
-	fmt.Fprintf(out, "%v: %v\n", cp, c.Capabilities().Has(cp))
+	fmt.Printf("%v: %v\n", cp, c.Capabilities().Has(cp))
 }
 ```
 

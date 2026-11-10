@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -42,8 +41,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "recorder-split:", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
-	if err := run(context.Background(), os.Stdout, filepath.Join(dir, "app.db")); err != nil {
+	err = errors.Join(run(context.Background(), filepath.Join(dir, "app.db")), os.RemoveAll(dir))
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "recorder-split:", err)
 		os.Exit(1)
 	}
@@ -56,14 +55,14 @@ var thumbnail = workflow.Workflow{Name: "thumbnail", Steps: []workflow.Step{{Nam
 }}}}
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer, path string) error {
+func run(ctx context.Context, path string) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// One recorder store for every node: here the jobs database itself.
 	store, err := sqlrecorder.New(db, sqlrecorder.SQLite)
@@ -122,7 +121,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	}
 	// snippet:end
 	if r, err := store.Run(ctx, ref); err == nil {
-		fmt.Fprintf(out, "web node recorded: source=%s/%s input=%s\n", r.Source, r.SourceRef, r.Payload)
+		fmt.Printf("web node recorded: source=%s/%s input=%s\n", r.Source, r.SourceRef, r.Payload)
 	} else {
 		return err
 	}
@@ -131,15 +130,15 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "worker finished it: %s source=%s/%s outcome=%s\n", r.Status, r.Source, r.SourceRef, r.Outcome)
+	fmt.Printf("worker finished it: %s source=%s/%s outcome=%s\n", r.Status, r.Source, r.SourceRef, r.Outcome)
 	for _, s := range r.Steps {
-		fmt.Fprintf(out, "  step %s attempt %d %s output=%s events=%d\n", s.Step, s.Attempt, s.Status, s.Output, len(s.Events))
+		fmt.Printf("  step %s attempt %d %s output=%s events=%d\n", s.Step, s.Attempt, s.Status, s.Output, len(s.Events))
 	}
 	page, err := store.Records(ctx, recorder.Query{RunQuery: workflow.RunQuery{Workflow: "thumbnail"}})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "records for the run:", len(page.Runs))
+	fmt.Println("records for the run:", len(page.Runs))
 	return nil
 }
 

@@ -20,7 +20,7 @@ db, err := driversqlite.Open(path) // a file; ":memory:" would be lost on exit
 if err != nil {
 	return err
 }
-defer db.Close()
+defer func() { err = errors.Join(err, db.Close()) }()
 ```
 
 Step 2: build the client and migrate. The options here are the ones a production worker usually sets; every one is optional.
@@ -266,7 +266,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
+	fmt.Printf("failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
 }
 // The fix is deployed.
 broken.Store(false)
@@ -283,7 +283,7 @@ Step 4: stop a worker gracefully. `Drain` stops claiming, waits for running atte
 dctx, dcancel := context.WithTimeout(ctx, 5*time.Second)
 defer dcancel()
 err = mail.Drain(dctx) // stop claiming, let running attempts finish, stop
-fmt.Fprintln(out, "mail worker drained:", err == nil)
+fmt.Println("mail worker drained:", err == nil)
 <-mail.Done()
 ```
 

@@ -19,7 +19,7 @@ m, err := admin.NewMonitor(adm, admin.AlerterFunc(func(_ context.Context, a admi
 	if a.Resolved {
 		state = "resolved"
 	}
-	fmt.Fprintf(out, "%s %s queue=%s depth=%d (max %d)\n", state, a.Kind, a.Queue, a.Depth, a.Threshold.MaxDepth)
+	fmt.Printf("%s %s queue=%s depth=%d (max %d)\n", state, a.Kind, a.Queue, a.Depth, a.Threshold.MaxDepth)
 }), []admin.Threshold{{Queue: "emails", MaxDepth: 2}, {MaxDepth: 1000, MaxWait: 10 * time.Minute}},
 	admin.WithInterval(30*time.Second))
 if err != nil {

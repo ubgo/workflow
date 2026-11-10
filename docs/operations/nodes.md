@@ -41,9 +41,9 @@ if err != nil {
 	return err
 }
 r := page.Runs[0]
-fmt.Fprintf(out, "run %s, attempted by %v\n", r.Status, r.AttemptedBy)
+fmt.Printf("run %s, attempted by %v\n", r.Status, r.AttemptedBy)
 for _, e := range r.Errors {
-	fmt.Fprintf(out, "  attempt %d on %s: %s\n", e.Attempt, e.Node, e.Error)
+	fmt.Printf("  attempt %d on %s: %s\n", e.Attempt, e.Node, e.Error)
 }
 ```
 
@@ -66,7 +66,7 @@ if nl, ok := workflow.Client(c).(workflow.NodeLister); ok {
 		return err
 	}
 	for _, n := range nodes {
-		fmt.Fprintf(out, "node %s mode=%s workers=%d running=%d\n", n.ID, n.Mode, n.Workers, n.Running)
+		fmt.Printf("node %s mode=%s workers=%d running=%d\n", n.ID, n.Mode, n.Workers, n.Running)
 	}
 }
 ```
@@ -97,7 +97,9 @@ func probes(c workflow.Client) http.Handler {
 		}
 		w.WriteHeader(code)
 		for _, ch := range rep.Checks {
-			fmt.Fprintf(w, "%s ok=%t %s\n", ch.Name, ch.OK, ch.Detail)
+			if _, err := fmt.Fprintf(w, "%s ok=%t %s\n", ch.Name, ch.OK, ch.Detail); err != nil {
+				return // the caller hung up; nothing left to tell it
+			}
 		}
 	}
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +145,7 @@ A client without `HealthChecker`:
 // a type that has only the Client methods) is reported live and ready,
 // with one check saying it cannot tell.
 rep := workflow.CheckHealth(ctx, struct{ workflow.Client }{c})
-fmt.Fprintf(out, "no HealthChecker: live=%t ready=%t check=%q\n", rep.Live, rep.Ready, rep.Checks[0].Detail)
+fmt.Printf("no HealthChecker: live=%t ready=%t check=%q\n", rep.Live, rep.Ready, rep.Checks[0].Detail)
 ```
 
 The admin API reads the same report at `GET /health` for its System screen, behind the admin login and always with status 200; a probe uses `CheckHealth` on its own route, as above ([Admin JSON API](../admin/http-api.md#routes)).

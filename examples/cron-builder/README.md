@@ -53,7 +53,7 @@ for _, f := range frequencies {
 		return err
 	}
 	next := s.Next(monday, time.UTC)
-	fmt.Fprintf(out, "  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
+	fmt.Printf("  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
 }
 ```
 
@@ -69,7 +69,7 @@ for _, f := range []cron.Builder{
 	cron.DailyAt("9:5"),                      // minutes take two digits
 } {
 	_, err := f.Expr()
-	fmt.Fprintf(out, "  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
+	fmt.Printf("  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
 }
 ```
 

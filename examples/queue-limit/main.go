@@ -11,8 +11,8 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -47,7 +47,7 @@ const (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "queue-limit:", err)
 		os.Exit(1)
 	}
@@ -107,26 +107,26 @@ func importWorkflow(g *gauge) workflow.Workflow {
 	}
 }
 
-func run(ctx context.Context, out io.Writer) error {
-	if err := runMemory(ctx, out); err != nil {
+func run(ctx context.Context) (err error) {
+	if err := runMemory(ctx); err != nil {
 		return fmt.Errorf("memory: %w", err)
 	}
 	dir, err := os.MkdirTemp("", "queue-limit-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	if err := runSQL(ctx, out, filepath.Join(dir, "app.db")); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	if err := runSQL(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
 	}
 	return nil
 }
 
 // report prints the two facts the limit promises.
-func report(out io.Writer, driver string, g *gauge) {
+func report(driver string, g *gauge) {
 	peak := int(g.peak.Load())
-	fmt.Fprintf(out, "%s: peak within limit %d: %v\n", driver, importLimit, peak <= importLimit)
-	fmt.Fprintf(out, "%s: peak reached the limit: %v\n", driver, peak == importLimit)
+	fmt.Printf("%s: peak within limit %d: %v\n", driver, importLimit, peak <= importLimit)
+	fmt.Printf("%s: peak reached the limit: %v\n", driver, peak == importLimit)
 }
 
 // wait blocks until n runs have finished.
@@ -143,7 +143,7 @@ func wait(ctx context.Context, done <-chan struct{}, n int) error {
 	return nil
 }
 
-func runMemory(ctx context.Context, out io.Writer) error {
+func runMemory(ctx context.Context) error {
 	g := newGauge()
 	// snippet:memory
 	c := memory.New(
@@ -170,11 +170,11 @@ func runMemory(ctx context.Context, out io.Writer) error {
 	if err := wait(ctx, done, runCount); err != nil {
 		return err
 	}
-	report(out, "memory", g)
+	report("memory", g)
 	return nil
 }
 
-func runSQL(ctx context.Context, out io.Writer, path string) error {
+func runSQL(ctx context.Context, path string) error {
 	g := newGauge()
 	done := make(chan struct{}, runCount)
 
@@ -225,7 +225,7 @@ func runSQL(ctx context.Context, out io.Writer, path string) error {
 	if err := wait(ctx, done, runCount); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "sqlstore: queue limit is cluster-wide: %v\n", nodes[0].Capabilities().Has(workflow.CapQueueLimitGlobal))
-	report(out, "sqlstore", g)
+	fmt.Printf("sqlstore: queue limit is cluster-wide: %v\n", nodes[0].Capabilities().Has(workflow.CapQueueLimitGlobal))
+	report("sqlstore", g)
 	return nil
 }

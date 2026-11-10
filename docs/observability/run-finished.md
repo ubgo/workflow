@@ -19,7 +19,7 @@ if !ok {
 	return errors.New("this driver cannot report run ends; poll Status instead")
 }
 guaranteed := c.Capabilities().Has(workflow.CapRunFinished)
-fmt.Fprintln(out, "every run end is delivered:", guaranteed)
+fmt.Println("every run end is delivered:", guaranteed)
 
 ends := make(chan workflow.RunEvent, 8)
 err := n.OnRunFinished(func(ctx context.Context, ev workflow.RunEvent) {
@@ -46,7 +46,7 @@ The contract every implementation keeps:
 <!-- snippet: examples/run-finished/main.go#late -->
 ```go
 err = n.OnRunFinished(func(context.Context, workflow.RunEvent) {})
-fmt.Fprintln(out, "observer after Start refused:", errors.Is(err, workflow.ErrAlreadyStarted))
+fmt.Println("observer after Start refused:", errors.Is(err, workflow.ErrAlreadyStarted))
 ```
 
 The client wrappers in package `middleware` (`WrapClient`, `WithCodec`) forward the hook to the driver, and return an `UnsupportedError` naming `CapRunFinished` when the wrapped client has none, rather than a silent no-op.
@@ -67,7 +67,7 @@ c := hatchet.New(hatchet.Config{
 	RunFinishedWindow:  6 * time.Hour,    // runs older than this are no longer watched
 	RunFinishedCatchUp: 10 * time.Minute, // replay the ends of runs created this long before Start
 })
-fmt.Fprintln(out, "hatchet: every run end is delivered:", c.Capabilities().Has(workflow.CapRunFinished))
+fmt.Println("hatchet: every run end is delivered:", c.Capabilities().Has(workflow.CapRunFinished))
 ends := make(chan workflow.RunEvent, 1)
 if err := c.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { ends <- ev }); err != nil {
 	return err

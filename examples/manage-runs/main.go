@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -26,14 +25,14 @@ import (
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -83,7 +82,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "failed: %s at step %q: %s\n", r.Ref.RunID, r.FailedStep, r.Error)
+		fmt.Printf("failed: %s at step %q: %s\n", r.Ref.RunID, r.FailedStep, r.Error)
 	}
 	// page.Next is empty on the last page; pass it as Cursor for the next one.
 	// snippet:end
@@ -98,12 +97,12 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := waitFor(ctx, c, ref, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "retried %s: succeeded; charge ran %d time(s), ship %d\n", ref.RunID, charges.Load(), ships.Load())
+	fmt.Printf("retried %s: succeeded; charge ran %d time(s), ship %d\n", ref.RunID, charges.Load(), ships.Load())
 
 	// snippet:delete
 	err = c.Delete(ctx, ref)
 	_, statusErr := c.Status(ctx, ref)
-	fmt.Fprintln(out, "deleted:", err == nil, "then Status is ErrNotFound:", errors.Is(statusErr, workflow.ErrNotFound))
+	fmt.Println("deleted:", err == nil, "then Status is ErrNotFound:", errors.Is(statusErr, workflow.ErrNotFound))
 	// snippet:end
 
 	for _, o := range []string{"o-2", "o-3"} {
@@ -116,7 +115,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "cancelled waiting runs:", n)
+	fmt.Println("cancelled waiting runs:", n)
 	// snippet:end
 
 	// snippet:pause
@@ -131,7 +130,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "while paused:", st)
+	fmt.Println("while paused:", st)
 	if err := c.Resume(ctx, workflow.PauseWorkflow("fulfil-order")); err != nil {
 		return err
 	}
@@ -139,7 +138,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := waitFor(ctx, c, held, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "after Resume: succeeded")
+	fmt.Println("after Resume: succeeded")
 	return nil
 }
 

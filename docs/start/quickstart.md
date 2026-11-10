@@ -68,7 +68,7 @@ db, err := driversqlite.Open(path) // a file; ":memory:" would be lost on exit
 if err != nil {
 	return err
 }
-defer db.Close()
+defer func() { err = errors.Join(err, db.Close()) }()
 ```
 
 Then replace `memory.New()` with `sqlstore.New(db, sqlb.SQLiteDialect{})`, and call `c.Migrate(ctx)` once before `Start`: the SQL driver never creates its tables on its own, so a deploy decides when the schema changes ([Migrations](../operations/migrations.md#run-the-migrations)). `Register`, `Start` and `Enqueue` stay exactly as they are. The SQL driver lives in its own module (`github.com/ubgo/workflow/sqlstore`), so the core never pulls in a database driver; [Install](install.md) explains how to add it, and [The SQL driver](../drivers/sqlstore.md#create-the-client) covers its options. The [sqlite-worker](../../examples/sqlite-worker/) example runs the same workflow on both drivers.

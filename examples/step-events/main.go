@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -35,7 +34,7 @@ import (
 const runTimeout = 10 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "step-events:", err)
 		os.Exit(1)
 	}
@@ -43,20 +42,20 @@ func main() {
 
 // syncStep is the step both clients run. It records two events and sets
 // a partial outcome, and says whether the outcome was kept.
-func syncStep(out io.Writer) workflow.Handler {
+func syncStep() workflow.Handler {
 	// snippet:step
 	return func(ctx context.Context, _ []byte) ([]byte, error) {
 		workflow.RecordEvent(ctx, "fetched changes", slog.Int("rows", 100))
 		workflow.RecordEventLevel(ctx, slog.LevelWarn, "rows rejected", slog.Int("bad", 3), slog.String("first", "row-17"))
 		err := workflow.SetOutcome(ctx, workflow.OutcomePartial, "3 of 100 rows rejected")
-		fmt.Fprintln(out, "outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
+		fmt.Println("outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
 		return nil, nil
 	}
 	// snippet:end
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -66,7 +65,7 @@ func run(ctx context.Context, out io.Writer) error {
 	printEvents := func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
 			sink := workflow.StepEventFunc(func(_ context.Context, e workflow.StepEvent) {
-				fmt.Fprintf(out, "event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
+				fmt.Printf("event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
 			})
 			return next(workflow.WithStepEventSink(ctx, sink), in)
 		}
@@ -77,16 +76,16 @@ func run(ctx context.Context, out io.Writer) error {
 	// CaptureOutput is a sink too: events join the step's captured log.
 	// The fake clock only makes the printed times fixed.
 	stamp := clock.NewFake(time.Date(2026, 1, 5, 2, 0, 0, 0, time.UTC))
-	capture := middleware.CaptureOutput(middleware.WriterSink(out), middleware.CaptureClock(stamp))
+	capture := middleware.CaptureOutput(middleware.WriterSink(os.Stdout), middleware.CaptureClock(stamp))
 	plain := memory.New(memory.WithMiddleware(printEvents, capture))
 	// snippet:end
 	defer plain.Stop()
-	fmt.Fprintln(out, "-- without a recorder")
-	if err := runOnce(ctx, plain, syncStep(out)); err != nil {
+	fmt.Println("-- without a recorder")
+	if err := runOnce(ctx, plain, syncStep()); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- with a recorder")
+	fmt.Println("-- with a recorder")
 	// snippet:recorder
 	store, err := recorder.NewMemoryStore() // in process; sqlrecorder for a database
 	if err != nil {
@@ -108,14 +107,14 @@ func run(ctx context.Context, out io.Writer) error {
 	}}}}); err != nil {
 		return err
 	}
-	if err := runOnce(ctx, c, syncStep(out)); err != nil {
+	if err := runOnce(ctx, c, syncStep()); err != nil {
 		return err
 	}
-	return readBack(ctx, c, store, out)
+	return readBack(ctx, c, store)
 }
 
 // readBack prints the sync run's record and the cleanup run's outcome.
-func readBack(ctx context.Context, c workflow.Client, store *recorder.MemoryStore, out io.Writer) error {
+func readBack(ctx context.Context, c workflow.Client, store *recorder.MemoryStore) error {
 	page, err := store.Records(ctx, recorder.Query{RunQuery: workflow.RunQuery{Workflow: "sync"}})
 	if err != nil {
 		return err
@@ -132,10 +131,10 @@ func readBack(ctx context.Context, c workflow.Client, store *recorder.MemoryStor
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "run %s outcome=%s (%s)\n", r.Status, r.Outcome, r.OutcomeNote)
+	fmt.Printf("run %s outcome=%s (%s)\n", r.Status, r.Outcome, r.OutcomeNote)
 	for _, s := range r.Steps {
 		for _, e := range s.Events {
-			fmt.Fprintf(out, "  %s %s %q %v\n", s.Step, e.Level, e.Message, e.Attrs)
+			fmt.Printf("  %s %s %q %v\n", s.Step, e.Level, e.Message, e.Attrs)
 		}
 	}
 	// snippet:end
@@ -151,7 +150,7 @@ func readBack(ctx context.Context, c workflow.Client, store *recorder.MemoryStor
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "cleanup %s outcome=%s (set by a step: %t)\n", clean.Status, clean.Outcome, clean.OutcomeSet)
+	fmt.Printf("cleanup %s outcome=%s (set by a step: %t)\n", clean.Status, clean.Outcome, clean.OutcomeSet)
 	return nil
 }
 

@@ -90,7 +90,7 @@ if err != nil {
 	return err
 }
 if p := page.Runs[0].Progress; p != nil { // nil until a step reports
-	fmt.Fprintf(out, "  latest: %.0f%% %s\n", p.Percent, p.Message)
+	fmt.Printf("  latest: %.0f%% %s\n", p.Percent, p.Message)
 }
 ```
 
@@ -115,7 +115,7 @@ A run that fails while the caller waits:
 _, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
 var failed *workflow.RunFailedError
 if errors.As(err, &failed) {
-	fmt.Fprintf(out, "  pay: ended %s: %s\n", failed.Status, failed.Err)
+	fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)
 }
 ```
 
@@ -155,11 +155,11 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "  %s %s %s", r.Tenant, r.Workflow, r.Status)
+	fmt.Printf("  %s %s %s", r.Tenant, r.Workflow, r.Status)
 	if r.Labels["source"] == "schedule" {
-		fmt.Fprint(out, " (fired by acme-nightly)")
+		fmt.Print(" (fired by acme-nightly)")
 	}
-	fmt.Fprintln(out)
+	fmt.Println()
 }
 ```
 

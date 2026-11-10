@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 
 	"github.com/ubgo/workflow"
 	"github.com/ubgo/workflow/clock"
@@ -15,8 +16,8 @@ import (
 
 // TestRun runs the program and checks the lines its README shows.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `enqueued welcome-email key="welcome:ada@example.com" at now
@@ -26,7 +27,7 @@ cancelled: 1 run(s)
 scheduled digest "0 9 * * MON" team=core
 reminder status: cancelled
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

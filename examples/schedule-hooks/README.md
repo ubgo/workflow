@@ -98,7 +98,7 @@ for _, s := range infos {
 	if !s.Next.IsZero() {
 		next = s.Next.In(s.Location).Format("Mon 15:04 MST")
 	}
-	fmt.Fprintf(out, "  %-12s %-11s %-9q next %s\n", s.Workflow, s.Name, s.Cron, next)
+	fmt.Printf("  %-12s %-11s %-9q next %s\n", s.Workflow, s.Name, s.Cron, next)
 }
 ```
 

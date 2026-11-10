@@ -34,7 +34,7 @@ A bucket holds at most `Capacity` units and drains `LeakPerSecond` units every s
 for i := 1; i <= 5; i++ {
 	err := limit.Take(ctx, "shop:acme", 1) // one bucket per credential
 	wait, _ := workflow.RetryAfterDelay(err, 0)
-	fmt.Fprintf(out, "  call %d: throttled=%v retry after %s\n", i, errors.Is(err, workflow.ErrThrottled), wait)
+	fmt.Printf("  call %d: throttled=%v retry after %s\n", i, errors.Is(err, workflow.ErrThrottled), wait)
 }
 ```
 

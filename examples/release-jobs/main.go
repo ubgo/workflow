@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -28,33 +27,33 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "release-jobs:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- release while the API is in maintenance")
-	if err := release(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	fmt.Println("-- release while the API is in maintenance")
+	if err := release(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- unique until a step starts")
-	return untilStarted(ctx, out)
+	fmt.Println("-- unique until a step starts")
+	return untilStarted(ctx)
 }
 
 // release runs a sync step that is put back for ten minutes while a
 // maintenance flag is set, once until the flag clears and once until the
 // retries run out.
-func release(ctx context.Context, out io.Writer) error {
+func release(ctx context.Context) error {
 	clk := clock.NewFake(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
 	// snippet:release
 	var maintenance atomic.Bool // set by the app while the partner API is down
 	inMaintenance := func(context.Context, []byte) bool { return maintenance.Load() }
 
 	c := memory.New(memory.WithClock(clk), memory.WithMiddleware(
-		attempts(out), // outermost, so it sees each release as a failed attempt
+		attempts(), // outermost, so it sees each release as a failed attempt
 		middleware.Release(inMaintenance, 10*time.Minute),
 	))
 	err := c.Register(workflow.Workflow{
@@ -92,13 +91,13 @@ func release(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	maintenance.Store(false)
-	fmt.Fprintln(out, "maintenance over at", clk.Now().Format("15:04"))
+	fmt.Println("maintenance over at", clk.Now().Format("15:04"))
 	clk.Advance(10 * time.Minute)
 	st, err := waitDone(ctx, c, ref)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "run: %s at %s\n", st, clk.Now().Format("15:04"))
+	fmt.Printf("run: %s at %s\n", st, clk.Now().Format("15:04"))
 
 	// snippet:release-runs-out
 	maintenance.Store(true)
@@ -116,7 +115,7 @@ func release(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "run: %s at %s\n", st, clk.Now().Format("15:04"))
+	fmt.Printf("run: %s at %s\n", st, clk.Now().Format("15:04"))
 	// snippet:end
 	return nil
 }
@@ -124,18 +123,18 @@ func release(ctx context.Context, out io.Writer) error {
 // attempts prints each attempt's outcome. It reads the delay a release
 // asked for with workflow.RetryAfterDelay, the same call the retry policy
 // makes.
-func attempts(out io.Writer) workflow.Middleware {
+func attempts() workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
 			info, _ := workflow.StepInfoFrom(ctx)
 			res, err := next(ctx, in)
 			switch d, _ := workflow.RetryAfterDelay(err, info.Attempt); {
 			case errors.Is(err, middleware.ErrReleased):
-				fmt.Fprintf(out, "attempt %d: released for %s\n", info.Attempt, d)
+				fmt.Printf("attempt %d: released for %s\n", info.Attempt, d)
 			case err != nil:
-				fmt.Fprintf(out, "attempt %d: %v\n", info.Attempt, err)
+				fmt.Printf("attempt %d: %v\n", info.Attempt, err)
 			default:
-				fmt.Fprintf(out, "attempt %d: ran\n", info.Attempt)
+				fmt.Printf("attempt %d: ran\n", info.Attempt)
 			}
 			return res, err
 		}
@@ -144,7 +143,7 @@ func attempts(out io.Writer) workflow.Middleware {
 
 // untilStarted shows the lock of a delayed job: held while the run waits,
 // free once its step has started, though the step is still running.
-func untilStarted(ctx context.Context, out io.Writer) error {
+func untilStarted(ctx context.Context) error {
 	clk := clock.NewFake(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
 	// snippet:until-started
 	byReport := func(j workflow.Job) string { return "report:" + j.Labels["account"] }
@@ -175,11 +174,11 @@ func untilStarted(ctx context.Context, out io.Writer) error {
 	verdict := func(name string, err error) {
 		switch {
 		case err == nil:
-			fmt.Fprintf(out, "%s: accepted\n", name)
+			fmt.Printf("%s: accepted\n", name)
 		case errors.Is(err, workflow.ErrDuplicate):
-			fmt.Fprintf(out, "%s: refused (ErrDuplicate)\n", name)
+			fmt.Printf("%s: refused (ErrDuplicate)\n", name)
 		default:
-			fmt.Fprintf(out, "%s: %v\n", name, err)
+			fmt.Printf("%s: %v\n", name, err)
 		}
 	}
 	// snippet:until-started-run

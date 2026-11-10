@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -25,14 +24,14 @@ import (
 const statusPoll = 5 * time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "custom-driver:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -45,7 +44,7 @@ func run(ctx context.Context, out io.Writer) error {
 				return []byte(`"42 rows"`), nil
 			}},
 			{Name: "render", After: []string{"fetch"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
-				fmt.Fprintf(out, "render got %s\n", in)
+				fmt.Printf("render got %s\n", in)
 				return nil, nil
 			}},
 		},
@@ -66,12 +65,12 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%s: %s\n", ref.RunID, st)
+	fmt.Printf("%s: %s\n", ref.RunID, st)
 
 	// snippet:refused
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "report", RunAt: time.Now().Add(time.Hour)})
-	fmt.Fprintln(out, "delayed start refused:", errors.Is(err, workflow.ErrUnsupported))
-	fmt.Fprintln(out, err)
+	fmt.Println("delayed start refused:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println(err)
 	// snippet:end
 	return nil
 }

@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/ubgo/workflow"
@@ -20,14 +19,14 @@ import (
 type greet struct{ Name string }
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "quickstart:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	done := make(chan string, 1)
 
 	// snippet:register
@@ -62,6 +61,6 @@ func run(ctx context.Context, out io.Writer) error {
 	if ref.IsZero() {
 		return errors.New("enqueue returned no run reference")
 	}
-	fmt.Fprintln(out, <-done)
+	fmt.Println(<-done)
 	return nil
 }

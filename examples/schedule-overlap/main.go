@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -24,7 +23,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-overlap:", err)
 		os.Exit(1)
 	}
@@ -35,7 +34,7 @@ func main() {
 var start = time.Date(2026, 1, 5, 8, 30, 0, 0, time.UTC)
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	mem := memory.New(memory.WithClock(clk))
 	var c workflow.Client = mem
@@ -101,21 +100,21 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- ticks")
-	if err := hour(ctx, clk, ticks, out); err != nil { // 09:00 fires
+	fmt.Println("-- ticks")
+	if err := hour(ctx, clk, ticks); err != nil { // 09:00 fires
 		return err
 	}
 	<-started
-	if err := hour(ctx, clk, ticks, out); err != nil { // 10:00 skipped: 09:00's run still going
+	if err := hour(ctx, clk, ticks); err != nil { // 10:00 skipped: 09:00's run still going
 		return err
 	}
 
-	fmt.Fprintln(out, "-- run now while the 09:00 run is unfinished")
+	fmt.Println("-- run now while the 09:00 run is unfinished")
 	// snippet:trigger-refused
 	trig := c.(workflow.ScheduleTriggerer)
 	_, err = trig.TriggerSchedule(ctx, id)
 	if errors.Is(err, workflow.ErrOverlap) {
-		fmt.Fprintln(out, "  refused:", err)
+		fmt.Println("  refused:", err)
 	}
 	// snippet:end
 	if err == nil {
@@ -127,7 +126,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("the 09:00 run ended %s", ev.Status)
 	}
 
-	fmt.Fprintln(out, "-- run now after it finished")
+	fmt.Println("-- run now after it finished")
 	clk.Advance(5 * time.Minute) // 10:05
 	// snippet:trigger
 	ref, err := trig.TriggerSchedule(ctx, id)
@@ -136,17 +135,17 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-ends
-	fmt.Fprintf(out, "  %s %s, labels team=%s %s=%s\n", ref.RunID, ev.Status,
+	fmt.Printf("  %s %s, labels team=%s %s=%s\n", ref.RunID, ev.Status,
 		ev.Labels["team"], workflow.LabelTrigger, ev.Labels[workflow.LabelTrigger])
 
-	fmt.Fprintln(out, "-- schedules")
+	fmt.Println("-- schedules")
 	// snippet:last
 	infos, err := c.(workflow.ScheduleLister).Schedules(ctx)
 	if err != nil {
 		return err
 	}
 	for _, s := range infos {
-		fmt.Fprintf(out, "  %s overlap=%s last fire %s run %s (%s), next %s\n",
+		fmt.Printf("  %s overlap=%s last fire %s run %s (%s), next %s\n",
 			s.Name, s.Overlap, s.Last.Fire.Format("15:04"), s.Last.Run.RunID, s.Last.Status,
 			s.Next.Format("15:04"))
 	}
@@ -155,7 +154,7 @@ func run(ctx context.Context, out io.Writer) error {
 }
 
 // hour moves the clock to the next hourly tick and prints its outcome.
-func hour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tick, out io.Writer) error {
+func hour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tick) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil {
 		return err
 	}
@@ -165,9 +164,9 @@ func hour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tick, out 
 	case t := <-ticks:
 		at := t.At.In(time.UTC).Format("15:04")
 		if t.Outcome == workflow.TickFired {
-			fmt.Fprintf(out, "  %s fired, run %s\n", at, t.Run.RunID)
+			fmt.Printf("  %s fired, run %s\n", at, t.Run.RunID)
 		} else {
-			fmt.Fprintf(out, "  %s %s (%s)\n", at, t.Outcome, t.Reason)
+			fmt.Printf("  %s %s (%s)\n", at, t.Outcome, t.Reason)
 		}
 		return nil
 	case <-time.After(5 * time.Second):

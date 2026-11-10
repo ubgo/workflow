@@ -20,7 +20,7 @@ c := failover.New(primary, secondary,
 	failover.WithCoolOff(2, time.Minute), // skip the primary for 1m after 2 failovers in a row
 	failover.WithClock(clk),
 	failover.WithObserver(func(ctx context.Context, ev failover.Event) {
-		fmt.Fprintln(out, "  event:", ev.Kind, ev.Workflow)
+		fmt.Println("  event:", ev.Kind, ev.Workflow)
 	}))
 if err := c.Register(email); err != nil { // registers on both backends
 	return err
@@ -49,7 +49,7 @@ A failure can be ambiguous: the primary may have stored the job and then failed 
 <!-- snippet: examples/failover/main.go#key-required -->
 ```go
 _, err := c.Enqueue(ctx, workflow.Job{Workflow: "email"})
-fmt.Fprintln(out, "no key:", errors.Is(err, failover.ErrKeyRequired), errors.Is(err, workflow.ErrInvalid))
+fmt.Println("no key:", errors.Is(err, failover.ErrKeyRequired), errors.Is(err, workflow.ErrInvalid))
 ```
 
 `AllowWithoutKey()` lifts the requirement for apps that accept a job running twice. A key dedups only within one backend: the primary and the secondary do not see each other's keys, so the key protects a caller's retries against the same backend, and handlers must still be idempotent across backends. A workflow with `IdempotencyOff` ignores keys altogether.
@@ -129,13 +129,13 @@ id, err := c.Schedule(ctx, workflow.Schedule{Name: "hourly", Workflow: "report",
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "Schedule returned an ID for:", side(string(id)))
+fmt.Println("Schedule returned an ID for:", side(string(id)))
 infos, err := c.Schedules(ctx)
 if err != nil {
 	return err
 }
 for _, s := range infos { // one entry per copy, its ID prefixed by the backend
-	fmt.Fprintf(out, "  listed on %s\n", side(string(s.ID)))
+	fmt.Printf("  listed on %s\n", side(string(s.ID)))
 }
 ```
 

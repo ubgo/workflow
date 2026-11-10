@@ -17,7 +17,7 @@ return func(ctx context.Context, _ []byte) ([]byte, error) {
 	workflow.RecordEvent(ctx, "fetched changes", slog.Int("rows", 100))
 	workflow.RecordEventLevel(ctx, slog.LevelWarn, "rows rejected", slog.Int("bad", 3), slog.String("first", "row-17"))
 	err := workflow.SetOutcome(ctx, workflow.OutcomePartial, "3 of 100 rows rejected")
-	fmt.Fprintln(out, "outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
 	return nil, nil
 }
 ```
@@ -45,7 +45,7 @@ A sink is a [`workflow.StepEventSink`](ds:block?id=stepeventsink-f4enzkvf), one 
 printEvents := func(next workflow.Handler) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		sink := workflow.StepEventFunc(func(_ context.Context, e workflow.StepEvent) {
-			fmt.Fprintf(out, "event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
+			fmt.Printf("event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
 		})
 		return next(workflow.WithStepEventSink(ctx, sink), in)
 	}
@@ -68,7 +68,7 @@ Two sinks ship with the library:
 // CaptureOutput is a sink too: events join the step's captured log.
 // The fake clock only makes the printed times fixed.
 stamp := clock.NewFake(time.Date(2026, 1, 5, 2, 0, 0, 0, time.UTC))
-capture := middleware.CaptureOutput(middleware.WriterSink(out), middleware.CaptureClock(stamp))
+capture := middleware.CaptureOutput(middleware.WriterSink(os.Stdout), middleware.CaptureClock(stamp))
 plain := memory.New(memory.WithMiddleware(printEvents, capture))
 ```
 

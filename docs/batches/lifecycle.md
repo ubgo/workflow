@@ -73,7 +73,7 @@ n, err := m.RetryFailed(ctx, id)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "retried", n)
+fmt.Println("retried", n)
 print(2) // then and finally: this time every job succeeded
 ```
 
@@ -104,7 +104,7 @@ pruned, err := m.Prune(ctx, batch.PruneFilter{
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "pruned", pruned)
+fmt.Println("pruned", pruned)
 ```
 
 The Manager runs no pruning of its own; call `Prune` from a schedule the app owns. `PruneFilter.Matches(state)` is the whole rule, so a custom `Store` implements `Pruner` by deleting exactly the states it accepts.

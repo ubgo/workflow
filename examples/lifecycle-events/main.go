@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -33,24 +32,24 @@ var (
 var start = time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "lifecycle-events:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := lifecycle(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := lifecycle(ctx); err != nil {
 		return err
 	}
-	return stuck(ctx, out)
+	return stuck(ctx)
 }
 
 // lifecycle runs an export that fails once, reports progress and succeeds,
 // and a charge that fails for good, printing every lifecycle event and the
 // failed run's RunError.
-func lifecycle(ctx context.Context, out io.Writer) error {
+func lifecycle(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -122,20 +121,20 @@ func lifecycle(ctx context.Context, out io.Writer) error {
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- lifecycle")
+	fmt.Println("-- lifecycle")
 	for _, wf := range []string{"export", "charge"} {
 		if _, err := c.Enqueue(ctx, workflow.Job{Workflow: wf}); err != nil {
 			return err
 		}
 		for ev := range events {
-			fmt.Fprintln(out, " ", describe(ev))
+			fmt.Println(" ", describe(ev))
 			if ev.Kind == workflow.LifecycleFinished {
 				break
 			}
 		}
 	}
-	fmt.Fprintln(out, "-- run error")
-	fmt.Fprintln(out, " ", <-failures)
+	fmt.Println("-- run error")
+	fmt.Println(" ", <-failures)
 	return nil
 }
 
@@ -157,7 +156,7 @@ func describe(ev workflow.LifecycleEvent) string {
 
 // stuck runs a step that hangs until released and shows Stuck reporting it
 // once, after six minutes on its own fake clock, while it keeps running.
-func stuck(ctx context.Context, out io.Writer) error {
+func stuck(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	watch := clock.NewFake(start)
@@ -212,10 +211,10 @@ func stuck(ctx context.Context, out io.Writer) error {
 	}
 	watch.Advance(6 * time.Minute)
 	ev := <-reports
-	fmt.Fprintln(out, "-- stuck")
-	fmt.Fprintf(out, "  %s step=%s attempt=%d node=%s started=%s running=%s\n",
+	fmt.Println("-- stuck")
+	fmt.Printf("  %s step=%s attempt=%d node=%s started=%s running=%s\n",
 		ev.Info.Workflow, ev.Info.Step, ev.Info.Attempt, ev.Info.Node, ev.Started.Format("15:04"), ev.Running)
 	close(release)
-	fmt.Fprintln(out, "  the attempt kept running and ended", <-finished)
+	fmt.Println("  the attempt kept running and ended", <-finished)
 	return nil
 }

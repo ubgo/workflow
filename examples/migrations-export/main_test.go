@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks the lines the guide shows.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `ledger after Migrate:
@@ -53,7 +54,7 @@ postgres: CREATE TABLE IF NOT EXISTS "jobs"."wf_runs"
 ledger owner: ubgo/workflow/sqlstore@jobs
 sqlite: workflow: WithSchema on sqlite unsupported by this driver: only Postgres has schemas inside a database; on MySQL point the pool at the database
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }

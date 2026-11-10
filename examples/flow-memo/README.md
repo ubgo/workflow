@@ -116,7 +116,7 @@ var cp workflow.ChunkProgress
 if err := json.Unmarshal(p.Data, &cp); err != nil {
 	return err
 }
-fmt.Fprintf(out, "  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
+fmt.Printf("  progress %.0f%% %q, done %d of %d\n", p.Percent, p.Message, cp.Done, cp.Total)
 ```
 
 A value set by the first step and read by the third:

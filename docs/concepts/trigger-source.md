@@ -14,10 +14,10 @@ A run's trigger source says what started it: a schedule, an operator pressing "r
 <!-- snippet: examples/trigger-source/main.go#enqueue -->
 ```go
 _, err := c.Enqueue(ctx, workflow.Job{Workflow: "nightly-report"})
-fmt.Fprintln(out, "no source:", err)
+fmt.Println("no source:", err)
 
 _, err = c.Enqueue(ctx, workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webook", ""))
-fmt.Fprintln(out, "typo:", err)
+fmt.Println("typo:", err)
 
 job := workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webhook", "delivery-42")
 if _, err := c.Enqueue(ctx, job); err != nil {
@@ -35,8 +35,8 @@ A source must pass [`workflow.ValidateSource`](ds:block?id=validatesource-73nzwq
 
 <!-- snippet: examples/trigger-source/main.go#validate -->
 ```go
-fmt.Fprintln(out, "validate:", workflow.ValidateSource("Slack"))
-fmt.Fprintln(out, "library sources:", workflow.LibrarySources())
+fmt.Println("validate:", workflow.ValidateSource("Slack"))
+fmt.Println("library sources:", workflow.LibrarySources())
 ```
 
 ## Step 3: read the source back

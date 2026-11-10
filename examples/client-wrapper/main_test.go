@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: the
@@ -11,8 +12,8 @@ import (
 // interfaces of the memory driver, the bare wrapper hides them, and
 // Forward over the bare wrapper refuses with the missing capability.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `audit: enqueue email
@@ -22,7 +23,7 @@ paused through the wrapper: email
 bare: RunQuerier=false, although the driver has CapRunQuery=true
 Forward over bare: ErrUnsupported=true missing=true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

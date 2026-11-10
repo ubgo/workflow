@@ -95,7 +95,7 @@ p, err := m.Progress(ctx, id)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "before cancel: %d of %d processed (%d%%)\n", p.Processed(), p.Total, p.Percent())
+fmt.Printf("before cancel: %d of %d processed (%d%%)\n", p.Processed(), p.Total, p.Percent())
 if err := m.Cancel(ctx, id); err != nil {
 	return err
 }
@@ -112,7 +112,7 @@ Each job of the batch gets two labels of the package's own: `batch.LabelBatch` (
 _, err = m.Dispatch(ctx, batch.Batch{
 	Jobs: []workflow.Job{{Workflow: "resize", Labels: map[string]string{batch.LabelBatch: "mine"}}},
 })
-fmt.Fprintln(out, "refused:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 ## Batch IDs

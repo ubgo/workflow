@@ -25,7 +25,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "failed: %s at step %q: %s\n", r.Ref.RunID, r.FailedStep, r.Error)
+	fmt.Printf("failed: %s at step %q: %s\n", r.Ref.RunID, r.FailedStep, r.Error)
 }
 // page.Next is empty on the last page; pass it as Cursor for the next one.
 ```
@@ -66,7 +66,7 @@ q := workflow.RunQuery{LabelPrefixes: map[string]string{"order": "A-"}}
 err = workflow.CheckRunQuery(hatchet.New(hatchet.Config{}).Capabilities(), q)
 var unsupported *workflow.UnsupportedError
 if errors.As(err, &unsupported) {
-	fmt.Fprintf(out, "hatchet refuses: field %s, missing %s\n", unsupported.Field, unsupported.Missing)
+	fmt.Printf("hatchet refuses: field %s, missing %s\n", unsupported.Field, unsupported.Missing)
 }
 ```
 
@@ -121,7 +121,7 @@ The run keeps its `RunRef` and goes back to `queued`. When it ends again, run-fi
 ```go
 err = c.Delete(ctx, ref)
 _, statusErr := c.Status(ctx, ref)
-fmt.Fprintln(out, "deleted:", err == nil, "then Status is ErrNotFound:", errors.Is(statusErr, workflow.ErrNotFound))
+fmt.Println("deleted:", err == nil, "then Status is ErrNotFound:", errors.Is(statusErr, workflow.ErrNotFound))
 ```
 
 To forget many, page through `Runs` and delete each, or use the SQL driver's retention, which prunes finished runs by age.
@@ -136,7 +136,7 @@ n, err := c.CancelAll(ctx, workflow.RunQuery{Workflow: "fulfil-order"}) // runs 
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "cancelled waiting runs:", n)
+fmt.Println("cancelled waiting runs:", n)
 ```
 
 ## Error history
@@ -158,7 +158,7 @@ if err != nil {
 	return err
 }
 for _, e := range page.Runs[0].Errors { // oldest first
-	fmt.Fprintf(out, "  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
+	fmt.Printf("  attempt %d of %q: %s (stack: %t)\n", e.Attempt, e.Step, e.Error, e.Stack != "")
 }
 ```
 
@@ -217,7 +217,7 @@ st, err := c.Status(ctx, held)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "while paused:", st)
+fmt.Println("while paused:", st)
 if err := c.Resume(ctx, workflow.PauseWorkflow("fulfil-order")); err != nil {
 	return err
 }
@@ -240,7 +240,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
+	fmt.Printf("  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
 }
 ```
 

@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -19,7 +18,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -48,23 +47,23 @@ func importUsers() workflow.Workflow {
 }
 
 // logSteps is a step middleware, the kind an app gives its driver.
-func logSteps(out io.Writer) workflow.Middleware {
+func logSteps() workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
 			info, _ := workflow.StepInfoFrom(ctx)
 			res, err := next(ctx, in)
-			fmt.Fprintf(out, "step %s attempt %d: err=%v\n", info.Step, info.Attempt, err)
+			fmt.Printf("step %s attempt %d: err=%v\n", info.Step, info.Attempt, err)
 			return res, err
 		}
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	var waited []time.Duration
 	// snippet:inline
 	res, err := workflow.RunInline(ctx, importUsers(), workflow.Job{Payload: []byte(`"users.csv"`)},
-		workflow.InlineMiddleware(logSteps(out)), // the same middleware the driver gets
+		workflow.InlineMiddleware(logSteps()), // the same middleware the driver gets
 		workflow.InlineSleep(func(_ context.Context, d time.Duration) error {
 			waited = append(waited, d) // a test skips the backoff; the default really waits
 			return nil
@@ -73,22 +72,22 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "store output: %s\n", res.Outputs["store"])
+	fmt.Printf("store output: %s\n", res.Outputs["store"])
 	// snippet:end
-	fmt.Fprintf(out, "attempts: fetch %d, store %d; backoff waits %v\n", res.Attempts["fetch"], res.Attempts["store"], waited)
+	fmt.Printf("attempts: fetch %d, store %d; backoff waits %v\n", res.Attempts["fetch"], res.Attempts["store"], waited)
 
 	// snippet:wait
 	approval := workflow.Workflow{Name: "approve", Steps: []workflow.Step{
 		{Name: "wait", Wait: &workflow.WaitSpec{Event: "approved", Key: "doc-7"}},
 	}}
 	_, err = workflow.RunInline(ctx, approval, workflow.Job{})
-	fmt.Fprintln(out, "a wait step without InlineEvents is refused:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("a wait step without InlineEvents is refused:", errors.Is(err, workflow.ErrUnsupported))
 	res, err = workflow.RunInline(ctx, approval, workflow.Job{},
 		workflow.InlineEvents(workflow.Event{Name: "approved", Key: "doc-7", Payload: []byte(`"by ada"`)}))
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "wait output: %s\n", res.Outputs["wait"])
+	fmt.Printf("wait output: %s\n", res.Outputs["wait"])
 	// snippet:end
 	return nil
 }

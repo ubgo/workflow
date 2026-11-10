@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -41,31 +40,31 @@ const (
 const envToken = "HATCHET_CLIENT_TOKEN"
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "hatchet-worker:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := refusals(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := refusals(ctx); err != nil {
 		return err
 	}
 	if os.Getenv(envToken) == "" {
-		fmt.Fprintln(out, envToken, "is not set: the live run is skipped")
+		fmt.Println(envToken, "is not set: the live run is skipped")
 		return nil
 	}
-	return live(ctx, out)
+	return live(ctx)
 }
 
 // noop is a step that returns its input.
 func noop(_ context.Context, in []byte) ([]byte, error) { return in, nil }
 
 // refusals shows what the driver refuses without an engine.
-func refusals(ctx context.Context, out io.Writer) error {
+func refusals(ctx context.Context) error {
 	c := hatchet.New(hatchet.Config{})
-	fmt.Fprintln(out, "capabilities:", c.Capabilities())
+	fmt.Println("capabilities:", c.Capabilities())
 
 	// snippet:refusals
 	berlin, err := time.LoadLocation("Europe/Berlin")
@@ -87,14 +86,14 @@ func refusals(ctx context.Context, out io.Writer) error {
 	}
 	for _, wf := range refused {
 		err := c.Register(wf) // refused here, before anything connects
-		fmt.Fprintf(out, "%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
+		fmt.Printf("%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
 	}
 	// snippet:end
 
 	// snippet:refuse-tuning
 	big := hatchet.New(hatchet.Config{GroupChunkRuns: 5000}) // the SDK's bulk limit is 1000
 	err = big.Start(ctx)                                     // refused before it connects
-	fmt.Fprintf(out, "GroupChunkRuns 5000: ErrInvalid=%v\n  %v\n", errors.Is(err, workflow.ErrInvalid), err)
+	fmt.Printf("GroupChunkRuns 5000: ErrInvalid=%v\n  %v\n", errors.Is(err, workflow.ErrInvalid), err)
 	// snippet:end
 	return nil
 }
@@ -128,7 +127,7 @@ func tunings() hatchet.Config {
 }
 
 // live runs one job on the engine named by the HATCHET_CLIENT_* variables.
-func live(ctx context.Context, out io.Writer) error {
+func live(ctx context.Context) error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	t := tunings()
@@ -185,7 +184,7 @@ func live(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		if st.IsTerminal() {
-			fmt.Fprintln(out, "live run:", st)
+			fmt.Println("live run:", st)
 			break
 		}
 		if time.Now().After(deadline) {
@@ -207,6 +206,6 @@ func live(ctx context.Context, out io.Writer) error {
 			listed = listed || strings.HasPrefix(w.Name, "hatchet-worker-example-") // the driver adds a suffix per process
 		}
 	}
-	fmt.Fprintln(out, "worker listed through Native:", listed)
+	fmt.Println("worker listed through Native:", listed)
 	return nil
 }

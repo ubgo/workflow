@@ -50,8 +50,8 @@ loads := []workflow.QueueLoad{
 	{Queue: "imports", Depth: 40, Running: 4, Workers: 4, OldestWait: 9 * time.Second},
 }
 cfg := workflow.BalanceConfig{Total: 8} // eight workers to share; each queue keeps at least one
-fmt.Fprintf(out, "by depth: %s\n", show(workflow.ByDepth(cfg).Balance(loads)))
-fmt.Fprintf(out, "by wait:  %s\n", show(workflow.ByWait(cfg).Balance(loads)))
+fmt.Printf("by depth: %s\n", show(workflow.ByDepth(cfg).Balance(loads)))
+fmt.Printf("by wait:  %s\n", show(workflow.ByWait(cfg).Balance(loads)))
 ```
 
 ```text
@@ -81,7 +81,7 @@ bounded := workflow.BalanceConfig{
 	Bounds:   map[string]workflow.QueueBounds{"emails": {Min: 3}, "imports": {Max: 6}},
 	MaxShift: 1, // move at most one worker per queue per round
 }
-fmt.Fprintf(out, "bounded:  %s\n", show(workflow.ByDepth(bounded).Balance(loads)))
+fmt.Printf("bounded:  %s\n", show(workflow.ByDepth(bounded).Balance(loads)))
 ```
 
 ```text

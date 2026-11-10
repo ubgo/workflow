@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
@@ -38,14 +37,14 @@ var (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "encrypted-payloads:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -70,7 +69,7 @@ func run(ctx context.Context, out io.Writer) error {
 				return "auth-" + o.ID, nil // sealed again by DecodeStep before the engine keeps it
 			})},
 			{Name: "capture", After: []string{"authorize"}, Run: workflow.Define(func(ctx context.Context, auth string) (string, error) {
-				fmt.Fprintln(out, "capture got", auth)
+				fmt.Println("capture got", auth)
 				return "", nil
 			})},
 		},
@@ -90,7 +89,7 @@ func run(ctx context.Context, out io.Writer) error {
 	wait := func(label string, ref workflow.RunRef) {
 		for ev := range ends {
 			if ev.Ref.RunID == ref.RunID {
-				fmt.Fprintf(out, "%s: %s, decode error: %v\n", label, ev.Status, errors.Is(ev.Err, middleware.ErrDecode))
+				fmt.Printf("%s: %s, decode error: %v\n", label, ev.Status, errors.Is(ev.Err, middleware.ErrDecode))
 				return
 			}
 		}
@@ -100,7 +99,7 @@ func run(ctx context.Context, out io.Writer) error {
 	// stored runs after sealing, so it sees exactly what the driver keeps.
 	stored := func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-			fmt.Fprintf(out, "driver stores a sealed payload: %v, card visible: %v\n",
+			fmt.Printf("driver stores a sealed payload: %v, card visible: %v\n",
 				strings.HasPrefix(string(job.Payload), `"wfenc1:`), bytes.Contains(job.Payload, []byte("4242")))
 			return next(ctx, job)
 		}
@@ -129,12 +128,12 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 	wait("plaintext", ref)
 
-	return droppedTooEarly(ctx, out, sealing)
+	return droppedTooEarly(ctx, sealing)
 }
 
 // droppedTooEarly runs a worker that knows only the new key against a
 // payload sealed with the old one: the step fails for good with ErrDecode.
-func droppedTooEarly(ctx context.Context, out io.Writer, sealing middleware.Codec) error {
+func droppedTooEarly(ctx context.Context, sealing middleware.Codec) error {
 	newOnly, err := middleware.Encrypt(newKey)
 	if err != nil {
 		return err
@@ -158,6 +157,6 @@ func droppedTooEarly(ctx context.Context, out io.Writer, sealing middleware.Code
 		return err
 	}
 	ev := <-ends
-	fmt.Fprintf(out, "old key dropped: %s, decode error: %v, permanent: %v\n", ev.Status, errors.Is(ev.Err, middleware.ErrDecode), workflow.IsPermanent(ev.Err))
+	fmt.Printf("old key dropped: %s, decode error: %v, permanent: %v\n", ev.Status, errors.Is(ev.Err, middleware.ErrDecode), workflow.IsPermanent(ev.Err))
 	return nil
 }

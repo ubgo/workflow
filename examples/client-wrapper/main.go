@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -27,7 +26,7 @@ import (
 const waitTimeout = 5 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "client-wrapper:", err)
 		os.Exit(1)
 	}
@@ -41,16 +40,15 @@ func main() {
 type audited struct {
 	workflow.Client
 	workflow.Forward
-	out io.Writer
 }
 
-func newAudited(inner workflow.Client, out io.Writer) *audited {
-	return &audited{Client: inner, Forward: workflow.Forward{Inner: inner}, out: out}
+func newAudited(inner workflow.Client) *audited {
+	return &audited{Client: inner, Forward: workflow.Forward{Inner: inner}}
 }
 
 // Enqueue is the one method the wrapper changes.
 func (a *audited) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-	fmt.Fprintf(a.out, "audit: enqueue %s\n", job.Workflow)
+	fmt.Printf("audit: enqueue %s\n", job.Workflow)
 	return a.Client.Enqueue(ctx, job)
 }
 
@@ -63,7 +61,7 @@ type bare struct {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	mem := memory.New()
@@ -79,7 +77,7 @@ func run(ctx context.Context, out io.Writer) error {
 	defer mem.Stop()
 
 	// snippet:use
-	var c workflow.Client = newAudited(mem, out)
+	var c workflow.Client = newAudited(mem)
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "email"})
 	if err != nil {
 		return err
@@ -87,7 +85,7 @@ func run(ctx context.Context, out io.Writer) error {
 	// The optional interfaces are found by type assertion, through the wrapper.
 	_, isQuerier := c.(workflow.RunQuerier)
 	_, isPauser := c.(workflow.Pauser)
-	fmt.Fprintf(out, "audited: RunQuerier=%v Pauser=%v\n", isQuerier, isPauser)
+	fmt.Printf("audited: RunQuerier=%v Pauser=%v\n", isQuerier, isPauser)
 	// snippet:end
 	if err := waitFor(ctx, c, ref); err != nil {
 		return err
@@ -96,7 +94,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "runs through the wrapper: %d %s\n", len(page.Runs), page.Runs[0].Status)
+	fmt.Printf("runs through the wrapper: %d %s\n", len(page.Runs), page.Runs[0].Status)
 	if err := c.(workflow.Pauser).Pause(ctx, workflow.PauseWorkflow("email")); err != nil {
 		return err
 	}
@@ -104,21 +102,21 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "paused through the wrapper: %v\n", paused[0].Workflow)
+	fmt.Printf("paused through the wrapper: %v\n", paused[0].Workflow)
 
 	// snippet:bare
 	var hidden workflow.Client = bare{Client: mem}
 	_, isQuerier = hidden.(workflow.RunQuerier)
-	fmt.Fprintf(out, "bare: RunQuerier=%v, although the driver has CapRunQuery=%v\n", isQuerier, hidden.Capabilities().Has(workflow.CapRunQuery))
+	fmt.Printf("bare: RunQuerier=%v, although the driver has CapRunQuery=%v\n", isQuerier, hidden.Capabilities().Has(workflow.CapRunQuery))
 	// snippet:end
 
 	// snippet:refuse
 	// Forward over a client that lacks an interface refuses with an
 	// UnsupportedError naming the capability; it never pretends.
-	stacked := newAudited(hidden, out)
+	stacked := newAudited(hidden)
 	_, err = stacked.Runs(ctx, workflow.RunQuery{})
 	var unsupported *workflow.UnsupportedError
-	fmt.Fprintf(out, "Forward over bare: ErrUnsupported=%v missing=%v\n", errors.Is(err, workflow.ErrUnsupported), errors.As(err, &unsupported) && unsupported.Missing == workflow.CapRunQuery)
+	fmt.Printf("Forward over bare: ErrUnsupported=%v missing=%v\n", errors.Is(err, workflow.ErrUnsupported), errors.As(err, &unsupported) && unsupported.Missing == workflow.CapRunQuery)
 	// snippet:end
 	return nil
 }

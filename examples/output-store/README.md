@@ -41,7 +41,7 @@ if err != nil {
 	return err
 }
 for _, a := range attempts {
-	fmt.Fprintf(out, "%s attempt %d error=%q logged fetching feed: %t\n", a.Step, a.Attempt, a.Error, strings.Contains(a.Text, "fetching feed"))
+	fmt.Printf("%s attempt %d error=%q logged fetching feed: %t\n", a.Step, a.Attempt, a.Error, strings.Contains(a.Text, "fetching feed"))
 }
 ```
 

@@ -52,11 +52,11 @@ if err := m.Register(byExpr); err != nil { // accepted here; Start validates the
 	return err
 }
 err := m.Start(ctx)
-fmt.Fprintln(out, "  memory, KeyExpr:", err)
+fmt.Println("  memory, KeyExpr:", err)
 m.Stop()
 
 err = hatchet.New(hatchet.Config{}).Register(byFunc)
-fmt.Fprintln(out, "  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
 ```
 
 ## Strategies
@@ -92,7 +92,7 @@ A dropped run is still created: `Enqueue` returns its `RunRef` and a nil error, 
 <!-- snippet: examples/concurrency/main.go#dropped -->
 ```go
 s2, err := enqueue("sync", "sync-2", nil) // the bucket is full
-fmt.Fprintf(out, "  second sync: error %v, status %s\n", err, status(s2))
+fmt.Printf("  second sync: error %v, status %s\n", err, status(s2))
 ```
 
 ## Keep one key's runs in order

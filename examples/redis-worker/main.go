@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"sync/atomic"
@@ -26,7 +25,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "redis-worker:", err)
 		os.Exit(1)
 	}
@@ -36,43 +35,43 @@ func main() {
 const envURL = "REDIS_URL"
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := offline(out); err != nil {
+func run(ctx context.Context) error {
+	if err := offline(); err != nil {
 		return err
 	}
 	url := os.Getenv(envURL)
 	if url == "" {
-		fmt.Fprintln(out, envURL, "is not set: the live run is skipped")
+		fmt.Println(envURL, "is not set: the live run is skipped")
 		return nil
 	}
-	return live(ctx, out, url)
+	return live(ctx, url)
 }
 
 // offline shows the refusals; building a client opens no connection.
-func offline(out io.Writer) error {
+func offline() error {
 	c, err := redis.New(goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:1"}))
 	if err != nil {
 		return err
 	}
 	caps := c.Capabilities()
-	fmt.Fprintln(out, "durable:", caps.Has(workflow.CapDurable), "cron:", caps.Has(workflow.CapCron), "overlap skip:", caps.Has(workflow.CapOverlapSkip))
+	fmt.Println("durable:", caps.Has(workflow.CapDurable), "cron:", caps.Has(workflow.CapCron), "overlap skip:", caps.Has(workflow.CapOverlapSkip))
 	// snippet:refused
 	// A closure is a Go value that cannot be stored in Redis, so the
 	// driver does not declare CapClosure and has no EnqueueFunc.
 	_, isClosure := any(c).(workflow.ClosureEnqueuer)
-	fmt.Fprintln(out, "closures:", caps.Has(workflow.CapClosure), isClosure)
+	fmt.Println("closures:", caps.Has(workflow.CapClosure), isClosure)
 	// snippet:end
 	return nil
 }
 
-func live(ctx context.Context, out io.Writer, url string) error {
+func live(ctx context.Context, url string) (err error) {
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
 		return err
 	}
 	// snippet:client
 	rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
-	defer rdb.Close()
+	defer func() { err = errors.Join(err, rdb.Close()) }()
 	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	newWorker := func() (*redis.Client, error) {
 		return redis.New(rdb,
@@ -130,7 +129,7 @@ func live(ctx context.Context, out io.Writer, url string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "same key, same run:", again.RunID == ref.RunID)
+	fmt.Println("same key, same run:", again.RunID == ref.RunID)
 	if err := waitEnd(ctx, web, ref); err != nil {
 		return err
 	}
@@ -139,7 +138,7 @@ func live(ctx context.Context, out io.Writer, url string) error {
 		return err
 	}
 	r := page.Runs[0]
-	fmt.Fprintf(out, "send-email %s after %d attempts, sent %d time(s), errors kept %d\n", r.Status, r.Attempts, sends.Load(), len(r.Errors))
+	fmt.Printf("send-email %s after %d attempts, sent %d time(s), errors kept %d\n", r.Status, r.Attempts, sends.Load(), len(r.Errors))
 
 	// snippet:trigger
 	id, err := workers[0].Schedule(ctx, workflow.Schedule{Name: "nightly", Workflow: "report", Cron: "0 2 * * *", Location: time.UTC, Overlap: workflow.OverlapSkip})
@@ -159,7 +158,7 @@ func live(ctx context.Context, out io.Writer, url string) error {
 		return err
 	}
 	for _, s := range infos {
-		fmt.Fprintf(out, "schedule %s: last run %s, next fire %s\n", s.Name, s.Last.Status, s.Next.Format("15:04 MST"))
+		fmt.Printf("schedule %s: last run %s, next fire %s\n", s.Name, s.Last.Status, s.Next.Format("15:04 MST"))
 	}
 	stop()
 	for _, w := range workers {

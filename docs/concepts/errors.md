@@ -32,18 +32,18 @@ if err := c.Register(wf); err != nil {
 	return err
 }
 _, err := c.Enqueue(ctx, workflow.Job{Workflow: "ping"})
-fmt.Fprintln(out, "before Start:", errors.Is(err, workflow.ErrNotStarted))
+fmt.Println("before Start:", errors.Is(err, workflow.ErrNotStarted))
 
 if err := c.Start(ctx); err != nil {
 	return err
 }
-fmt.Fprintln(out, "second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
-fmt.Fprintln(out, "Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
+fmt.Println("second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
+fmt.Println("Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
 
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "pnig"})
-fmt.Fprintln(out, "unknown workflow:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown workflow:", errors.Is(err, workflow.ErrNotFound))
 _, err = c.Status(ctx, workflow.RunRef{RunID: "no-such-run"})
-fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 ```
 
 ```text
@@ -66,8 +66,8 @@ A caller sometimes has to tell "the backend is down" from "the backend refused t
 // original error stays reachable for errors.Is and errors.As.
 refused := errors.New("dial tcp 10.0.0.5:7077: connection refused")
 err = workflow.Unavailable(fmt.Errorf("enqueue: %w", refused))
-fmt.Fprintln(out, "outage:", workflow.IsUnavailable(err), errors.Is(err, refused))
-fmt.Fprintln(out, "refusal is no outage:", workflow.IsUnavailable(workflow.Unsupported("Job.RunAt", "")))
+fmt.Println("outage:", workflow.IsUnavailable(err), errors.Is(err, refused))
+fmt.Println("refusal is no outage:", workflow.IsUnavailable(workflow.Unsupported("Job.RunAt", "")))
 ```
 
 ```text

@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -40,14 +39,14 @@ type SyncArgs struct {
 // snippet:end
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "unique-states:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	started := make(chan string, 4)
 	release := make(chan struct{})
@@ -71,7 +70,7 @@ func run(ctx context.Context, out io.Writer) error {
 	defer mc.Stop()
 	defer close(release)
 
-	fmt.Fprintln(out, "unique while waiting to start:")
+	fmt.Println("unique while waiting to start:")
 	// snippet:states
 	waiting, err := middleware.UniqueWith(middleware.UniqueConfig{
 		By:     middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]()),
@@ -95,11 +94,11 @@ func run(ctx context.Context, out io.Writer) error {
 		_, err = c.Enqueue(ctx, job)
 		switch {
 		case errors.Is(err, workflow.ErrDuplicate):
-			fmt.Fprintf(out, "  %s: refused (ErrDuplicate)\n", label)
+			fmt.Printf("  %s: refused (ErrDuplicate)\n", label)
 		case err != nil:
 			return err
 		default:
-			fmt.Fprintf(out, "  %s: accepted\n", label)
+			fmt.Printf("  %s: accepted\n", label)
 		}
 		return nil
 	}
@@ -112,18 +111,18 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := enqueue("s-2 now", SyncArgs{ShopID: "s-2"}, time.Time{}); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  started %s\n", <-started)
+	fmt.Printf("  started %s\n", <-started)
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the delayed start is armed
 		return err
 	}
 	clk.Advance(time.Hour)
-	fmt.Fprintf(out, "  started %s\n", <-started)
+	fmt.Printf("  started %s\n", <-started)
 	if err := enqueue("s-1 again, first one running", SyncArgs{ShopID: "s-1", Cursor: "c"}, time.Time{}); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  started %s\n", <-started)
+	fmt.Printf("  started %s\n", <-started)
 
-	fmt.Fprintln(out, "return the existing run:")
+	fmt.Println("return the existing run:")
 	// snippet:return-existing
 	existing, err := middleware.UniqueWith(middleware.UniqueConfig{
 		By:             func(j workflow.Job) string { return "export:" + j.Labels["user"] },
@@ -146,7 +145,7 @@ func run(ctx context.Context, out io.Writer) error {
 		if first.IsZero() {
 			first = ref
 		}
-		fmt.Fprintf(out, "  %s: same run %t, duplicate %t (reported %t)\n", try, ref == first, outcome.Duplicate, outcome.Reported)
+		fmt.Printf("  %s: same run %t, duplicate %t (reported %t)\n", try, ref == first, outcome.Duplicate, outcome.Reported)
 	}
 	// snippet:end
 	<-started
@@ -158,7 +157,7 @@ func run(ctx context.Context, out io.Writer) error {
 		if _, err := mc.Enqueue(ctx, keyed); err != nil { // an idempotency key, no middleware
 			return err
 		}
-		fmt.Fprintf(out, "  key %s: duplicate %t\n", try, outcome.Duplicate)
+		fmt.Printf("  key %s: duplicate %t\n", try, outcome.Duplicate)
 	}
 	// snippet:end
 	<-started

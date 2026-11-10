@@ -30,7 +30,7 @@ return func(ctx context.Context, _ []byte) ([]byte, error) {
 	workflow.RecordEvent(ctx, "fetched changes", slog.Int("rows", 100))
 	workflow.RecordEventLevel(ctx, slog.LevelWarn, "rows rejected", slog.Int("bad", 3), slog.String("first", "row-17"))
 	err := workflow.SetOutcome(ctx, workflow.OutcomePartial, "3 of 100 rows rejected")
-	fmt.Fprintln(out, "outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("outcome kept:", err == nil, "unsupported:", errors.Is(err, workflow.ErrUnsupported))
 	return nil, nil
 }
 ```
@@ -73,10 +73,10 @@ r, err := store.Run(ctx, syncRef)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "run %s outcome=%s (%s)\n", r.Status, r.Outcome, r.OutcomeNote)
+fmt.Printf("run %s outcome=%s (%s)\n", r.Status, r.Outcome, r.OutcomeNote)
 for _, s := range r.Steps {
 	for _, e := range s.Events {
-		fmt.Fprintf(out, "  %s %s %q %v\n", s.Step, e.Level, e.Message, e.Attrs)
+		fmt.Printf("  %s %s %q %v\n", s.Step, e.Level, e.Message, e.Attrs)
 	}
 }
 ```

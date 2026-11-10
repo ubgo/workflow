@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -28,7 +27,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "failure-alerts:", err)
 		os.Exit(1)
 	}
@@ -47,17 +46,17 @@ func (l *lines) add(format string, args ...any) {
 	l.out = append(l.out, fmt.Sprintf(format, args...))
 }
 
-func (l *lines) flush(out io.Writer) {
+func (l *lines) flush() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	for _, s := range l.out {
-		fmt.Fprintln(out, " ", s)
+		fmt.Println(" ", s)
 	}
 	l.out = nil
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
 	mem := memory.New(memory.WithClock(clk))
 	var got lines
@@ -122,24 +121,24 @@ func run(ctx context.Context, out io.Writer) error {
 		return waitLines(&got)
 	}
 
-	fmt.Fprintln(out, "-- first failure")
+	fmt.Println("-- first failure")
 	if err := fail(1); err != nil {
 		return err
 	}
-	got.flush(out)
+	got.flush()
 
-	fmt.Fprintln(out, "-- two more within 10 minutes: reported, not alerted")
+	fmt.Println("-- two more within 10 minutes: reported, not alerted")
 	if err := fail(2); err != nil {
 		return err
 	}
-	got.flush(out)
+	got.flush()
 
-	fmt.Fprintln(out, "-- 10 minutes later")
+	fmt.Println("-- 10 minutes later")
 	clk.Advance(10 * time.Minute)
 	if err := fail(1); err != nil {
 		return err
 	}
-	got.flush(out)
+	got.flush()
 	return nil
 }
 

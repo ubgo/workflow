@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -35,14 +34,14 @@ type ExportResult struct {
 }
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "results-progress:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 
 	// snippet:report
@@ -105,7 +104,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	defer c.Stop()
 
-	fmt.Fprintln(out, "progress:")
+	fmt.Println("progress:")
 	// snippet:await
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "export-orders", Tenant: "acme"})
 	if err != nil {
@@ -124,7 +123,7 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 	for range 3 {
 		p := <-progress
-		fmt.Fprintf(out, "  %3.0f%% %s (step %s, at %s)\n", p.Percent, p.Message, p.Step, p.At.Format("15:04"))
+		fmt.Printf("  %3.0f%% %s (step %s, at %s)\n", p.Percent, p.Message, p.Step, p.At.Format("15:04"))
 	}
 	// snippet:latest
 	page, err := c.Runs(ctx, workflow.RunQuery{Ref: ref})
@@ -132,13 +131,13 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	if p := page.Runs[0].Progress; p != nil { // nil until a step reports
-		fmt.Fprintf(out, "  latest: %.0f%% %s\n", p.Percent, p.Message)
+		fmt.Printf("  latest: %.0f%% %s\n", p.Percent, p.Message)
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  outside a step: unsupported %t\n", errors.Is(workflow.ReportProgress(ctx, workflow.Progress{Percent: 1}), workflow.ErrUnsupported))
+	fmt.Printf("  outside a step: unsupported %t\n", errors.Is(workflow.ReportProgress(ctx, workflow.Progress{Percent: 1}), workflow.ErrUnsupported))
 
-	fmt.Fprintln(out, "result:")
-	fmt.Fprintf(out, "  %s\n  decoded: %s, %d rows\n", raw, res.File, res.Rows)
+	fmt.Println("result:")
+	fmt.Printf("  %s\n  decoded: %s, %d rows\n", raw, res.File, res.Rows)
 
 	ref2, err := c.Enqueue(ctx, workflow.Job{Workflow: "checkout"})
 	if err != nil {
@@ -148,7 +147,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  checkout, final steps %v: %s\n", workflow.Sinks(checkout), raw2)
+	fmt.Printf("  checkout, final steps %v: %s\n", workflow.Sinks(checkout), raw2)
 
 	ref3, err := c.Enqueue(ctx, workflow.Job{Workflow: "pay"})
 	if err != nil {
@@ -158,18 +157,18 @@ func run(ctx context.Context, out io.Writer) error {
 	_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
 	var failed *workflow.RunFailedError
 	if errors.As(err, &failed) {
-		fmt.Fprintf(out, "  pay: ended %s: %s\n", failed.Status, failed.Err)
+		fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)
 	}
 	// snippet:end
 	_, err = c.Result(ctx, ref3)
-	fmt.Fprintf(out, "  Result of a failed run: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
+	fmt.Printf("  Result of a failed run: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
 
-	return tenants(ctx, c, out)
+	return tenants(ctx, c)
 }
 
 // tenants enqueues runs for two tenants and lists one tenant's.
-func tenants(ctx context.Context, c *memory.Client, out io.Writer) error {
-	fmt.Fprintln(out, "tenants:")
+func tenants(ctx context.Context, c *memory.Client) error {
+	fmt.Println("tenants:")
 	for _, tenant := range []string{"globex", "acme"} {
 		// snippet:tenant
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "checkout", Tenant: tenant})
@@ -207,14 +206,14 @@ func tenants(ctx context.Context, c *memory.Client, out io.Writer) error {
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "  %s %s %s", r.Tenant, r.Workflow, r.Status)
+		fmt.Printf("  %s %s %s", r.Tenant, r.Workflow, r.Status)
 		if r.Labels["source"] == "schedule" {
-			fmt.Fprint(out, " (fired by acme-nightly)")
+			fmt.Print(" (fired by acme-nightly)")
 		}
-		fmt.Fprintln(out)
+		fmt.Println()
 	}
 	// snippet:end
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "checkout", Tenant: "acme corp"})
-	fmt.Fprintf(out, "  tenant with a space: ErrInvalid %t\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("  tenant with a space: ErrInvalid %t\n", errors.Is(err, workflow.ErrInvalid))
 	return nil
 }

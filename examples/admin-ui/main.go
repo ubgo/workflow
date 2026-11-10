@@ -27,7 +27,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout, os.Getenv("ADMIN_UI_ADDR")); err != nil {
+	if err := run(context.Background(), os.Getenv("ADMIN_UI_ADDR")); err != nil {
 		fmt.Fprintln(os.Stderr, "admin-ui:", err)
 		os.Exit(1)
 	}
@@ -71,7 +71,7 @@ var auth = admin.Auth[user]{
 
 // run is main without the process exit, so the test drives the same code.
 // A non-empty addr keeps the server up on that address until interrupted.
-func run(ctx context.Context, out io.Writer, addr string) error {
+func run(ctx context.Context, addr string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
@@ -132,30 +132,29 @@ func run(ctx context.Context, out io.Writer, addr string) error {
 		if err != nil {
 			return nil, "", err
 		}
-		defer resp.Body.Close()
 		b, err := io.ReadAll(resp.Body)
-		return resp, string(b), err
+		return resp, string(b), errors.Join(err, resp.Body.Close())
 	}
 
 	resp, _, err := call("GET", "/admin/ui/", "")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "anonymous GET /admin/ui/:", resp.StatusCode)
+	fmt.Println("anonymous GET /admin/ui/:", resp.StatusCode)
 
 	resp, _, err = call("GET", "/admin/", "s-vic")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "viewer GET /admin/: %d to %s\n", resp.StatusCode, resp.Header.Get("Location"))
+	fmt.Printf("viewer GET /admin/: %d to %s\n", resp.StatusCode, resp.Header.Get("Location"))
 
 	resp, body, err := call("GET", "/admin/ui/", "s-vic")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "viewer GET /admin/ui/: %d %s, page %v\n", resp.StatusCode, resp.Header.Get("Content-Type"), strings.Contains(body, "<html"))
-	fmt.Fprintln(out, "CSP:", resp.Header.Get("Content-Security-Policy"))
-	fmt.Fprintln(out, "X-Frame-Options:", resp.Header.Get("X-Frame-Options"))
+	fmt.Printf("viewer GET /admin/ui/: %d %s, page %v\n", resp.StatusCode, resp.Header.Get("Content-Type"), strings.Contains(body, "<html"))
+	fmt.Println("CSP:", resp.Header.Get("Content-Security-Policy"))
+	fmt.Println("X-Frame-Options:", resp.Header.Get("X-Frame-Options"))
 
 	// snippet:count
 	// What the runs screen asks for: a label prefix and a total for the pages.
@@ -171,7 +170,7 @@ func run(ctx context.Context, out io.Writer, addr string) error {
 	if err := json.Unmarshal([]byte(body), &page); err != nil || page.Total == nil {
 		return fmt.Errorf("runs: %s", body)
 	}
-	fmt.Fprintf(out, "viewer runs tenant=acme*: %d runs, total %d\n", len(page.Runs), *page.Total)
+	fmt.Printf("viewer runs tenant=acme*: %d runs, total %d\n", len(page.Runs), *page.Total)
 
 	_, body, err = call("GET", "/admin/schedules", "s-vic")
 	if err != nil {
@@ -190,15 +189,15 @@ func run(ctx context.Context, out io.Writer, addr string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "viewer pauses the schedule:", resp.StatusCode)
+	fmt.Println("viewer pauses the schedule:", resp.StatusCode)
 	resp, _, err = call("POST", "/admin/schedules/"+id+"/pause", "s-ann")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "admin pauses the schedule:", resp.StatusCode)
+	fmt.Println("admin pauses the schedule:", resp.StatusCode)
 
 	if addr != "" {
-		fmt.Fprintf(out, "open %s/login?as=s-ann (or s-vic for a viewer); Ctrl-C to stop\n", srv.URL)
+		fmt.Printf("open %s/login?as=s-ann (or s-vic for a viewer); Ctrl-C to stop\n", srv.URL)
 		sig, stop := signal.NotifyContext(ctx, os.Interrupt)
 		defer stop()
 		<-sig.Done()

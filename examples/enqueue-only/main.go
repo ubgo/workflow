@@ -16,7 +16,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,7 +27,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "enqueue-only:", err)
 		os.Exit(1)
 	}
@@ -38,17 +37,17 @@ func main() {
 const pollInterval = 20 * time.Millisecond
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "enqueue-only-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// A step that blocks on its first run until its worker stops, then
 	// succeeds on whichever worker runs it next.
@@ -88,13 +87,13 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "web enqueued", ref.RunID != "", "status", st)
+	fmt.Println("web enqueued", ref.RunID != "", "status", st)
 
 	workerA, stopA, err := startWorker(ctx, db, thumbnail)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "worker A runs attempt", <-attempts)
+	fmt.Println("worker A runs attempt", <-attempts)
 
 	// snippet:shutdown
 	// SIGTERM on worker A: cancel its Start context and wait for Stop.
@@ -102,14 +101,14 @@ func run(ctx context.Context, out io.Writer) error {
 	stopA()
 	workerA.Stop()
 	// snippet:end
-	fmt.Fprintln(out, "worker A stopped")
+	fmt.Println("worker A stopped")
 
 	workerB, stopB, err := startWorker(ctx, db, thumbnail)
 	if err != nil {
 		return err
 	}
 	defer func() { stopB(); workerB.Stop() }()
-	fmt.Fprintln(out, "worker B runs attempt", <-attempts)
+	fmt.Println("worker B runs attempt", <-attempts)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -130,7 +129,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	r := page.Runs[0]
-	fmt.Fprintf(out, "run %s, attempts counted %d, errors recorded %d\n", r.Status, r.Attempts, len(r.Errors))
+	fmt.Printf("run %s, attempts counted %d, errors recorded %d\n", r.Status, r.Attempts, len(r.Errors))
 	return nil
 }
 

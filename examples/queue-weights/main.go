@@ -14,7 +14,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -25,18 +24,18 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "queue-weights:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := weighted(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := weighted(ctx); err != nil {
 		return err
 	}
-	return fifo(ctx, out)
+	return fifo(ctx)
 }
 
 // recorder returns a handler that reports its payload when it starts and,
@@ -54,7 +53,7 @@ func recorder(started chan<- string, release <-chan struct{}) workflow.Handler {
 
 // weighted queues eight imports and eight exports behind one busy worker
 // and prints the order the worker takes them in.
-func weighted(ctx context.Context, out io.Writer) error {
+func weighted(ctx context.Context) error {
 	started := make(chan string, 32)
 	release := make(chan struct{})
 	h := recorder(started, release)
@@ -101,15 +100,15 @@ func weighted(ctx context.Context, out io.Writer) error {
 	for i := range order {
 		order[i] = <-started
 	}
-	fmt.Fprintln(out, "weighted (E = export, I = import):")
-	fmt.Fprintf(out, "  %s\n", strings.Join(order[:8], " "))
-	fmt.Fprintf(out, "  %s\n", strings.Join(order[8:], " "))
+	fmt.Println("weighted (E = export, I = import):")
+	fmt.Printf("  %s\n", strings.Join(order[:8], " "))
+	fmt.Printf("  %s\n", strings.Join(order[8:], " "))
 	return nil
 }
 
 // fifo queues three syncs of one account behind a running one and
 // prints the order they start in.
-func fifo(ctx context.Context, out io.Writer) error {
+func fifo(ctx context.Context) error {
 	started := make(chan string, 8)
 	release := make(chan struct{})
 	h := recorder(started, release)
@@ -144,9 +143,9 @@ func fifo(ctx context.Context, out io.Writer) error {
 		}
 	}
 	close(release)
-	fmt.Fprintln(out, "fifo per key:")
+	fmt.Println("fifo per key:")
 	for range 3 {
-		fmt.Fprintf(out, "  started %s\n", <-started)
+		fmt.Printf("  started %s\n", <-started)
 	}
 	return nil
 }

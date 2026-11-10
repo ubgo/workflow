@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guides show: a memoised
 // charge on a retried step, MapEach and Loop rerunning only what failed,
 // chunked progress, run data, a Choice, and the journal forgotten at the end.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `memo:
@@ -36,7 +37,7 @@ no journal:
 journal:
   runs holding entries after every run finished: 0
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

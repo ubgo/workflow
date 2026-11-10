@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: each
 // frequency's expression and next fire, each refusal, and the built
 // expression firing on weekdays only.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `frequencies:
@@ -34,7 +35,7 @@ refusals:
 on a workflow:
   Mon 5 Jan 09:30, Tue 6 Jan 09:30, Wed 7 Jan 09:30, Thu 8 Jan 09:30, Fri 9 Jan 09:30, Mon 12 Jan 09:30
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

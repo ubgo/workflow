@@ -135,7 +135,8 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 
 ## Writing an example
 
-- `main.go` keeps `main` tiny and puts the program in `run(ctx, out io.Writer) error`, so the test drives the same code.
+- `main.go` keeps `main` tiny and puts the program in `run(ctx) error`, so the test drives the same code. Examples print with `fmt.Println` and `fmt.Printf`, as an app would; the test reads the output with `capture.Stdout` from [internal/capture](internal/capture).
+- Every error is handled, deferred ones included: a `Close` or `os.RemoveAll` joins the function's error with `errors.Join`, so `volt ci` (errcheck) stays clean without exclusions.
 - Mark each region a guide copies with `// snippet:<name>` and `// snippet:end`; the guide puts `<!-- snippet: examples/<folder>/main.go#<name> -->` on the line before its code block.
 - Examples that need a database use SQLite in memory so they run with nothing else installed; parts that need Postgres, MySQL or Hatchet skip when their environment variable is unset.
 

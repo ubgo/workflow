@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +25,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -53,7 +52,7 @@ func (r *receipts) list() string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -107,10 +106,10 @@ func run(ctx context.Context, out io.Writer) error {
 
 	for _, target := range []string{"/orders/o-1", "/orders/o-2?then=fail", "/orders/o-3?then=panic"} {
 		status, panicked := serve(h, target)
-		fmt.Fprintf(out, "POST %s: status %d, panicked %v\n", target, status, panicked)
+		fmt.Printf("POST %s: status %d, panicked %v\n", target, status, panicked)
 	}
 	<-ends // only o-1 ran
-	fmt.Fprintf(out, "receipts after the requests: %s\n", sent.list())
+	fmt.Printf("receipts after the requests: %s\n", sent.list())
 
 	// snippet:manual
 	d := workflow.NewDeferred()
@@ -120,13 +119,13 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 	}
-	fmt.Fprintf(out, "held before flush: %d\n", d.Len())
+	fmt.Printf("held before flush: %d\n", d.Len())
 	refs, err := d.Flush(ctx) // the work this belongs to succeeded
 	if err != nil {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "flushed: %d runs\n", len(refs))
+	fmt.Printf("flushed: %d runs\n", len(refs))
 	<-ends
 	<-ends
 
@@ -138,8 +137,8 @@ func run(ctx context.Context, out io.Writer) error {
 	dropped := d.Discard() // the work failed: nothing is sent
 	_, err = c.Enqueue(workflow.WithDeferred(ctx, d), workflow.Job{Workflow: "send-receipt", Payload: []byte("o-7")})
 	// snippet:end
-	fmt.Fprintf(out, "discarded: %d, enqueue after discard: ErrDeferredClosed %v\n", dropped, errors.Is(err, workflow.ErrDeferredClosed))
-	fmt.Fprintf(out, "receipts at the end: %s\n", sent.list())
+	fmt.Printf("discarded: %d, enqueue after discard: ErrDeferredClosed %v\n", dropped, errors.Is(err, workflow.ErrDeferredClosed))
+	fmt.Printf("receipts at the end: %s\n", sent.list())
 	return nil
 }
 

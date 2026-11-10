@@ -24,7 +24,7 @@ if err := c.Cancel(ctx, exp); err != nil {
 if st, err = c.Status(ctx, exp); err != nil {
 	return err
 }
-fmt.Fprintln(out, "cancelled while running:", st)
+fmt.Println("cancelled while running:", st)
 ```
 
 Cancel is idempotent: cancelling a run that has finished or was already cancelled returns nil, so you can call it from a retried request without checking first. A cancelled run is never retried. The `Err` of its run-finished event matches `workflow.ErrCancelled` under `errors.Is` on every driver, which is what the example's `run-finished: cancelled, cancelled true` line checks.
@@ -53,7 +53,7 @@ st, err = c.Status(ctx, ref) // the RunRef Enqueue returned still works
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "after it ran: %s, terminal %t\n", st, st.IsTerminal())
+fmt.Printf("after it ran: %s, terminal %t\n", st, st.IsTerminal())
 ```
 
 An unknown reference returns an error matching `workflow.ErrNotFound`:
@@ -61,7 +61,7 @@ An unknown reference returns an error matching `workflow.ErrNotFound`:
 <!-- snippet: examples/delayed-jobs/main.go#not-found -->
 ```go
 _, err = c.Status(ctx, workflow.RunRef{RunID: "run-404"})
-fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 ```
 
 `RunID` is the run's identity once it has started. Treat it as opaque: the memory driver counts (`run-1`), the SQL driver uses a generated ID, Hatchet its own. Store the whole `RunRef` rather than the `RunID` alone, because a delayed run has no `RunID` until it fires.

@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -32,14 +31,14 @@ var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 const statusPoll = time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -97,7 +96,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	defer c.Stop()
-	fmt.Fprintf(out, "memory declares CapRunStates: %v\n", c.Capabilities().Has(workflow.CapRunStates))
+	fmt.Printf("memory declares CapRunStates: %v\n", c.Capabilities().Has(workflow.CapRunStates))
 
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "sync-invoices"})
 	if err != nil {
@@ -112,20 +111,20 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, info := range page.Runs {
-		fmt.Fprintf(out, "%s: %s, attempt %d at %s, last error %q\n",
+		fmt.Printf("%s: %s, attempt %d at %s, last error %q\n",
 			info.Workflow, info.Status, info.NextAttempt, info.NextAttemptAt.Sub(start), info.Error)
 	}
 	// snippet:end
 	clk.Advance(time.Minute) // the backoff ends
 	ev := <-ends
-	fmt.Fprintf(out, "after the backoff: %s\n", ev.Status)
+	fmt.Printf("after the backoff: %s\n", ev.Status)
 
 	// snippet:discarded
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "ship-order"}); err != nil {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "%s: %s, terminal %v, ErrDiscarded %v, ErrCancelled %v\n", ev.Workflow, ev.Status,
+	fmt.Printf("%s: %s, terminal %v, ErrDiscarded %v, ErrCancelled %v\n", ev.Workflow, ev.Status,
 		ev.Status.IsTerminal(), errors.Is(ev.Err, workflow.ErrDiscarded), errors.Is(ev.Err, workflow.ErrCancelled))
 	// snippet:end
 
@@ -136,7 +135,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, info := range dropped.Runs {
-		fmt.Fprintf(out, "admin discarded: %s, %q\n", info.Workflow, info.Error)
+		fmt.Printf("admin discarded: %s, %q\n", info.Workflow, info.Error)
 	}
 	// snippet:end
 
@@ -144,7 +143,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "%s with MaxErrors 2: %s\n", ev.Workflow, ev.Status)
+	fmt.Printf("%s with MaxErrors 2: %s\n", ev.Workflow, ev.Status)
 
 	// snippet:batch
 	orders := []workflow.Job{{Workflow: "pack-order"}, {Workflow: "ship-order"}}
@@ -164,7 +163,7 @@ func run(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "batch with DiscardedAs %q: %s ran; succeeded %d, failed %d, discarded %d\n",
+		fmt.Printf("batch with DiscardedAs %q: %s ran; succeeded %d, failed %d, discarded %d\n",
 			discardedAs, ran, p.Succeeded, p.Failed, p.Discarded)
 	}
 	// snippet:end
@@ -188,7 +187,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	for _, s := range []workflow.Status{workflow.StatusRetrying, workflow.StatusDiscarded, workflow.StatusFailed, workflow.StatusSucceeded} {
-		fmt.Fprintf(out, "  %s: %s\n", s, describe(s))
+		fmt.Printf("  %s: %s\n", s, describe(s))
 	}
 	return nil
 }

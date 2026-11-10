@@ -173,7 +173,7 @@ Cancelling the `Start` context cuts running steps off at once. A deploy usually 
 // Register this in the shutdown phase that runs before the database
 // and HTTP listener close. It drains within the grace, or sooner if
 // the phase's own ctx ends first, and reports what it cut off.
-hook := workflow.ShutdownHookReport(c, grace, printReport(out, "memory"))
+hook := workflow.ShutdownHookReport(c, grace, printReport("memory"))
 err = hook(ctx)
 ```
 

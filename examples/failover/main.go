@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -33,7 +32,7 @@ import (
 const statusPoll = 5 * time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "failover:", err)
 		os.Exit(1)
 	}
@@ -64,7 +63,7 @@ func side(ref workflow.RunRef) string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
@@ -73,13 +72,13 @@ func run(ctx context.Context, out io.Writer) error {
 	primary := switchable(&down, func() error { return workflow.Unavailable(errors.New("connection refused")) })
 	secondary := memory.New()
 
-	fmt.Fprintln(out, "-- Fail over to a second backend")
+	fmt.Println("-- Fail over to a second backend")
 	// snippet:new
 	c := failover.New(primary, secondary,
 		failover.WithCoolOff(2, time.Minute), // skip the primary for 1m after 2 failovers in a row
 		failover.WithClock(clk),
 		failover.WithObserver(func(ctx context.Context, ev failover.Event) {
-			fmt.Fprintln(out, "  event:", ev.Kind, ev.Workflow)
+			fmt.Println("  event:", ev.Kind, ev.Workflow)
 		}))
 	if err := c.Register(email); err != nil { // registers on both backends
 		return err
@@ -91,20 +90,20 @@ func run(ctx context.Context, out io.Writer) error {
 
 	// snippet:key-required
 	_, err := c.Enqueue(ctx, workflow.Job{Workflow: "email"})
-	fmt.Fprintln(out, "no key:", errors.Is(err, failover.ErrKeyRequired), errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("no key:", errors.Is(err, failover.ErrKeyRequired), errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 
 	enqueue := func(key string) (workflow.RunRef, error) {
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "email", IdempotencyKey: key})
 		if err == nil {
-			fmt.Fprintf(out, "%s -> %s\n", key, side(ref))
+			fmt.Printf("%s -> %s\n", key, side(ref))
 		}
 		return ref, err
 	}
 	if _, err := enqueue("order-1"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- the primary goes down")
+	fmt.Println("-- the primary goes down")
 	down.Store(true)
 	ref, err := enqueue("order-2")
 	if err != nil {
@@ -123,23 +122,23 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "order-2 on the secondary:", st)
+	fmt.Println("order-2 on the secondary:", st)
 
-	fmt.Fprintln(out, "-- the primary is back and the cool-off ends")
+	fmt.Println("-- the primary is back and the cool-off ends")
 	down.Store(false)
 	clk.Advance(time.Minute)
 	if _, err := enqueue("order-5"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "capabilities include Cron:", c.Capabilities().Has(workflow.CapCron))
+	fmt.Println("capabilities include Cron:", c.Capabilities().Has(workflow.CapCron))
 
-	fmt.Fprintln(out, "-- Decide what counts as an outage")
-	return classifiers(ctx, out)
+	fmt.Println("-- Decide what counts as an outage")
+	return classifiers(ctx)
 }
 
 // classifiers sends one job whose primary fails with an unmarked error:
 // DefaultClassifier fails over, StrictClassifier returns the error.
-func classifiers(ctx context.Context, out io.Writer) error {
+func classifiers(ctx context.Context) error {
 	for _, tc := range []struct {
 		name string
 		opts []failover.Option
@@ -160,10 +159,10 @@ func classifiers(ctx context.Context, out io.Writer) error {
 		}
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "email", IdempotencyKey: "order-9"})
 		if err != nil {
-			fmt.Fprintf(out, "%s classifier: returned %q\n", tc.name, err)
+			fmt.Printf("%s classifier: returned %q\n", tc.name, err)
 			continue
 		}
-		fmt.Fprintf(out, "%s classifier: failed over to %s\n", tc.name, side(ref))
+		fmt.Printf("%s classifier: failed over to %s\n", tc.name, side(ref))
 	}
 	return nil
 }

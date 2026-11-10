@@ -18,12 +18,12 @@ An app label under one of them would collide with, or be removed by, the package
 
 <!-- snippet: examples/capabilities/main.go#labels -->
 ```go
-fmt.Fprintln(out, "reserved:", workflow.ReservedLabelPrefixes())
+fmt.Println("reserved:", workflow.ReservedLabelPrefixes())
 prefix, ok := workflow.ReservedLabel("otel.traceparent")
-fmt.Fprintln(out, "otel.traceparent reserved:", ok, prefix)
+fmt.Println("otel.traceparent reserved:", ok, prefix)
 
 err := workflow.ValidateLabels(map[string]string{"tenant": "acme", "workflow.batch.id": "b1"})
-fmt.Fprintln(out, "ValidateLabels:", err)
+fmt.Println("ValidateLabels:", err)
 ```
 
 ```text

@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // want is the program's whole output, the one its README and guide show.
@@ -21,11 +22,11 @@ reconcile: checked=0 finished=0 stale=0
 
 // TestRun runs the program and checks every line it prints.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out, filepath.Join(t.TempDir(), "runs.db")); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background(), filepath.Join(t.TempDir(), "runs.db")) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

@@ -26,7 +26,7 @@ st, err := c.Status(ctx, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "enqueued: scheduled id set %t, run id set %t, status %s\n",
+fmt.Printf("enqueued: scheduled id set %t, run id set %t, status %s\n",
 	!ref.ScheduledID.IsZero(), !ref.RunID.IsZero(), st)
 ```
 
@@ -38,7 +38,7 @@ st, err = c.Status(ctx, ref) // the RunRef Enqueue returned still works
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "after it ran: %s, terminal %t\n", st, st.IsTerminal())
+fmt.Printf("after it ran: %s, terminal %t\n", st, st.IsTerminal())
 ```
 
 A delayed start can be cancelled before it fires, which is how you call off a reminder when the appointment is cancelled:
@@ -58,7 +58,7 @@ if err := c.Cancel(ctx, later); err != nil { // cancelling twice is not an error
 if st, err = c.Status(ctx, later); err != nil {
 	return err
 }
-fmt.Fprintln(out, "cancelled before it started:", st)
+fmt.Println("cancelled before it started:", st)
 ```
 
 A `RunAt` that is not in the future starts the run now, with a `RunID` straight away.

@@ -62,8 +62,8 @@ env := map[string]string{
 }
 workflowCmd := func(args ...string) int {
 	return cli.Run(ctx, args, cli.Options{
-		Stdout: out,
-		Stderr: out,
+		Stdout: os.Stdout,
+		Stderr: os.Stdout,
 		Getenv: func(k string) string { return env[k] },
 		Name:   "workflow",
 	})

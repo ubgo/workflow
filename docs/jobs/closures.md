@@ -92,7 +92,7 @@ for _, d := range []struct {
 	_, err := workflow.EnqueueClosure(ctx, d.c, job)
 	var unsupported *workflow.UnsupportedError
 	if errors.As(err, &unsupported) {
-		fmt.Fprintf(out, "%s refuses: missing %s, ErrUnsupported %v\n", d.name, unsupported.Missing, errors.Is(err, workflow.ErrUnsupported))
+		fmt.Printf("%s refuses: missing %s, ErrUnsupported %v\n", d.name, unsupported.Missing, errors.Is(err, workflow.ErrUnsupported))
 	}
 }
 ```

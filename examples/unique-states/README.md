@@ -79,7 +79,7 @@ for _, try := range []string{"first", "second"} {
 	if first.IsZero() {
 		first = ref
 	}
-	fmt.Fprintf(out, "  %s: same run %t, duplicate %t (reported %t)\n", try, ref == first, outcome.Duplicate, outcome.Reported)
+	fmt.Printf("  %s: same run %t, duplicate %t (reported %t)\n", try, ref == first, outcome.Duplicate, outcome.Reported)
 }
 ```
 
@@ -93,7 +93,7 @@ for _, try := range []string{"first", "second"} {
 	if _, err := mc.Enqueue(ctx, keyed); err != nil { // an idempotency key, no middleware
 		return err
 	}
-	fmt.Fprintf(out, "  key %s: duplicate %t\n", try, outcome.Duplicate)
+	fmt.Printf("  key %s: duplicate %t\n", try, outcome.Duplicate)
 }
 ```
 

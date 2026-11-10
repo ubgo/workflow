@@ -64,7 +64,7 @@ if err != nil {
 t := monday
 for range 3 {
 	t = s.Next(t, ny) // strictly after t, evaluated in New York
-	fmt.Fprintln(out, " ", t.Format(layout))
+	fmt.Println(" ", t.Format(layout))
 }
 ```
 
@@ -78,7 +78,7 @@ var days []string
 for _, f := range fires {
 	days = append(days, f.Format("Mon 2 Jan"))
 }
-fmt.Fprintln(out, "  1st of the month or a Monday:", strings.Join(days, ", "))
+fmt.Println("  1st of the month or a Monday:", strings.Join(days, ", "))
 ```
 
 A parse error names the field:
@@ -87,7 +87,7 @@ A parse error names the field:
 ```go
 _, err = cron.Parse("0 25 * * *")
 if pe, ok := errors.AsType[*cron.ParseError](err); ok {
-	fmt.Fprintf(out, "  field %s, value %q: %v\n", pe.Field, pe.Value, err)
+	fmt.Printf("  field %s, value %q: %v\n", pe.Field, pe.Value, err)
 }
 ```
 
@@ -101,7 +101,7 @@ show := func(expr string, from time.Time, n int) {
 	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
 		got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 	}
-	fmt.Fprintf(out, "  %-12q %s\n", expr, strings.Join(got, ", "))
+	fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 }
 spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
@@ -170,7 +170,7 @@ second, err := sq.Schedule(ctx, nightly)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "  sqlstore, same name twice, same schedule:", first == second)
+fmt.Println("  sqlstore, same name twice, same schedule:", first == second)
 ```
 
 Three misfire policies:
@@ -195,7 +195,7 @@ for _, name := range names {
 	for _, t := range policies[name].Due(hourly, last, now, time.UTC) {
 		ticks = append(ticks, t.Format("15:04"))
 	}
-	fmt.Fprintf(out, "  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
+	fmt.Printf("  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
 }
 ```
 
@@ -217,10 +217,10 @@ Refusals: an implicit zone, and Hatchet's UTC-only crons:
 <!-- snippet: examples/cron-schedules/main.go#refusals -->
 ```go
 _, err = c.Schedule(ctx, workflow.Schedule{Workflow: "report", Cron: "0 8 * * *"}) // no Location
-fmt.Fprintln(out, "  no Location:", err)
+fmt.Println("  no Location:", err)
 err = c.Register(workflow.Workflow{Name: "local", Cron: []string{"0 8 * * *"}, CronLocation: time.Local,
 	Steps: []workflow.Step{{Name: "s", Run: noop}}})
-fmt.Fprintln(out, "  time.Local:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("  time.Local:", errors.Is(err, workflow.ErrInvalid))
 
 h := hatchet.New(hatchet.Config{})
 for _, wf := range []workflow.Workflow{
@@ -229,7 +229,7 @@ for _, wf := range []workflow.Workflow{
 	{Name: "macro", Cron: []string{"@daily"}},
 } {
 	wf.Steps = []workflow.Step{{Name: "s", Run: noop}}
-	fmt.Fprintf(out, "  hatchet %s: %v\n", wf.Name, h.Register(wf))
+	fmt.Printf("  hatchet %s: %v\n", wf.Name, h.Register(wf))
 }
 ```
 

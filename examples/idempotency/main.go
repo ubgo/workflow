@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/ubgo/workflow"
@@ -21,14 +20,14 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "idempotency:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	release := make(chan struct{})
 	finished := make(chan workflow.RunEvent, 8)
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
@@ -80,7 +79,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "second enqueue returned the first run:", second == first)
+	fmt.Println("second enqueue returned the first run:", second == first)
 	// snippet:end
 
 	close(release)
@@ -91,13 +90,13 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "after the run finished, a new run:", third != first)
+	fmt.Println("after the run finished, a new run:", third != first)
 	// snippet:end
 	<-finished
 
 	// snippet:required
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "payout"})
-	fmt.Fprintln(out, "payout without a key:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("payout without a key:", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 
 	// snippet:off
@@ -109,17 +108,17 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "ping with the same key twice, two runs:", a != b)
+	fmt.Println("ping with the same key twice, two runs:", a != b)
 	// snippet:end
 	<-finished
 	<-finished
 
-	return refusals(ctx, out)
+	return refusals(ctx)
 }
 
 // refusals uses the workflowtest Fake, told to claim every capability but
 // idempotency keys, to stand for a driver without them.
-func refusals(ctx context.Context, out io.Writer) error {
+func refusals(ctx context.Context) error {
 	// snippet:refusal
 	all := memory.New().Capabilities()
 	f := workflowtest.NewFake(workflowtest.FakeCaps(all &^ workflow.CapIdempotencyKey))
@@ -131,7 +130,7 @@ func refusals(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	_, err := f.Enqueue(ctx, workflow.Job{Workflow: "invoice", IdempotencyKey: "invoice:order-42"})
-	fmt.Fprintln(out, "no CapIdempotencyKey:", err)
+	fmt.Println("no CapIdempotencyKey:", err)
 	// snippet:end
 	return nil
 }

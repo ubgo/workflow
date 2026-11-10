@@ -70,7 +70,7 @@ A run that ends in any status but succeeded makes `AwaitResult` return a `*workf
 _, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
 var failed *workflow.RunFailedError
 if errors.As(err, &failed) {
-	fmt.Fprintf(out, "  pay: ended %s: %s\n", failed.Status, failed.Err)
+	fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)
 }
 ```
 

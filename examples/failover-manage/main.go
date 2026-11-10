@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -43,7 +42,7 @@ const (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "failover-manage:", err)
 		os.Exit(1)
 	}
@@ -56,7 +55,7 @@ func side(ref workflow.RunRef) string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -128,12 +127,12 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintln(out, "-- every run, from both backends, newest first")
-	if err := list(ctx, c, workflow.RunQuery{Workflow: "invoice"}, out); err != nil {
+	fmt.Println("-- every run, from both backends, newest first")
+	if err := list(ctx, c, workflow.RunQuery{Workflow: "invoice"}); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- retry the failed runs, each on its own backend")
+	fmt.Println("-- retry the failed runs, each on its own backend")
 	fixed.Store(true)
 	// snippet:retry
 	page, err := c.Runs(ctx, workflow.RunQuery{Workflow: "invoice", Statuses: []workflow.Status{workflow.StatusFailed}})
@@ -155,10 +154,10 @@ func run(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  %s on %s: retried, %s\n", page.Runs[i].Labels[keyLabel], side(again), st)
+		fmt.Printf("  %s on %s: retried, %s\n", page.Runs[i].Labels[keyLabel], side(again), st)
 	}
 
-	fmt.Fprintln(out, "-- one run by its ref")
+	fmt.Println("-- one run by its ref")
 	// snippet:one
 	// A prefixed Ref asks only the backend it names, and returns zero or one run.
 	one, err := c.Runs(ctx, workflow.RunQuery{Ref: refs[2]})
@@ -167,20 +166,20 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	for _, r := range one.Runs {
-		fmt.Fprintf(out, "  %s on %s: %s\n", r.Labels[keyLabel], side(r.Ref), r.Status)
+		fmt.Printf("  %s on %s: %s\n", r.Labels[keyLabel], side(r.Ref), r.Status)
 	}
 
-	fmt.Fprintln(out, "-- forget a finished run")
+	fmt.Println("-- forget a finished run")
 	// snippet:delete
 	if err := c.Delete(ctx, refs[0]); err != nil { // goes to the primary only
 		return err
 	}
 	// snippet:end
-	if err := list(ctx, c, workflow.RunQuery{Workflow: "invoice"}, out); err != nil {
+	if err := list(ctx, c, workflow.RunQuery{Workflow: "invoice"}); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- cancel every waiting run on both backends")
+	fmt.Println("-- cancel every waiting run on both backends")
 	later := clk.Now().Add(time.Hour)
 	if _, err := enqueue("o-5", "ok", later); err != nil {
 		return err
@@ -196,9 +195,9 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "  cancelled:", n)
+	fmt.Println("  cancelled:", n)
 
-	fmt.Fprintln(out, "-- pause on both backends")
+	fmt.Println("-- pause on both backends")
 	// snippet:pause
 	if err := c.Pause(ctx, workflow.PauseWorkflow("invoice")); err != nil { // primary first, then the secondary
 		return err
@@ -209,13 +208,13 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	for _, p := range paused {
-		fmt.Fprintln(out, "  paused:", p.Workflow)
+		fmt.Println("  paused:", p.Workflow)
 	}
 	return c.Resume(ctx, workflow.PauseWorkflow("invoice"))
 }
 
 // list prints the runs q matches through the failover client.
-func list(ctx context.Context, c workflow.RunQuerier, q workflow.RunQuery, out io.Writer) error {
+func list(ctx context.Context, c workflow.RunQuerier, q workflow.RunQuery) error {
 	// snippet:list
 	page, err := c.Runs(ctx, q)
 	if err != nil {
@@ -223,7 +222,7 @@ func list(ctx context.Context, c workflow.RunQuerier, q workflow.RunQuery, out i
 	}
 	for _, r := range page.Runs {
 		line := fmt.Sprintf("  %s on %-9s %s %s", r.Labels[keyLabel], side(r.Ref), r.Status, r.Error)
-		fmt.Fprintln(out, strings.TrimRight(line, " "))
+		fmt.Println(strings.TrimRight(line, " "))
 	}
 	// snippet:end
 	return nil

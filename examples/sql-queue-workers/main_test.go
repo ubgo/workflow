@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks the lines the guide shows.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `email while mail is paused: queued
@@ -19,7 +20,7 @@ after retry: gather ran 1 time(s), render 2
 after delete: not found
 mail worker drained: true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }

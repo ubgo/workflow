@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,24 +27,24 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "output-store:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "output-store-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:store
 	// A client only to build the store from; the worker below gets its
@@ -99,7 +98,7 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		if st.IsTerminal() {
-			fmt.Fprintln(out, "run", st)
+			fmt.Println("run", st)
 			break
 		}
 		if time.Now().After(deadline) {
@@ -114,7 +113,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, a := range attempts {
-		fmt.Fprintf(out, "%s attempt %d error=%q logged fetching feed: %t\n", a.Step, a.Attempt, a.Error, strings.Contains(a.Text, "fetching feed"))
+		fmt.Printf("%s attempt %d error=%q logged fetching feed: %t\n", a.Step, a.Attempt, a.Error, strings.Contains(a.Text, "fetching feed"))
 	}
 	// snippet:end
 
@@ -137,6 +136,6 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "admin sees", len(got), "attempts")
+	fmt.Println("admin sees", len(got), "attempts")
 	return nil
 }
