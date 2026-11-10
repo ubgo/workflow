@@ -15,6 +15,11 @@ includes:
   sqlstore:
     taskfile: ./sqlstore/Taskfile.yml
     dir: ./sqlstore
+  # The run recorder's tasks, runnable as recorder:<task> (recorder:e2e:all
+  # runs it against throwaway Postgres, MySQL, Redis and Hatchet).
+  recorder:
+    taskfile: ./recorder/Taskfile.yml
+    dir: ./recorder
 
 # The heavy tasks (test, vet, check) run under the machine-wide `testlock`
 # (~/.local/bin), so two suites never run at once on this machine; a nested

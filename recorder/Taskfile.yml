@@ -1,0 +1,106 @@
+version: '3'
+
+# The run recorder's modules. Unit tests and the SQLite and memory cases
+# need nothing (task test covers them); each live task below starts one
+# throwaway service from the repo's own compose files, runs the recorder/e2e
+# module against it, and removes it after the run, pass or fail, through a
+# defer registered before the start. Heavy runs take the machine-wide
+# testlock.
+
+set: [pipefail]
+
+vars:
+  # sqlstore/compose.yml: throwaway Postgres 18 and MySQL 8.
+  SQL_COMPOSE: ../sqlstore/compose.yml
+  PG_DSN: postgres://postgres:workflow@127.0.0.1:35432/ubgo_workflow_test?sslmode=disable
+  MYSQL_DSN: root:workflow@tcp(127.0.0.1:33072)/workflow
+  # The root compose.yml: throwaway Redis 8 and hatchet-lite.
+  LIVE_COMPOSE: ../compose.yml
+  REDIS_URL: redis://127.0.0.1:36379/0
+  # The tenant hatchet-lite seeds on first start; fixed by the image.
+  HATCHET_TENANT: 707d0855-80ab-4e1f-a156-f1c4546cbf52
+
+tasks:
+  test:
+    desc: Race tests of recorder, sqlrecorder and recorder/e2e (SQLite, memory driver, SQL driver on SQLite; the live cases skip)
+    cmds: ['testlock task test:run']
+
+  # Called through testlock by the public task above; no desc keeps it off task --list.
+  test:run:
+    cmds:
+      - go test -race -count=1 ./... ./sqlrecorder/...
+      - cd e2e && go test -race -count=1 ./...
+
+  e2e:pg:
+    desc: recorder/e2e on SQLite and a throwaway Postgres (sqlstore/compose.yml postgres profile, removed after the run)
+    cmds: ['testlock task e2e:pg:run']
+
+  e2e:pg:run:
+    cmds:
+      - defer: {task: down, vars: {COMPOSE: '{{.SQL_COMPOSE}}', PROFILE: postgres}}
+      - task: up
+        vars: {COMPOSE: '{{.SQL_COMPOSE}}', PROFILE: postgres}
+      - cd e2e && WFTEST_PG_DSN="{{.PG_DSN}}" go test -race -count=1 -timeout 20m ./...
+
+  e2e:mysql:
+    desc: recorder/e2e on SQLite and a throwaway MySQL (sqlstore/compose.yml mysql profile, removed after the run)
+    cmds: ['testlock task e2e:mysql:run']
+
+  e2e:mysql:run:
+    cmds:
+      - defer: {task: down, vars: {COMPOSE: '{{.SQL_COMPOSE}}', PROFILE: mysql}}
+      - task: up
+        vars: {COMPOSE: '{{.SQL_COMPOSE}}', PROFILE: mysql}
+      - cd e2e && WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -count=1 -timeout 20m ./...
+
+  e2e:redis:
+    desc: The recorder over the Redis driver against a throwaway Redis (compose.yml redis profile, removed after the run)
+    cmds: ['testlock task e2e:redis:run']
+
+  e2e:redis:run:
+    cmds:
+      - defer: {task: down, vars: {COMPOSE: '{{.LIVE_COMPOSE}}', PROFILE: redis}}
+      - task: up
+        vars: {COMPOSE: '{{.LIVE_COMPOSE}}', PROFILE: redis}
+      - cd e2e && WFTEST_REDIS_URL="{{.REDIS_URL}}" go test -race -count=1 -run TestRecorderOnRedis -v -timeout 20m ./...
+
+  # The API token is minted inside the engine container into a shell
+  # variable of this one command: never printed, never written to a file,
+  # and it dies with the container.
+  e2e:hatchet:
+    desc: The recorder over the Hatchet driver against a throwaway hatchet-lite (compose.yml hatchet profile, removed after the run)
+    cmds: ['testlock task e2e:hatchet:run']
+
+  e2e:hatchet:run:
+    cmds:
+      - defer: {task: down, vars: {COMPOSE: '{{.LIVE_COMPOSE}}', PROFILE: hatchet}}
+      - task: up
+        vars: {COMPOSE: '{{.LIVE_COMPOSE}}', PROFILE: hatchet}
+      - |
+        i=0
+        until HATCHET_CLIENT_TOKEN=$(docker compose -f {{.LIVE_COMPOSE}} --profile hatchet exec -T hatchet /hatchet-admin token create --config /config --tenant-id {{.HATCHET_TENANT}} 2>/dev/null) && [ -n "$HATCHET_CLIENT_TOKEN" ]; do
+          i=$((i+1)); [ "$i" -ge 30 ] && { echo "hatchet: could not mint a token"; exit 1; }
+          sleep 2
+        done
+        export HATCHET_CLIENT_TOKEN
+        cd e2e && HATCHET_CLIENT_HOST_PORT=localhost:37077 HATCHET_CLIENT_SERVER_URL=http://localhost:38888 HATCHET_CLIENT_TLS_STRATEGY=none HATCHET_CLIENT_LOG_LEVEL=error go test -race -count=1 -run "TestRecorderOnHatchet|TestEnqueueOnlyAndWorkerOnHatchet" -v -timeout 20m ./...
+
+  e2e:all:
+    desc: Every live recorder suite, one service at a time (Postgres, MySQL, Redis, Hatchet)
+    cmds:
+      - task: e2e:pg
+      - task: e2e:mysql
+      - task: e2e:redis
+      - task: e2e:hatchet
+
+  # `up --wait` is retried: on rootless Docker a port released by the
+  # previous run's container can still read as in use for a moment.
+  up:
+    internal: true
+    cmds:
+      - |
+        for i in 1 2 3 4 5; do docker compose -f {{.COMPOSE}} --profile {{.PROFILE}} up -d --wait && exit 0; docker compose -f {{.COMPOSE}} --profile {{.PROFILE}} down -v --remove-orphans >/dev/null 2>&1; sleep 3; done; exit 1
+
+  down:
+    internal: true
+    cmds: ['docker compose -f {{.COMPOSE}} --profile {{.PROFILE}} down -v --remove-orphans']

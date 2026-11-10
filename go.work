@@ -27,6 +27,17 @@ use (
 	// ./otel is a separate module so an app without OpenTelemetry never
 	// downloads its SDK.
 	./otel
+	// ./recorder is a separate module so an app that keeps no run history
+	// never compiles it; it needs only the standard library and the core.
+	./recorder
+	// ./recorder/sqlrecorder is a separate module so a recorder app that
+	// keeps runs in memory or its own store never compiles it; it needs
+	// database/sql only, no database driver.
+	./recorder/sqlrecorder
+	// ./recorder/e2e is test-only: it proves the recorder on every driver
+	// and sqlrecorder on every engine, so their clients stay out of the
+	// library modules.
+	./recorder/e2e
 	// ./redis is a separate module so an app without Redis never downloads
 	// go-redis.
 	./redis
