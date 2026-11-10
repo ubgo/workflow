@@ -9,7 +9,7 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
 	github.com/ubgo/sqlb/contrib/migrate v0.1.0
-	github.com/ubgo/workflow v0.0.0
+	github.com/ubgo/workflow v0.1.0
 )
 
 require (
@@ -33,9 +33,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.45.0 // indirect
 )
-
-// sqlb and its contrib modules come from their released tags. The core is
-// developed beside this module and not tagged yet, so it resolves from the
-// working tree; tagging the core is a release blocker for this module,
-// because a consumer cannot build it through a replace.
-replace github.com/ubgo/workflow => ../

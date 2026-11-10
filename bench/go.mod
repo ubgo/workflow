@@ -21,7 +21,7 @@ require (
 	github.com/ubgo/sqlb v0.1.1
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
-	github.com/ubgo/workflow v0.0.0
+	github.com/ubgo/workflow v0.1.0
 	github.com/ubgo/workflow/hatchet v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/redis v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/sqlstore v0.0.0-00010101000000-000000000000

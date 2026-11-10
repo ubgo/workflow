@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hatchet-dev/hatchet v0.107.1
 	github.com/oapi-codegen/runtime v1.7.0
-	github.com/ubgo/workflow v0.0.0
+	github.com/ubgo/workflow v0.1.0
 	google.golang.org/grpc v1.83.2
 )
 
@@ -86,8 +86,6 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/ubgo/workflow => ../
 
 // cockroachdb/errors (via the Hatchet SDK) requires the 2023 monolithic
 // genproto, which still holds googleapis/rpc and googleapis/api. Module

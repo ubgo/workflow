@@ -44,6 +44,8 @@ github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0 h1:zKHbpLblDCaNAO8Orqu5dtNf3wp
 github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0/go.mod h1:GDLe0KjDQyWI5iTFGyuUegzxCIVZhDMh18mn/MJRrdc=
 github.com/ubgo/sqlb/contrib/migrate v0.1.0 h1:MjRAVcmeIBmbn6i+Bisk+i5VYxPzcJY1E1WxaRsG2XQ=
 github.com/ubgo/sqlb/contrib/migrate v0.1.0/go.mod h1:4+fByCL6mQ3yjkTlw8ZwgeHg+sNdG+jFCxb82rpZy9A=
+github.com/ubgo/workflow v0.1.0 h1:jhVjmzdKfp/YMnrqCTLQwE5tAByUg0DrlVL25uVgwMY=
+github.com/ubgo/workflow v0.1.0/go.mod h1:E7QXQG7/er73Vrx7dX767IhFEpokIxqV5u8rYQaH534=
 golang.org/x/crypto v0.37.0 h1:kJNSjF/Xp7kU0iB2Z+9viTPMW4EqqsrywMXLJOOsXSE=
 golang.org/x/crypto v0.37.0/go.mod h1:vg+k43peMZ0pUMhYmVAWysMK35e6ioLh3wB8ZCAfbVc=
 golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 h1:mgKeJMpvi0yx/sU5GsxQ7p6s2wtOnGAHZWCHUM4KGzY=
