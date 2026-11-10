@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -52,12 +53,21 @@ func ReservedLabel(key string) (prefix string, ok bool) {
 // letting the owning package drop or overwrite them silently. Keys are
 // checked in sorted order, so the error is the same on every call.
 //
+// The source labels (LabelSource, LabelSourceRef) are the exception: an
+// app sets them (WithSource), so they pass when their values are valid.
+//
 // It is for labels an app wrote. The library's own packages set reserved
 // labels on the jobs they pass down, so a driver's Enqueue calls
 // CheckJobLabels instead, which lets those through; ValidateSchedule does (schedules are written only by apps), and each
 // package that owns a prefix refuses incoming labels under its own.
 func ValidateLabels(labels map[string]string) error {
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if settable, err := checkAppReserved(k, labels[k]); settable {
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		if p, ok := ReservedLabel(k); ok {
 			return invalidf("label %q uses the reserved prefix %q", k, p)
 		}
@@ -118,10 +128,20 @@ func AllowReservedPrefix(ctx context.Context, prefix string) context.Context {
 // Every driver calls it first in its public Enqueue (and any other public
 // entry that takes a Job from an app), never on its internal paths (a
 // fired schedule, a chained job, a retry), which carry labels the library
-// wrote. Keys are checked in sorted order, so the error is stable.
+// wrote. The source labels (LabelSource, LabelSourceRef) pass without an
+// allowance when their values are valid (see WithSource). Keys are checked
+// in sorted order, so the error is stable.
 func CheckJobLabels(ctx context.Context, job Job) error {
 	a := allowFrom(ctx)
 	for _, k := range slices.Sorted(maps.Keys(job.Labels)) {
+		// The source labels are reserved yet app-settable (WithSource):
+		// they pass when their value is valid, whoever set them.
+		if settable, err := checkAppReserved(k, job.Labels[k]); settable {
+			if err != nil {
+				return fmt.Errorf("job for %q: %w", job.Workflow, err)
+			}
+			continue
+		}
 		p, ok := ReservedLabel(k)
 		if !ok || a.keys[k] {
 			continue

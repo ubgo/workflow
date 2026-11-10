@@ -230,8 +230,25 @@ type capture struct {
 	recs []OutputRecord
 }
 
+// RecordStepEvent implements workflow.StepEventSink: an event the step
+// records with workflow.RecordEvent is captured as a log record, at its
+// level and with its attributes, under the capture level like any record.
+func (c *capture) RecordStepEvent(_ context.Context, e workflow.StepEvent) {
+	if e.Level < c.level.Level() {
+		return
+	}
+	rec := OutputRecord{Time: c.clk.Now(), Level: e.Level, Message: e.Message}
+	for _, a := range e.Attrs {
+		rec.Attrs = append(rec.Attrs, slog.String(a.Key, a.Value))
+	}
+	c.mu.Lock()
+	c.recs = append(c.recs, rec)
+	c.mu.Unlock()
+}
+
 // CaptureOutput is step middleware that captures each attempt's log
-// records (written through OutputLogger) and outcome and delivers them to
+// records (written through OutputLogger, and step events recorded with
+// workflow.RecordEvent) and outcome and delivers them to
 // sink after the attempt, the way a scheduler sends a task's output to a
 // file or by mail. It never changes the step's result. A nil sink makes it
 // a no-op.
@@ -251,7 +268,10 @@ func CaptureOutput(sink OutputSink, opts ...CaptureOption) workflow.Middleware {
 			}
 			cp := &capture{clk: cfg.clk, level: cfg.level, tee: cfg.tee}
 			started := cfg.clk.Now()
-			out, err := next(context.WithValue(ctx, captureKey{}, cp), in)
+			// The capture is also a StepEventSink, so an event the step
+			// records with workflow.RecordEvent lands with its log records.
+			sctx := workflow.WithStepEventSink(context.WithValue(ctx, captureKey{}, cp), cp)
+			out, err := next(sctx, in)
 			if err == nil && cfg.failOnly {
 				return out, err
 			}

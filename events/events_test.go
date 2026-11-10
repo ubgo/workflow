@@ -450,3 +450,12 @@ func TestReservedLabelsRefused(t *testing.T) {
 		t.Fatalf("reserved webhook label = %d, log %q", w.Code, logs.String())
 	}
 }
+
+// TestEventLabelMatchesCoreSource pins the event key the core's SourceOf
+// reads (the core cannot import this package).
+func TestEventLabelMatchesCoreSource(t *testing.T) {
+	src, ref := workflow.SourceOf(map[string]string{events.LabelEvent: "order.paid"})
+	if src != workflow.SourceEvent || ref != "order.paid" {
+		t.Fatalf("SourceOf(event label) = %q %q", src, ref)
+	}
+}
