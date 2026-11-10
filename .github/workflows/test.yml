@@ -1,9 +1,9 @@
 # Manual only, on purpose.
 #
-# The repository is private, where GitHub Actions minutes are metered, and a
-# workflow that goes red for billing rather than for code teaches everyone to
-# ignore the gate. `task check` on a developer machine is the real gate; this
-# workflow exists for the times a clean-machine run is worth the minutes.
+# GitHub Actions minutes are a budget, and a workflow that goes red for
+# billing rather than for code teaches everyone to ignore the gate. `task
+# check` on a developer machine is the real gate; this workflow exists for
+# the times a clean-machine run is worth the minutes.
 #
 # To restore automatic runs when there is budget, replace the `on:` block with:
 #
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           # go.work declares the highest module minimum (hatchet, go 1.26).
-          go-version: "1.26"
+          go-version-file: go.work
           cache: true
       - uses: arduino/setup-task@v2
         with:

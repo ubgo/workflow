@@ -5,17 +5,17 @@ You will have the core module in your Go module, know which of the separate modu
 ## Before you start
 
 - Go 1.24 or later for the core module, `sqlstore`, `redis`, `admin` and `cli`, Go 1.25 for `otel` and `sentry`, Go 1.26 for `hatchet` (each module's `go.mod` declares it, and `task gomin` vets every module under that version).
-- The library is pre-release and **nothing is tagged yet**. The API can still change; pin the pseudo-version you install.
+- The library is pre-release (`v0.x`). The API can still change; pin the version you install.
 
 ## Step 1 — Add the core module
 
-The core module holds the contract (`workflow.Client`, the specs, capabilities, errors and plugins) and every package that needs only the standard library: `clock`, `cron` (with the opt-in `cron/tzdata`), `memory`, `middleware`, `batch`, `failover`, `events`, `hybrid` and `workflowtest`. It has no `replace` directive, so it resolves as a pseudo-version from `main`:
+The core module holds the contract (`workflow.Client`, the specs, capabilities, errors and plugins) and every package that needs only the standard library: `clock`, `cron` (with the opt-in `cron/tzdata`), `memory`, `middleware`, `batch`, `failover`, `events`, `hybrid` and `workflowtest`. It is tagged `v0.1.0` and up:
 
 ```sh
 go get github.com/ubgo/workflow@latest
 ```
 
-Check: `go list -m github.com/ubgo/workflow` prints a `v0.0.0-…` pseudo-version, and `go mod graph | grep '^github.com/ubgo/workflow@'` prints nothing: the core module requires no other module (a `deps_test.go` in the repository fails the build if its `go.mod` ever gains a `require` line).
+Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints nothing: the core module requires no other module (a `deps_test.go` in the repository fails the build if its `go.mod` ever gains a `require` line).
 
 ## Pick your modules
 
@@ -41,7 +41,7 @@ Packages that bring a third-party dependency are separate modules, so an app pay
 | Run and queue operations, a closed-by-default admin JSON API and web UI, queue alerts | `github.com/ubgo/workflow/admin` | `admin` (standard library and the core only) |
 | The `workflow` command line client for the admin API | `github.com/ubgo/workflow/cli`, command `github.com/ubgo/workflow/cli/cmd/workflow` | `cli` (standard library only) |
 
-The separate modules resolve this repository's core through a local `replace` until the core is tagged, and a `replace` in a dependency is ignored by your build. Until the first tag, build them from a clone of the repository, where the committed `go.work` wires every module together:
+Each separate module has its own tag (`sqlstore/v0.1.0`, `hatchet/v0.1.0` and so on) and requires a tagged core, so `go get github.com/ubgo/workflow/sqlstore@latest` adds the module and the core it needs. To run the examples, clone the repository, where the committed `go.work` wires every module together:
 
 ```sh
 git clone https://github.com/ubgo/workflow
@@ -78,7 +78,6 @@ The minimums are proven, not claimed: `task gomin` vets each module under the Go
 
 ## Pitfalls
 
-- `go get github.com/ubgo/workflow/sqlstore@latest` (or any other separate module) before the core is tagged fails to resolve `github.com/ubgo/workflow v0.0.0`: build from a clone with `go.work`, as above.
 - The memory driver keeps everything in the process. It declares every capability except `CapDurable`, so nothing refuses it; a queued job is gone when the process exits. Pick a durable driver for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
 - `sqlstore` never creates its tables at `Start`. Run `Client.Migrate` from your deploy first ([migrations](../operations/migrations.md#run-the-migrations)).
 

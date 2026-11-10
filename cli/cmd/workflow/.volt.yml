@@ -1,0 +1,4 @@
+# The workflow command is installed with go install from the cli module tag
+# (cli/vX.Y.Z); no prebuilt binaries are published, so this stream is never
+# released on its own.
+internal: true

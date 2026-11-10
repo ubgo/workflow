@@ -7,12 +7,12 @@
   <img alt="Go 1.24+" src="https://img.shields.io/badge/go-1.24%2B-00ADD8?logo=go&logoColor=white">
   <img alt="Drivers: memory, SQLite, Postgres, MySQL, Redis, Hatchet" src="https://img.shields.io/badge/drivers-memory%20%7C%20SQLite%20%7C%20Postgres%20%7C%20MySQL%20%7C%20Redis%20%7C%20Hatchet-555">
   <img alt="Core: standard library only" src="https://img.shields.io/badge/core-stdlib%20only-success">
-  <img alt="Status: early, untagged" src="https://img.shields.io/badge/status-early%2C%20untagged-orange">
+  <img alt="Status: early, v0.x" src="https://img.shields.io/badge/status-early%2C%20v0.x-orange">
 </p>
 
 `ubgo/workflow` is an open-source Go job queue, cron scheduler and durable workflow library in one. The same handlers run on an in-memory driver in tests, on SQLite, Postgres or MySQL 8 through `database/sql` and [`ubgo/sqlb`](https://github.com/ubgo/sqlb), on Redis, or on the [Hatchet](https://github.com/hatchet-dev/hatchet) engine, and changing the backend is a constructor change rather than a rewrite. It covers cron with time zones, delayed and one-off jobs, retries with backoff, idempotency keys, concurrency keys and rate limits, durable sleeps and wait-for-event steps, batches with callbacks, unique and debounced jobs, transactional enqueue and a transactional outbox, failover between two backends, cron overlap control and trigger-now, failure alerts and Sentry reporting, an admin API and web UI, and OpenTelemetry tracing and metrics.
 
-Status: early. The API is not stable and nothing is tagged yet; `sqlstore` uses the released `ubgo/sqlb` but resolves this repo's core module through a local `replace` until the core is tagged.
+Status: early (`v0.x`). The API is not stable yet. Every module is tagged on its own: `v0.1.0` for the core, `sqlstore/v0.1.0` for the `sqlstore` module, and the same for the others.
 
 ## Contents
 
@@ -63,13 +63,13 @@ If you want a single backend you already run and never expect to change, a dedic
 
 ## Install
 
-Nothing is tagged yet. The core module (which holds `clock`, `cron`, `memory`, `middleware`, `batch`, `failover` and `workflowtest`) has no `replace` and resolves as a pseudo-version from `main`:
+The core module (which holds `clock`, `cron`, `memory`, `middleware`, `batch`, `failover` and `workflowtest`) needs only the standard library:
 
 ```sh
 go get github.com/ubgo/workflow@latest
 ```
 
-The `hatchet`, `otel` and `sqlstore` modules resolve this repo's core through a local `replace` until the core is tagged, so build them from a clone of this repository (the committed `go.work` wires every module together).
+Each separate module (`sqlstore`, `redis`, `hatchet`, `otel`, `sentry`, `admin`, `cli`) has its own tag and requires a tagged core, so `go get github.com/ubgo/workflow/sqlstore@latest` adds the module and the core it needs. Inside a clone of this repository, the committed `go.work` wires every module together.
 
 ## Packages
 
@@ -151,7 +151,7 @@ Commands use [Task](https://taskfile.dev).
 
 **Is ubgo/workflow ready for production?**
 
-Not yet. The API is not stable and nothing is tagged. The drivers pass the conformance suite, but expect breaking changes until a first release.
+Not yet. The API is not stable: the drivers pass the conformance suite, but expect breaking changes while the version is `v0.x`.
 
 **Does it need a server?**
 

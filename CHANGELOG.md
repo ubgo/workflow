@@ -1,8 +1,12 @@
 # Changelog
 
-All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning will be SemVer with the pre-GA convention that `v0.x` may break. Nothing is tagged yet; everything below is on `main`.
+All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-10
+
+The first release of the core and of every separate module (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`), each tagged `v0.1.0`. The separate modules now require the tagged core instead of resolving it through a local `replace`.
 
 ### Added
 
@@ -232,6 +236,8 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ### Fixed
 
+- `Job` values carrying a `Retry` policy now encode as JSON: `RetryPolicy.NoRetryOn` and `DelayFor` are functions and are now skipped (`json:"-"`), so a batch that keeps its job specs as JSON no longer fails with `json: unsupported type`.
+- `cli`: a command whose output cannot be written (a closed pipe, a full disk) now exits with `ExitError` and reports `write output: ...` on stderr, instead of exiting 0 with partial output.
 - `sqlstore`: a data race between `SetWorkers` and weighted queue claiming (both read and wrote a copy of `QueueConfig`).
 - `memory`: `RunAll` called right after `Signal` finishes the signalled run; the wait is marked satisfied under the lock when the event is handed over, before the waiter goroutine wakes.
 - `hatchet`: between a failed attempt and its retry the engine shows a run FAILED for a moment, and the driver read that as final, so `Status`, `Runs`, `Retry`, the run-finished hook and `BatchSource` could report a failure, and fire a batch's `Catch`, for a run that then succeeded. One function now judges every FAILED read: it is final when the driver marked the failure non-retryable, when the step used its registered retries, or when it failed more than the new `hatchet.Config.FailedSettle` ago (`DefaultFailedSettle`, 5s); otherwise the run reads queued, or running, as between attempts.
