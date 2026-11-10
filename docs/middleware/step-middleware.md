@@ -1,6 +1,6 @@
 # Step middleware
 
-Step middleware wraps every step attempt on a driver: logging, panic recovery, an app-wide timeout, errors that must not be retried, steps to skip, a circuit breaker for a failing dependency, tracing. It is written once against `workflow.Handler` and runs the same way on the memory, SQL, Redis and Hatchet drivers, so cross-cutting behaviour never lives inside handlers and never depends on which backend runs them. The stock pieces are in package `middleware`: skip a step, throttle a failing dependency, fail on chosen errors, release a step for later.
+Step middleware wraps every step attempt on a driver: logging, panic recovery, an app-wide timeout, errors that must not be retried, steps to skip, a circuit breaker for a failing dependency, tracing. It is written once against `workflow.Handler` and runs the same way on the memory, SQL, Redis and Hatchet drivers, so cross-cutting behaviour never lives inside handlers and never depends on which backend runs them. The stock pieces are in package `middleware`: skip a step, throttle a failing dependency, fail on chosen errors, release a step for later, capture a step's log and timeline events.
 
 ## Before you start
 
@@ -169,6 +169,46 @@ func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middl
 
 In the example, two failed `call-api` runs open the `call-api` circuit, the third run fails with `ErrThrottled` without a handler call, and after the fake clock moves past the cooldown the fourth run reaches the step again.
 
+## Capture step events
+
+A step records timeline events with `workflow.RecordEvent` ([Step events](../concepts/step-events.md)), and step middleware is where they are received: middleware binds a `workflow.StepEventSink` on the step's context with `workflow.WithStepEventSink` before calling the handler, and every event the step records reaches every sink bound, outermost middleware's first.
+
+`middleware.CaptureOutput` ([Task output](../schedules/output.md)) binds one: each event becomes a captured `OutputRecord` with the event's level, message and attributes (as string values), next to the lines the step logged through `OutputLogger`, under the same capture level, and is delivered to the output sink after the attempt. The program is [examples/step-events](../../examples/step-events/); `printEvents` is a sink of the app's own, bound by a short middleware:
+
+<!-- snippet: examples/step-events/main.go#sink -->
+```go
+// Step middleware that binds a sink of its own: every event the step
+// records reaches it, next to any other sink bound on the context.
+printEvents := func(next workflow.Handler) workflow.Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		sink := workflow.StepEventFunc(func(_ context.Context, e workflow.StepEvent) {
+			fmt.Fprintf(out, "event %s/%s %s %q %v\n", e.Step.Workflow, e.Step.Step, e.Level, e.Message, e.Attrs)
+		})
+		return next(workflow.WithStepEventSink(ctx, sink), in)
+	}
+}
+```
+
+<!-- snippet: examples/step-events/main.go#capture -->
+```go
+// CaptureOutput is a sink too: events join the step's captured log.
+// The fake clock only makes the printed times fixed.
+stamp := clock.NewFake(time.Date(2026, 1, 5, 2, 0, 0, 0, time.UTC))
+capture := middleware.CaptureOutput(middleware.WriterSink(out), middleware.CaptureClock(stamp))
+plain := memory.New(memory.WithMiddleware(printEvents, capture))
+```
+
+```text
+event sync/fetch INFO "fetched changes" [{rows 100}]
+event sync/fetch WARN "rows rejected" [{bad 3} {first row-17}]
+outcome kept: false unsupported: true
+== 2026-01-05T02:00:00Z sync/fetch attempt 1 [run-2] ok
+2026-01-05T02:00:00Z INFO fetched changes rows=100
+2026-01-05T02:00:00Z WARN rows rejected bad=3 first=row-17
+```
+
+`printEvents` sees each event as it is recorded; `CaptureOutput` delivers them with the attempt. A run recorder's step middleware is a third sink ([Record run history](../observability/run-recorder.md#step-events-and-outcome)), and it also binds the outcome setter `workflow.SetOutcome` needs ([Run outcome](../concepts/run-outcome.md)). Events are not passed to the `CaptureTee` handler, which receives only `OutputLogger` records.
+
 ## Try it
 
 ```sh
@@ -242,6 +282,7 @@ With `Max: 3`, the second run gets four attempts (the first plus three retries),
 - **`Skip` gives children empty input.** A step whose children read its output should not be skipped.
 - **A release without `RetryAfterDelay` waits the Backoff.** `Release`'s delay reaches the driver only through a policy with `DelayFor: workflow.RetryAfterDelay`; without it, a released step comes back on the policy's normal backoff, or not at all when the workflow has no retries.
 - **Releases spend retries.** Each release is an attempt against `RetryPolicy.Max`, so a step that may be released for an hour at ten-minute steps needs `Max` of at least six.
+- **An event sink runs on the step's goroutine.** A sink bound with `WithStepEventSink` must be safe for concurrent use and must not block; a slow one slows every step that records events.
 - **A recovered panic is retried by default.** Add `NoRetryOn` for `middleware.ErrPanic` when a panic means a bug that a retry cannot fix.
 
 ## Related
@@ -252,5 +293,7 @@ With `Max: 3`, the second run gets four attempts (the first plus three retries),
 - [Payload codecs](codecs.md): `DecodeStep`, the step half of encryption.
 - [Write step middleware](../extending/writing-middleware.md#write-step-middleware): your own middleware.
 - [Retries](../jobs/retries.md): the policy that decides what a failed attempt does next.
+- [Step events](../concepts/step-events.md) and [Task output](../schedules/output.md): `RecordEvent` and `CaptureOutput`.
 - Example: [examples/release-jobs](../../examples/release-jobs/) (`Release`).
+- Example: [examples/step-events](../../examples/step-events/) (an event sink of your own, `CaptureOutput`).
 - Example: [examples/middleware-stack](../../examples/middleware-stack/).

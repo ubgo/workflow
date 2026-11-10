@@ -120,6 +120,8 @@ if err := c.Start(wctx); err != nil {
 | Hatchet | `hatchet.Config{EnqueueOnly: true}`: connects on first use; the engine refuses a workflow no worker has registered yet, so start a worker once first |
 | memory | Not declared: an in-process client has nobody else to run its work, so `Enqueue` still needs `Start` |
 
+A [run recorder](../observability/run-recorder.md) on a web node takes `rec.EnqueuePlugin()`, not `rec.Plugin()`: an enqueue-only client delivers no run ends (Hatchet's refuses `OnRunFinished`), so the web node records each accepted run with its source and input, and the workers, wrapped with `rec.Plugin()` over the same store, record the steps and the end ([Record run history › Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue), [examples/recorder-split](../../examples/recorder-split/)).
+
 ## Shut down cleanly
 
 On SIGTERM, cancel the context you passed to `Start` and call `Stop`. `Stop` waits until every goroutine the client started has exited. Steps that were still running are handed back at once, so another worker takes them without waiting for their lease to expire; the runs stay in the database for the next client.

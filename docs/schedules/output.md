@@ -67,7 +67,7 @@ c := memory.New(memory.WithClock(clk), memory.WithMiddleware(capture))
 
 ## Step 3: read the output
 
-Each delivery is one `middleware.Output`: the attempt's `StepInfo` (workflow, step, run ID, attempt), `Started` and `Finished`, the `Records` logged at or above the capture level, `Err`, and `Result` only with `CaptureResult`. In text it reads:
+Each delivery is one `middleware.Output`: the attempt's `StepInfo` (workflow, step, run ID, attempt), `Started` and `Finished`, the `Records` logged at or above the capture level, `Err`, and `Result` only with `CaptureResult`. Events the step records with `workflow.RecordEvent` are records too, at their own level and with their attributes ([Step middleware › Capture step events](../middleware/step-middleware.md#capture-step-events)). In text it reads:
 
 ```text
 --- nightly-report.log
@@ -166,9 +166,15 @@ admin sees 2 attempts
 - **One delivery per attempt.** A step retried three times delivers three outputs. A scheduled task with one step, or a [function by name](../jobs/functions.md), delivers one per run attempt; a workflow with several steps delivers one per step attempt, so filter with `CaptureOnly` or group by `Info.RunID` in your sink.
 - **A slow sink holds the worker.** `Deliver` runs on the step's goroutine after the attempt returns and before the driver records the result. A sink that sends mail or calls a network service should hand the output to its own goroutine or queue.
 - **A sink error never fails the step.** It goes to `CaptureOnSinkError`, which drops it by default; pass a function that logs it.
-- **Only `OutputLogger` lines are captured.** A step that logs through a logger it captured at start-up, or through `slog.Default()` directly, writes past the capture. `CaptureTee` sends captured lines on to your handler, so you do not lose them from the main log.
+- **Only `OutputLogger` lines and step events are captured.** A step that logs through a logger it captured at start-up, or through `slog.Default()` directly, writes past the capture. `CaptureTee` sends the `OutputLogger` lines on to your handler, so you do not lose them from the main log; step events are not teed.
 - **One capture per step.** If two `CaptureOutput` middlewares wrap the same step, the inner one receives the records and the outer one delivers an output with none. Use one capture with a sink that fans out, as the example does.
 - **Two file sinks on one path are not serialised.** Deliveries through one `FileSink` value are; build one sink per file and share it.
 - **Stored output is as sensitive as the payloads.** It holds whatever a step logged; only what you wire to the table reads it, and the admin shows it to everyone who may open a run.
 
 ## Related
+
+- [Step middleware](../middleware/step-middleware.md): where `CaptureOutput` sits in a chain, and [Capture step events](../middleware/step-middleware.md#capture-step-events).
+- [Step events](../concepts/step-events.md): `RecordEvent` and the sinks that receive it.
+- [Record run history](../observability/run-recorder.md): a per-run history with each step's events, kept by the app.
+- [Admin operations](../admin/operations.md): `WithOutputs`, the admin's output source.
+- Examples: [task-output](../../examples/task-output/), [output-store](../../examples/output-store/), [step-events](../../examples/step-events/).

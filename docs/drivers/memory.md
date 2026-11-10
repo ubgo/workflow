@@ -82,6 +82,17 @@ sqlite run: succeeded
 status after the end: succeeded
 ```
 
+## Record run history
+
+A [run recorder](../observability/run-recorder.md) works on this driver as on any other: `workflow.Use(memory.New(), rec.Plugin())`, then register and start through the client `Use` returned.
+
+- **Every end is recorded.** The driver declares `CapRunFinished`, so each run end reaches the recorder's observer, including runs cancelled before they started and runs cancelled by `Stop`, which end `cancelled` on the record.
+- **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a Reconciler pass finds runs enqueued or registered past the recorder and records them with source `external`.
+- **The history outlives the driver when the store does.** The driver keeps finished runs for a day, at most 10,000 (`WithRunRetention`), and nothing across a restart; a record in `sqlrecorder` stays until the recorder's own [retention](../observability/run-recorder.md#retention) removes it. `recorder.NewMemoryStore()` lives and dies with the process.
+- **Run IDs restart with every client.** This driver numbers runs `run-1`, `run-2` and so on per client, so a persistent store shared by two memory clients, or kept across a restart, would merge different runs under one ID. Give each memory client its own store: an in-memory store, or `sqlrecorder` with a table prefix of its own (`sqlrecorder.WithTablePrefix`).
+
+The recorder's end-to-end suite runs its driver cases on this driver with `sqlrecorder` on SQLite, Postgres and MySQL, and [examples/run-recorder](../../examples/run-recorder/) and [examples/step-events](../../examples/step-events/) run on it.
+
 ## Pitfalls
 
 - Everything is lost on exit, including delayed starts and schedules. A production app that cannot lose work needs [sqlstore](sqlstore.md) or [Hatchet](hatchet.md).
@@ -94,4 +105,5 @@ status after the end: succeeded
 - [The SQL driver](sqlstore.md) and [the Hatchet driver](hatchet.md)
 - [Choose a driver](../choosing/drivers.md)
 - [Capabilities](../concepts/capabilities.md)
+- [Record run history](../observability/run-recorder.md)
 - Example: [sqlite-worker](../../examples/sqlite-worker/) (runs one workflow on memory, then on SQLite) and [quickstart](../../examples/quickstart/)

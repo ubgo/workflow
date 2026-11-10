@@ -339,6 +339,18 @@ status after the end: succeeded
 
 The last line is the point of the driver: the run's outcome is a row, readable after the run ended and after a restart.
 
+## Record run history
+
+A [run recorder](../observability/run-recorder.md) applied with `workflow.Use(client, rec.Plugin())` records every run of this driver, and its SQL store, `recorder/sqlrecorder`, can live in the same database: its tables carry their own prefix (`wf_rec_` by default), so they never collide with the driver's.
+
+- **Every end is recorded.** The driver declares `CapRunFinished`: each run end is claimed from the table under a lease and delivered at least once, by one client with observers, including ends that happened while no client was running. Every worker wrapped with `rec.Plugin()` over the same store is such a client, and the recorder's writes are upserts, so a repeat is harmless.
+- **Records outlive the driver's retention.** [Retention](../operations/retention.md) deletes or archives finished runs from the queue tables; the record, with its steps and events, stays until the recorder's own two-stage [retention](../observability/run-recorder.md#retention) removes it.
+- **Web nodes take `EnqueuePlugin`.** A client built with `WithEnqueueOnly()` delivers no run ends, so `rec.Plugin()` would record nothing but the enqueue there; apply `rec.EnqueuePlugin()` on the web node and `rec.Plugin()` on the workers over the same store ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue), [examples/recorder-split](../../examples/recorder-split/)).
+- **`EnqueueTx` and `EnqueueMany` pass no enqueue middleware.** They are methods of the driver's client, not of the client `Use` returns, so a run they create is recorded from its first step, with the source its labels carry, rather than at enqueue.
+- **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a Reconciler pass records runs created past the recorder (the ones above, an outbox relay through the bare client) before they start.
+
+The recorder's end-to-end suite runs its driver cases on this driver on SQLite, Postgres and MySQL, recording into `sqlrecorder` in the driver's own database, and splits it into an enqueue-only web node and a worker on each engine.
+
 ## Pitfalls
 
 - **One more pool connection with `pgnotify`.** Its listener holds a connection for as long as the client runs; a pool sized exactly to the workers starves a worker.
@@ -356,6 +368,7 @@ The last line is the point of the driver: the run's outcome is a row, readable a
 
 - [Run several workers](../operations/deploy.md#run-several-workers) and [shut down cleanly](../operations/deploy.md#shut-down-cleanly)
 - [Migrations](../operations/migrations.md), [Retention](../operations/retention.md), [Tuning](../operations/tuning.md)
+- [Record run history](../observability/run-recorder.md): a run history the app owns, in the same database
 - [The in-memory driver](memory.md) and [the Hatchet driver](hatchet.md)
 - [Transactional enqueue](../reliability/transactional-enqueue.md), [Tenants](../jobs/tenants.md), [Nodes and health](../operations/nodes.md)
 - Examples: [sqlite-worker](../../examples/sqlite-worker/), [postgres-cluster](../../examples/postgres-cluster/), [sql-queue-workers](../../examples/sql-queue-workers/)

@@ -53,12 +53,14 @@ Read in this order to go from a first job to a production setup. Each step build
 | Keep personal data out of the queue tables | [Payload codecs](middleware/codecs.md) | [encrypted-payloads](../examples/encrypted-payloads/) |
 | Trace a job from the request that enqueued it | [OpenTelemetry](observability/opentelemetry.md) | [opentelemetry](../examples/opentelemetry/) |
 | Keep my own runs table: who started each run, what each step did, after the engine pruned it | [Record run history](observability/run-recorder.md) | [run-recorder](../examples/run-recorder/) |
+| Say who started each run, and refuse a job that does not | [Trigger source](concepts/trigger-source.md) | [trigger-source](../examples/trigger-source/) |
+| Mark a run that succeeded but skipped work or rejected rows | [Run outcome](concepts/run-outcome.md), [Step events](concepts/step-events.md) | [step-events](../examples/step-events/) |
 | Keep accepting jobs while the engine is down | [Failover](reliability/failover.md) | [failover](../examples/failover/) |
 | [Secrets in payloads](reliability/secrets.md) | `SecretGuard` refusing credentials at enqueue, `SecretRef` resolved in the step |
 | Run several worker machines on one Postgres | [Deploy workers](operations/deploy.md) | [postgres-cluster](../examples/postgres-cluster/) |
 | Run my jobs on the Redis I already have | [The Redis driver](drivers/redis.md) | [redis-worker](../examples/redis-worker/) |
 | Run my jobs on Hatchet | [The Hatchet driver](drivers/hatchet.md) | [hatchet-worker](../examples/hatchet-worker/) |
-| [Hybrid placement](drivers/hybrid.md) | Crons fire on one client, runs live on another; what the split refuses; several nodes |
+| [Hybrid placement](drivers/hybrid.md) | Crons fire on one client, runs live on another; what the split refuses; several nodes; what a run recorder sees |
 | Test the code that enqueues, without running workers | [Test app code with the Fake](testing/fake.md) | [app-tests](../examples/app-tests/) |
 | Send slow imports to their own workers and pause them during maintenance | [Named queues](jobs/queues.md) | [named-queues](../examples/named-queues/) |
 | See failed runs, retry one from the failed step, or clear a backlog | [Manage runs](jobs/manage-runs.md), [Admin operations](admin/operations.md) | [manage-runs](../examples/manage-runs/), [admin](../examples/admin/) |
@@ -96,6 +98,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Stuck jobs](observability/stuck-jobs.md) | Report an attempt that runs far too long without touching it; Stuck vs Timeout vs HeartbeatTimeout |
 | See every attempt's error, or end a stuck run by hand | [Manage runs › Error history](jobs/manage-runs.md#error-history), [Force a run to an end](jobs/manage-runs.md#force-a-run-to-an-end) | [run-repair](../examples/run-repair/) |
 | Let web servers enqueue without running workers | [Deploy workers › Web nodes that only enqueue](operations/deploy.md#web-nodes-that-only-enqueue) | [enqueue-only](../examples/enqueue-only/) |
+| Record runs enqueued on web nodes that run no workers | [Record run history › Web nodes that only enqueue](observability/run-recorder.md#web-nodes-that-only-enqueue), [The Hatchet driver › Record runs from web nodes](drivers/hatchet.md#record-runs-from-web-nodes) | [recorder-split](../examples/recorder-split/) |
 | Start jobs at once on Postgres instead of at the next poll | [The SQL driver › Wake workers at once](drivers/sqlstore.md#wake-workers-at-once) | [worker-wakeup](../examples/worker-wakeup/) |
 | Give operators a dashboard API with my own login | [Admin JSON API](admin/http-api.md) | [admin](../examples/admin/) |
 | Give operators a web dashboard behind my own login | [Admin web UI](admin/ui.md) | [admin-ui](../examples/admin-ui/) |
@@ -144,6 +147,9 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Capabilities](concepts/capabilities.md) | What a driver declares, checking workflows and schedules, refusals |
 | [Errors](concepts/errors.md) | Sentinel errors and the backend-outage marker |
 | [Labels](concepts/labels.md) | Job labels and the reserved prefixes |
+| [Trigger source](concepts/trigger-source.md) | What started a run: `WithSource`, the sources `SourceOf` derives, `RequireSource` |
+| [Step events](concepts/step-events.md) | A step's timeline: `RecordEvent`, event sinks, bounds, the recorder and `CaptureOutput` |
+| [Run outcome](concepts/run-outcome.md) | Whether the work succeeded, apart from the status: `SetOutcome`, the default outcome |
 | [Plugins](concepts/plugins.md) | Adding a feature to a client with `workflow.Use` |
 | [Time](concepts/time.md) | The injected clock every scheduling decision reads |
 
@@ -175,7 +181,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Schedule conditions](schedules/conditions.md) | Time-of-day windows and `ScheduleWhen`, environment gating, an active period, the answer to `between()`, `unlessBetween()`, `when()` and `skip()` |
 | [Schedule hooks and pings](schedules/hooks.md) | Tick events, per-schedule hooks and heartbeat pings |
 | [Manage schedules](schedules/manage.md) | List schedules with their next fire, pause and resume, group schedules, keep the newest runs, store a schedule as JSON |
-| [Task output](schedules/output.md) | Capture what a task logs and returns and send it to a file, a writer, a mail function or the database |
+| [Task output](schedules/output.md) | Capture what a task logs, the events it records and what it returns, and send it to a file, a writer, a mail function or the database |
 | [Overlap, trigger now and last fire](schedules/overlap.md) | Skip a tick while the previous run is unfinished, run a schedule now, read its last fire and run |
 
 ### Workflows
@@ -191,17 +197,17 @@ Read in this order to go from a first job to a production setup. Each step build
 
 | Page | What it covers |
 |---|---|
-| [The in-memory driver](drivers/memory.md) | For tests, local runs and work that may be lost |
-| [The SQL driver (sqlstore)](drivers/sqlstore.md) | SQLite, Postgres and MySQL 8: workers, polling, wake-ups with LISTEN/NOTIFY, leases, database errors, run IDs |
-| [The Redis driver](drivers/redis.md) | Durable runs and cron on Redis: whole-run leases, fenced writes, what it still refuses, shared stores, deployment, upgrading |
-| [The Hatchet driver](drivers/hatchet.md) | Configuration, what it refuses, engine quirks, the native SDK |
+| [The in-memory driver](drivers/memory.md) | For tests, local runs and work that may be lost; a run recorder on it |
+| [The SQL driver (sqlstore)](drivers/sqlstore.md) | SQLite, Postgres and MySQL 8: workers, polling, wake-ups with LISTEN/NOTIFY, leases, database errors, run IDs, a run recorder in the same database |
+| [The Redis driver](drivers/redis.md) | Durable runs and cron on Redis: whole-run leases, fenced writes, what it still refuses, shared stores, deployment, upgrading, a run recorder next to it |
+| [The Hatchet driver](drivers/hatchet.md) | Configuration, what it refuses, engine quirks, the native SDK, a run recorder with the Reconciler and on web nodes |
 
 ### Middleware
 
 | Page | What it covers |
 |---|---|
-| [Step middleware](middleware/step-middleware.md) | Recover, timeout, fail on chosen errors, skip, circuit breaker |
-| [Enqueue middleware](middleware/enqueue-middleware.md) | Wrapping every enqueue, routing jobs |
+| [Step middleware](middleware/step-middleware.md) | Recover, timeout, fail on chosen errors, skip, circuit breaker, capturing step events |
+| [Enqueue middleware](middleware/enqueue-middleware.md) | Wrapping every enqueue, routing jobs, requiring a trigger source |
 | [Payload codecs](middleware/codecs.md) | Transforming payloads, encryption with key rotation |
 
 ### Observability
@@ -211,7 +217,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Logging](observability/logging.md) | A log line per step attempt, and driver logs |
 | [OpenTelemetry](observability/opentelemetry.md) | Spans, trace context from enqueue to step, parenting, span names, labels, metrics |
 | [React when a run finishes](observability/run-finished.md) | The run-finished hook, and its best-effort form on Hatchet |
-| [Record run history](observability/run-recorder.md) | A run history the app owns on any driver: trigger source, steps with events, outcome, redaction, two-stage retention, the Reconciler, a SQL store |
+| [Record run history](observability/run-recorder.md) | A run history the app owns on any driver: trigger source, steps with events, outcome, redaction, two-stage retention, the Reconciler, a SQL store, web nodes that only enqueue, what differs per driver |
 | [Failure alerts and error reporting](observability/failure-alerts.md) | Alerts on final failures with dedup and rate limits, error reporters, Sentry |
 
 ### Batches
@@ -252,7 +258,7 @@ Read in this order to go from a first job to a production setup. Each step build
 
 | Page | What it covers |
 |---|---|
-| [Deploy workers](operations/deploy.md) | Several workers on one database, web nodes that only enqueue, clean shutdown without spending a retry |
+| [Deploy workers](operations/deploy.md) | Several workers on one database, web nodes that only enqueue (and recording their runs), clean shutdown without spending a retry |
 | [Migrations](operations/migrations.md) | The ledger, each store's migrations, rollbacks, your own migration tool, table names |
 | [Retention](operations/retention.md) | Keeping, pruning and archiving finished runs |
 | [Tuning](operations/tuning.md) | Housekeeping and Hatchet limits |

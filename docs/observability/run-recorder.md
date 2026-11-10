@@ -58,9 +58,56 @@ What each seam records:
 | Step middleware | `StartStep`, `EndStep`, `AddEvent`, `SetOutcome` | Every attempt of every step, `OnFailure` and `OnTimeout` included |
 | Run-finished observer | `FinishRun`: status, error, failed step, end time, result | The run reached a terminal status |
 
-On a web or API node built in a driver's enqueue-only mode (`sqlstore.WithEnqueueOnly()`, the Redis driver's, `hatchet.Config{EnqueueOnly: true}`), which has no run-finished hook, apply `rec.EnqueuePlugin()` instead: it records each accepted run with its source and input, and the worker processes, wrapped with `rec.Plugin()` over the same store, record the steps and the end into the same record.
+On a web or API node that only enqueues, apply `rec.EnqueuePlugin()` instead ([Web nodes that only enqueue](#web-nodes-that-only-enqueue)).
 
 A run started past the enqueue seam (a schedule fire, a chained job, a child) is recorded from its first step. A write that fails never fails the run: it goes to `recorder.WithOnError` (logged with `slog.Default` by default). Every write is an upsert keyed by the run, so the at-least-once delivery of each seam is harmless.
+
+## Web nodes that only enqueue
+
+A web or API node built in a driver's enqueue-only mode (`workflow.CapEnqueueOnly`: `sqlstore.WithEnqueueOnly()`, `redis.WithEnqueueOnly()`, `hatchet.Config{EnqueueOnly: true}`) runs no steps and delivers no run ends: the SQL and Redis drivers start no run-end delivery on it, and Hatchet's enqueue-only client refuses `OnRunFinished`, so `workflow.Use(web, rec.Plugin())` fails there with `workflow.ErrUnsupported`. `rec.EnqueuePlugin()` is the recorder's enqueue half alone: it records each accepted run with its source, input and labels. The workers, wrapped with `rec.Plugin()` over the same store, record the steps, their events and the end into the same record, because every write is an upsert keyed by the run. The program is [examples/recorder-split](../../examples/recorder-split/), on the SQL driver over one SQLite file:
+
+<!-- snippet: examples/recorder-split/main.go#web -->
+```go
+// The web node enqueues and never runs a step, so it has no run-end
+// hook: it takes the recorder's enqueue half only.
+webDriver, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithEnqueueOnly())
+if err != nil {
+	return err
+}
+web, err := workflow.Use(webDriver, rec.EnqueuePlugin())
+if err != nil {
+	return err
+}
+```
+
+<!-- snippet: examples/recorder-split/main.go#worker -->
+```go
+// A worker node takes the full plugin over the same store, and
+// registers and starts through the client Use returned.
+workerDriver, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithPollInterval(pollInterval))
+if err != nil {
+	return err
+}
+worker, err := workflow.Use(workerDriver, rec.Plugin())
+if err != nil {
+	return err
+}
+if err := worker.Register(thumbnail); err != nil {
+	return err
+}
+if err := worker.Start(ctx); err != nil {
+	return err
+}
+```
+
+```text
+web node recorded: source=api/req-7 input={"image":"img-1"}
+worker finished it: succeeded source=api/req-7 outcome=success
+  step resize attempt 1 succeeded output="thumb-1.png" events=1
+records for the run: 1
+```
+
+The store must be one both nodes reach: a SQL store on a shared database (here the jobs database itself), or a store of your own, never `recorder.NewMemoryStore()`, which lives in one process.
 
 ## Trigger source
 
@@ -90,7 +137,7 @@ if err != nil {
 }
 ```
 
-A source is provenance for people and filters, never an authorization input: anything that can enqueue can claim any source.
+A source is provenance for people and filters, never an authorization input: anything that can enqueue can claim any source. The whole model, with a runnable program, is on [Trigger source](../concepts/trigger-source.md).
 
 ## Step events and outcome
 
@@ -110,6 +157,7 @@ save := func(ctx context.Context, in []byte) ([]byte, error) {
 ```
 
 - `RecordEvent` hands the event to every `workflow.StepEventSink` bound on the step's context: the recorder binds one, `middleware.CaptureOutput` binds one (the event joins the step's captured log records), and your own middleware can bind more with `workflow.WithStepEventSink`. With none bound it does nothing, so a step records events the same way with or without a recorder. A message is cut to 1 KiB, at most 32 attributes are kept, each value cut to 1 KiB.
+- Both have pages of their own: [Step events](../concepts/step-events.md) (sinks, bounds, `CaptureOutput`) and [Run outcome](../concepts/run-outcome.md) (the four outcomes, errors, the default).
 - `SetOutcome` takes `OutcomeSuccess`, `OutcomePartial`, `OutcomeError` or `OutcomeSkipped`, and the last call in a run wins. Without a recorder it returns an `UnsupportedError`, as `ReportProgress` does, because the caller asked for data to be kept; a step that does not care ignores it. A run that set none gets `workflow.DefaultOutcome(status)`: success for succeeded, error for failed or discarded, none for cancelled.
 
 ## Read the history
@@ -218,6 +266,18 @@ fmt.Fprintf(out, "reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, re
 
 Run it with `go rc.Run(ctx)` (every 30 seconds by default) on one node or several: every write is an upsert, so two reconcilers never conflict.
 
+## Per driver
+
+The recorder is the same on every driver; what differs is which run ends the driver delivers and what its store or engine forgets. The recorder's end-to-end module, `recorder/e2e`, runs the shared driver cases of `recordertest.RunDriver` (a run with its source, steps, events and outcome; retries and failure; redaction; a delayed run cancelled before it starts; the Reconciler's backfill and check) on each driver below but hybrid, and the web-node split on the SQL driver and on Hatchet. Each service's cases skip without its connection variable (`WFTEST_PG_DSN`, `WFTEST_MYSQL_DSN`, `WFTEST_REDIS_URL`, `HATCHET_CLIENT_TOKEN`); SQLite always runs.
+
+| Driver | Run ends reach the recorder | Store in the e2e suite | Notes |
+|---|---|---|---|
+| [memory](../drivers/memory.md#record-run-history) | Every end, at least once | `sqlrecorder` on SQLite, Postgres and MySQL | Runs vanish on exit; records in a SQL store do not |
+| [sqlstore](../drivers/sqlstore.md#record-run-history) | Every end, at least once | `sqlrecorder` in the driver's own database | `EnqueueTx` passes no enqueue middleware; enqueue-only nodes take `EnqueuePlugin` |
+| [redis](../drivers/redis.md#record-run-history) | Every end, at least once | `recorder.MemoryStore` | Finished runs expire after the driver's retention; the record stays |
+| [hatchet](../drivers/hatchet.md#record-run-history) | Best effort: run the Reconciler | `recorder.MemoryStore`; `sqlrecorder` on SQLite for the split | The record keeps every attempt's error, which the driver does not report |
+| [hybrid](../drivers/hybrid.md#record-run-history) | The jobs client's | not run on its own | Cron runs are recorded from their first step, as `schedule` |
+
 ## The SQL store
 
 `sqlrecorder.New(db, dialect, opts...)` works on Postgres 13+, MySQL 8 and SQLite 3.35+ through `database/sql` alone. Its tables, under the prefix `wf_rec_` (`WithTablePrefix`):
@@ -251,3 +311,5 @@ Steps and events are rows of their own, so a busy run never rewrites one large r
 - [Admin operations](../admin/operations.md): the API `admin.WithRunQuerier` points at the recorder.
 - [Retention](../operations/retention.md): the SQL driver's own retention, separate from the recorder's.
 - [Write a plugin](../extending/writing-a-plugin.md): the seams the recorder is built from.
+- [Trigger source](../concepts/trigger-source.md), [Step events](../concepts/step-events.md), [Run outcome](../concepts/run-outcome.md): the run metadata the recorder keeps.
+- Examples: [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) (a web node and a worker), [step-events](../../examples/step-events/).

@@ -49,7 +49,7 @@ The last three lines are the ones above.
 
 ## Source labels
 
-Two keys under `ubgo.workflow/` are reserved yet app-settable: `workflow.LabelSource` and `workflow.LabelSourceRef`, the run's trigger source and a reference within it. Set them with `workflow.WithSource(job, source, ref)`; `CheckJobLabels` and `ValidateLabels` let them through when the source passes `workflow.ValidateSource` (lower-case letters, digits and `. _ -`, at most 64 bytes) and the reference is at most 256 bytes. `workflow.SourceOf(labels)` reads them, or derives a source from the labels the library stamps (a schedule fire, a manual trigger, a spawned child, a batch member, an event), and `middleware.RequireSource()` refuses a job whose source cannot be told. A source is provenance, never an authorization input. See [Record run history](../observability/run-recorder.md#trigger-source).
+Two keys under `ubgo.workflow/` are reserved yet app-settable: `workflow.LabelSource` and `workflow.LabelSourceRef`, the run's trigger source and a reference within it. Set them with `workflow.WithSource(job, source, ref)`; `CheckJobLabels` and `ValidateLabels` let them through when the source passes `workflow.ValidateSource` (lower-case letters, digits and `. _ -`, at most 64 bytes) and the reference is at most 256 bytes. `workflow.SourceOf(labels)` reads them, or derives a source from the labels the library stamps (a schedule fire, a manual trigger, a spawned child, a batch member, an event), and `middleware.RequireSource()` refuses a job whose source cannot be told. A source is provenance, never an authorization input. The whole model is on [Trigger source](trigger-source.md); a run recorder filters its history by it ([Record run history](../observability/run-recorder.md#trigger-source)). Two other kinds of run metadata ride on the step's context instead of labels, because only a step produces them: [step events](step-events.md) (`workflow.RecordEvent`) and the [run outcome](run-outcome.md) (`workflow.SetOutcome`).
 
 ## Pitfalls
 
@@ -62,4 +62,5 @@ Two keys under `ubgo.workflow/` are reserved yet app-settable: `workflow.LabelSo
 
 - [Names reference](../reference/names.md#labels)
 - [Unique jobs](../reliability/unique-jobs.md#unique-for-a-time), [labels on a batch](../batches/batches.md#labels-on-a-batch), [trace context from enqueue to step](../observability/opentelemetry.md#trace-context-from-enqueue-to-step)
-- Example: [capabilities](../../examples/capabilities/)
+- [Trigger source](trigger-source.md), [Step events](step-events.md), [Run outcome](run-outcome.md)
+- Example: [capabilities](../../examples/capabilities/), [trigger-source](../../examples/trigger-source/)

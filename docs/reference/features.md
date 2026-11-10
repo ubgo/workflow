@@ -2,22 +2,22 @@
 
 Every feature of the library on one page, grouped by area, with the package that provides it, the guide section that explains it and the runnable example that shows it. Use it to answer "does it do X, and where is that written down?" without reading the guides in order.
 
-The list is built from the code: the exported types, functions and options of every package in every module (`workflow`, `clock`, `cron`, `memory`, `middleware`, `batch`, `failover`, `workflowtest`, `events`, `hybrid`, and the separate modules `admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore` with `sqlstore/outbox`).
+The list is built from the code: the exported types, functions and options of every package in every module (`workflow`, `clock`, `cron`, `memory`, `middleware`, `batch`, `failover`, `workflowtest`, `events`, `hybrid`, and the separate modules `admin`, `cli`, `hatchet`, `otel`, `recorder` with `recorder/recordertest`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore` with `sqlstore/outbox`).
 
 An **Example** link goes to a program under `examples/` (or a Go example test) that uses the feature's API and is run by `go test`; a dash means no example shows the feature yet, and the guide section is the place to start. A **Package** is a path inside `github.com/ubgo/workflow`, where `workflow` is the root package, unless it names another module.
 
 ## Contents
 
-- [Core contract](#core-contract) (15)
+- [Core contract](#core-contract) (18)
 - [Workflows and steps](#workflows-and-steps) (21)
 - [Events](#events) (5)
 - [Jobs](#jobs) (60)
 - [Schedules](#schedules) (36)
 - [Drivers](#drivers) (31)
-- [Middleware](#middleware) (14)
+- [Middleware](#middleware) (16)
 - [Batches](#batches) (19)
 - [Reliability](#reliability) (26)
-- [Observability](#observability) (17)
+- [Observability](#observability) (25)
 - [Testing](#testing) (15)
 - [Operations](#operations) (22)
 - [Admin](#admin) (13)
@@ -44,6 +44,9 @@ The root package `workflow`: one client interface for every backend, workflows o
 | Injected time (`clock.Clock`, `clock.Real`, `clock.Timer`) | `clock` | [time › The clock interface](../concepts/time.md#the-clock-interface) | [custom-driver](../../examples/custom-driver/) |
 | Run errors: a failed run's error names run, workflow, step and attempt (`RunError`, `RunErrorOf`, `Describe`) | `workflow` | [errors › Run errors](../concepts/errors.md#run-errors) | [lifecycle-events](../../examples/lifecycle-events/) |
 | Timeout sentinels (`ErrTimeout`, `ErrStepTimeout`, `ErrWaitTimeout`, `ErrHeartbeatTimeout`, `ErrRunTimeout`, `IsTimeout`) | `workflow` | [errors › Timeouts](../concepts/errors.md#timeouts) | — |
+| Trigger source: what started a run, set by the app or derived from the library's labels (`WithSource`, `SourceOf`, `Source`, `ValidateSource`, `LibrarySources`, `LabelSource`, `LabelSourceRef`, `SourceSchedule`, `SourceScheduleManual`, `SourceChild`, `SourceBatch`, `SourceEvent`, `SourceExternal`, `MaxSourceLen`, `MaxSourceRefLen`) | `workflow` | [trigger-source › Name the source of a job](../concepts/trigger-source.md#step-1-name-the-source-of-a-job) | [trigger-source](../../examples/trigger-source/) |
+| Step events: a step's timeline handed to every bound sink (`RecordEvent`, `RecordEventLevel`, `StepEvent`, `EventAttr`, `StepEventSink`, `StepEventFunc`, `WithStepEventSink`, `HasStepEventSink`, `MaxStepEventMessage`, `MaxStepEventAttrs`, `MaxStepEventValue`) | `workflow` | [step-events › Record events from a step](../concepts/step-events.md#step-1-record-events-from-a-step) | [step-events](../../examples/step-events/) |
+| Run outcome: whether the work succeeded, apart from the status (`SetOutcome`, `Outcome`, `Outcomes`, `OutcomeSuccess`, `OutcomePartial`, `OutcomeError`, `OutcomeSkipped`, `DefaultOutcome`, `OutcomeSetter`, `OutcomeFunc`, `WithOutcomeSetter`, `MaxOutcomeNote`) | `workflow` | [run-outcome › Set it from a step](../concepts/run-outcome.md#step-2-set-it-from-a-step) | [step-events](../../examples/step-events/) |
 
 ## Workflows and steps
 
@@ -253,6 +256,8 @@ Cross-cutting behaviour around every step and every enqueue, in the `middleware`
 | Release a step for later without running it (`Release`, `ErrReleased`) | `middleware` | [step-middleware › Release a step for later](../middleware/step-middleware.md#release-a-step-for-later) | [release-jobs](../../examples/release-jobs/) |
 | Unique until a step of the run starts (`UniqueUntilStarted`, `ReleaseUniqueOnStart`) | `middleware` | [enqueue-middleware › Unique until a step starts](../middleware/enqueue-middleware.md#unique-until-a-step-starts) | [release-jobs](../../examples/release-jobs/) |
 | Wrappers forward every optional client interface (`workflow.Forward`, `WrapClient`, `WithCodec`) | `workflow` | [client › The Client interface](../concepts/client.md#the-client-interface) | [client-wrapper](../../examples/client-wrapper/) |
+| Refuse a job without a trigger source, or with one not on an allow-list (`RequireSource`) | `middleware` | [enqueue-middleware › Require a trigger source](../middleware/enqueue-middleware.md#require-a-trigger-source) | [trigger-source](../../examples/trigger-source/), [run-recorder](../../examples/run-recorder/) |
+| Step events in a step's captured output (`CaptureOutput` as a `workflow.StepEventSink`) | `middleware` | [step-middleware › Capture step events](../middleware/step-middleware.md#capture-step-events) | [step-events](../../examples/step-events/) |
 
 ## Batches
 
@@ -315,7 +320,7 @@ Not losing work and not doing it twice: unique jobs, debounce, claim check, tran
 
 ## Observability
 
-Knowing what ran: the run-finished hook, logs, traces and metrics.
+Knowing what ran: the run-finished hook, logs, traces, metrics and a run history the app owns.
 
 | Feature | Package | Guide | Example |
 |---|---|---|---|
@@ -336,6 +341,14 @@ Knowing what ran: the run-finished hook, logs, traces and metrics.
 | Count run ends by status, and a `discarded` step outcome (`Instrumentation.RunFinished`, `MetricRunsFinished`, `AttrRunStatus`, `OutcomeDiscarded`) | `github.com/ubgo/workflow/otel` | [opentelemetry › Count run ends](../observability/opentelemetry.md#count-run-ends) | [opentelemetry](../../examples/opentelemetry/) |
 | Lifecycle events: inserted, started, retrying, snoozed, progress, finished (`LifecycleNotifier`, `OnLifecycle`, `LifecycleEvent`, `LifecycleKind`) | `workflow`, `memory`, `redis` | [lifecycle › Watch the lifecycle feed](../observability/lifecycle.md#watch-the-lifecycle-feed) | [lifecycle-events](../../examples/lifecycle-events/) |
 | Stuck-attempt reports, detection only (`middleware.Stuck`, `StuckConfig`, `StuckEvent`) | `middleware` | [stuck-jobs › Report attempts that run too long](../observability/stuck-jobs.md#report-attempts-that-run-too-long) | [lifecycle-events](../../examples/lifecycle-events/) |
+| A run history the app owns on any driver: source, input, every step attempt with its events, outcome, result, timings (`recorder.New`, `Recorder.Plugin`, `RunRecord`, `StepRecord`, `EventRecord`, `MemoryStore`, `WithClock`, `WithDefaultSource`, `WithResultReader`, `WithOnError`, `WithWriteTimeout`, `WithName`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Wire it in](../observability/run-recorder.md#wire-it-in) | [run-recorder](../../examples/run-recorder/) |
+| Record runs from web nodes that only enqueue (`Recorder.EnqueuePlugin`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue) | [recorder-split](../../examples/recorder-split/) |
+| Read and filter the history, and point the admin at it (`Store.Run`, `Store.Records`, `Query` with `Sources`, `Outcomes`, `Search`, `OnlyStale`; `admin.WithRunQuerier`, `QueryCaps`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Read the history](../observability/run-recorder.md#read-the-history) | [run-recorder](../../examples/run-recorder/) |
+| Redact and bound what the history stores (`Redactor`, `JSONPaths`, `PerWorkflow`, `Chain`, `WithRedactor`, `WithMaxPayload`, `WithStepBodies`, `WithErrorHistory`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Redaction and payload bounds](../observability/run-recorder.md#redaction-and-payload-bounds) | [run-recorder](../../examples/run-recorder/) |
+| Two-stage retention of the history with an archive hook (`Retention`, `RetentionRule`, `PruneEvery`, `Pruner`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Retention](../observability/run-recorder.md#retention) | — |
+| Close the gaps the seams leave: stale and missing runs, backfill of runs started past the recorder (`NewReconciler`, `Reconciler.Pass`, `Reconciler.Run`, `ReconcileReport`, `WithStaleAfter`, `WithBackfillWindow`, `WithBackfillQuery`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Close the gaps with the Reconciler](../observability/run-recorder.md#close-the-gaps-with-the-reconciler) | [run-recorder](../../examples/run-recorder/) |
+| The recorder's SQL store on Postgres, MySQL 8 and SQLite (`sqlrecorder.New`, `Postgres`, `MySQL`, `SQLite`, `Store.Migrate`, `Store.MigrationScripts`, `WithTablePrefix`, `WithRetention`) | `github.com/ubgo/workflow/recorder/sqlrecorder` | [run-recorder › The SQL store](../observability/run-recorder.md#the-sql-store) | [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) |
+| Bring your own history store and prove it (`recorder.Store`, the `Apply*` merge rules, `recordertest.RunStore`, `recordertest.RunDriver`) | `github.com/ubgo/workflow/recorder` | [run-recorder › Bring your own store](../observability/run-recorder.md#bring-your-own-store) | — |
 
 ## Testing
 

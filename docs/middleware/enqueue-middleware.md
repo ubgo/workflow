@@ -47,7 +47,7 @@ _, err := client.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[strin
 fmt.Fprintln(out, "same order again:", errors.Is(err, workflow.ErrDuplicate))
 ```
 
-The stock enqueue middleware: `Route` (below), `Unique` and `UniqueUntilFinished` ([unique jobs](../reliability/unique-jobs.md)), `Debounce` ([debounce](../reliability/debounce.md)), `EncodeEnqueue` and `WithCodec` ([payload codecs](codecs.md)), `ClaimCheck.Enqueue` ([claim check](../reliability/claim-check.md)), and the OpenTelemetry `Instrumentation.Enqueue` ([OpenTelemetry](../observability/opentelemetry.md)).
+The stock enqueue middleware: `Route` (below), `RequireSource` ([below](#require-a-trigger-source)), `Unique` and `UniqueUntilFinished` ([unique jobs](../reliability/unique-jobs.md)), `Debounce` ([debounce](../reliability/debounce.md)), `EncodeEnqueue` and `WithCodec` ([payload codecs](codecs.md)), `ClaimCheck.Enqueue` ([claim check](../reliability/claim-check.md)), and the OpenTelemetry `Instrumentation.Enqueue` ([OpenTelemetry](../observability/opentelemetry.md)).
 
 ### Some middleware goes in a chain once
 
@@ -67,6 +67,39 @@ Nothing reaches the driver, and the outer `Unique` releases the lock it took, so
 `middleware.Route(rules...)` applies the first `RouteRule` whose `Match` accepts the job and passes every job on, matched or not. A rule can replace `Job.Workflow` (`RouteRule.Workflow`) and add labels (`RouteRule.Labels`); a nil `Match` matches every job. Routing is an app-side table that keeps queue names and tenant labels out of the code that enqueues.
 
 A label the job already carries wins over the rule's, as an explicit choice should win over a default, and the job's `Labels` map is copied before it is changed, so the caller's map is never mutated. In the example, a job labelled `tier=bulk` leaves `Route` with `queue=bulk` added.
+
+## Require a trigger source
+
+`middleware.RequireSource(allowed...)` refuses, with an error wrapping `workflow.ErrInvalid`, a job whose [trigger source](../concepts/trigger-source.md) cannot be told: one that carries no source set with `workflow.WithSource` and no label the library stamps (a schedule fire, a spawned child, a batch member, an event). With allowed sources given, the job's source must also be one of them, so a typo such as `webook` is refused at the enqueue site instead of becoming a filter value nobody looks for. The program is [examples/trigger-source](../../examples/trigger-source/):
+
+<!-- snippet: examples/trigger-source/main.go#require -->
+```go
+// Every enqueue through c must name a source, and one of these three.
+c := middleware.WrapClient(mem, middleware.RequireSource("api", "webhook", "admin"))
+```
+
+<!-- snippet: examples/trigger-source/main.go#enqueue -->
+```go
+_, err := c.Enqueue(ctx, workflow.Job{Workflow: "nightly-report"})
+fmt.Fprintln(out, "no source:", err)
+
+_, err = c.Enqueue(ctx, workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webook", ""))
+fmt.Fprintln(out, "typo:", err)
+
+job := workflow.WithSource(workflow.Job{Workflow: "nightly-report"}, "webhook", "delivery-42")
+if _, err := c.Enqueue(ctx, job); err != nil {
+	return err
+}
+```
+
+```text
+no source: workflow: invalid spec: job for "nightly-report" has no source; set one with workflow.WithSource
+typo: workflow: invalid spec: job for "nightly-report" has source "webook", not one of [api webhook admin]
+```
+
+- **Where it goes.** Put it in the enqueuing client's chain: `middleware.WrapClient`, or a plugin applied with `workflow.Use` (the [run recorder](../observability/run-recorder.md#wire-it-in) example adds it as a one-line plugin, so no run reaches the history without its source). A refused job reaches neither the driver nor the middleware after it.
+- **What it checks.** The job it is handed, only. A chained job, a cron fire, a child and a retried run are enqueued by the driver past enqueue middleware, so they are never refused here.
+- **The allow-list.** Each allowed source must pass `workflow.ValidateSource`; otherwise every enqueue returns that error, so a bad list fails on the first call rather than never matching. A derived source (`schedule`, `child`, `batch`, `event`) is checked against the list too, so list the ones that reach this client.
 
 ## Unique until a step starts
 
@@ -137,6 +170,7 @@ third, while the first runs: accepted
 - **Order changes what a refusal skips.** A middleware after `Unique` never sees a refused duplicate; one before it sees the job and the refusal coming back.
 - **`sqlstore.Client.EnqueueTx` does not run enqueue middleware.** It writes the run inside the app's transaction directly. The [transactional outbox](../reliability/outbox.md) relays through any client, wrapped or not.
 - **`UniqueUntilStarted` without its step half is plain `Unique`.** If no worker installs the step half (or `ReleaseUniqueOnStart`), nothing frees the lock early and it lasts the whole `ttl`. With `MemoryUnique`, the enqueuer and the worker must be one process.
+- **`RequireSource` is not authorization.** It checks that a source is named, not who named it: anything that can enqueue can claim any source.
 - **Labels under a reserved prefix are refused, not overwritten.** An app label such as `otel.tenant` or `workflow.batch.id` fails the enqueue with `workflow.ErrInvalid`; pick another key.
 
 ## Related
@@ -145,5 +179,7 @@ third, while the first runs: accepted
 - [Unique jobs](../reliability/unique-jobs.md), [Debounce](../reliability/debounce.md), [Claim check](../reliability/claim-check.md): stock enqueue middleware.
 - [Payload codecs](codecs.md): `EncodeEnqueue` and `WithCodec`.
 - [Reserved names](../reference/names.md#labels): every reserved label prefix.
+- [Trigger source](../concepts/trigger-source.md): `WithSource`, `SourceOf` and the sources the library derives.
 - Example: [examples/middleware-stack](../../examples/middleware-stack/).
 - Example: [examples/release-jobs](../../examples/release-jobs/) (`UniqueUntilStarted`).
+- Example: [examples/trigger-source](../../examples/trigger-source/) (`RequireSource`).

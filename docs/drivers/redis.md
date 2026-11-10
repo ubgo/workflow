@@ -151,6 +151,17 @@ This version changes how the driver behaves in four ways and changes its key lay
 - **A step timeout matches `workflow.ErrStepTimeout` and `workflow.ErrTimeout`** as well as `context.DeadlineExceeded` ([Errors › Timeouts](../concepts/errors.md#timeouts)).
 - **`workflow.Discard` ends a run `StatusDiscarded`**, no longer failed, with no retries and no `OnFailure`. A policy with `RetryPolicy.DiscardOnExhaust` ends a run that ran out of retries the same way ([Retries](../jobs/retries.md#quiet-giving-up-discardonexhaust)).
 
+## Record run history
+
+A [run recorder](../observability/run-recorder.md) applied with `workflow.Use(client, rec.Plugin())` records every run of this driver. There is no Redis store for the recorder: keep the history in `sqlrecorder`, in `recorder.NewMemoryStore()` for one process, or in a store of your own.
+
+- **Every end is recorded.** The driver declares `CapRunFinished`: a client with observers claims each run end of its workflows under a lease and delivers it at least once, on one client, including ends that happened while no client was running. The recorder's upserts absorb the repeats.
+- **Records outlive the keys.** A finished run's keys expire after `WithRetention` (24 hours by default); the record stays until the recorder's own [retention](../observability/run-recorder.md#retention) removes it. An unfinished record whose run the driver no longer knows is flagged stale by the Reconciler, never cancelled.
+- **Web nodes take `EnqueuePlugin`.** A client built with `WithEnqueueOnly()` starts no worker, scheduler or subscription, so it delivers no run ends; apply `rec.EnqueuePlugin()` there and `rec.Plugin()` on the workers over a store both reach ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue)).
+- **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a pass records runs enqueued past the recorder.
+
+The recorder's end-to-end suite runs its driver cases on this driver, recording into `recorder.MemoryStore`; the web-node split is proven on the SQL and Hatchet drivers.
+
 ## Pitfalls
 
 - **Use `noeviction`.** With an LRU policy Redis may evict a run or a lease under memory pressure, silently.
@@ -168,3 +179,4 @@ This version changes how the driver behaves in four ways and changes its key lay
 - [Choose a driver](../choosing/drivers.md), [Capabilities](../reference/capabilities.md)
 - [The SQL driver](sqlstore.md), [The Hatchet driver](hatchet.md), [The in-memory driver](memory.md)
 - [Deploy workers](../operations/deploy.md), [Nodes and health](../operations/nodes.md), [Hybrid placement](hybrid.md)
+- [Record run history](../observability/run-recorder.md)

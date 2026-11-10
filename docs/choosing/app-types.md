@@ -22,12 +22,14 @@ A starting set of driver, options and middleware for the kinds of app that use a
 - If one tenant's spike must not delay the others, key concurrency (or rate limits) by tenant: each tenant gets its own `MaxRuns`, and `ConcurrencyRoundRobin` makes the waiting tenants take turns ([Strategies](../jobs/concurrency.md#strategies)).
 - If a job carries personal data, seal it with the codec `middleware.Encrypt(key, oldKeys...)` returns, applied with `middleware.WithCodec`; the old keys still decrypt during rotation.
 - If a payload can be megabytes, move it out of the queue with the claim check rather than raising database or engine limits.
+- If support or operations staff need a runs page that says who started each run, what each step did and whether the work went well, add the [run recorder](../observability/run-recorder.md) with `sqlrecorder` in your database: `RequireSource` on the enqueue path, `EnqueuePlugin` on web nodes that only enqueue, `Plugin` on the workers, and on Hatchet the `Reconciler`.
 - If you are not sure which you are, start with `sqlstore` on SQLite: it is durable, needs nothing new, and moving to Postgres later changes the dialect and the DSN.
 
 ## Pitfalls
 
 - A web app and its worker processes must register the same workflows: `Enqueue` refuses a workflow the calling client has not registered (`ErrNotFound`).
 - `EnqueueTx` needs the job's workflow registered on that client and the client started, like `Enqueue`.
+- A run recorder on a web node built enqueue-only needs `rec.EnqueuePlugin()`: Hatchet's enqueue-only client refuses the full plugin, and the SQL and Redis ones deliver no run ends ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue)).
 - On Hatchet, a plugin or feature that needs every run end (batch callbacks through the hook alone, `UniqueUntilFinished` without its TTL) needs the fallback the library already adds there: a status poller or the TTL.
 
 ## Related

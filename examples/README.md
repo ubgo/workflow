@@ -6,7 +6,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 
 ## Recipes
 
-86 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
+90 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
 
 ### Start here
 
@@ -75,6 +75,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [worker-balancing](worker-balancing) | ByDepth and ByWait on fixed loads, per-queue bounds and MaxShift, a BalanceLoop moving workers to a backed-up queue | `workflow`, `memory`, `clock` |
 | [worker-recycling](worker-recycling) | Worker generations recycled after two jobs on SQLite with the backlog kept, and a memory recycle through an injected reader | `workflow`, `memory`, `sqlstore`, `clock` |
 | [enqueue-only](enqueue-only) | A web client with WithEnqueueOnly that never starts, two workers on one SQLite file, a step cut short by a clean stop finished on the same attempt | `sqlstore` |
+| [recorder-split](recorder-split) | A run recorder across an enqueue-only web node (EnqueuePlugin) and a worker (Plugin) on one SQLite file: one record with the web node's source and input and the worker's step, event and end | `recorder`, `sqlrecorder`, `sqlstore` |
 | [worker-wakeup](worker-wakeup) | A worker polling every 5s started at once by a notifier: in-process on SQLite, pgnotify LISTEN/NOTIFY with PG_DSN | `sqlstore`, `sqlstore/pgnotify` |
 | [redis-worker](redis-worker) | What the Redis driver declares and refuses; with REDIS_URL, a web client that only enqueues, two workers on one prefix, one run per key, a retried step, a schedule triggered by hand | `redis` |
 | [run-repair](run-repair) | Each failed attempt's error with a stack for a panic, a failed run force-completed, a stuck run force-failed with a reason and no OnFailure | `workflow`, `memory`, `middleware` |
@@ -91,6 +92,8 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [encrypted-payloads](encrypted-payloads) | AES-GCM payload encryption with WithCodec and DecodeStep, key rotation, and the plaintext and dropped-key refusals | `middleware`, `memory` |
 | [opentelemetry](opentelemetry) | Spans and metrics to an in-memory exporter: span names, parent or new root with a link, labels on spans and metrics, Enqueue twice refused | `otel`, `memory` |
 | [run-recorder](run-recorder) | A run history the app owns: the recorder on the memory driver writing to SQLite through sqlrecorder, a required trigger source, step events, a partial outcome, a redacted card number, reads by run, by source and outcome, and through the admin API, and a Reconciler pass | `workflow`, `recorder`, `recorder/sqlrecorder`, `middleware`, `admin`, `memory` |
+| [trigger-source](trigger-source) | WithSource on a job, the schedule and schedule-manual sources SourceOf derives from a cron fire and TriggerSchedule, RequireSource refusing a job with no source and a typo outside its allow-list, ValidateSource | `workflow`, `middleware`, `memory`, `clock` |
+| [step-events](step-events) | RecordEvent and RecordEventLevel reaching a sink of the app's own and CaptureOutput, SetOutcome unsupported without a recorder, then the events and a partial outcome stored by a recorder, and the default outcome of a run that set none | `workflow`, `middleware`, `memory`, `recorder` |
 | [run-finished](run-finished) | The run-finished hook: CapRunFinished, register before Start, success, failure and a cancelled delayed run; Hatchet part behind HATCHET_CLIENT_TOKEN | `workflow`, `memory`, `hatchet` |
 | [failure-alerts](failure-alerts) | Alerts on final failures deduplicated for 10 minutes with a held-back count, and a reporter for every final and attempt failure | `middleware`, `memory`, `clock` |
 | [sentry-reporting](sentry-reporting) | One Sentry event per failed run through an in-memory transport: tags, an opted-in label, the fingerprint, no payload on the wire | `sentry`, `middleware`, `memory` |
