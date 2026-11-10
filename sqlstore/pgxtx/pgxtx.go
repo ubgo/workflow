@@ -55,7 +55,9 @@ func Run(ctx context.Context, tx Querier, fn func(*sql.Tx) error) error {
 		return errors.New("pgxtx: Run needs a transaction and a function")
 	}
 	db := sql.OpenDB(connector{q: tx})
-	defer db.Close()
+	// Closing only drops the throwaway pool around tx; it never touches tx,
+	// so there is no failure here the caller could act on.
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	stx, err := db.BeginTx(ctx, nil)
 	if err != nil {

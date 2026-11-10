@@ -110,7 +110,7 @@ func TestRecycleWaitsForInflight(t *testing.T) {
 	close(release)
 	<-slowDone
 	waitDone(t, c)
-	wantRecycle(t, c, workflow.RecycleMaxJobs)
+	_ = wantRecycle(t, c, workflow.RecycleMaxJobs) // it fails the test itself; the error value is not needed here
 }
 
 // TestRecycleMaxTime pins the MaxTime timer on the driver clock.

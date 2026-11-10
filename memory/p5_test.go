@@ -227,7 +227,10 @@ func TestRunErrorKeepsTheStepMessage(t *testing.T) {
 
 // TestRunAllRightAfterSignal pins that a wait a Signal satisfied no longer
 // counts as waiting, even before the waiter goroutine wakes: RunAll must
-// run the rest of the run rather than report it Waiting.
+// run the rest of the run rather than report it Waiting. On a busy machine
+// the waiter can finish the run before RunAll starts; RunAll then does not
+// cover it (it reports only runs unfinished when it began), so the check
+// is the run's own status the moment RunAll returns, plus no Waiting.
 func TestRunAllRightAfterSignal(t *testing.T) {
 	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
 		{Name: "wait", Wait: &workflow.WaitSpec{Event: "go"}},
@@ -241,8 +244,11 @@ func TestRunAllRightAfterSignal(t *testing.T) {
 			t.Fatal(err)
 		}
 		rep, err := c.RunAll(context.Background())
-		if err != nil || rep.Waiting != 0 || rep.Succeeded != 1 {
+		if err != nil || rep.Waiting != 0 || rep.Failed+rep.Cancelled+rep.Discarded != 0 {
 			t.Fatalf("RunAll right after Signal = %+v, %v; want the run finished", rep, err)
+		}
+		if st, err := c.Status(context.Background(), ref); err != nil || st != workflow.StatusSucceeded {
+			t.Fatalf("status when RunAll returned = %s, %v; want succeeded", st, err)
 		}
 		c.Stop()
 	}

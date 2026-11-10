@@ -371,11 +371,6 @@ func exprKeys(wf workflow.Workflow) error {
 	return nil
 }
 
-// parseCron runs the configured parser and fails closed: a custom parser
-// that returns neither a schedule nor an error is refused, never treated
-// as "no fires".
-func (c *Client) parseCron(expr string) (cron.Schedule, error) { return c.parseCronFor(expr, false) }
-
 // parseCronFor parses with cron.ParseSeconds when seconds is set
 // (Schedule.Seconds, Workflow.CronSeconds), else with the configured
 // parser.

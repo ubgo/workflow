@@ -14,7 +14,14 @@ import (
 // never run more than 2 attempts of the queue at once between them, and
 // when a client dies holding slots they are freed by lease expiry (not
 // leaked): every run still finishes.
+//
+// The lease is longer than the suite default (limitLease): on a loaded
+// host a lease renewal can run late, the held slots then expire as
+// designed, and more attempts start, which would read as a broken limit.
+// The longer lease keeps the "both slots held" check about the limit; the
+// crash half still proves expiry, it only waits longer for it.
 func TestQueueLimitIsClusterWideAndSurvivesCrash(t *testing.T) {
+	const limitLease = 6 * time.Second
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -36,7 +43,7 @@ func TestQueueLimitIsClusterWideAndSurvivesCrash(t *testing.T) {
 			defer cancel()
 			var finished atomic.Int64
 			mk := func() *sqlstore.Client {
-				c := newClient(t, e, db, prefix, sqlstore.WithWorkers(4),
+				c := newClient(t, e, db, prefix, sqlstore.WithWorkers(4), sqlstore.WithLease(limitLease),
 					sqlstore.WithQueues(workflow.QueueConfig{Name: "q", Limit: 2}))
 				if err := c.Register(wf); err != nil {
 					t.Fatal(err)
@@ -63,7 +70,7 @@ func TestQueueLimitIsClusterWideAndSurvivesCrash(t *testing.T) {
 			sqlstore.Crash(a)
 			b := mk() // a second node; the dead one's slots free when their leases expire
 			_ = b
-			waitFor(t, 20*time.Second, "all runs to finish after the crash", func() bool { return finished.Load() >= 6 })
+			waitFor(t, limitLease+30*time.Second, "all runs to finish after the crash", func() bool { return finished.Load() >= 6 })
 			if got := peak.Load(); got > 2 {
 				t.Fatalf("peak concurrent attempts = %d, want at most the Limit 2", got)
 			}

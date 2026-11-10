@@ -332,7 +332,11 @@ func schemaTables(t *testing.T, db *sql.DB, schema string) map[string]bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	out := map[string]bool{}
 	for rows.Next() {
 		var name string
@@ -792,12 +796,12 @@ func TestRetentionKeepLast(t *testing.T) {
 			}
 			for i, ref := range w {
 				if r.exists(ref) != (i >= 3) {
-					t.Fatalf("w run %d exists=%v; want only the newest 2 kept", i, !(i >= 3))
+					t.Fatalf("w run %d exists=%v; want only the newest 2 kept", i, i < 3)
 				}
 			}
 			for i, ref := range keep {
 				if r.exists(ref) != (i >= 2) {
-					t.Fatalf("keep run %d exists=%v; want only the newest 3 kept", i, !(i >= 2))
+					t.Fatalf("keep run %d exists=%v; want only the newest 3 kept", i, i < 2)
 				}
 			}
 			if got := r.prune(r.c); got != 0 {

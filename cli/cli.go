@@ -160,18 +160,23 @@ func Run(ctx context.Context, args []string, opts Options) int {
 	if opts.Sleep == nil {
 		opts.Sleep = sleepCtx
 	}
+	stdout := &stickyWriter{w: opts.Stdout}
+	opts.Stdout = stdout
 	err := run(ctx, args, opts)
+	if err == nil && stdout.err != nil {
+		err = fmt.Errorf("write output: %w", stdout.err)
+	}
 	switch {
 	case err == nil:
 		return ExitOK
 	case errors.Is(err, flag.ErrHelp):
 		return ExitOK
 	case errors.Is(err, errUsage):
-		fmt.Fprintf(opts.Stderr, "%s: %v\n", opts.Name, strings.TrimPrefix(err.Error(), errUsage.Error()+": "))
-		fmt.Fprintf(opts.Stderr, "run '%s help' for usage\n", opts.Name)
+		fprintf(opts.Stderr, "%s: %v\n", opts.Name, strings.TrimPrefix(err.Error(), errUsage.Error()+": "))
+		fprintf(opts.Stderr, "run '%s help' for usage\n", opts.Name)
 		return ExitUsage
 	default:
-		fmt.Fprintf(opts.Stderr, "%s: %v\n", opts.Name, err)
+		fprintf(opts.Stderr, "%s: %v\n", opts.Name, err)
 		return ExitError
 	}
 }
@@ -300,11 +305,11 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 }
 
 func usage(w io.Writer, name string) {
-	fmt.Fprintf(w, "%s is a client for the workflow admin API.\n\nUsage:\n  %s [--url URL] [--token T | --header 'K: V'] <command> [flags] [args]\n\nCommands:\n", name, name)
+	fprintf(w, "%s is a client for the workflow admin API.\n\nUsage:\n  %s [--url URL] [--token T | --header 'K: V'] <command> [flags] [args]\n\nCommands:\n", name, name)
 	for _, c := range commands() {
-		fmt.Fprintf(w, "  %-10s %-12s %s\n", c.name, c.args, c.summary)
+		fprintf(w, "  %-10s %-12s %s\n", c.name, c.args, c.summary)
 	}
-	fmt.Fprintf(w, `
+	fprintf(w, `
 Global flags (before or after the command):
   --url URL        admin API mount point (env %s)
   --token T        bearer token (env %s)
@@ -340,7 +345,7 @@ func commandHelp(opts Options, name string) error {
 }
 
 func printCommandUsage(w io.Writer, opts Options, c command, fs *flag.FlagSet) {
-	fmt.Fprintf(w, "Usage: %s %s [flags] %s\n\n%s.\n\nFlags:\n", opts.Name, c.name, c.args, c.summary)
+	fprintf(w, "Usage: %s %s [flags] %s\n\n%s.\n\nFlags:\n", opts.Name, c.name, c.args, c.summary)
 	fs.VisitAll(func(f *flag.Flag) {
 		def := f.DefValue
 		if f.Name == "token" || def == "" || def == "false" || def == "0s" || def == "0" || strings.HasSuffix(def, " headers") {
@@ -349,7 +354,7 @@ func printCommandUsage(w io.Writer, opts Options, c command, fs *flag.FlagSet) {
 		if def != "" {
 			def = " (default " + def + ")"
 		}
-		fmt.Fprintf(w, "  --%-10s %s%s\n", f.Name, f.Usage, def)
+		fprintf(w, "  --%-10s %s%s\n", f.Name, f.Usage, def)
 	})
 }
 

@@ -102,10 +102,9 @@ func listExpr(vals []int, lo, hi int) (string, error) {
 		for j+1 < len(sorted) && sorted[j+1] == sorted[j]+1 {
 			j++
 		}
-		switch {
-		case j == i:
+		if j == i {
 			items = append(items, strconv.Itoa(sorted[i]))
-		default:
+		} else {
 			items = append(items, strconv.Itoa(sorted[i])+"-"+strconv.Itoa(sorted[j]))
 		}
 		i = j + 1

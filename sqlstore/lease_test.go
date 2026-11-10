@@ -33,7 +33,7 @@ func TestDatabaseClockReadsTheServer(t *testing.T) {
 			if err := k.Sync(context.Background()); err != nil {
 				t.Fatalf("Sync: %v", err)
 			}
-			if d := k.Now().Sub(time.Now()); d < -time.Second || d > time.Second {
+			if d := time.Until(k.Now()); d < -time.Second || d > time.Second {
 				t.Fatalf("database now is %s from the local clock, want within a second", d)
 			}
 		})
@@ -65,7 +65,7 @@ func TestDatabaseClockAdvancesLocally(t *testing.T) {
 	if d := k.Now().Sub(before); d != 10*time.Second {
 		t.Fatalf("Now moved %s after the local clock moved 10s, want 10s", d)
 	}
-	if d := before.Sub(time.Now()); d < -time.Second || d > time.Second {
+	if d := time.Until(before); d < -time.Second || d > time.Second {
 		t.Fatalf("database now is %s from the real clock, want within a second", d)
 	}
 }

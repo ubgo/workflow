@@ -487,7 +487,7 @@ func (f *Client) onRef(ref workflow.RunRef, fn func(workflow.Client, workflow.Ru
 		return fn(f.backend(s), inner)
 	}
 	perr := fn(f.primary, inner)
-	if perr == nil || !(errors.Is(perr, workflow.ErrNotFound) || f.classify(perr)) {
+	if perr == nil || (!errors.Is(perr, workflow.ErrNotFound) && !f.classify(perr)) {
 		return perr
 	}
 	if serr := fn(f.secondary, inner); !errors.Is(serr, workflow.ErrNotFound) {

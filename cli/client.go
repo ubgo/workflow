@@ -92,7 +92,8 @@ func (a *api) call(ctx context.Context, method, path string, body any) ([]byte, 
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	// The body is read in full below; a close error after that changes nothing.
+	defer func() { _ = res.Body.Close() }()
 	b, err := io.ReadAll(io.LimitReader(res.Body, maxResponse))
 	if err != nil {
 		return nil, err
