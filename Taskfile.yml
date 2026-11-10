@@ -58,7 +58,7 @@ tasks:
     cmds: ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)']
 
   gomin:
-    desc: Vet every module, test files included, under the Go toolchain its go.mod declares (core, sqlstore, admin, redis and cli go 1.24.0, otel and sentry go 1.25.0, hatchet, bench and examples go 1.26.0), so a stated minimum is proven rather than claimed; downloads a missing toolchain once
+    desc: Vet every module, test files included, under the Go toolchain its go.mod declares (core, sqlstore and its pgnotify, pgxtx and enginetest modules, admin, redis and cli go 1.24.0, otel, otel/sdktest and sentry go 1.25.0, hatchet, bench and examples go 1.26.0), so a stated minimum is proven rather than claimed; downloads a missing toolchain once
     cmds: ['testlock task gomin:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
@@ -77,7 +77,7 @@ tasks:
         done
 
   check:
-    desc: The gate - gofmt check, vet, race tests of every module (the examples module included), the Go minimum per module, then the doc checks (wrap, links, snippets, words, drift)
+    desc: The gate - gofmt check, vet, race tests of every module (the examples module included), the Go minimum per module, the dependency rule (deps:check), then the doc checks (wrap, links, snippets, words, drift)
     cmds: ['testlock task check:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
@@ -87,6 +87,7 @@ tasks:
       - task: vet:run
       - task: test:run
       - task: gomin:run
+      - task: deps:check
       - task: docs:wrap
       - task: docs:links
       - task: docs:snippets
@@ -129,6 +130,17 @@ tasks:
     dir: bench
     cmds: ['sh ./run.sh {{.CLI_ARGS}}']
 
+  # The library rule: an app never downloads a module it does not import.
+  # Every released module (any go.mod whose .volt.yml does not say
+  # internal: true) must be tidy on its own and require only modules its
+  # library packages import; what only tests need lives in a never-released
+  # test module beside it (sqlstore/enginetest, otel/sdktest).
+  deps:check:
+    desc: Fail when a released module's go.mod is not tidy without go.work, or requires a module none of its library packages import (test-only requires belong in a never-released test module)
+    cmds:
+      - |
+        mods=$(find . -name go.mod -not -path './.cover/*' -exec dirname {} \; | sort | while read -r d; do grep -qs '^internal: true' "$d/.volt.yml" || echo "$d"; done)
+        go run ./examples/internal/depcheck $mods
   docs:drift:
     desc: docsync - fail when code a doc sentence cites (ds:block links) changed since the sentence was acked; needs the ds CLI (go install github.com/ubgo/docsync/cli/cmd/ds@latest)
     cmds:
