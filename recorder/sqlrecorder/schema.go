@@ -222,9 +222,19 @@ func (s *Store) Migrate(ctx context.Context) error {
 // collide inside the engine's catalog (Postgres reports a duplicate type)
 // even with IF NOT EXISTS, and the retry then finds the table.
 func (s *Store) execRetry(ctx context.Context, stmt string, vals ...any) error {
+	return s.retry(ctx, func() error {
+		_, err := s.db.ExecContext(ctx, stmt, vals...)
+		return err
+	})
+}
+
+// retry runs fn up to the store's attempts while it fails with a
+// contention error, with a short growing pause between tries, and returns
+// its last error.
+func (s *Store) retry(ctx context.Context, fn func() error) error {
 	var err error
 	for attempt := 1; attempt <= s.attempts; attempt++ {
-		if _, err = s.db.ExecContext(ctx, stmt, vals...); err == nil || !s.retryable(err) {
+		if err = fn(); err == nil || !s.retryable(err) {
 			return err
 		}
 		select {
@@ -237,11 +247,20 @@ func (s *Store) execRetry(ctx context.Context, stmt string, vals ...any) error {
 }
 
 // schemaVersion reads the recorded version: 0 when the schema table does
-// not exist yet or is empty.
+// not exist yet or is empty. The read is retried on a contention error like
+// the statements after it: on a fresh SQLite file another process switching
+// the journal to WAL makes it fail at once with SQLITE_BUSY.
 func (s *Store) schemaVersion(ctx context.Context) (int, error) {
 	var v int
-	err := s.db.QueryRowContext(ctx, "SELECT MAX("+s.d.quote("version")+") FROM "+s.table(tableSchema)).Scan(&nullInt{&v})
-	if err == nil || errors.Is(err, sql.ErrNoRows) {
+	err := s.retry(ctx, func() error {
+		v = 0
+		err := s.db.QueryRowContext(ctx, "SELECT MAX("+s.d.quote("version")+") FROM "+s.table(tableSchema)).Scan(&nullInt{&v})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	})
+	if err == nil {
 		return v, nil
 	}
 	// A missing table reads as version 0; Migrate creates it. Any other

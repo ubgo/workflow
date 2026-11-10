@@ -217,6 +217,9 @@ func (s *Store) steps(ctx context.Context, runID workflow.RunID) ([]recorder.Ste
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("sqlrecorder: read steps: %w", err)
+	}
 	if len(steps) == 0 {
 		return nil, nil
 	}
