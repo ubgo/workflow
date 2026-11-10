@@ -9,9 +9,9 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-mysql v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
-	github.com/ubgo/workflow v0.1.0
+	github.com/ubgo/workflow v0.1.1
 	github.com/ubgo/workflow/hatchet v0.1.0
-	github.com/ubgo/workflow/recorder v0.0.0
+	github.com/ubgo/workflow/recorder v0.1.0
 	github.com/ubgo/workflow/recorder/sqlrecorder v0.0.0
 	github.com/ubgo/workflow/redis v0.1.0
 	github.com/ubgo/workflow/sqlstore v0.1.0
