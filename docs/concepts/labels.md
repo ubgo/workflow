@@ -47,6 +47,10 @@ go run ./capabilities
 
 The last three lines are the ones above.
 
+## Source labels
+
+Two keys under `ubgo.workflow/` are reserved yet app-settable: `workflow.LabelSource` and `workflow.LabelSourceRef`, the run's trigger source and a reference within it. Set them with `workflow.WithSource(job, source, ref)`; `CheckJobLabels` and `ValidateLabels` let them through when the source passes `workflow.ValidateSource` (lower-case letters, digits and `. _ -`, at most 64 bytes) and the reference is at most 256 bytes. `workflow.SourceOf(labels)` reads them, or derives a source from the labels the library stamps (a schedule fire, a manual trigger, a spawned child, a batch member, an event), and `middleware.RequireSource()` refuses a job whose source cannot be told. A source is provenance, never an authorization input. See [Record run history](../observability/run-recorder.md#trigger-source).
+
 ## Pitfalls
 
 - A job enqueued straight on the driver, bypassing the owning middleware, is not checked. Do not copy labels from one run's `RunEvent.Labels` onto a new job: they include the reserved ones the middleware stamped.

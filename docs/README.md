@@ -52,6 +52,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | Send payloads too big for the queue | [Claim check](reliability/claim-check.md) | [claim-check](../examples/claim-check/) |
 | Keep personal data out of the queue tables | [Payload codecs](middleware/codecs.md) | [encrypted-payloads](../examples/encrypted-payloads/) |
 | Trace a job from the request that enqueued it | [OpenTelemetry](observability/opentelemetry.md) | [opentelemetry](../examples/opentelemetry/) |
+| Keep my own runs table: who started each run, what each step did, after the engine pruned it | [Record run history](observability/run-recorder.md) | [run-recorder](../examples/run-recorder/) |
 | Keep accepting jobs while the engine is down | [Failover](reliability/failover.md) | [failover](../examples/failover/) |
 | [Secrets in payloads](reliability/secrets.md) | `SecretGuard` refusing credentials at enqueue, `SecretRef` resolved in the step |
 | Run several worker machines on one Postgres | [Deploy workers](operations/deploy.md) | [postgres-cluster](../examples/postgres-cluster/) |
@@ -210,6 +211,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Logging](observability/logging.md) | A log line per step attempt, and driver logs |
 | [OpenTelemetry](observability/opentelemetry.md) | Spans, trace context from enqueue to step, parenting, span names, labels, metrics |
 | [React when a run finishes](observability/run-finished.md) | The run-finished hook, and its best-effort form on Hatchet |
+| [Record run history](observability/run-recorder.md) | A run history the app owns on any driver: trigger source, steps with events, outcome, redaction, two-stage retention, the Reconciler, a SQL store |
 | [Failure alerts and error reporting](observability/failure-alerts.md) | Alerts on final failures with dedup and rate limits, error reporters, Sentry |
 
 ### Batches

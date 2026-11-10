@@ -1,8 +1,31 @@
 # Changelog
 
-All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
+All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
 
 ## [Unreleased]
+
+## [0.1.1] - 2026-11-10
+
+The core `v0.1.1`, `admin/v0.1.1`, and two new modules, `recorder/v0.1.0` and `recorder/sqlrecorder/v0.1.0`, which require the tagged core. The other modules are unchanged.
+
+### Added
+
+- `recorder` module (`github.com/ubgo/workflow/recorder`, go 1.24, standard library and the core only): a run history the app owns, on every driver, built only from enqueue middleware, step middleware and the run-finished hook, so no driver changes and an app that does not import it pays nothing. `recorder.New(store, opts...)` and `rec.Plugin()` for `workflow.Use`; options `WithRedactor`, `WithMaxPayload` (64 KiB by default, 0 keeps sizes only), `WithStepBodies`, `WithErrorHistory`, `WithDefaultSource`, `WithResultReader`, `WithOnError`, `WithWriteTimeout`, `WithClock`, `WithName`. A failed write never fails a run.
+- `Recorder.EnqueuePlugin()`: the enqueue middleware alone, for an enqueue-only web or API node (no run-finished hook); the worker nodes' `Plugin()` over the same store completes the record.
+- `recorder.Store`, the store contract (idempotent upserts keyed by the run, a delayed run's ScheduledID and RunID joined into one record, reads that answer `workflow.RunQuerier` plus `Records` and `Run` with steps and events, `Pending` for the Reconciler), with its merge rules as pure functions (`ApplyRunWrite`, `ApplyStepStart`, `ApplyStepEnd`, `ApplyEvent`, `ApplyOutcome`, `ApplyFinish`, `ApplyCheck`, `MergeRecords`), and `recorder.MemoryStore`.
+- `recorder.Query`: `workflow.RunQuery` plus `Sources`, `Outcomes`, `Search` and `OnlyStale`; `QueryCaps`, `ValidateQuery`, `EncodeCursor` and `DecodeCursor`.
+- `recorder.Retention` in two stages (steps and events after `Steps`, the run after `Runs`), per workflow, with an `Archive` hook that keeps a batch when it fails; `Pruner` and `PruneEvery`.
+- `recorder.Redactor` with `JSONPaths` (dot paths, `*` and index segments, event attributes by key), `PerWorkflow` and `Chain`.
+- `recorder.Reconciler` (`NewReconciler`, `Pass`, `Run`): re-checks unfinished records against the client, flags stale and missing ones without cancelling anything, and backfills runs started past the recorder with `workflow.SourceExternal` (`WithBackfillWindow`, `WithBackfillQuery`, `WithStaleAfter`, `WithInterval`, `WithBatch`).
+- `recorder/recordertest`: `RunStore` holds any `recorder.Store` to the contract, `RunDriver` runs the recorder over any driver through a `workflowtest.Harness` (`WithStore` to pair a store with it).
+- `recorder/sqlrecorder` module (go 1.24, `database/sql` only, no database driver): the store on Postgres, MySQL 8 and SQLite, with `runs`, `steps`, `events`, `labels` and `schema` tables under a prefix (`wf_rec_` by default), idempotent `Migrate`, `MigrationScripts`, row-locked writes retried on contention (`WithTxAttempts`, `WithRetryable`), and `Prune` with the two retention stages.
+- `recorder/e2e` test-only module: the recorder on the memory, SQL (SQLite, Postgres, MySQL), Redis and Hatchet drivers and sqlrecorder on every engine; `task recorder:test` and `task recorder:e2e:all` (throwaway Postgres, MySQL, Redis and Hatchet).
+- Trigger source in the core: `workflow.LabelSource`, `LabelSourceRef`, `Source`, `WithSource`, `SourceOf` (derives `schedule`, `schedule-manual`, `child`, `batch` and `event` from the library's labels), `ValidateSource`, `LibrarySources`, `SourceExternal`; the two source labels are the only reserved labels an app may set (`CheckJobLabels` and `ValidateLabels` accept them with valid values). `middleware.RequireSource(allowed...)` refuses a job without a source.
+- Step events in the core: `workflow.RecordEvent`, `RecordEventLevel`, `StepEvent`, `EventAttr`, `StepEventSink`, `StepEventFunc`, `WithStepEventSink`, `HasStepEventSink`; no sink bound is a no-op.
+- Run outcome in the core: `workflow.Outcome` (`OutcomeSuccess`, `OutcomePartial`, `OutcomeError`, `OutcomeSkipped`), `SetOutcome`, `OutcomeSetter`, `OutcomeFunc`, `WithOutcomeSetter`, `DefaultOutcome`, `Outcomes`.
+- `middleware.CaptureOutput` captures step events (`workflow.RecordEvent`) with the step's log records.
+- `admin.WithRunQuerier(rq, caps)`: the read operations read a run recorder (or any `RunQuerier`) instead of the client, with the querier's own filter capabilities; actions still go to the client, and `Run` falls back to the client for a run the querier does not hold.
+- Guide [Record run history](docs/observability/run-recorder.md) and the [run-recorder](examples/run-recorder/) example.
 
 ## [0.1.0] - 2026-11-10
 
