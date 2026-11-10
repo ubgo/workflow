@@ -34,6 +34,10 @@ use (
 	// keeps runs in memory or its own store never compiles it; it needs
 	// database/sql only, no database driver.
 	./recorder/sqlrecorder
+	// ./recorder/sqlrecorder/sqlitetest is test-only: it proves sqlrecorder
+	// on a real SQLite database, every error path included, so the SQLite
+	// driver stays out of the sqlrecorder module.
+	./recorder/sqlrecorder/sqlitetest
 	// ./recorder/e2e is test-only: it proves the recorder on every driver
 	// and sqlrecorder on every engine, so their clients stay out of the
 	// library modules.

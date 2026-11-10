@@ -29,7 +29,31 @@ tasks:
   test:run:
     cmds:
       - go test -race -count=1 ./... ./sqlrecorder/...
+      - cd sqlrecorder/sqlitetest && go test -race -count=1 ./...
       - cd e2e && go test -race -count=1 ./...
+
+  # Unit coverage only: no service, no recorder/e2e. recorder is measured
+  # with recordertest (its conformance suites run from the recorder tests);
+  # sqlrecorder merges its own DB-less tests with the sqlitetest module,
+  # which runs it on real SQLite with injected faults. A statement counts
+  # as covered when either layer runs it.
+  cover:
+    desc: Unit coverage of recorder and sqlrecorder (sqlrecorder merges its package tests with the sqlitetest module)
+    cmds:
+      - |
+        set -e
+        d=$(mktemp -d)
+        trap 'rm -rf "$d"' EXIT
+        go test -count=1 -coverpkg=./... -coverprofile="$d/rec.out" .
+        (cd sqlrecorder && go test -count=1 -coverprofile="$d/sql-unit.out" .)
+        (cd sqlrecorder/sqlitetest && go test -count=1 -coverpkg=github.com/ubgo/workflow/recorder/sqlrecorder -coverprofile="$d/sql-sqlite.out" .)
+        grep -v /recordertest/ "$d/rec.out" > "$d/rec-pkg.out"
+        { echo "mode: set"; tail -q -n +2 "$d/sql-unit.out" "$d/sql-sqlite.out" | awk '{k=$1" "$2; if (!(k in m) || $3 > m[k]) m[k]=$3} END {for (k in m) print k, m[k]}' | sort; } > "$d/sql.out"
+        total() { go tool cover -func="$1" | tail -n 1 | awk '{print $NF}'; }
+        echo "recorder (package)            $(total "$d/rec-pkg.out")"
+        echo "recorder (with recordertest)  $(total "$d/rec.out")"
+        echo "sqlrecorder (both layers)     $(cd sqlrecorder && total "$d/sql.out")"
+        (cd sqlrecorder && go tool cover -func="$d/sql.out" | awk '$NF != "100.0%"')
 
   e2e:pg:
     desc: recorder/e2e on SQLite and a throwaway Postgres (sqlstore/compose.yml postgres profile, removed after the run)
