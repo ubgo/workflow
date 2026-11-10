@@ -4,6 +4,25 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [recorder/sqlrecorder 0.1.1] - 2026-11-10
+
+`recorder/sqlrecorder/v0.1.1`, two read fixes. The other modules are unchanged in code (doc comments only), so they keep their tags; the docs below cover them all.
+
+### Fixed
+
+- `recorder/sqlrecorder`: `Store.Run` returned a shortened step list as success when reading a step row failed partway through; it now returns the error (`sqlrecorder: read steps: ...`).
+- `recorder/sqlrecorder`: `Migrate` read the recorded schema version without the contention retry its statements use, so several processes migrating a fresh SQLite file at once could fail with `SQLITE_BUSY`; the read is now retried like the rest.
+
+### Tests
+
+- `recorder/sqlrecorder/sqlitetest`, a test-only module: the store and driver conformance suites on real SQLite, a fault-injecting driver for every begin, commit, statement, row-read and close failure, contention retry, `Migrate` and prune; the SQLite driver stays out of the sqlrecorder module. In-package tests pin the SQL text and argument order on Postgres, MySQL and SQLite. Unit coverage: sqlrecorder 98.9% (was 25.5%), recorder 99.4%; `task recorder:cover` prints both.
+
+### Documentation
+
+- Concept pages [Trigger source](docs/concepts/trigger-source.md), [Step events](docs/concepts/step-events.md) and [Run outcome](docs/concepts/run-outcome.md); `RequireSource` in [Enqueue middleware](docs/middleware/enqueue-middleware.md), step events and `CaptureOutput` in [Step middleware](docs/middleware/step-middleware.md); the enqueue-only web node with `Recorder.EnqueuePlugin` in [Record run history](docs/observability/run-recorder.md) and [The Hatchet driver](docs/drivers/hatchet.md); a run-history section on every driver page; the indexes, the feature list and the choosing guides.
+- Examples [trigger-source](examples/trigger-source/), [step-events](examples/step-events/) and [recorder-split](examples/recorder-split/) (90 programs).
+- docsync: the release APIs and their defaults carry `ds:def` directives that the pages cite, so `task docs:drift` (`ds check`, part of `task check`) fails when cited code changes and its sentence is not re-acked.
+
 ## [0.1.1] - 2026-11-10
 
 The core `v0.1.1`, `admin/v0.1.1`, and two new modules, `recorder/v0.1.0` and `recorder/sqlrecorder/v0.1.0`, which require the tagged core. The other modules are unchanged.
