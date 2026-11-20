@@ -74,14 +74,18 @@ func (c *Client) admitInline(ctx context.Context, tx *sql.Tx, reg *registered, r
 func (c *Client) pendingRuns(ctx context.Context, x interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
-}, name string) ([]*runRow, error) {
+}, wf workflow.Workflow) ([]*runRow, error) {
 	var rows []*runRow
 	var r runRow
 	// Only runs of a version this client's definition runs (LO-11): the
 	// admission writes the run's steps from that definition.
 	vw, vargs := c.versionWhere("r.id", "r.workflow")
-	args := append(append([]any{name, runPending}, vargs...), c.fetch)
-	err := c.st.each(ctx, x, "SELECT "+runCols+" FROM {runs} r WHERE workflow = ? AND status = ? AND "+vw+" ORDER BY priority DESC, seq LIMIT ?",
+	full, fargs := "", fairArgs(wf)
+	if fargs != nil {
+		full = fullBuckets
+	}
+	args := append(append(append([]any{wf.Name, runPending}, vargs...), fargs...), c.fetch)
+	err := c.st.each(ctx, x, "SELECT "+runCols+" FROM {runs} r WHERE workflow = ? AND status = ? AND "+vw+full+" ORDER BY priority DESC, seq LIMIT ?",
 		args, func() error { cp := r; rows = append(rows, &cp); return nil }, r.targets()...)
 	if err != nil {
 		return nil, fmt.Errorf("sqlstore: read pending runs: %w", err)
@@ -90,7 +94,7 @@ func (c *Client) pendingRuns(ctx context.Context, x interface {
 }
 
 func (c *Client) admitFree(ctx context.Context, reg *registered) error {
-	rows, err := c.pendingRuns(ctx, c.st.db, reg.wf.Name)
+	rows, err := c.pendingRuns(ctx, c.st.db, reg.wf)
 	if err != nil {
 		return err
 	}
@@ -123,7 +127,7 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 	if _, err := c.st.exec(ctx, tx, "UPDATE {locks} SET n = n + 1 WHERE name = ?", lockName(wf.Name)); err != nil {
 		return 0, err
 	}
-	pending, err := c.pendingRuns(ctx, tx, wf.Name)
+	pending, err := c.pendingRuns(ctx, tx, wf)
 	if err != nil || len(pending) == 0 {
 		return 0, err
 	}
@@ -165,6 +169,7 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 	}
 
 	var wake int64
+	var fair *fairPass // the virtual time, read at the first admission of a round-robin run
 	// held are the buckets of Concurrency.FIFO whose earlier run waits in
 	// this pass: no later run of the bucket may start before it.
 	held := map[string]bool{}
@@ -215,6 +220,16 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 			return 0, err
 		}
 		active[r.bucket] = append(active[r.bucket], r)
+		if roundRobin(wf) {
+			if fair == nil {
+				if fair, err = c.fairBegin(ctx, tx, wf.Name); err != nil {
+					return 0, err
+				}
+			}
+			if err := c.fairAssign(ctx, tx, fair, reg, r); err != nil {
+				return 0, err
+			}
+		}
 		if err := c.activate(ctx, tx, reg, r, out); err != nil {
 			return 0, err
 		}

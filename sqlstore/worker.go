@@ -85,13 +85,19 @@ func (c *Client) worker() {
 // order is priority first, then the run's arrival. The step table is
 // aliased st.
 func (c *Client) claimWhere(queues []any) string {
+	return c.claimFilter(queues) + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
+}
+
+// claimFilter is claimWhere without its order: the steps this client may
+// claim now.
+func (c *Client) claimFilter(queues []any) string {
 	q := ""
 	if len(queues) > 0 {
 		q = " AND " + queueOf + " IN (" + inList(len(queues)) + ")"
 	}
 	vw, _ := c.versionWhere("st.run_id", "st.workflow")
 	return "st.workflow IN (" + inList(len(c.names)) + ") AND ((st.status IN (?, ?) AND st.due <= ?) OR (st.status = ? AND st.lease_until < ?))" +
-		q + c.limitSQL() + " AND " + notPaused + " AND " + vw + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
+		q + c.limitSQL() + " AND " + notPaused + " AND " + vw
 }
 
 func (c *Client) claimArgs(queues []any) []any {
@@ -197,7 +203,14 @@ func (c *Client) claimFrom(ctx context.Context, queues []any) (*attempt, error) 
 		if err := c.lockLimits(ctx, tx); err != nil {
 			return err
 		}
-		if c.st.engine == engineSQLite {
+		if c.fairAny {
+			// A round-robin workflow is served: the chosen step's turn may
+			// go to another key of its workflow (fair.go).
+			ok, err := c.claimTurn(ctx, tx, queues, set, token, until)
+			if err != nil || !ok {
+				return err
+			}
+		} else if c.st.engine == engineSQLite {
 			args := append([]any{stepRunning, stepRunning, token, until}, c.claimArgs(queues)...)
 			n, err := c.st.execN(ctx, tx, set+"(SELECT st.id FROM {steps} st WHERE "+c.claimWhere(queues)+")", args...)
 			if err != nil || n == 0 {

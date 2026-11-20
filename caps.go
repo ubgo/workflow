@@ -214,6 +214,16 @@ var (
 	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
 	// fields of their JSON payload (RS-08).
 	CapPayloadSearch = defineCap(63, "PayloadSearch")
+	// CapRoundRobin: under ConcurrencyRoundRobin the keys of a workflow
+	// take turns for its workers (FC-05): a key that enqueued a backlog
+	// first does not hold back keys that enqueue later. A driver without
+	// it still caps each bucket at MaxRuns but serves the runs in
+	// priority and arrival order.
+	CapRoundRobin = defineCap(76, "RoundRobin")
+	// CapKeyWeights: Concurrency.Weight is honoured: while keys of a
+	// ConcurrencyRoundRobin workflow have work waiting, each gets turns in
+	// proportion to its weight (FC-06).
+	CapKeyWeights = defineCap(77, "KeyWeights")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -242,6 +252,9 @@ func Requires(wf Workflow) Caps {
 		c = c.With(CapConcurrencyKey)
 		if wf.Concurrency.FIFO {
 			c = c.With(CapKeyFIFO)
+		}
+		if wf.Concurrency.Weight != nil {
+			c = c.With(CapKeyWeights)
 		}
 	}
 	if wf.RunTimeout > 0 || wf.OnTimeout != nil {

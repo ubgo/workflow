@@ -178,6 +178,9 @@ func validatePolicies(wf Workflow) error {
 		if c.FIFO && c.Strategy != "" && c.Strategy != ConcurrencyQueueNewest {
 			return invalidf("workflow %q: Concurrency.FIFO needs ConcurrencyQueueNewest, not %q", wf.Name, c.Strategy)
 		}
+		if c.Weight != nil && c.Strategy != ConcurrencyRoundRobin {
+			return invalidf("workflow %q: Concurrency.Weight needs ConcurrencyRoundRobin, not %q", wf.Name, c.Strategy)
+		}
 	}
 	for i, r := range wf.RateLimits {
 		if r.Limit < 1 || r.Per <= 0 {

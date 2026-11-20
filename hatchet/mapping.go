@@ -258,6 +258,9 @@ func checkSupported(wf workflow.Workflow) error {
 		if _, err := concurrencyStrategy(c.Strategy); err != nil {
 			return err
 		}
+		if c.Weight != nil {
+			return unsupported("Workflow.Concurrency.Weight", workflow.CapKeyWeights, "workflow "+wf.Name+": Hatchet's GROUP_ROUND_ROBIN serves keys in equal turns and takes no weight per key")
+		}
 	}
 	for i, r := range wf.RateLimits {
 		if _, err := rateLimit(r, wf.Name, i); err != nil {

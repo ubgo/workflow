@@ -104,6 +104,7 @@ var p3Groups = []struct {
 	name  string
 	cases []testCase
 }{
+	{"fair", fairCases},
 	{"edit", editCases},
 	{"payloadsearch", payloadSearchCases},
 }
