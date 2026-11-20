@@ -179,35 +179,89 @@ func TestClusterCronTickFiresOnce(t *testing.T) {
 	}
 }
 
-// TestClusterLiveLeaseIsKept runs a step for several lease lengths on one
-// of three clients and checks no other client takes it over: the renewal
-// keeps a live worker's claim. It is the test that fails if the heartbeat
-// stops renewing.
+// TestClusterLiveLeaseIsKept runs a step on one of three clients for
+// longer than its claim's lease and checks no other client takes it over:
+// the renewal keeps a live worker's claim. It is the test that fails if
+// the heartbeat stops renewing.
+//
+// The step is as long as the proof needs, not a fixed sleep: it reads the
+// lease end its claim stored and holds until the wall clock is a renewal
+// interval past it, so every other client has polled a step that would be
+// expired without renewal; then it checks the stored lease end moved
+// forward.
+//
+// A renewal write that a loaded machine stalls for more than two thirds of
+// a lease is fenced and the step runs again: right behaviour, but not what
+// this test is about. Two settings keep that out of a passing run without
+// weakening the proof: the lease is queueCaseLease rather than testLease,
+// and the clients poll every livePoll rather than testPoll, because on
+// SQLite three clients polling every 10ms keep the single write lock so
+// busy that the renewal UPDATE can starve for seconds under -race on a
+// busy machine. Every client still polls the step many times between the
+// claim's lease end and the step's end.
 func TestClusterLiveLeaseIsKept(t *testing.T) {
+	const (
+		lease    = queueCaseLease
+		livePoll = 100 * time.Millisecond
+	)
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
+			leaseEnd := func(ctx context.Context, run workflow.RunID) (time.Time, error) {
+				var ns int64
+				err := db.QueryRowContext(ctx, "SELECT lease_until FROM "+e.dialect.QuoteIdent(prefix+"steps")+
+					" WHERE run_id = "+e.dialect.Placeholder(1)+" AND name = 'only'", string(run)).Scan(&ns)
+				return time.Unix(0, ns), err
+			}
 			var execs atomic.Int64
+			stepErr := make(chan error, 8) // one result per execution; more than one fails the test anyway
+			report := func(err error) {
+				select {
+				case stepErr <- err:
+				default:
+				}
+			}
 			wf := workflow.Workflow{Name: "long", Steps: []workflow.Step{{Name: "only", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 				execs.Add(1)
+				info, _ := workflow.StepInfoFrom(ctx)
+				claimed, err := leaseEnd(ctx, info.RunID)
+				if err != nil {
+					report(fmt.Errorf("read the claim's lease end: %w", err))
+					return nil, err
+				}
 				select {
-				case <-time.After(3 * testLease):
-					return in, nil
+				case <-time.After(time.Until(claimed) + lease/3):
 				case <-ctx.Done():
+					report(fmt.Errorf("the attempt stopped before outliving its claim's lease: %w", context.Cause(ctx)))
 					return nil, ctx.Err()
 				}
+				renewed, err := leaseEnd(ctx, info.RunID)
+				if err == nil && !renewed.After(claimed) {
+					err = fmt.Errorf("the stored lease end %v never moved past the claim's %v", renewed, claimed)
+				}
+				report(err)
+				return in, nil
 			}}}}
-			cs := startCluster(t, e, db, prefix, wf)
+			cs := startCluster(t, e, db, prefix, wf, sqlstore.WithLease(lease), sqlstore.WithPollInterval(livePoll))
 			ref, err := cs[0].Enqueue(context.Background(), workflow.Job{Workflow: wf.Name})
 			if err != nil {
 				t.Fatalf("Enqueue: %v", err)
 			}
-			waitFor(t, 10*time.Second, "the run to succeed", func() bool {
+			// The ceiling only bounds a failure: a claim, a step of a bit more
+			// than one lease, and room for a slow machine. A second execution
+			// ends the wait at once.
+			waitFor(t, 3*lease+30*time.Second, "the run to succeed", func() bool {
+				if execs.Load() > 1 {
+					return true
+				}
 				st, err := cs[1].Status(context.Background(), ref)
 				return err == nil && st == workflow.StatusSucceeded
 			})
 			if got := execs.Load(); got != 1 {
-				t.Fatalf("a step running for 3 leases executed %d times, want 1 (its lease must be renewed)", got)
+				t.Fatalf("a step outliving its claim's lease executed %d times, want 1 (its lease must be renewed)", got)
+			}
+			if err := <-stepErr; err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
