@@ -30,3 +30,29 @@ func TestChildFlows(t *testing.T) {
 		return c
 	}})
 }
+
+// TestSignalFlows proves the signal helpers (broadcast, SignalWithStart,
+// Update, promises, ContinueAsNew, CancelSteps) on the memory driver.
+func TestSignalFlows(t *testing.T) {
+	start := func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+		c, err := workflow.Use(memory.New(), workflow.Journal(workflow.NewMemoryJournal()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, wf := range wfs {
+			if err := c.Register(wf); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		if err := c.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: start,
+		Promises: func(*testing.T, workflow.Client) workflow.PromiseStore { return workflow.NewMemoryPromises() }})
+}
+
+func TestMemoryPromises(t *testing.T) { workflowtest.RunPromiseStore(t, workflow.NewMemoryPromises()) }

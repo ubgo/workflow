@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ubgo/workflow"
+	"github.com/ubgo/workflow/sqlstore"
 	"github.com/ubgo/workflow/workflowtest"
 )
 
@@ -32,6 +33,56 @@ func TestChildFlows(t *testing.T) {
 				}
 				return c
 			}})
+		})
+	}
+}
+
+// TestSignalFlows proves the signal helpers on every engine, with
+// sqlstore's PromiseStore carrying update replies and promises.
+func TestSignalFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			var sc *sqlstore.Client
+			workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{
+				Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+					db, prefix := e.open(t)
+					sc = newClient(t, e, db, prefix)
+					c, err := workflow.Use(sc, workflow.Journal(sc.JournalStore()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, wf := range wfs {
+						if err := c.Register(wf); err != nil {
+							t.Fatal(err)
+						}
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					t.Cleanup(cancel)
+					if err := c.Start(ctx); err != nil {
+						t.Fatal(err)
+					}
+					return c
+				},
+				Promises: func(*testing.T, workflow.Client) workflow.PromiseStore { return sc.PromiseStore() },
+			})
+		})
+	}
+}
+
+// TestPromiseStore is the PromiseStore contract on every engine, through
+// a standalone store (NewPromiseStore plus its Migrate).
+func TestPromiseStore(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			s, err := sqlstore.NewPromiseStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Migrate(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			workflowtest.RunPromiseStore(t, s)
 		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ubgo/workflow"
+	wfredis "github.com/ubgo/workflow/redis"
 	"github.com/ubgo/workflow/workflowtest"
 )
 
@@ -30,4 +31,42 @@ func TestChildFlows(t *testing.T) {
 		}
 		return c
 	}})
+}
+
+// TestSignalFlows proves the signal helpers against Redis, with the
+// driver's PromiseStore carrying update replies and promises.
+func TestSignalFlows(t *testing.T) {
+	rdb := redisClient(t)
+	var rc *wfredis.Client
+	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{
+		Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+			rc = newClient(t, rdb, testPrefix(t, rdb))
+			c, err := workflow.Use(rc, workflow.Journal(rc.JournalStore()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, wf := range wfs {
+				if err := c.Register(wf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			if err := c.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			return c
+		},
+		Promises: func(*testing.T, workflow.Client) workflow.PromiseStore { return rc.PromiseStore() },
+	})
+}
+
+// TestPromiseStore is the PromiseStore contract against Redis.
+func TestPromiseStore(t *testing.T) {
+	rdb := redisClient(t)
+	s, err := wfredis.NewPromiseStore(rdb, testPrefix(t, rdb), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowtest.RunPromiseStore(t, s)
 }
