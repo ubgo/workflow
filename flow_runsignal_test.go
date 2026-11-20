@@ -180,3 +180,23 @@ func TestByRunHelperRefusals(t *testing.T) {
 		t.Fatalf("UpdateRun without a run: %v", err)
 	}
 }
+
+// TestFakeTakesOwnRunWaits: the Fake claims CapWaitOwnRun as it claims
+// CapWaitForEvent, so an app's workflow with an OwnRun wait registers on
+// it (Start checks the capabilities), and a SignalRun is recorded with the run's address as its key.
+func TestFakeTakesOwnRunWaits(t *testing.T) {
+	f := workflowtest.NewFake()
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{{Name: "wait", Wait: &workflow.WaitSpec{Event: "go", OwnRun: true}}}}
+	if err := f.Register(wf); err != nil {
+		t.Fatalf("Fake refused an OwnRun wait: %v", err)
+	}
+	if err := f.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := workflow.SignalRun(context.Background(), f, workflow.RunRef{RunID: "r1"}, "go", nil); err != nil {
+		t.Fatal(err)
+	}
+	if sig := f.Signals(); len(sig) != 1 || sig[0].Key != workflow.RunKey("r1") {
+		t.Fatalf("signals %+v", sig)
+	}
+}

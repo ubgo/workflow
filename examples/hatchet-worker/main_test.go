@@ -9,7 +9,7 @@ import (
 )
 
 // offline is what the program prints with no engine: the refusals.
-const offline = `capabilities: Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|Queue|RunQuery|RetryRun|CancelAll|ScheduleList|Drain|ScheduleTrigger|ScheduleHistory|EnqueueOnly|Tenant|KeyFIFO|DueQuery|Result|CronSeconds|TickTime|DrainReport
+const offline = `capabilities: Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|Queue|RunQuery|RetryRun|CancelAll|ScheduleList|Drain|ScheduleTrigger|ScheduleHistory|EnqueueOnly|Tenant|KeyFIFO|DueQuery|Result|CronSeconds|TickTime|DrainReport|WaitOwnRun
 berlin-report: ErrUnsupported=true
   workflow: Workflow.CronLocation unsupported by this driver (missing CronZone): workflow berlin-report: Hatchet evaluates crons in UTC only, not Europe/Berlin; shifting the expression would break across DST
 per-tenant: ErrUnsupported=true
