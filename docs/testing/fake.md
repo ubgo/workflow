@@ -100,6 +100,10 @@ func TestSignUpEnqueuesWelcomeAndReminder(t *testing.T) {
 | `AssertSignalled(t, name, key)` | An event with that name and key was signalled |
 | `AssertCancelled(t, ref)` | That run was cancelled |
 | `AssertClosureEnqueued(t, name)` | A [closure](../jobs/closures.md) with that name was enqueued |
+| `AssertSignalledWaiting(t, name, key)` | An event with that name and key went to `SignalWaiting` (an event sent with `Signal` does not count) |
+| `AssertReset(t, ref, step)` | That run was reset from that step with `ResetRun` |
+| `AssertPromiseResolved(t, id, value)`, `AssertPromiseRejected(t, id, reason)`, `AssertPromisePending(t, id)` | The promise is settled that way in `fake.Promises()` and its settlement was signalled through the Fake; a nil value or empty reason matches any |
+| `AssertObjectCalled(t, object, key, method)`, `AssertObjectNotCalled(t, object, key)` | A [virtual object](../workflows/objects.md) call was, or was not, enqueued for that key |
 
 <!-- snippet: examples/app-tests/main_test.go#signals -->
 ```go
@@ -270,11 +274,28 @@ func TestRunNowButton(t *testing.T) {
 }
 ```
 
+### Resets, transient signals, promises and objects
+
+The Fake implements `RunResetter` and `TransientSignaller` itself. `ResetRun` moves a recorded failed run back to queued as a driver does (`ErrInvalid` for a step the workflow does not have, `ErrWrongState` for a run that is not failed; fail it with `Finish` first) and `Resets()` lists the calls. `SignalWaiting` records the event and resumes nothing, since nothing waits on the Fake; `SignalsWaiting()` lists those events apart from `Signals()`.
+
+Promises settle through a store and a signal (`workflow.ResolvePromise(ctx, client, store, id, v)`), so pass the Fake as the client and `fake.Promises()` as the store; `AssertPromiseResolved` then checks both the stored outcome and that the settlement's `workflow.PromiseEvent` signal went through the Fake. A virtual object call is an `Enqueue`, so register the object's workflow (`workflow.DefineObject`) on the Fake; `ObjectCalls(object)` reads each call back as its key, method and arguments:
+
+```go
+fake := workflowtest.NewFake()
+_ = fake.Register(cartObject) // from workflow.DefineObject
+_ = fake.Start(ctx)
+
+app.Checkout(ctx, fake) // calls ResolvePromise(ctx, fake, fake.Promises(), "pay-42", ...) and CallObject(ctx, fake, "cart", "ada", "clear", ...)
+
+fake.AssertPromiseResolved(t, "pay-42", nil)
+fake.AssertObjectCalled(t, "cart", "ada", "clear")
+```
+
 ## Behave like your production driver
 
 A default Fake claims the memory driver's capabilities minus the ones it does not serve itself: `CapRunFinished` (it reports no run ends) and the run query, bulk cancel, schedule pause, schedule listing, tick and drain capabilities (it answers those interfaces only by forwarding to a pass-through client). `FakeCaps` and `FakeLike` drop the same set. When production runs on another driver, make the Fake claim that driver's set, so a field production would refuse fails the test too:
 
-- `FakeLike(c)` copies the capabilities of `c`, typically the production client built but not started with test configuration; it reads only `c.Capabilities()`.
+- `FakeLike(c)` copies the capabilities of `c`, typically the production client built but not started with test configuration; it reads only `c.Capabilities()` and which optional operations `c` does (`workflow.Supports`), so a Fake like a client without `ResetRun` or `SignalWaiting` (Hatchet) refuses them with `workflow.ErrUnsupported` too.
 - `FakeCaps(caps)` sets them directly. The capabilities the Fake does not serve are always dropped: `CapRunFinished`, because the Fake reports no run ends and does not implement `workflow.RunNotifier`, and the run query, bulk cancel, schedule pause, schedule listing, tick and drain capabilities.
 - `FakeKeyExpr()` accepts expression keys (`workflow.KeyExpr`) in concurrency, rate limits and wait keys, as an engine such as Hatchet does. By default the Fake refuses them at `Start`, as the memory driver does.
 - `FakeCronParser(p)` checks cron expressions with your parser, matching a production driver built with a custom one (`memory.WithCronParser`).

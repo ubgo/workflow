@@ -59,6 +59,15 @@ var (
 	_ workflow.ScheduleLister = (*Client)(nil)
 	_ workflow.SchedulePauser = (*Client)(nil)
 	_ workflow.RunNotifier    = (*Client)(nil)
+
+	// Run-side optional interfaces come from the embedded Forward, so they
+	// reach the jobs client, where the runs live; Forward refuses with an
+	// UnsupportedError when the jobs client lacks one, and Supports
+	// answers for the jobs client.
+	_ workflow.RunEditor          = (*Client)(nil)
+	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.TransientSignaller = (*Client)(nil)
+	_ workflow.OpProber           = (*Client)(nil)
 )
 
 // New returns a client firing schedules on scheduler and running every

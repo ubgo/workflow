@@ -9,21 +9,28 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/ubgo/workflow"
 )
 
 var (
-	_ workflow.RunQuerier     = (*Client)(nil)
-	_ workflow.RunRetrier     = (*Client)(nil)
-	_ workflow.RunDeleter     = (*Client)(nil)
-	_ workflow.BulkCanceller  = (*Client)(nil)
-	_ workflow.Pauser         = (*Client)(nil)
-	_ workflow.SchedulePauser = (*Client)(nil)
-	_ workflow.ScheduleLister = (*Client)(nil)
-	_ workflow.Drainer        = (*Client)(nil)
-	_ workflow.NodeLister     = (*Client)(nil)
-	_ workflow.HealthChecker  = (*Client)(nil)
+	_ workflow.RunQuerier         = (*Client)(nil)
+	_ workflow.RunRetrier         = (*Client)(nil)
+	_ workflow.RunDeleter         = (*Client)(nil)
+	_ workflow.BulkCanceller      = (*Client)(nil)
+	_ workflow.Pauser             = (*Client)(nil)
+	_ workflow.SchedulePauser     = (*Client)(nil)
+	_ workflow.ScheduleLister     = (*Client)(nil)
+	_ workflow.Drainer            = (*Client)(nil)
+	_ workflow.NodeLister         = (*Client)(nil)
+	_ workflow.HealthChecker      = (*Client)(nil)
+	_ workflow.RunEditor          = (*Client)(nil)
+	_ workflow.RunRescheduler     = (*Client)(nil)
+	_ workflow.StepCanceller      = (*Client)(nil)
+	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.TransientSignaller = (*Client)(nil)
+	_ workflow.OpProber           = (*Client)(nil)
 )
 
 // both returns the two backends as I, or an UnsupportedError naming caps
@@ -464,4 +471,97 @@ func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 		}
 	}
 	return out
+}
+
+// Reschedule moves a delayed run on the backend its ref names and returns
+// its ref with that backend's prefix.
+func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
+		r, ok := b.(workflow.RunRescheduler)
+		if !ok {
+			return workflow.Unsupported("Reschedule", "the "+string(s)+" backend does not implement it")
+		}
+		got, err := r.Reschedule(ctx, inner, at)
+		if err == nil {
+			out = encodeRef(s, got)
+		}
+		return err
+	})
+	return out, err
+}
+
+// CancelStep withdraws a step of the run on the backend its ref names.
+func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
+	return c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
+		sc, ok := b.(workflow.StepCanceller)
+		if !ok {
+			return workflow.Unsupported("CancelStep", "the "+string(s)+" backend does not implement it")
+		}
+		return sc.CancelStep(ctx, inner, step)
+	})
+}
+
+// EditRun edits a scheduled run on the backend its ref names and returns
+// its ref with that backend's prefix.
+func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
+		e, ok := b.(workflow.RunEditor)
+		if !ok {
+			return workflow.Unsupported("EditRun", "the "+string(s)+" backend does not implement it")
+		}
+		got, err := e.EditRun(ctx, inner, edit)
+		if err == nil {
+			out = encodeRef(s, got)
+		}
+		return err
+	})
+	return out, err
+}
+
+// ResetRun re-runs a failed run from step on the backend its ref names (a
+// run on the old backend is reset there) and returns its ref with that
+// backend's prefix.
+func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
+		r, ok := b.(workflow.RunResetter)
+		if !ok {
+			return workflow.Unsupported("ResetRun", "the "+string(s)+" backend does not implement it")
+		}
+		got, err := r.ResetRun(ctx, inner, step)
+		if err == nil {
+			out = encodeRef(s, got)
+		}
+		return err
+	})
+	return out, err
+}
+
+// SignalWaiting delivers ev to the runs waiting for it now on both
+// backends, since a waiting run may sit on either, and returns how many
+// it resumed in all. Both must implement workflow.TransientSignaller;
+// when one does not, nothing is delivered. When one fails, the other's
+// deliveries stand and the error names the failing one.
+func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	ot, ook := c.old.(workflow.TransientSignaller)
+	nt, nok := c.new.(workflow.TransientSignaller)
+	if !ook || !nok {
+		return 0, workflow.Unsupported("SignalWaiting", "both cutover backends must implement workflow.TransientSignaller")
+	}
+	on, oerr := ot.SignalWaiting(ctx, ev)
+	nn, nerr := nt.SignalWaiting(ctx, ev)
+	return on + nn, joinSides("SignalWaiting", oerr, nerr)
+}
+
+// Supports reports an operation this client implements as done only when
+// both backends do it, since a run, or a node, may sit on either; the
+// one it does not implement (OnLifecycle) is false.
+func (c *Client) Supports(op workflow.Op) bool {
+	switch op {
+	case workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting, workflow.OpNodes:
+		return workflow.Supports(c.old, op) && workflow.Supports(c.new, op)
+	}
+	return false
 }

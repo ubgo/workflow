@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ubgo/workflow"
+	"github.com/ubgo/workflow/memory"
 )
 
 func TestRequiresNewFields(t *testing.T) {
@@ -395,7 +396,7 @@ func TestSupportsSeesThroughForward(t *testing.T) {
 	if _, ok := any(w).(workflow.RunRescheduler); !ok {
 		t.Fatal("the wrapper should implement RunRescheduler through Forward")
 	}
-	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpCancelStep, workflow.OpNodes, workflow.OpLifecycle} {
+	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting, workflow.OpCancelStep, workflow.OpNodes, workflow.OpLifecycle} {
 		if workflow.Supports(w, op) {
 			t.Errorf("Supports(%s) through Forward over a client without it = true", op)
 		}
@@ -407,6 +408,13 @@ func TestSupportsSeesThroughForward(t *testing.T) {
 	}
 	if workflow.Supports(r, "nope") {
 		t.Error("an unknown op is supported")
+	}
+	m := memory.New()
+	w = wrapped{Client: m, Forward: workflow.Forward{Inner: m}}
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting} {
+		if !workflow.Supports(w, op) {
+			t.Errorf("Supports(%s) through Forward over the memory driver = false", op)
+		}
 	}
 }
 

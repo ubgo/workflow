@@ -409,21 +409,9 @@ func (c *Client) onRef(ref workflow.RunRef, fn func(string, workflow.Client, wor
 // the error names the failing region, so a retried Signal may reach a
 // region twice.
 func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
-	targets := c.names
-	if c.signal != nil {
-		picked, err := c.signal(ctx, ev)
-		if err != nil {
-			return fmt.Errorf("regional: signal router: %w", err)
-		}
-		if len(picked) == 0 {
-			return fmt.Errorf("%w: regional: the signal router picked no region for event %q", workflow.ErrInvalid, ev.Name)
-		}
-		for _, name := range picked {
-			if _, ok := c.regions[name]; !ok {
-				return unknownRegion(name, "the signal router")
-			}
-		}
-		targets = picked
+	targets, err := c.signalTargets(ctx, ev)
+	if err != nil {
+		return err
 	}
 	var errs []error
 	for _, name := range targets {
@@ -432,6 +420,27 @@ func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// signalTargets returns the regions an event goes to: every region, or
+// the ones WithSignalRouter picks (each one a region of this client).
+func (c *Client) signalTargets(ctx context.Context, ev workflow.Event) ([]string, error) {
+	if c.signal == nil {
+		return c.names, nil
+	}
+	picked, err := c.signal(ctx, ev)
+	if err != nil {
+		return nil, fmt.Errorf("regional: signal router: %w", err)
+	}
+	if len(picked) == 0 {
+		return nil, fmt.Errorf("%w: regional: the signal router picked no region for event %q", workflow.ErrInvalid, ev.Name)
+	}
+	for _, name := range picked {
+		if _, ok := c.regions[name]; !ok {
+			return nil, unknownRegion(name, "the signal router")
+		}
+	}
+	return picked, nil
 }
 
 // Schedule registers s in the region the Router picks for a job made of

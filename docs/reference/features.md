@@ -18,8 +18,8 @@ An **Example** link goes to a program under `examples/` (or a Go example test) t
 - [Batches](#batches) (19)
 - [Reliability](#reliability) (33)
 - [Observability](#observability) (26)
-- [Testing](#testing) (15)
-- [Operations](#operations) (30)
+- [Testing](#testing) (16)
+- [Operations](#operations) (31)
 - [Admin](#admin) (17)
 - [Extending](#extending) (3)
 
@@ -428,6 +428,7 @@ Testing the code that uses the library, and the drivers themselves.
 | Inspect and finish recorded runs (`Enqueued`, `Jobs`, `Signals`, `Schedules`, `Cancels`, `Finish`) | `workflowtest` | [fake › Inspect what was recorded](../testing/fake.md#inspect-what-was-recorded) | [example_fake_test.go](../../workflowtest/example_fake_test.go), [app-tests](../../examples/app-tests/) |
 | Test operator actions on the Fake: trigger a schedule, force a run (`Fake.TriggerSchedule`, `ForceComplete`, `ForceFail`, `Triggers`, `Forced`, `FakeForce`, `AssertTriggered`, `AssertForced`, `FakeSchedule.LastRun`) | `workflowtest` | [fake › Operator actions](../testing/fake.md#operator-actions) | [schedule-overlap](../../examples/schedule-overlap/) |
 | A fake that behaves like your production driver (`FakeLike`, `FakeCaps`, `FakeKeyExpr`, `FakeCronParser`) | `workflowtest` | [fake › Behave like your production driver](../testing/fake.md#behave-like-your-production-driver) | [app-tests](../../examples/app-tests/) |
+| Fake records resets, transient signals, promises and object calls (`Resets`, `AssertReset`, `SignalsWaiting`, `AssertSignalledWaiting`, `Promises`, `AssertPromiseResolved`, `AssertPromiseRejected`, `AssertPromisePending`, `ObjectCalls`, `AssertObjectCalled`, `AssertObjectNotCalled`) | `workflowtest` | [fake › Resets, transient signals, promises and objects](../testing/fake.md#resets-transient-signals-promises-and-objects) | — |
 | Record the enqueues of a real client (`NewRecorder`, `Recorder`) | `workflowtest` | [recorder › Record a real client](../testing/recorder.md#record-a-real-client) | [app-tests](../../examples/app-tests/) |
 | Drive time in tests (`clock.NewFake`, `Advance`, `Set`, `BlockUntil`, `Pending`) | `clock` | [fake-clock › Drive time in tests](../testing/fake-clock.md#drive-time-in-tests) | [app-tests](../../examples/app-tests/) |
 | The conformance suite every driver runs (`workflowtest.Run`, `Harness`, `Instance`, `Instance.Restart`, `Instance.EnqueueOnly`) | `workflowtest` | [writing-a-driver › Run the conformance suite](../extending/writing-a-driver.md#run-the-conformance-suite) | [custom-driver](../../examples/custom-driver/) |
@@ -473,6 +474,7 @@ Running the SQL driver in production: schema, retention, deployment and tuning.
 | Route each job to its region (`regional.New`, `Router`, `RouterFunc`, `ByLabel`, `ErrUnknownRegion`) | `regional` | [regional-routing › Route each job to its region](../operations/regional-routing.md#route-each-job-to-its-region) | [regional-routing](../../examples/regional-routing/) |
 | Signals and schedules across regions (`WithSignalRouter`, `WithScheduleRegion`) | `regional` | [regional-routing › Signals](../operations/regional-routing.md#signals), [regional-routing › Schedules](../operations/regional-routing.md#schedules) | [regional-routing](../../examples/regional-routing/) |
 | Query, retry, cancel and pause runs across regions (`regional.Client`: `Runs`, `Retry`, `Delete`, `CancelAll`, `Pause`, the schedule family) | `regional` | [regional-routing › Manage runs across regions](../operations/regional-routing.md#manage-runs-across-regions) | [regional-routing](../../examples/regional-routing/) |
+| Reset, edit and transient signals across backends (`ResetRun`, `EditRun`, `SignalWaiting` through `failover`, `regional`, `cutover` and `hybrid`; `OpResetRun`, `OpSignalWaiting`) | `failover`, `regional`, `cutover`, `hybrid` | [failover › Query, retry, cancel and pause runs](../reliability/failover.md#query-retry-cancel-and-pause-runs), [regional-routing › Manage runs across regions](../operations/regional-routing.md#manage-runs-across-regions) | — |
 | Move to a new backend while running (`cutover.New`, `SchedulesOn`, `Remaining`, `MoveSchedules`, `NewOnly`) | `cutover` | [cutover › Join the two backends](../operations/cutover.md#join-the-two-backends) | [backend-cutover](../../examples/backend-cutover/) |
 
 ## Admin

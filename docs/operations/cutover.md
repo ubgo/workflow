@@ -41,7 +41,7 @@ if err != nil {
 fmt.Println("enqueued:", ref.RunID) // new:<the new backend's own ID>
 ```
 
-A ref the app stored before the cutover has no prefix. `Status`, `Cancel`, `Result`, `Retry` and `Delete` try it on the old backend first and on the new one when the old one answers `ErrNotFound`. Refs with a prefix (`old:` or `new:`) go straight to their backend; `Runs` merges both backends' feeds, newest first, with prefixed refs:
+A ref the app stored before the cutover has no prefix. `Status`, `Cancel`, `Result`, `Retry`, `Delete`, `Reschedule`, `EditRun`, `ResetRun` and `CancelStep` try it on the old backend first and on the new one when the old one answers `ErrNotFound`. Refs with a prefix (`old:` or `new:`) go straight to their backend; `Runs` merges both backends' feeds, newest first, with prefixed refs:
 
 <!-- snippet: examples/backend-cutover/main.go#status -->
 ```go
@@ -58,7 +58,7 @@ if err != nil {
 }
 ```
 
-Two backends can hand out the same bare ID (two memory drivers both count from `run-1`), which is why every ref this client returns names its backend. `Signal` goes to both backends, since a waiting run may sit on either; `CancelAll`, `Pause` and `Resume` apply to both; `Drain` drains both, `Nodes` lists both, `Health` is ready while the new backend is, and `OnRunFinished` observes both with prefixed refs. Step handlers see the prefixed `RunID` in `StepInfo`.
+Two backends can hand out the same bare ID (two memory drivers both count from `run-1`), which is why every ref this client returns names its backend. `Signal` and `SignalWaiting` go to both backends, since a waiting run may sit on either (`SignalWaiting` only when both implement `workflow.TransientSignaller`, and it returns the total resumed); `CancelAll`, `Pause` and `Resume` apply to both; `Drain` drains both, `Nodes` lists both, `Health` is ready while the new backend is, and `OnRunFinished` observes both with prefixed refs. Step handlers see the prefixed `RunID` in `StepInfo`.
 
 ## Move the schedules
 
@@ -137,7 +137,7 @@ after the export finished: 0 - the app can drop the old backend
 - `Signal` goes to both backends; when one fails the other has already taken the event, and the error names the failing one, so a retried `Signal` may reach that one twice.
 - `MoveSchedules` skips declared crons (they follow `Register`), needs the input func (`ErrInvalid` without it), refuses under `SchedulesOn(SideOld)`, and needs `SchedulePauser` on the new backend for a paused schedule. It stops at the first failure and never leaves a schedule on both: when the old copy cannot be removed, the new copy is removed again. Run it once, from one process.
 - A schedule's `ScheduleWhen` condition is not in its `ScheduleInfo` and does not move; set it again on the new backend.
-- An optional interface whose capability is missing on a backend it needs is refused with an `UnsupportedError`, never answered from one backend alone.
+- An optional interface whose capability is missing on a backend it needs is refused with an `UnsupportedError`, never answered from one backend alone. The calls without a capability (`Reschedule`, `EditRun`, `ResetRun`, `CancelStep`, `SignalWaiting`) are refused the same way when the backend they reach does not implement them, and `workflow.Supports(c, op)` is true only when both backends do.
 
 ## Related
 
