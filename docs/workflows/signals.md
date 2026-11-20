@@ -130,6 +130,16 @@ approval := workflow.Workflow{
 
 The approval is enqueued on Wednesday at 09:00 (the orders above moved the fake clock two days); with no approval after 72 hours, `OnFailure` escalates it on Saturday at 09:00.
 
+## Deliver only to runs waiting now
+
+A signal is kept, so a run that reaches its wait step after it still takes it. For a hint whose late delivery would be wrong (a "refresh now" nudge, a cache invalidation), use `workflow.TransientSignaller`: `SignalWaiting(ctx, event)` resumes the runs whose wait step is suspended on the event's name and key at that moment, returns how many it resumed, and keeps the event for no one else.
+
+```go
+n, err := c.(workflow.TransientSignaller).SignalWaiting(ctx, workflow.Event{Name: "cache.refresh", Key: "catalogue"})
+```
+
+The memory, SQL and Redis drivers implement it; `workflow.Use` forwards it. On the SQL driver it resumes runs of the workflows the calling client registered, so call it on a worker client. Nothing is lost by design only when losing it is harmless: anything that must arrive goes through `Signal`.
+
 ## Try it
 
 ```sh

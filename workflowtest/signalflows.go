@@ -67,6 +67,68 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 		}
 	})
 
+	t.Run("transient", func(t *testing.T) {
+		gate := make(chan struct{})
+		var once sync.Once
+		release := func() { once.Do(func() { close(gate) }) }
+		defer release()
+		gated := workflow.Workflow{Name: "sig-gated", Steps: []workflow.Step{
+			{Name: "gate", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+				select {
+				case <-gate:
+					return nil, nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}},
+			{Name: "wait", After: []string{"gate"}, Wait: &workflow.WaitSpec{Event: "go", Key: "t1"}},
+		}}
+		c := h.Start(t, waiter("sig-waiter"), gated)
+		ts, ok := c.(workflow.TransientSignaller)
+		if !ok {
+			t.Skip("driver has no TransientSignaller")
+		}
+		needCaps(t, c, workflow.CapWaitForEvent, workflow.CapResult)
+		ctx := context.Background()
+		var refs []workflow.RunRef
+		for range 2 {
+			ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "sig-waiter", Labels: map[string]string{"key": "t1"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			flowStatus(t, c, ref, workflow.StatusWaiting)
+			refs = append(refs, ref)
+		}
+		// Enqueued before the hint, but not waiting yet: it must not take it.
+		late, err := c.Enqueue(ctx, workflow.Job{Workflow: "sig-gated"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		flowStatus(t, c, late, workflow.StatusRunning)
+		n, err := ts.SignalWaiting(ctx, workflow.Event{Name: "go", Key: "t1", Payload: []byte(`"hint"`)})
+		if err != nil || n != 2 {
+			t.Fatalf("SignalWaiting = %d, %v; want the 2 waiting runs", n, err)
+		}
+		for _, r := range refs {
+			if out, err := flowAwait(t, c, r); err != nil || string(out) != `"hint"` {
+				t.Fatalf("waiting run: %q %v", out, err)
+			}
+		}
+		release()
+		flowStatus(t, c, late, workflow.StatusWaiting)
+		time.Sleep(50 * time.Millisecond)
+		if st, err := c.Status(ctx, late); err != nil || st != workflow.StatusWaiting {
+			t.Fatalf("the late run took the transient event: %s %v", st, err)
+		}
+		if err := c.Signal(ctx, workflow.Event{Name: "go", Key: "t1"}); err != nil {
+			t.Fatal(err)
+		}
+		flowStatus(t, c, late, workflow.StatusSucceeded)
+		if n, err := ts.SignalWaiting(ctx, workflow.Event{Name: "go", Key: "nobody"}); err != nil || n != 0 {
+			t.Fatalf("SignalWaiting with no waiter = %d, %v", n, err)
+		}
+	})
+
 	t.Run("signal-with-start", func(t *testing.T) {
 		c := h.Start(t, waiter("sig-waiter"))
 		needCaps(t, c, workflow.CapWaitForEvent, workflow.CapIdempotencyKey, workflow.CapResult)
