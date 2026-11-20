@@ -69,6 +69,21 @@ A join that fails cancels the children still running with either `JoinCancelRest
 
 `workflow.CancelChildren(ctx, client, runID, step)` cancels every unfinished child that a step of a run spawned (an empty step means every step of the run), from inside the run or from an operator's tool. It finds them by the parent labels `Spawn` writes (`workflow.ChildLabels` builds the same query), so the children's client needs `workflow.CapCancelAll`.
 
+## Run downstream work once per arriving branch
+
+A step's `After` joins its parents: it runs once, after all of them. When each branch should start the downstream work on its own as it arrives (a multi-merge: "paid", "packed" and "shipped" each send a notification), let each branch start it as a child run with `Spawn` instead of listing it as a later step:
+
+```go
+branch := func(name string) workflow.Step {
+	return workflow.Step{Name: name, Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		_, err := workflow.Spawn(ctx, c, "downstream", []workflow.Job{{Workflow: "notify", Payload: []byte(`"` + name + `"`)}})
+		return nil, err
+	}}
+}
+```
+
+Each branch starts one run, and a retried branch never starts it twice. This multiplies runs by design, so use it only when every arrival really needs its own downstream run.
+
 ## Run a child per item of a large source
 
 `workflow.MapRuns(ctx, client, name, page, job, opts)` reads items a page at a time from `page`, turns each into a child job with `job`, and keeps at most `opts.InFlight` children running (ten by default):

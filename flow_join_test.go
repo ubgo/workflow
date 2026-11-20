@@ -422,3 +422,30 @@ func TestMapRunsFailsPastLimit(t *testing.T) {
 		t.Fatalf("map error %v", err)
 	}
 }
+
+// TestMultiMerge is WC-08 as a recipe: each branch that arrives starts the
+// downstream work again, one run per branch, with Spawn.
+func TestMultiMerge(t *testing.T) {
+	var notified atomic.Int32
+	var c workflow.Client
+	notify := workflow.Workflow{Name: "notify", Steps: []workflow.Step{{Name: "send", Run: func(context.Context, []byte) ([]byte, error) {
+		notified.Add(1)
+		return nil, nil
+	}}}}
+	branch := func(name string) workflow.Step {
+		return workflow.Step{Name: name, Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			_, err := workflow.Spawn(ctx, c, "downstream", []workflow.Job{{Workflow: "notify", Payload: []byte(`"` + name + `"`)}})
+			return nil, err
+		}}
+	}
+	parent := workflow.Workflow{Name: "order", Steps: []workflow.Step{branch("paid"), branch("packed"), branch("shipped")}}
+	c = flowClient(t, workflow.NewMemoryJournal(), notify, parent)
+	waitRun(t, c, enqueue(t, c, workflow.Job{Workflow: "order"}))
+	deadline := time.Now().Add(5 * time.Second)
+	for notified.Load() < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if notified.Load() != 3 {
+		t.Fatalf("downstream ran %d times, want once per arriving branch", notified.Load())
+	}
+}
