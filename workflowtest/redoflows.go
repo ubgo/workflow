@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -105,6 +106,13 @@ func findByLabel(t *testing.T, c workflow.Client, key, val string, want workflow
 	if len(page.Runs) != 1 || page.Runs[0].Ref.RunID != want.RunID {
 		t.Fatalf("runs with %s=%s: %d runs (%v), want only %v", key, val, len(page.Runs), page.Runs, want.RunID)
 	}
+}
+
+// sameRun reports whether label, a RunID a driver wrote, names id: the
+// same ID, or id's tail after a wrapper's prefix (failover, regional and
+// cutover prefix refs but not the IDs a driver writes into labels).
+func sameRun(label string, id workflow.RunID) bool {
+	return label != "" && (label == id.String() || strings.HasSuffix(id.String(), ":"+label))
 }
 
 // waitCount waits until n() is want, or fails after 10 seconds.
@@ -259,7 +267,11 @@ func RunForkFlows(t *testing.T, h FlowHarness) {
 		t.Fatalf("the original after the fork: %s %v, want failed", st, err)
 	}
 	if l := runLabels(t, c, fork); l != nil {
-		want := map[string]string{"app": "x", "ticket": "42", workflow.LabelForkOf: ref.RunID.String(), workflow.LabelForkStep: "transform"}
+		if !sameRun(l[workflow.LabelForkOf], ref.RunID) {
+			t.Fatalf("fork label %s = %q, want %v (labels %v)", workflow.LabelForkOf, l[workflow.LabelForkOf], ref.RunID, l)
+		}
+		findByLabel(t, c, workflow.LabelForkOf, l[workflow.LabelForkOf], fork)
+		want := map[string]string{"app": "x", "ticket": "42", workflow.LabelForkStep: "transform"}
 		for k, v := range want {
 			if l[k] != v {
 				t.Fatalf("fork label %s = %q, want %q (labels %v)", k, l[k], v, l)
@@ -271,7 +283,6 @@ func RunForkFlows(t *testing.T, h FlowHarness) {
 			}
 		}
 	}
-	findByLabel(t, c, workflow.LabelForkOf, ref.RunID.String(), fork)
 	if chained {
 		time.Sleep(50 * time.Millisecond)
 		if n := e.nextRuns.Load(); n != 0 {
@@ -290,7 +301,7 @@ func RunForkFlows(t *testing.T, h FlowHarness) {
 	if got := e.counts(); got != [3]int32{1, 2, 3} {
 		t.Fatalf("after the second fork extract, transform, load ran %v times, want [1 2 3]", got)
 	}
-	if l := runLabels(t, c, again); l != nil && (l[workflow.LabelRedo] != "true" || l[workflow.LabelForkOf] != fork.RunID.String()) {
+	if l := runLabels(t, c, again); l != nil && (l[workflow.LabelRedo] != "true" || !sameRun(l[workflow.LabelForkOf], fork.RunID)) {
 		t.Fatalf("fork of a succeeded run: labels %v, want %s=true and %s=%s", l, workflow.LabelRedo, workflow.LabelForkOf, fork.RunID)
 	}
 

@@ -66,6 +66,8 @@ var (
 	// answers for the jobs client.
 	_ workflow.RunEditor          = (*Client)(nil)
 	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.RunResetterWith    = (*Client)(nil)
+	_ workflow.RunForker          = (*Client)(nil)
 	_ workflow.TransientSignaller = (*Client)(nil)
 	_ workflow.OpProber           = (*Client)(nil)
 )
