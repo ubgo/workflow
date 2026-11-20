@@ -6,7 +6,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 
 ## Recipes
 
-91 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
+90 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
 
 ### Start here
 
@@ -43,7 +43,6 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [schedule-overlap](schedule-overlap) | A tick skipped while the previous run is unfinished, Run now refused then accepted with the manual label, the last fire with its run and status, and the same on the Fake | `workflow`, `memory`, `clock`, `workflowtest` |
 | [output-store](output-store) | Captured output kept per attempt in the database with OutputStore, read back, and served to the admin through OutputSourceFunc | `sqlstore`, `middleware`, `admin` |
 | [schedule-specs](schedule-specs) | Calendar specs, the seconds dialect, LoadZone, NextRuns in two zones across DST, an active period, environment gating, a schedule as JSON, a per-node LocalCron | `workflow`, `cron`, `clock` |
-| [schedule-export](schedule-export) | One schedule written as a Kubernetes CronJob, a systemd timer, a Task Scheduler task and a one-shot launchd handoff on a fixed clock, the typed refusals, and a seven-field cron with a year that stops | `schedexport`, `cron`, `clock` |
 | [snooze-heartbeat](snooze-heartbeat) | Snooze without spending an attempt, a hung attempt failed by HeartbeatTimeout, RunTimeout running OnTimeout | `workflow`, `memory`, `clock` |
 | [results-progress](results-progress) | ReportProgress and progress events, AwaitResult and DecodePayload, a two-sink result, RunFailedError, runs by tenant | `workflow`, `memory`, `clock` |
 | [typed-payloads](typed-payloads) | JobOf, DecodePayload, MaxPayload and WithPayloadLimit, PayloadVersion with DefineVersioned and an upcaster | `workflow`, `memory`, `middleware` |
