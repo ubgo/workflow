@@ -2,10 +2,14 @@ package enginetest
 
 import (
 	"context"
+	"database/sql"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ubgo/workflow"
+	"github.com/ubgo/workflow/sqlstore"
 )
 
 // enqueueResult is what a concurrent EnqueueTx returned.
@@ -59,7 +63,16 @@ func TestEnqueueTxConcurrentKey(t *testing.T) {
 					t.Skip("SQLite: a transaction that read before another writer committed cannot write (SQLITE_BUSY_SNAPSHOT); EnqueueTx's insert must be its first statement")
 				}
 				ctx := context.Background()
-				c, db, orders, runs := txSetup(t, e, workflow.IdempotencyOptional)
+				// The holder's run must stay unfinished until the second
+				// EnqueueTx answers: a finished run frees its key, after which
+				// a second run is the documented outcome, not a duplicate. On
+				// SQLite the worker can run and finish it while the second
+				// transaction waits for the writer lock.
+				gate := make(chan struct{})
+				var gateOnce sync.Once
+				open := func() { gateOnce.Do(func() { close(gate) }) }
+				t.Cleanup(open)
+				c, db, orders, runs := txRaceSetup(t, e, gate)
 				job := workflow.Job{Workflow: "ship", IdempotencyKey: "order-7"}
 
 				tx1, err := db.BeginTx(ctx, nil)
@@ -117,6 +130,7 @@ func TestEnqueueTxConcurrentKey(t *testing.T) {
 				case !tc.firstCommit && second.ref == first:
 					t.Fatalf("after the holder rolled back, the second EnqueueTx returned its rolled-back run %+v", first)
 				}
+				open()
 				if tc.lastCommit {
 					err = tx2.Commit()
 				} else {
@@ -158,4 +172,40 @@ func countRuns(t *testing.T, c interface {
 		t.Fatalf("Runs: %v", err)
 	}
 	return len(page.Runs)
+}
+
+// txRaceSetup is txSetup for TestEnqueueTxConcurrentKey: the "ship" step
+// waits for gate, so a run stays unfinished, and holds its key, until the
+// test opens it.
+func txRaceSetup(t *testing.T, e engine, gate <-chan struct{}) (*sqlstore.Client, *sql.DB, string, *atomic.Int64) {
+	t.Helper()
+	db, prefix := e.open(t)
+	orders := e.dialect.QuoteIdent(prefix + "orders")
+	if _, err := db.Exec("CREATE TABLE " + orders + " (id VARCHAR(64) NOT NULL PRIMARY KEY)"); err != nil {
+		t.Fatalf("create app table: %v", err)
+	}
+	t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS " + orders) })
+	c := newClient(t, e, db, prefix)
+	var runs atomic.Int64
+	if err := c.Register(workflow.Workflow{
+		Name:        "ship",
+		Idempotency: workflow.IdempotencyOptional,
+		Steps: []workflow.Step{{Name: "a", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			runs.Add(1)
+			return nil, nil
+		}}},
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := c.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	return c, db, orders, &runs
 }
