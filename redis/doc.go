@@ -52,7 +52,16 @@
 // cap). Concurrency, rate and wait keys are Go
 // functions (workflow.KeyFunc); Start refuses an expression key (KeyExpr).
 // QueueConfig.Weight orders queues of equal priority by a weighted draw
-// (workflow.PickWeighted on the jitter source).
+// (workflow.PickWeighted on the jitter source). Under
+// ConcurrencyRoundRobin the keys take turns (CapRoundRobin) in proportion
+// to Concurrency.Weight (CapKeyWeights): the admission script gives each
+// run a turn from its key (workflow.FairTurn; {prefix}:fpass:<workflow>,
+// {prefix}:fmax:<workflow>), a waiting round-robin run keeps its place in
+// line in {prefix}:pos:<queue>/<workflow> instead of the ready set, and
+// the claim hands the best place to the run of that workflow, queue and
+// priority with the earliest turn; a run whose bucket is full is parked
+// per bucket ({bucket}\npark) until a run of the bucket ends, so one key's
+// backlog never fills the admission window.
 //
 // # How work moves
 //

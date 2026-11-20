@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -94,12 +96,40 @@ func (c *Client) admit(ctx context.Context, reg *registered, ids []string) (time
 	pipe := c.rdb.Pipeline()
 	cmds := make([]*goredis.SliceCmd, len(ids))
 	for i, id := range ids {
-		cmds[i] = pipe.HMGet(ctx, c.base+":run:"+id, "payload", "labels", "jq", "prio", "runat")
+		cmds[i] = pipe.HMGet(ctx, c.base+":run:"+id, "payload", "labels", "jq", "prio", "runat", "seq")
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return time.Time{}, classify(err)
 	}
 	wf := reg.wf
+	if wf.Concurrency != nil && wf.Concurrency.Strategy == workflow.ConcurrencyRoundRobin {
+		// Round robin gives each run its start tag in the order the script
+		// admits them, so that order must be arrival: the pending set ties
+		// on the run ID, whose suffix is random within a millisecond.
+		order := make([]int, len(ids))
+		for i := range order {
+			order[i] = i
+		}
+		num := func(i, f int) int64 {
+			if v := cmds[i].Val(); len(v) > f {
+				n, _ := strconv.ParseInt(str(v[f]), 10, 64)
+				return n
+			}
+			return 0
+		}
+		sort.SliceStable(order, func(x, y int) bool {
+			i, j := order[x], order[y]
+			if pi, pj := num(i, 3), num(j, 3); pi != pj {
+				return pi > pj
+			}
+			return num(i, 5) < num(j, 5)
+		})
+		sid, scmd := make([]string, len(ids)), make([]*goredis.SliceCmd, len(ids))
+		for k, i := range order {
+			sid[k], scmd[k] = ids[i], cmds[i]
+		}
+		ids, cmds = sid, scmd
+	}
 	maxRuns, strategy := 0, ""
 	if wf.Concurrency != nil {
 		maxRuns, strategy = wf.Concurrency.MaxRuns, string(wf.Concurrency.Strategy)
@@ -118,7 +148,7 @@ func (c *Client) admit(ctx context.Context, reg *registered, ids []string) (time
 	}
 	for i, id := range ids {
 		v := cmds[i].Val()
-		if len(v) != 5 || v[0] == nil {
+		if len(v) != 6 || v[0] == nil {
 			continue // gone meanwhile; the script drops it from pending
 		}
 		job := workflow.Job{Workflow: wf.Name, Queue: str(v[2])}
@@ -135,7 +165,10 @@ func (c *Client) admit(ctx context.Context, reg *registered, ids []string) (time
 			bucket = evalKey(wf.Concurrency.Key, job)
 		}
 		job.RunAt = nanos(str(v[4]))
-		args = append(args, id, workflow.EffectiveQueue(wf, job), bucket, runDeadline(wf, job, now))
+		// The key's stride under round robin (workflow.FairTurn); the
+		// script ignores it for other strategies.
+		stride := workflow.FairStride(workflow.FairWeight(wf.Concurrency, bucket))
+		args = append(args, id, workflow.EffectiveQueue(wf, job), bucket, runDeadline(wf, job, now), stride)
 		for _, rl := range wf.RateLimits {
 			args = append(args, evalKey(rl.Key, job))
 		}

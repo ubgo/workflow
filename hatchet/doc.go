@@ -268,7 +268,11 @@
 // (CapKeyFIFO) needs nothing of the driver: the engine queues a key's
 // waiting runs by insert order (the concurrency slot's sort_id), proven
 // for 40 runs over two keys by TestKeyFIFOLive and by the conformance
-// case, and a run's Priority still goes first.
+// case, and a run's Priority still goes first. ConcurrencyRoundRobin maps
+// onto the engine's GROUP_ROUND_ROBIN, which serves keys in equal turns
+// and takes no weight: Concurrency.Weight is refused (no CapKeyWeights),
+// and CapRoundRobin is not declared until a live test measures the
+// engine's turns the way the workflowtest "fair" group does.
 //
 // Reschedule (workflow.RunRescheduler) creates the delayed start again at
 // the new time with the same token, payload, labels and priority, then

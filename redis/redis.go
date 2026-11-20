@@ -41,6 +41,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRunTimeout, workflow.CapKeyFIFO, workflow.CapWorkflowVersion,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents, workflow.CapSchedulePause,
 	workflow.CapWorkerScale,
+	workflow.CapRoundRobin, workflow.CapKeyWeights,
 )
 
 // Defaults. Each has an option that changes it.

@@ -417,7 +417,16 @@
 // run_version (CapWorkflowVersion): a versioned run's Workflow.Version,
 // read by admission, claims and failure takeover, and checked before a
 // sleep, signal or run timeout advances a run, so a client takes only the
-// run versions its definition runs.
+// run versions its definition runs. Migration 011 adds fair_keys and
+// run_fair (CapRoundRobin, CapKeyWeights; fair.go): under
+// ConcurrencyRoundRobin each admitted run gets a turn from its key
+// (workflow.FairTurn), written in the admission transaction under the
+// workflow's lock row; a claim that picks a step of a round-robin
+// workflow hands that place to the claimable step of the same workflow
+// and priority with the earliest turn and the two swap run_seq, so the
+// workflow keeps its place among other workflows; and the admission read
+// skips runs whose bucket is full, so one key's backlog never fills the
+// fetch window (WithFetchBatch).
 //
 // # Database policies
 //
