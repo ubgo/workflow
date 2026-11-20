@@ -168,9 +168,9 @@ m := memory.New()
 if err := m.Register(byExpr); err != nil { // accepted here; Start validates the key
 	return err
 }
-fmt.Fprintln(out, "  memory:", m.Start(ctx))
+fmt.Println("  memory:", m.Start(ctx))
 m.Stop()
-fmt.Fprintln(out, "  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
+fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
 ```
 
 - **On the memory driver a wait does not survive a restart.** The run, its wait and any kept events are in the process. Use the SQL driver or Hatchet for a wait that may last days.

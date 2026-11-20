@@ -28,7 +28,7 @@ rep, err := c.RunAll(ctx) // returns when no run can move any further
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
+fmt.Printf("succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
 	rep.Succeeded, rep.Failed, rep.Waiting, sends.Load(), clk.Now().Format("Jan 2 15:04"))
 ```
 
@@ -66,7 +66,7 @@ rep, err = c.RunAll(ctx)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
+fmt.Printf("after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
 ```
 
 When runs are left that nothing `RunAll` hurries can move, it does not hang: after about half a second without progress it returns its report and an error wrapping `memory.ErrRunAllStalled`. A paused workflow or queue does this, as does a rate limit or timeout waiting on a fake clock, or a concurrency slot held by a run that waits for an event:
@@ -80,7 +80,7 @@ if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "report"}); err != nil {
 	return err
 }
 rep, err = c.RunAll(ctx) // a paused run never moves: RunAll gives up
-fmt.Fprintf(out, "paused: stalled=%t succeeded=%d\n", errors.Is(err, memory.ErrRunAllStalled), rep.Succeeded)
+fmt.Printf("paused: stalled=%t succeeded=%d\n", errors.Is(err, memory.ErrRunAllStalled), rep.Succeeded)
 ```
 
 ```text

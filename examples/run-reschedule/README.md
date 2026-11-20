@@ -38,7 +38,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
+	fmt.Printf("  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
 }
 ```
 

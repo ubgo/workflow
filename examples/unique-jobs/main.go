@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,7 +27,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "unique-jobs:", err)
 		os.Exit(1)
 	}
@@ -50,22 +49,22 @@ func report(err error) string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := forATime(ctx, out); err != nil {
+func run(ctx context.Context) (err error) {
+	if err := forATime(ctx); err != nil {
 		return err
 	}
-	if err := untilFinished(ctx, out); err != nil {
+	if err := untilFinished(ctx); err != nil {
 		return err
 	}
-	if err := byArgs(ctx, out); err != nil {
+	if err := byArgs(ctx); err != nil {
 		return err
 	}
 	dir, err := os.MkdirTemp("", "unique-jobs-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	return acrossProcesses(ctx, out, filepath.Join(dir, "locks.db"))
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	return acrossProcesses(ctx, filepath.Join(dir, "locks.db"))
 }
 
 // export is a one-step workflow that does nothing; the lock is the point.
@@ -86,8 +85,8 @@ func export(ran chan<- string, gate <-chan struct{}) workflow.Workflow {
 
 // forATime holds the lock for one hour from the enqueue, whatever the run
 // does. A fake clock moves the hour on without waiting.
-func forATime(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- Unique for a time")
+func forATime(ctx context.Context) error {
+	fmt.Println("-- Unique for a time")
 	mc := memory.New()
 	if err := mc.Register(export(nil, nil)); err != nil {
 		return err
@@ -110,16 +109,16 @@ func forATime(ctx context.Context, out io.Writer) error {
 	_, err3 := c.Enqueue(ctx, job) // the lock has expired
 	// snippet:end
 
-	fmt.Fprintln(out, "first:", report(err1))
-	fmt.Fprintln(out, "second, same hour:", report(err2))
-	fmt.Fprintln(out, "third, an hour later:", report(err3))
+	fmt.Println("first:", report(err1))
+	fmt.Println("second, same hour:", report(err2))
+	fmt.Println("third, an hour later:", report(err3))
 	return nil
 }
 
 // untilFinished frees the lock as soon as the run ends, with the ttl as a
 // safety net for a lost run-finished event.
-func untilFinished(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- Unique until the run finishes")
+func untilFinished(ctx context.Context) error {
+	fmt.Println("-- Unique until the run finishes")
 	ran, gate := make(chan string, 2), make(chan struct{})
 	mc := memory.New()
 	if err := mc.Register(export(ran, gate)); err != nil {
@@ -152,18 +151,18 @@ func untilFinished(ctx context.Context, out io.Writer) error {
 	if _, err := c.Enqueue(ctx, job); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "first: accepted")
+	fmt.Println("first: accepted")
 	_, err = c.Enqueue(ctx, job)
-	fmt.Fprintln(out, "second, while the first runs:", report(err))
+	fmt.Println("second, while the first runs:", report(err))
 
 	close(gate)
-	fmt.Fprintln(out, <-ran)
+	fmt.Println(<-ran)
 	ev := <-finished
-	fmt.Fprintln(out, "run finished:", ev.Status, "key label:", ev.Labels[middleware.UniqueKeyLabel])
+	fmt.Println("run finished:", ev.Status, "key label:", ev.Labels[middleware.UniqueKeyLabel])
 
 	_, err = c.Enqueue(ctx, job)
-	fmt.Fprintln(out, "third, after it finished:", report(err))
-	fmt.Fprintln(out, <-ran)
+	fmt.Println("third, after it finished:", report(err))
+	fmt.Println(<-ran)
 	<-finished
 	return nil
 }
@@ -171,8 +170,8 @@ func untilFinished(ctx context.Context, out io.Writer) error {
 // byArgs keys the lock on the workflow and its payload instead of a
 // label, so the same report for the same account is refused while a
 // different account, or the same one asked in another format, is not.
-func byArgs(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- Unique by workflow and arguments")
+func byArgs(ctx context.Context) error {
+	fmt.Println("-- Unique by workflow and arguments")
 	mc := memory.New()
 	if err := mc.Register(workflow.Workflow{Name: "report", Steps: []workflow.Step{{
 		Name: "build", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil },
@@ -197,18 +196,18 @@ func byArgs(ctx context.Context, out io.Writer) error {
 	_, err3 := c.Enqueue(ctx, workflow.Job{Workflow: "report", Payload: []byte(`{"account":"a-2","month":"2026-01"}`)})
 	// snippet:end
 
-	fmt.Fprintln(out, "a-1, ann:", report(err1))
-	fmt.Fprintln(out, "a-1, bob, keys reordered:", report(err2))
-	fmt.Fprintln(out, "a-2:", report(err3))
-	fmt.Fprintln(out, "key:", key(workflow.Job{Workflow: "report", Payload: []byte(`{"account":"a-1","month":"2026-01"}`)})[:len("args:report:")+12]+"...")
+	fmt.Println("a-1, ann:", report(err1))
+	fmt.Println("a-1, bob, keys reordered:", report(err2))
+	fmt.Println("a-2:", report(err3))
+	fmt.Println("key:", key(workflow.Job{Workflow: "report", Payload: []byte(`{"account":"a-1","month":"2026-01"}`)})[:len("args:report:")+12]+"...")
 	return nil
 }
 
 // acrossProcesses shares one lock table between two "processes": two
 // connection pools on one SQLite file, each with its own client. In
 // production these are two servers on one Postgres or MySQL database.
-func acrossProcesses(ctx context.Context, out io.Writer, path string) error {
-	fmt.Fprintln(out, "-- A store shared by every process")
+func acrossProcesses(ctx context.Context, path string) error {
+	fmt.Println("-- A store shared by every process")
 	clk := clock.NewFake(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 
 	// newProcess opens its own pool and lock store, as a separate server
@@ -254,9 +253,9 @@ func acrossProcesses(ctx context.Context, out io.Writer, path string) error {
 
 	job := workflow.Job{Workflow: "export", Labels: map[string]string{"user": "u-7"}}
 	_, err = a.Enqueue(ctx, job)
-	fmt.Fprintln(out, "process A:", report(err))
+	fmt.Println("process A:", report(err))
 	_, err = b.Enqueue(ctx, job)
-	fmt.Fprintln(out, "process B, same user:", report(err))
+	fmt.Println("process B, same user:", report(err))
 
 	// snippet:prune
 	clk.Advance(10 * time.Minute)
@@ -265,8 +264,8 @@ func acrossProcesses(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "expired locks pruned:", n)
+	fmt.Println("expired locks pruned:", n)
 	_, err = b.Enqueue(ctx, job)
-	fmt.Fprintln(out, "process B, after expiry:", report(err))
+	fmt.Println("process B, after expiry:", report(err))
 	return nil
 }

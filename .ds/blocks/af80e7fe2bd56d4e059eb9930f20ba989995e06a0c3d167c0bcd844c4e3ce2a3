@@ -1,0 +1,13 @@
+func JSONPaths(paths ...string) (Redactor, error) {
+	jp := &jsonPaths{}
+	for _, p := range paths {
+		segs := strings.Split(p, ".")
+		for _, s := range segs {
+			if s == "" {
+				return nil, fmt.Errorf("%w: recorder.JSONPaths: empty segment in path %q", workflow.ErrInvalid, p)
+			}
+		}
+		jp.paths = append(jp.paths, segs)
+	}
+	return jp, nil
+}

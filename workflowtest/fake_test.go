@@ -171,8 +171,11 @@ func TestFakeIdempotencyStatusAndCancel(t *testing.T) {
 		t.Errorf("same key while unfinished: refs %v and %v, want the same", a, b)
 	}
 	f.AssertEnqueuedTimes(t, "job", 1)
-	f.Enqueue(ctx, workflow.Job{Workflow: "off", IdempotencyKey: "k"})
-	f.Enqueue(ctx, workflow.Job{Workflow: "off", IdempotencyKey: "k"})
+	for range 2 {
+		if _, err := f.Enqueue(ctx, workflow.Job{Workflow: "off", IdempotencyKey: "k"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	f.AssertEnqueuedTimes(t, "off", 2)
 
 	if st, _ := f.Status(ctx, a); st != workflow.StatusQueued {

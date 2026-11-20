@@ -77,7 +77,7 @@ for _, id := range []string{"o-4", "o-5"} {
 		return err
 	}
 }
-fmt.Fprintf(out, "held before flush: %d\n", d.Len())
+fmt.Printf("held before flush: %d\n", d.Len())
 refs, err := d.Flush(ctx) // the work this belongs to succeeded
 if err != nil {
 	return err

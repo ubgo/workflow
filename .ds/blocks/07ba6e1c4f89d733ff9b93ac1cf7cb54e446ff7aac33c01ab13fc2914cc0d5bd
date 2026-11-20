@@ -1,0 +1,3 @@
+func WithInterval(d time.Duration) ReconcileOption {
+	return func(r *Reconciler) error { return positive("WithInterval", d, &r.interval) }
+}

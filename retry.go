@@ -39,7 +39,8 @@ type RetryPolicy struct {
 
 	// NoRetryOn marks errors that must not be retried. Returning
 	// Permanent(err) from the handler does the same without a policy.
-	NoRetryOn func(error) bool
+	// It is a function, so it is never encoded: JSON skips it.
+	NoRetryOn func(error) bool `json:"-"`
 
 	// DelayFor sets the wait before a retry from the error itself, such
 	// as a 429's Retry-After: it returns the delay and true, or false to
@@ -47,7 +48,8 @@ type RetryPolicy struct {
 	// used as returned (no jitter; a negative one is zero). Nil means
 	// Backoff alone. RetryAfterDelay is the stock implementation, reading
 	// errors wrapped by RetryAfter. Needs CapRetryDelay.
-	DelayFor func(err error, retry int) (time.Duration, bool)
+	// It is a function, so it is never encoded: JSON skips it.
+	DelayFor func(err error, retry int) (time.Duration, bool) `json:"-"`
 
 	// Until stops retrying once a retry would start more than Until after
 	// the step's first attempt started. It wins

@@ -48,10 +48,10 @@ if err != nil {
 <!-- snippet: examples/cron-schedules/main.go#refusals -->
 ```go
 _, err = c.Schedule(ctx, workflow.Schedule{Workflow: "report", Cron: "0 8 * * *"}) // no Location
-fmt.Fprintln(out, "  no Location:", err)
+fmt.Println("  no Location:", err)
 err = c.Register(workflow.Workflow{Name: "local", Cron: []string{"0 8 * * *"}, CronLocation: time.Local,
 	Steps: []workflow.Step{{Name: "s", Run: noop}}})
-fmt.Fprintln(out, "  time.Local:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("  time.Local:", errors.Is(err, workflow.ErrInvalid))
 
 h := hatchet.New(hatchet.Config{})
 for _, wf := range []workflow.Workflow{
@@ -60,7 +60,7 @@ for _, wf := range []workflow.Workflow{
 	{Name: "macro", Cron: []string{"@daily"}},
 } {
 	wf.Steps = []workflow.Step{{Name: "s", Run: noop}}
-	fmt.Fprintf(out, "  hatchet %s: %v\n", wf.Name, h.Register(wf))
+	fmt.Printf("  hatchet %s: %v\n", wf.Name, h.Register(wf))
 }
 ```
 
@@ -82,7 +82,7 @@ show := func(expr string, from time.Time, n int) {
 	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
 		got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 	}
-	fmt.Fprintf(out, "  %-12q %s\n", expr, strings.Join(got, ", "))
+	fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 }
 spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
@@ -137,7 +137,7 @@ runs := workflow.NextRuns(workflow.NextRunsQuery{
 	Count:    3,
 })
 for _, r := range runs {
-	fmt.Fprintf(out, "  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
+	fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
 }
 ```
 

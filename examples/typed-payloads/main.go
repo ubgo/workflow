@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -73,14 +72,14 @@ var greet = workflow.DefineVersioned(2, upcasters, func(_ context.Context, in Gr
 // snippet:end
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "typed-payloads:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
 	// snippet:handler
 	sendWelcome := workflow.Define(func(_ context.Context, in Welcome) (Receipt, error) {
@@ -105,7 +104,7 @@ func run(ctx context.Context, out io.Writer) error {
 	defer c.Stop()
 	wait := workflow.AwaitOptions{Poll: 10 * time.Millisecond}
 
-	fmt.Fprintln(out, "typed:")
+	fmt.Println("typed:")
 	// snippet:job-of
 	job, err := workflow.JobOf("send-welcome", Welcome{UserID: "u-7", Plan: "pro"})
 	if err != nil {
@@ -125,33 +124,33 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  payload %s\n  receipt %s\n", job.Payload, receipt.MessageID)
+	fmt.Printf("  payload %s\n  receipt %s\n", job.Payload, receipt.MessageID)
 	_, err = workflow.DecodePayload[Welcome]([]byte(`{"user_id": 7}`))
-	fmt.Fprintf(out, "  bad payload: permanent %t\n", workflow.IsPermanent(err))
+	fmt.Printf("  bad payload: permanent %t\n", workflow.IsPermanent(err))
 
-	fmt.Fprintln(out, "size limits:")
+	fmt.Println("size limits:")
 	// snippet:max-payload
 	app := middleware.WrapClient(c, middleware.MaxPayload(1024)) // the app's own cap
 	big := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 2000) + `"`)}
 	_, err = app.Enqueue(ctx, big)
 	var tooBig *workflow.PayloadTooLargeError
 	if errors.As(err, &tooBig) {
-		fmt.Fprintf(out, "  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
+		fmt.Printf("  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  ErrPayloadTooLarge %t, ErrInvalid %t\n", errors.Is(err, workflow.ErrPayloadTooLarge), errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("  ErrPayloadTooLarge %t, ErrInvalid %t\n", errors.Is(err, workflow.ErrPayloadTooLarge), errors.Is(err, workflow.ErrInvalid))
 	huge := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 5000) + `"`)}
 	_, err = c.Enqueue(ctx, huge)
 	if errors.As(err, &tooBig) {
-		fmt.Fprintf(out, "  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
+		fmt.Printf("  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
 	}
 	// snippet:limiter
 	if l, ok := any(c).(workflow.PayloadLimiter); ok {
-		fmt.Fprintf(out, "  driver limit: %d bytes\n", l.PayloadLimit())
+		fmt.Printf("  driver limit: %d bytes\n", l.PayloadLimit())
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "versions:")
+	fmt.Println("versions:")
 	// snippet:stamp
 	release1 := middleware.WrapClient(c, middleware.PayloadVersion(1)) // the old release, still enqueuing
 	release2 := middleware.WrapClient(c, middleware.PayloadVersion(2)) // this release
@@ -183,10 +182,10 @@ func run(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  version %d %s -> %s\n", v, job.Payload, raw)
+		fmt.Printf("  version %d %s -> %s\n", v, job.Payload, raw)
 	}
 	newer := workflow.Job{Workflow: "greet", Payload: []byte(`{}`), Labels: map[string]string{workflow.LabelPayloadVersion: "3"}}
 	_, err = release2.Enqueue(ctx, newer)
-	fmt.Fprintf(out, "  version 3 sent to release 2: ErrInvalid %t\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("  version 3 sent to release 2: ErrInvalid %t\n", errors.Is(err, workflow.ErrInvalid))
 	return nil
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"io"
 	"slices"
 	"strings"
@@ -26,7 +25,7 @@ func (t *table) row(cells ...string) {
 	for i, c := range cells {
 		cells[i] = strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(c)
 	}
-	fmt.Fprintln(t.tw, strings.Join(cells, "\t"))
+	fprintln(t.tw, strings.Join(cells, "\t"))
 }
 
 func (t *table) flush() error { return t.tw.Flush() }

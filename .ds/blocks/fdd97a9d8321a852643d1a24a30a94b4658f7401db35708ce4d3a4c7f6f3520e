@@ -1,0 +1,10 @@
+func WithStepEventSink(ctx context.Context, s StepEventSink) context.Context {
+	if s == nil {
+		return ctx
+	}
+	old, _ := ctx.Value(stepEventKey{}).([]StepEventSink)
+	sinks := make([]StepEventSink, 0, len(old)+1)
+	sinks = append(sinks, old...)
+	sinks = append(sinks, s)
+	return context.WithValue(ctx, stepEventKey{}, sinks)
+}

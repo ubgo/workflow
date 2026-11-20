@@ -1,0 +1,21 @@
+func SourceOf(labels map[string]string) (source Source, ref string) {
+	if s, ok := labels[LabelSource]; ok && s != "" {
+		return Source(s), labels[LabelSourceRef]
+	}
+	if labels[LabelTrigger] == LabelTriggerManual {
+		return SourceScheduleManual, labels[LabelSchedule]
+	}
+	if id, ok := labels[LabelSchedule]; ok {
+		return SourceSchedule, id
+	}
+	if id, ok := labels[LabelParentRun]; ok {
+		return SourceChild, id
+	}
+	if id, ok := labels[labelBatchID]; ok {
+		return SourceBatch, id
+	}
+	if name, ok := labels[labelEvent]; ok {
+		return SourceEvent, name
+	}
+	return "", ""
+}

@@ -14,7 +14,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,7 +35,7 @@ const (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "retention:", err)
 		os.Exit(1)
 	}
@@ -54,25 +53,25 @@ var workflows = []workflow.Workflow{
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "retention-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	if err := keepAndPrune(ctx, out, filepath.Join(dir, "app.db")); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	if err := keepAndPrune(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return err
 	}
-	return heldUndelivered(ctx, out, filepath.Join(dir, "held.db"))
+	return heldUndelivered(ctx, filepath.Join(dir, "held.db"))
 }
 
 // keepAndPrune runs the rules and the archive hook over a few runs.
-func keepAndPrune(ctx context.Context, out io.Writer, path string) error {
+func keepAndPrune(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
 	var coldStorage []string // stands in for an object store or an archive table
 
@@ -136,7 +135,7 @@ func keepAndPrune(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "now: deleted %d, held undelivered %d, idempotency %d, batch %d\n",
+	fmt.Printf("now: deleted %d, held undelivered %d, idempotency %d, batch %d\n",
 		res.Deleted, res.HeldUndelivered, res.HeldIdempotency, res.HeldBatch)
 	// snippet:end
 
@@ -145,28 +144,28 @@ func keepAndPrune(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "a day later: deleted %d\n", res.Deleted)
+	fmt.Printf("a day later: deleted %d\n", res.Deleted)
 
 	clk.Advance(7 * 24 * time.Hour)
 	res, err = c.Prune(ctx)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "a week later: deleted %d\n", res.Deleted)
+	fmt.Printf("a week later: deleted %d\n", res.Deleted)
 
 	sort.Strings(coldStorage)
-	fmt.Fprintln(out, "archived:", strings.Join(coldStorage, ", "))
+	fmt.Println("archived:", strings.Join(coldStorage, ", "))
 	return nil
 }
 
 // heldUndelivered shows the guard that keeps runs whose end was never
 // delivered to an OnRunFinished observer, and what Prune reports.
-func heldUndelivered(ctx context.Context, out io.Writer, path string) error {
+func heldUndelivered(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
 
 	c, err := client(ctx, db, clk, sqlstore.Retention{Succeeded: time.Hour}) // Undelivered left false
@@ -181,7 +180,7 @@ func heldUndelivered(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "no observer, Undelivered false: deleted %d, held undelivered %d\n", res.Deleted, res.HeldUndelivered)
+	fmt.Printf("no observer, Undelivered false: deleted %d, held undelivered %d\n", res.Deleted, res.HeldUndelivered)
 	c.Stop()
 
 	c, err = client(ctx, db, clk, sqlstore.Retention{Succeeded: time.Hour, Undelivered: true})
@@ -193,7 +192,7 @@ func heldUndelivered(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Undelivered true: deleted %d\n", res.Deleted)
+	fmt.Printf("Undelivered true: deleted %d\n", res.Deleted)
 	return nil
 }
 

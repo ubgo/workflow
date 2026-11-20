@@ -31,7 +31,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "node-health:", err)
 		os.Exit(1)
 	}
@@ -42,16 +42,16 @@ func main() {
 const envURL = "REDIS_URL"
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := onMemory(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := onMemory(ctx); err != nil {
 		return err
 	}
 	url := os.Getenv(envURL)
 	if url == "" {
-		fmt.Fprintln(out, envURL, "is not set: the scheduler and worker nodes are skipped")
+		fmt.Println(envURL, "is not set: the scheduler and worker nodes are skipped")
 		return nil
 	}
-	return onRedis(ctx, out, url)
+	return onRedis(ctx, url)
 }
 
 // snippet:probes
@@ -66,7 +66,9 @@ func probes(c workflow.Client) http.Handler {
 		}
 		w.WriteHeader(code)
 		for _, ch := range rep.Checks {
-			fmt.Fprintf(w, "%s ok=%t %s\n", ch.Name, ch.OK, ch.Detail)
+			if _, err := fmt.Fprintf(w, "%s ok=%t %s\n", ch.Name, ch.OK, ch.Detail); err != nil {
+				return // the caller hung up; nothing left to tell it
+			}
 		}
 	}
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +90,7 @@ func probes(c workflow.Client) http.Handler {
 
 // onMemory shows node identity, the node list and the probes on the
 // memory driver.
-func onMemory(ctx context.Context, out io.Writer) error {
+func onMemory(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -115,21 +117,24 @@ func onMemory(ctx context.Context, out io.Writer) error {
 	probe := func(path string) {
 		res, err := http.Get(srv.URL + path)
 		if err != nil {
-			fmt.Fprintln(out, path, err)
+			fmt.Println(path, err)
 			return
 		}
-		defer res.Body.Close()
-		body, _ := io.ReadAll(res.Body)
-		fmt.Fprintf(out, "%s %d %s\n", path, res.StatusCode, strings.TrimSpace(string(body)))
+		body, err := io.ReadAll(res.Body)
+		if err = errors.Join(err, res.Body.Close()); err != nil {
+			fmt.Println(path, err)
+			return
+		}
+		fmt.Printf("%s %d %s\n", path, res.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	fmt.Fprintln(out, "-- before Start")
+	fmt.Println("-- before Start")
 	probe("/livez")
 	probe("/readyz")
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- started")
+	fmt.Println("-- started")
 	probe("/readyz")
 
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "sync"})
@@ -145,9 +150,9 @@ func onMemory(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	r := page.Runs[0]
-	fmt.Fprintf(out, "run %s, attempted by %v\n", r.Status, r.AttemptedBy)
+	fmt.Printf("run %s, attempted by %v\n", r.Status, r.AttemptedBy)
 	for _, e := range r.Errors {
-		fmt.Fprintf(out, "  attempt %d on %s: %s\n", e.Attempt, e.Node, e.Error)
+		fmt.Printf("  attempt %d on %s: %s\n", e.Attempt, e.Node, e.Error)
 	}
 	// snippet:end
 
@@ -158,7 +163,7 @@ func onMemory(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		for _, n := range nodes {
-			fmt.Fprintf(out, "node %s mode=%s workers=%d running=%d\n", n.ID, n.Mode, n.Workers, n.Running)
+			fmt.Printf("node %s mode=%s workers=%d running=%d\n", n.ID, n.Mode, n.Workers, n.Running)
 		}
 	}
 	// snippet:end
@@ -168,23 +173,23 @@ func onMemory(ctx context.Context, out io.Writer) error {
 	// a type that has only the Client methods) is reported live and ready,
 	// with one check saying it cannot tell.
 	rep := workflow.CheckHealth(ctx, struct{ workflow.Client }{c})
-	fmt.Fprintf(out, "no HealthChecker: live=%t ready=%t check=%q\n", rep.Live, rep.Ready, rep.Checks[0].Detail)
+	fmt.Printf("no HealthChecker: live=%t ready=%t check=%q\n", rep.Live, rep.Ready, rep.Checks[0].Detail)
 	// snippet:end
 
 	c.Stop()
-	fmt.Fprintln(out, "-- stopped")
+	fmt.Println("-- stopped")
 	probe("/livez")
 	return nil
 }
 
 // onRedis runs a scheduler-only node and a worker-only node on one prefix.
-func onRedis(ctx context.Context, out io.Writer, url string) error {
+func onRedis(ctx context.Context, url string) (err error) {
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
 		return err
 	}
 	rdb := goredis.NewClient(opts)
-	defer rdb.Close()
+	defer func() { err = errors.Join(err, rdb.Close()) }()
 	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	defer func() { _ = deletePrefix(context.Background(), rdb, prefix) }()
 
@@ -228,7 +233,7 @@ func onRedis(ctx context.Context, out io.Writer, url string) error {
 	}
 	select {
 	case node := <-ran:
-		fmt.Fprintln(out, "tick fired by sched-1, ran on", node)
+		fmt.Println("tick fired by sched-1, ran on", node)
 	case <-time.After(10 * time.Second):
 		return errors.New("no tick ran within 10s")
 	}
@@ -237,7 +242,7 @@ func onRedis(ctx context.Context, out io.Writer, url string) error {
 		return err
 	}
 	for _, n := range nodes {
-		fmt.Fprintf(out, "node %s mode=%s workers=%d\n", n.ID, n.Mode, n.Workers)
+		fmt.Printf("node %s mode=%s workers=%d\n", n.ID, n.Mode, n.Workers)
 	}
 	return nil
 }

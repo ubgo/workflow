@@ -191,9 +191,9 @@ m := memory.New()
 if err := m.Register(byExpr); err != nil { // accepted here; Start validates the key
 	return err
 }
-fmt.Fprintln(out, "  memory:", m.Start(ctx))
+fmt.Println("  memory:", m.Start(ctx))
 m.Stop()
-fmt.Fprintln(out, "  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
+fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -20,14 +19,14 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -71,7 +70,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if _, err := enqueue(workflow.Job{Workflow: "build-report", Payload: []byte("hold")}); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, <-ran)
+	fmt.Println(<-ran)
 
 	// snippet:enqueue
 	refs := make([]workflow.RunRef, 0, 3)
@@ -89,7 +88,7 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 	close(release)
 	for range refs {
-		fmt.Fprintln(out, <-ran)
+		fmt.Println(<-ran)
 	}
 	for _, ref := range refs {
 		if err := waitDone(ctx, c, ref); err != nil {
@@ -109,7 +108,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, <-ran) // the report runs; the paused mail queue holds the digest
+	fmt.Println(<-ran) // the report runs; the paused mail queue holds the digest
 	if err := waitDone(ctx, c, report); err != nil {
 		return err
 	}
@@ -117,19 +116,19 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "digest while mail is paused:", st)
+	fmt.Println("digest while mail is paused:", st)
 	if err := c.Resume(ctx, workflow.PauseQueue("mail")); err != nil {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, <-ran)
+	fmt.Println(<-ran)
 	if err := waitDone(ctx, c, held); err != nil {
 		return err
 	}
 
 	// snippet:refuse
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "send-email", Queue: "sms"})
-	fmt.Fprintln(out, "enqueue to a queue this client does not serve:", err)
+	fmt.Println("enqueue to a queue this client does not serve:", err)
 	// snippet:end
 	return nil
 }

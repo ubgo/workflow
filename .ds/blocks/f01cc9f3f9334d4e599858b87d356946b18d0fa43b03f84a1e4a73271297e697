@@ -1,0 +1,13 @@
+type Reconciler struct {
+	client     workflow.Client
+	store      Store
+	clk        clock.Clock
+	interval   time.Duration
+	staleAfter time.Duration
+	window     time.Duration
+	batch      int
+	pages      int
+	backfill   bool
+	scope      workflow.RunQuery
+	onError    func(ctx context.Context, err error)
+}

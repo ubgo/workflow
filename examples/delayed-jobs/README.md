@@ -39,7 +39,7 @@ st, err := c.Status(ctx, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "enqueued: scheduled id set %t, run id set %t, status %s\n",
+fmt.Printf("enqueued: scheduled id set %t, run id set %t, status %s\n",
 	!ref.ScheduledID.IsZero(), !ref.RunID.IsZero(), st)
 ```
 
@@ -60,7 +60,7 @@ if err := c.Cancel(ctx, later); err != nil { // cancelling twice is not an error
 if st, err = c.Status(ctx, later); err != nil {
 	return err
 }
-fmt.Fprintln(out, "cancelled before it started:", st)
+fmt.Println("cancelled before it started:", st)
 ```
 
 Read the status with the RunRef Enqueue returned, after the run fired:
@@ -71,7 +71,7 @@ st, err = c.Status(ctx, ref) // the RunRef Enqueue returned still works
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "after it ran: %s, terminal %t\n", st, st.IsTerminal())
+fmt.Printf("after it ran: %s, terminal %t\n", st, st.IsTerminal())
 ```
 
 Cancel a running run; its step sees its ctx cancelled:
@@ -89,7 +89,7 @@ if err := c.Cancel(ctx, exp); err != nil {
 if st, err = c.Status(ctx, exp); err != nil {
 	return err
 }
-fmt.Fprintln(out, "cancelled while running:", st)
+fmt.Println("cancelled while running:", st)
 ```
 
 An unknown run:
@@ -97,7 +97,7 @@ An unknown run:
 <!-- snippet: examples/delayed-jobs/main.go#not-found -->
 ```go
 _, err = c.Status(ctx, workflow.RunRef{RunID: "run-404"})
-fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

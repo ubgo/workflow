@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks its whole output: progress events and the latest progress, a result awaited and decoded, the result of two final steps, a failed run, and runs of one tenant, one of them fired by a tenant's schedule.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `progress:
@@ -30,7 +31,7 @@ tenants:
   acme export-orders succeeded
   tenant with a space: ErrInvalid true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

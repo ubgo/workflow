@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"time"
@@ -29,16 +28,16 @@ import (
 var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-heartbeat:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	for _, part := range []func(context.Context, io.Writer) error{snooze, heartbeat, runTimeout} {
-		if err := part(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	for _, part := range []func(context.Context) error{snooze, heartbeat, runTimeout} {
+		if err := part(ctx); err != nil {
 			return err
 		}
 	}
@@ -67,8 +66,8 @@ func newClient(ctx context.Context, clk *clock.Fake, wfs ...workflow.Workflow) (
 // snooze runs a step that asks to be tried again later while the report it
 // needs is not ready. The workflow allows no retries at all, yet the step
 // snoozes twice and succeeds: a snooze is not a failure.
-func snooze(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "snooze:")
+func snooze(ctx context.Context) error {
+	fmt.Println("snooze:")
 	clk := clock.NewFake(start)
 	tries := make(chan int, 4)
 	checks := 0
@@ -102,7 +101,7 @@ func snooze(ctx context.Context, out io.Writer) error {
 	}
 	for i := range 3 {
 		attempt := <-tries
-		fmt.Fprintf(out, "  try at +%s: attempt %d\n", clk.Now().Sub(start), attempt)
+		fmt.Printf("  try at +%s: attempt %d\n", clk.Now().Sub(start), attempt)
 		if i == 2 { // the third look finds the report
 			break
 		}
@@ -113,7 +112,7 @@ func snooze(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  snoozed, status %s\n", st)
+		fmt.Printf("  snoozed, status %s\n", st)
 		clk.Advance(time.Minute)
 	}
 	ev := <-finished
@@ -121,15 +120,15 @@ func snooze(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  run %s, attempts %d, errors recorded %d\n", ev.Status, page.Runs[0].Attempts, len(page.Runs[0].Errors))
+	fmt.Printf("  run %s, attempts %d, errors recorded %d\n", ev.Status, page.Runs[0].Attempts, len(page.Runs[0].Errors))
 	return nil
 }
 
 // heartbeat runs a step with a heartbeat timeout: its first attempt hangs
 // without beating and is failed after 30 seconds, long before any step
 // timeout would; the retry beats as it works and succeeds.
-func heartbeat(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "heartbeat:")
+func heartbeat(ctx context.Context) error {
+	fmt.Println("heartbeat:")
 	clk := clock.NewFake(start)
 	attempts := make(chan int, 4)
 
@@ -169,7 +168,7 @@ func heartbeat(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  attempt %d started\n", <-attempts)
+	fmt.Printf("  attempt %d started\n", <-attempts)
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the heartbeat watchdog
 		return err
 	}
@@ -178,22 +177,22 @@ func heartbeat(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	clk.Advance(time.Second)
-	fmt.Fprintf(out, "  attempt %d started at +%s\n", <-attempts, clk.Now().Sub(start))
+	fmt.Printf("  attempt %d started at +%s\n", <-attempts, clk.Now().Sub(start))
 	ev := <-finished
 	page, err := c.Runs(ctx, workflow.RunQuery{Ref: ref})
 	if err != nil {
 		return err
 	}
 	first := page.Runs[0].Errors[0]
-	fmt.Fprintf(out, "  attempt %d failed at +%s: %s\n", first.Attempt, first.At.Sub(start), first.Error)
-	fmt.Fprintf(out, "  run %s\n", ev.Status)
+	fmt.Printf("  attempt %d failed at +%s: %s\n", first.Attempt, first.At.Sub(start), first.Error)
+	fmt.Printf("  run %s\n", ev.Status)
 	return nil
 }
 
 // runTimeout runs a workflow whose whole run may take five minutes. Its
 // step hangs, the run times out, and OnTimeout runs instead of OnFailure.
-func runTimeout(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "run timeout:")
+func runTimeout(ctx context.Context) error {
+	fmt.Println("run timeout:")
 	clk := clock.NewFake(start)
 	started := make(chan struct{}, 1)
 	var mu sync.Mutex
@@ -239,12 +238,12 @@ func runTimeout(ctx context.Context, out io.Writer) error {
 	runOut := errors.Is(ev.Err, workflow.ErrRunTimeout) // this deadline in particular
 	anyDeadline := workflow.IsTimeout(ev.Err)           // any of the four
 	// snippet:end
-	fmt.Fprintf(out, "  run %s: %v\n", ev.Status, ev.Err)
-	fmt.Fprintf(out, "  ErrRunTimeout %t, IsTimeout %t, ErrStepTimeout %t\n", runOut, anyDeadline, errors.Is(ev.Err, workflow.ErrStepTimeout))
+	fmt.Printf("  run %s: %v\n", ev.Status, ev.Err)
+	fmt.Printf("  ErrRunTimeout %t, IsTimeout %t, ErrStepTimeout %t\n", runOut, anyDeadline, errors.Is(ev.Err, workflow.ErrStepTimeout))
 	mu.Lock()
 	defer mu.Unlock()
 	for _, s := range ran {
-		fmt.Fprintf(out, "  ran %s\n", s)
+		fmt.Printf("  ran %s\n", s)
 	}
 	return nil
 }

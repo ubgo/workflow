@@ -1,8 +1,74 @@
 # Changelog
 
-All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`) are documented here. The format follows Keep a Changelog, and versioning will be SemVer with the pre-GA convention that `v0.x` may break. Nothing is tagged yet; everything below is on `main`.
+All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify`, `sqlstore/pgxtx`) are documented here. The format follows Keep a Changelog, and versioning is SemVer with the pre-GA convention that `v0.x` may break. Every module is tagged on its own: `vX.Y.Z` for the core, `<module>/vX.Y.Z` (for example `sqlstore/v0.1.0`) for a separate module.
 
 ## [Unreleased]
+
+## [sqlstore 0.1.1, otel 0.1.1] - 2026-11-10
+
+`sqlstore/v0.1.1`, `otel/v0.1.1`, and two new modules split out of sqlstore, `sqlstore/pgnotify/v0.1.0` and `sqlstore/pgxtx/v0.1.0`. A released module now requires only what its library code imports, so an app never downloads a package it does not use. No change to any library's behaviour; the other modules keep their tags.
+
+### Changed
+
+- `sqlstore` requires no database driver. Its go.mod listed the sqlb pgx, MySQL and SQLite driver modules, which only its tests used, and sqlb's `contrib/migrate` v0.1.0 brought the three drivers into any module importing it (fixed in `contrib/migrate/v0.1.1`, which sqlstore now requires). sqlstore requires only sqlb, `contrib/migrate` and the core; it takes the app's `*sql.DB` and a dialect, and the app brings the driver it opens the pool with.
+- `sqlstore/pgnotify` and `sqlstore/pgxtx` are their own modules at the same import paths, each requiring only pgx, so only an app that uses Postgres LISTEN/NOTIFY wake-ups or pgx transactions downloads pgx. `go get github.com/ubgo/workflow/sqlstore/pgnotify@latest` (or `pgxtx`) together with `sqlstore` v0.1.1 or later: v0.1.0 still carried both packages, and the two together are an ambiguous import.
+- `otel` requires only the OpenTelemetry API (`otel`, `metric`, `trace`). It listed the SDK (`otel/sdk`, `otel/sdk/metric`), which only its tests used; the app brings whichever SDK and exporters it runs.
+
+### Tests
+
+- `sqlstore/enginetest`, `otel/sdktest`: never-released test modules (`internal: true` in `.volt.yml`) holding the tests that need a database driver or the OpenTelemetry SDK. sqlstore's tests reach its unexported state through `sqlstore/internal/probe`, which only packages under `sqlstore/` can import. Every test passes unchanged on SQLite, Postgres 18 and MySQL 8; coverage is the same or higher (sqlstore 86.4%, was 86.2%; outbox 84.7%, pgnotify 75.8%, pgxtx 72.4%, otel 92.8%).
+- `task deps:check`, part of `task check`: fails when a released module's go.mod is not tidy without go.work, or requires a module none of its library packages import on Linux, macOS or Windows.
+- `recorder/e2e` and `recorder/sqlrecorder/sqlitetest` are marked `internal: true` too, so volt never offers to release them.
+
+### Examples
+
+- The examples print with `fmt.Println` and `fmt.Printf` and their tests read the output through `examples/internal/capture`; every deferred `Close`, `RemoveAll` and `Rollback` joins the function's error. The bench harness prints through a writer that returns its first error. `volt ci` (errcheck included) is clean on every module, examples and bench included, with no exclusions.
+
+## [recorder/sqlrecorder 0.1.1] - 2026-11-10
+
+`recorder/sqlrecorder/v0.1.1`, two read fixes. The other modules are unchanged in code (doc comments only), so they keep their tags; the docs below cover them all.
+
+### Fixed
+
+- `recorder/sqlrecorder`: `Store.Run` returned a shortened step list as success when reading a step row failed partway through; it now returns the error (`sqlrecorder: read steps: ...`).
+- `recorder/sqlrecorder`: `Migrate` read the recorded schema version without the contention retry its statements use, so several processes migrating a fresh SQLite file at once could fail with `SQLITE_BUSY`; the read is now retried like the rest.
+
+### Tests
+
+- `recorder/sqlrecorder/sqlitetest`, a test-only module: the store and driver conformance suites on real SQLite, a fault-injecting driver for every begin, commit, statement, row-read and close failure, contention retry, `Migrate` and prune; the SQLite driver stays out of the sqlrecorder module. In-package tests pin the SQL text and argument order on Postgres, MySQL and SQLite. Unit coverage: sqlrecorder 98.9% (was 25.5%), recorder 99.4%; `task recorder:cover` prints both.
+
+### Documentation
+
+- Concept pages [Trigger source](docs/concepts/trigger-source.md), [Step events](docs/concepts/step-events.md) and [Run outcome](docs/concepts/run-outcome.md); `RequireSource` in [Enqueue middleware](docs/middleware/enqueue-middleware.md), step events and `CaptureOutput` in [Step middleware](docs/middleware/step-middleware.md); the enqueue-only web node with `Recorder.EnqueuePlugin` in [Record run history](docs/observability/run-recorder.md) and [The Hatchet driver](docs/drivers/hatchet.md); a run-history section on every driver page; the indexes, the feature list and the choosing guides.
+- Examples [trigger-source](examples/trigger-source/), [step-events](examples/step-events/) and [recorder-split](examples/recorder-split/) (90 programs).
+- docsync: the release APIs and their defaults carry `ds:def` directives that the pages cite, so `task docs:drift` (`ds check`, part of `task check`) fails when cited code changes and its sentence is not re-acked.
+
+## [0.1.1] - 2026-11-10
+
+The core `v0.1.1`, `admin/v0.1.1`, and two new modules, `recorder/v0.1.0` and `recorder/sqlrecorder/v0.1.0`, which require the tagged core. The other modules are unchanged.
+
+### Added
+
+- `recorder` module (`github.com/ubgo/workflow/recorder`, go 1.24, standard library and the core only): a run history the app owns, on every driver, built only from enqueue middleware, step middleware and the run-finished hook, so no driver changes and an app that does not import it pays nothing. `recorder.New(store, opts...)` and `rec.Plugin()` for `workflow.Use`; options `WithRedactor`, `WithMaxPayload` (64 KiB by default, 0 keeps sizes only), `WithStepBodies`, `WithErrorHistory`, `WithDefaultSource`, `WithResultReader`, `WithOnError`, `WithWriteTimeout`, `WithClock`, `WithName`. A failed write never fails a run.
+- `Recorder.EnqueuePlugin()`: the enqueue middleware alone, for an enqueue-only web or API node (no run-finished hook); the worker nodes' `Plugin()` over the same store completes the record.
+- `recorder.Store`, the store contract (idempotent upserts keyed by the run, a delayed run's ScheduledID and RunID joined into one record, reads that answer `workflow.RunQuerier` plus `Records` and `Run` with steps and events, `Pending` for the Reconciler), with its merge rules as pure functions (`ApplyRunWrite`, `ApplyStepStart`, `ApplyStepEnd`, `ApplyEvent`, `ApplyOutcome`, `ApplyFinish`, `ApplyCheck`, `MergeRecords`), and `recorder.MemoryStore`.
+- `recorder.Query`: `workflow.RunQuery` plus `Sources`, `Outcomes`, `Search` and `OnlyStale`; `QueryCaps`, `ValidateQuery`, `EncodeCursor` and `DecodeCursor`.
+- `recorder.Retention` in two stages (steps and events after `Steps`, the run after `Runs`), per workflow, with an `Archive` hook that keeps a batch when it fails; `Pruner` and `PruneEvery`.
+- `recorder.Redactor` with `JSONPaths` (dot paths, `*` and index segments, event attributes by key), `PerWorkflow` and `Chain`.
+- `recorder.Reconciler` (`NewReconciler`, `Pass`, `Run`): re-checks unfinished records against the client, flags stale and missing ones without cancelling anything, and backfills runs started past the recorder with `workflow.SourceExternal` (`WithBackfillWindow`, `WithBackfillQuery`, `WithStaleAfter`, `WithInterval`, `WithBatch`).
+- `recorder/recordertest`: `RunStore` holds any `recorder.Store` to the contract, `RunDriver` runs the recorder over any driver through a `workflowtest.Harness` (`WithStore` to pair a store with it).
+- `recorder/sqlrecorder` module (go 1.24, `database/sql` only, no database driver): the store on Postgres, MySQL 8 and SQLite, with `runs`, `steps`, `events`, `labels` and `schema` tables under a prefix (`wf_rec_` by default), idempotent `Migrate`, `MigrationScripts`, row-locked writes retried on contention (`WithTxAttempts`, `WithRetryable`), and `Prune` with the two retention stages.
+- `recorder/e2e` test-only module: the recorder on the memory, SQL (SQLite, Postgres, MySQL), Redis and Hatchet drivers and sqlrecorder on every engine; `task recorder:test` and `task recorder:e2e:all` (throwaway Postgres, MySQL, Redis and Hatchet).
+- Trigger source in the core: `workflow.LabelSource`, `LabelSourceRef`, `Source`, `WithSource`, `SourceOf` (derives `schedule`, `schedule-manual`, `child`, `batch` and `event` from the library's labels), `ValidateSource`, `LibrarySources`, `SourceExternal`; the two source labels are the only reserved labels an app may set (`CheckJobLabels` and `ValidateLabels` accept them with valid values). `middleware.RequireSource(allowed...)` refuses a job without a source.
+- Step events in the core: `workflow.RecordEvent`, `RecordEventLevel`, `StepEvent`, `EventAttr`, `StepEventSink`, `StepEventFunc`, `WithStepEventSink`, `HasStepEventSink`; no sink bound is a no-op.
+- Run outcome in the core: `workflow.Outcome` (`OutcomeSuccess`, `OutcomePartial`, `OutcomeError`, `OutcomeSkipped`), `SetOutcome`, `OutcomeSetter`, `OutcomeFunc`, `WithOutcomeSetter`, `DefaultOutcome`, `Outcomes`.
+- `middleware.CaptureOutput` captures step events (`workflow.RecordEvent`) with the step's log records.
+- `admin.WithRunQuerier(rq, caps)`: the read operations read a run recorder (or any `RunQuerier`) instead of the client, with the querier's own filter capabilities; actions still go to the client, and `Run` falls back to the client for a run the querier does not hold.
+- Guide [Record run history](docs/observability/run-recorder.md) and the [run-recorder](examples/run-recorder/) example.
+
+## [0.1.0] - 2026-11-10
+
+The first release of the core and of every separate module (`admin`, `cli`, `hatchet`, `otel`, `redis`, `sentry`, `sqlstore`), each tagged `v0.1.0`. The separate modules now require the tagged core instead of resolving it through a local `replace`.
 
 ### Added
 
@@ -232,6 +298,8 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ### Fixed
 
+- `Job` values carrying a `Retry` policy now encode as JSON: `RetryPolicy.NoRetryOn` and `DelayFor` are functions and are now skipped (`json:"-"`), so a batch that keeps its job specs as JSON no longer fails with `json: unsupported type`.
+- `cli`: a command whose output cannot be written (a closed pipe, a full disk) now exits with `ExitError` and reports `write output: ...` on stderr, instead of exiting 0 with partial output.
 - `sqlstore`: a data race between `SetWorkers` and weighted queue claiming (both read and wrote a copy of `QueueConfig`).
 - `memory`: `RunAll` called right after `Signal` finishes the signalled run; the wait is marked satisfied under the lock when the event is handed over, before the waiter goroutine wakes.
 - `hatchet`: between a failed attempt and its retry the engine shows a run FAILED for a moment, and the driver read that as final, so `Status`, `Runs`, `Retry`, the run-finished hook and `BatchSource` could report a failure, and fire a batch's `Catch`, for a run that then succeeded. One function now judges every FAILED read: it is final when the driver marked the failure non-retryable, when the step used its registered retries, or when it failed more than the new `hatchet.Config.FailedSettle` ago (`DefaultFailedSettle`, 5s); otherwise the run reads queued, or running, as between attempts.

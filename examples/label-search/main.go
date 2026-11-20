@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -26,7 +25,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "label-search:", err)
 		os.Exit(1)
 	}
@@ -41,17 +40,17 @@ var orders = []map[string]string{
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "label-search-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	c, err := sqlstore.New(db, sqlb.SQLiteDialect{})
 	if err != nil {
@@ -76,7 +75,7 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 	}
-	fmt.Fprintln(out, "label prefix capability:", c.Capabilities().Has(workflow.CapLabelPrefix))
+	fmt.Println("label prefix capability:", c.Capabilities().Has(workflow.CapLabelPrefix))
 
 	// snippet:search
 	acmeA, err := c.Runs(ctx, workflow.RunQuery{
@@ -93,8 +92,8 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "acme, order A-*:", labelValues(acmeA, "order"))
-	fmt.Fprintln(out, "has a coupon:", labelValues(withCoupon, "order"))
+	fmt.Println("acme, order A-*:", labelValues(acmeA, "order"))
+	fmt.Println("has a coupon:", labelValues(withCoupon, "order"))
 
 	// snippet:backfill
 	n, err := c.IndexLabels(ctx) // after MigrationScripts applied by your own tool
@@ -106,14 +105,14 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "IndexLabels: %d runs, then %d\n", n, again)
+	fmt.Printf("IndexLabels: %d runs, then %d\n", n, again)
 
 	// snippet:refused
 	q := workflow.RunQuery{LabelPrefixes: map[string]string{"order": "A-"}}
 	err = workflow.CheckRunQuery(hatchet.New(hatchet.Config{}).Capabilities(), q)
 	var unsupported *workflow.UnsupportedError
 	if errors.As(err, &unsupported) {
-		fmt.Fprintf(out, "hatchet refuses: field %s, missing %s\n", unsupported.Field, unsupported.Missing)
+		fmt.Printf("hatchet refuses: field %s, missing %s\n", unsupported.Field, unsupported.Missing)
 	}
 	// snippet:end
 	return nil

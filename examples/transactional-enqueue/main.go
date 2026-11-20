@@ -12,7 +12,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,24 +27,24 @@ import (
 const statusPoll = 10 * time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "transactional-enqueue:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "transactional-enqueue-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	if _, err := db.ExecContext(ctx, "CREATE TABLE orders (id INTEGER PRIMARY KEY, item TEXT NOT NULL)"); err != nil {
 		return err
 	}
@@ -76,13 +75,17 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	defer c.Stop()
 
-	fmt.Fprintln(out, "-- commit")
+	fmt.Println("-- commit")
 	// snippet:commit
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() // a no-op once committed
+	defer func() {
+		if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
 	if _, err := tx.ExecContext(ctx, "INSERT INTO orders (id, item) VALUES (1, 'book')"); err != nil {
 		return err
 	}
@@ -99,14 +102,14 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	c.Wake() // admit it now instead of at the next poll
 	// snippet:end
-	fmt.Fprintln(out, "shipped", <-shipped)
+	fmt.Println("shipped", <-shipped)
 	st, err := waitTerminal(ctx, c, ref)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "run:", st)
+	fmt.Println("run:", st)
 
-	fmt.Fprintln(out, "-- roll back")
+	fmt.Println("-- roll back")
 	// snippet:rollback
 	tx, err = db.BeginTx(ctx, nil)
 	if err != nil {
@@ -123,30 +126,34 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	_, err = c.Status(ctx, ref)
-	fmt.Fprintln(out, "run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
+	fmt.Println("run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
 	// snippet:end
 	var orders int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM orders").Scan(&orders); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "orders stored:", orders)
+	fmt.Println("orders stored:", orders)
 
-	fmt.Fprintln(out, "-- same key twice in one transaction")
-	if err := sameKeyTwice(ctx, out, db, c); err != nil {
+	fmt.Println("-- same key twice in one transaction")
+	if err := sameKeyTwice(ctx, db, c); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "shipped", <-shipped)
+	fmt.Println("shipped", <-shipped)
 	return nil
 }
 
 // sameKeyTwice enqueues one key twice in one transaction: the second call
 // returns the first run and the transaction stays usable.
-func sameKeyTwice(ctx context.Context, out io.Writer, db *sql.DB, c *sqlstore.Client) error {
+func sameKeyTwice(ctx context.Context, db *sql.DB, c *sqlstore.Client) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
 	// snippet:same-key
 	job := workflow.Job{Workflow: "ship", Payload: []byte(`{"order":3}`), IdempotencyKey: "order-3"}
 	first, err := c.EnqueueTx(ctx, tx, job)
@@ -158,11 +165,11 @@ func sameKeyTwice(ctx context.Context, out io.Writer, db *sql.DB, c *sqlstore.Cl
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "second call returned the first run:", first == second)
+	fmt.Println("second call returned the first run:", first == second)
 	if _, err := tx.ExecContext(ctx, "INSERT INTO orders (id, item) VALUES (3, 'desk')"); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "transaction still usable: true")
+	fmt.Println("transaction still usable: true")
 	if err := tx.Commit(); err != nil {
 		return err
 	}

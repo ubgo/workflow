@@ -1,0 +1,15 @@
+type Store struct {
+	db        *sql.DB
+	d         Dialect
+	prefix    string
+	clk       clock.Clock
+	retention recorder.Retention
+	attempts  int
+	retryable func(error) bool
+
+	// sqliteMu serializes this process's write transactions on SQLite,
+	// which has one writer per database anyway: without it two of our own
+	// connections upgrade read locks to write locks at once and one fails
+	// with SQLITE_BUSY at once, before any busy timeout applies.
+	sqliteMu sync.Mutex
+}

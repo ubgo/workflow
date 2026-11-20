@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,18 +42,18 @@ var monday = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 const layout = "Mon 2 Jan 15:04 MST"
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "cron-schedules:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	for _, part := range []func(context.Context, io.Writer) error{
+func run(ctx context.Context) error {
+	for _, part := range []func(context.Context) error{
 		syntax, dst, declared, atRunTime, upsertByName, misfire, dialect, refusals,
 	} {
-		if err := part(ctx, out); err != nil {
+		if err := part(ctx); err != nil {
 			return err
 		}
 	}
@@ -64,8 +63,8 @@ func run(ctx context.Context, out io.Writer) error {
 // syntax parses expressions with the core parser and prints their next
 // fire times. cron.Parse reads no clock: the reference instant and the
 // zone are arguments.
-func syntax(_ context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "syntax:")
+func syntax(_ context.Context) error {
+	fmt.Println("syntax:")
 	// snippet:parse
 	s, err := cron.Parse("0 9 * * MON-FRI") // 09:00 on weekdays
 	if err != nil {
@@ -78,7 +77,7 @@ func syntax(_ context.Context, out io.Writer) error {
 	t := monday
 	for range 3 {
 		t = s.Next(t, ny) // strictly after t, evaluated in New York
-		fmt.Fprintln(out, " ", t.Format(layout))
+		fmt.Println(" ", t.Format(layout))
 	}
 	// snippet:end
 
@@ -89,13 +88,13 @@ func syntax(_ context.Context, out io.Writer) error {
 	for _, f := range fires {
 		days = append(days, f.Format("Mon 2 Jan"))
 	}
-	fmt.Fprintln(out, "  1st of the month or a Monday:", strings.Join(days, ", "))
+	fmt.Println("  1st of the month or a Monday:", strings.Join(days, ", "))
 	// snippet:end
 
 	// snippet:parse-error
 	_, err = cron.Parse("0 25 * * *")
 	if pe, ok := errors.AsType[*cron.ParseError](err); ok {
-		fmt.Fprintf(out, "  field %s, value %q: %v\n", pe.Field, pe.Value, err)
+		fmt.Printf("  field %s, value %q: %v\n", pe.Field, pe.Value, err)
 	}
 	// snippet:end
 	return nil
@@ -104,8 +103,8 @@ func syntax(_ context.Context, out io.Writer) error {
 // dst prints what fixed-time and periodic schedules do on the two days New
 // York changes its clocks in 2026: 8 March (02:00 jumps to 03:00) and
 // 1 November (02:00 falls back to 01:00).
-func dst(_ context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "daylight saving time:")
+func dst(_ context.Context) error {
+	fmt.Println("daylight saving time:")
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {
 		return err
@@ -117,7 +116,7 @@ func dst(_ context.Context, out io.Writer) error {
 		for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
 			got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 		}
-		fmt.Fprintf(out, "  %-12q %s\n", expr, strings.Join(got, ", "))
+		fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 	}
 	spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 	fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
@@ -131,8 +130,8 @@ func dst(_ context.Context, out io.Writer) error {
 
 // declared registers a workflow whose cron is evaluated in Kolkata and
 // moves the fake clock from one fire to the next.
-func declared(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "declared cron:")
+func declared(ctx context.Context) error {
+	fmt.Println("declared cron:")
 	clk := clock.NewFake(monday)
 	fired := make(chan time.Time, 4)
 	kolkata, err := time.LoadLocation("Asia/Kolkata")
@@ -167,15 +166,15 @@ func declared(ctx context.Context, out io.Writer) error {
 		}
 		clk.Set(s.Next(clk.Now(), kolkata))
 		f := <-fired
-		fmt.Fprintf(out, "  fired %s (%s)\n", f.In(kolkata).Format(layout), f.UTC().Format("15:04 MST"))
+		fmt.Printf("  fired %s (%s)\n", f.In(kolkata).Format(layout), f.UTC().Format("15:04 MST"))
 	}
 	return nil
 }
 
 // atRunTime creates a schedule per tenant while the app runs, then
 // removes it.
-func atRunTime(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "schedule at run time:")
+func atRunTime(ctx context.Context) error {
+	fmt.Println("schedule at run time:")
 	clk := clock.NewFake(monday)
 	fired := make(chan string, 4)
 	c := memory.New(memory.WithClock(clk))
@@ -218,7 +217,7 @@ func atRunTime(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	clk.Set(time.Date(2026, 1, 5, 8, 0, 0, 0, berlin))
-	fmt.Fprintln(out, " ", <-fired)
+	fmt.Println(" ", <-fired)
 
 	// snippet:unschedule
 	if err := c.Unschedule(ctx, id); err != nil {
@@ -236,7 +235,7 @@ func atRunTime(ctx context.Context, out io.Writer) error {
 	case f := <-fired:
 		return fmt.Errorf("fired after Unschedule: %s", f)
 	case <-time.After(quietWindow):
-		fmt.Fprintln(out, "  after Unschedule: two Mondays passed, no run")
+		fmt.Println("  after Unschedule: two Mondays passed, no run")
 	}
 	return nil
 }
@@ -245,18 +244,18 @@ func atRunTime(ctx context.Context, out io.Writer) error {
 // (SQLite in a temporary directory) and gets one schedule back, as an app
 // that declares its schedules at every boot needs. The memory driver
 // upserts by name the same way.
-func upsertByName(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "upsert by name:")
+func upsertByName(ctx context.Context) (err error) {
+	fmt.Println("upsert by name:")
 	dir, err := os.MkdirTemp("", "cron-schedules")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	report := workflow.Workflow{Name: "report", Steps: []workflow.Step{{Name: "build", Run: noop}}}
 
@@ -290,7 +289,7 @@ func upsertByName(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "  sqlstore, same name twice, same schedule:", first == second)
+	fmt.Println("  sqlstore, same name twice, same schedule:", first == second)
 	// snippet:end
 	a, err := mem.Schedule(ctx, nightly)
 	if err != nil {
@@ -300,14 +299,14 @@ func upsertByName(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "  memory, same name twice, same schedule:", a == b)
+	fmt.Println("  memory, same name twice, same schedule:", a == b)
 	return nil
 }
 
 // misfire pauses three hourly schedules for five hours (one jump of the
 // fake clock) and counts what each policy fires when the scheduler wakes.
-func misfire(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "misfire after a five-hour pause:")
+func misfire(ctx context.Context) error {
+	fmt.Println("misfire after a five-hour pause:")
 	clk := clock.NewFake(monday)
 	fired := make(chan string, 16)
 	c := memory.New(memory.WithClock(clk))
@@ -356,7 +355,7 @@ func misfire(ctx context.Context, out io.Writer) error {
 		count[<-fired]++
 	}
 	for _, name := range names {
-		fmt.Fprintf(out, "  %-9s %d run(s)\n", name, count[name])
+		fmt.Printf("  %-9s %d run(s)\n", name, count[name])
 	}
 
 	// snippet:due
@@ -367,7 +366,7 @@ func misfire(ctx context.Context, out io.Writer) error {
 		for _, t := range policies[name].Due(hourly, last, now, time.UTC) {
 			ticks = append(ticks, t.Format("15:04"))
 		}
-		fmt.Fprintf(out, "  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
+		fmt.Printf("  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
 	}
 	// snippet:end
 	return nil
@@ -376,8 +375,8 @@ func misfire(ctx context.Context, out io.Writer) error {
 // dialect plugs another cron parser into the memory driver: it adds one
 // macro and hands everything else to the core parser. It takes the ctx
 // only to share the signature of the other sections; Register needs none.
-func dialect(_ context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "another dialect:")
+func dialect(_ context.Context) error {
+	fmt.Println("another dialect:")
 	// snippet:dialect
 	withQuarter := func(expr string) (cron.Schedule, error) {
 		if expr == "@quarter-hour" {
@@ -389,9 +388,9 @@ func dialect(_ context.Context, out io.Writer) error {
 	// snippet:end
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	err := c.Register(workflow.Workflow{Name: "poll", Cron: []string{"@quarter-hour"}, Steps: []workflow.Step{{Name: "poll", Run: noop}}})
-	fmt.Fprintln(out, "  memory with the dialect:", err)
+	fmt.Println("  memory with the dialect:", err)
 	err = memory.New().Register(workflow.Workflow{Name: "poll", Cron: []string{"@quarter-hour"}, Steps: []workflow.Step{{Name: "poll", Run: noop}}})
-	fmt.Fprintln(out, "  memory with cron.Parse:", err)
+	fmt.Println("  memory with cron.Parse:", err)
 	return nil
 }
 
@@ -399,8 +398,8 @@ func dialect(_ context.Context, out io.Writer) error {
 // zone on any driver, and on Hatchet (UTC only, no catch-up, no macros)
 // a zone, a misfire policy and a macro. The Hatchet client connects only
 // at Start, so Register runs without a server.
-func refusals(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "refusals:")
+func refusals(ctx context.Context) error {
+	fmt.Println("refusals:")
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	kolkata, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
@@ -416,10 +415,10 @@ func refusals(ctx context.Context, out io.Writer) error {
 	defer c.Stop()
 	// snippet:refusals
 	_, err = c.Schedule(ctx, workflow.Schedule{Workflow: "report", Cron: "0 8 * * *"}) // no Location
-	fmt.Fprintln(out, "  no Location:", err)
+	fmt.Println("  no Location:", err)
 	err = c.Register(workflow.Workflow{Name: "local", Cron: []string{"0 8 * * *"}, CronLocation: time.Local,
 		Steps: []workflow.Step{{Name: "s", Run: noop}}})
-	fmt.Fprintln(out, "  time.Local:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("  time.Local:", errors.Is(err, workflow.ErrInvalid))
 
 	h := hatchet.New(hatchet.Config{})
 	for _, wf := range []workflow.Workflow{
@@ -428,10 +427,10 @@ func refusals(ctx context.Context, out io.Writer) error {
 		{Name: "macro", Cron: []string{"@daily"}},
 	} {
 		wf.Steps = []workflow.Step{{Name: "s", Run: noop}}
-		fmt.Fprintf(out, "  hatchet %s: %v\n", wf.Name, h.Register(wf))
+		fmt.Printf("  hatchet %s: %v\n", wf.Name, h.Register(wf))
 	}
 	// snippet:end
-	fmt.Fprintln(out, "  memory needs for a zoned cron:", workflow.Requires(workflow.Workflow{Cron: []string{"0 9 * * *"}, CronLocation: kolkata}),
+	fmt.Println("  memory needs for a zoned cron:", workflow.Requires(workflow.Workflow{Cron: []string{"0 9 * * *"}, CronLocation: kolkata}),
 		"| has them:", c.Capabilities().Has(workflow.CapCron|workflow.CapCronZone))
 	return nil
 }

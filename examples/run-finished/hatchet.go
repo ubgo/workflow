@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/ubgo/workflow"
@@ -18,7 +17,7 @@ const envToken = "HATCHET_CLIENT_TOKEN"
 // Hatchet implements RunNotifier by polling the engine's run list, best
 // effort: it does not declare CapRunFinished, so a consumer keeps a
 // fallback (a TTL, a status poll) for an event that is lost.
-func runHatchet(ctx context.Context, out io.Writer) error {
+func runHatchet(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -29,7 +28,7 @@ func runHatchet(ctx context.Context, out io.Writer) error {
 		RunFinishedWindow:  6 * time.Hour,    // runs older than this are no longer watched
 		RunFinishedCatchUp: 10 * time.Minute, // replay the ends of runs created this long before Start
 	})
-	fmt.Fprintln(out, "hatchet: every run end is delivered:", c.Capabilities().Has(workflow.CapRunFinished))
+	fmt.Println("hatchet: every run end is delivered:", c.Capabilities().Has(workflow.CapRunFinished))
 	ends := make(chan workflow.RunEvent, 1)
 	if err := c.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { ends <- ev }); err != nil {
 		return err
@@ -56,7 +55,7 @@ func runHatchet(ctx context.Context, out io.Writer) error {
 			if ev.Ref.RunID != ref.RunID {
 				continue // catch-up replays older runs' ends too
 			}
-			fmt.Fprintf(out, "hatchet: %s %s\n", "run", ev.Status)
+			fmt.Printf("hatchet: %s %s\n", "run", ev.Status)
 			return nil
 		case <-time.After(time.Minute):
 			return fmt.Errorf("no run-finished event for %s within a minute", ref.RunID)

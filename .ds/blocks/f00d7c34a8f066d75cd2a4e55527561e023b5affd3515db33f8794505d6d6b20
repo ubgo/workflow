@@ -1,0 +1,3 @@
+type OutputSink interface {
+	Deliver(ctx context.Context, out Output) error
+}

@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
@@ -23,7 +22,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
@@ -50,7 +49,7 @@ func (t *trail) take() string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
@@ -119,7 +118,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	waitN(ends, 2)
-	fmt.Fprintf(out, "chain: %s\n", ran.take())
+	fmt.Printf("chain: %s\n", ran.take())
 
 	if _, err := c.Enqueue(ctx, workflow.Job{
 		Workflow: "import-files",
@@ -129,7 +128,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	waitN(ends, 4)
-	fmt.Fprintf(out, "edited while running (scan tried %d times): %s\n", importAttempts.Load(), ran.take())
+	fmt.Printf("edited while running (scan tried %d times): %s\n", importAttempts.Load(), ran.take())
 
 	// snippet:failed
 	if _, err := c.Enqueue(ctx, workflow.Job{
@@ -141,19 +140,19 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-ends
-	fmt.Fprintf(out, "a failed run ends the chain: %s (%s)\n", ran.take(), ev.Status)
+	fmt.Printf("a failed run ends the chain: %s (%s)\n", ran.take(), ev.Status)
 
 	// snippet:outside
 	err = workflow.AppendToChain(ctx, workflow.Job{Workflow: "notify"})
 	// snippet:end
 	var unsupported *workflow.UnsupportedError
-	fmt.Fprintf(out, "AppendToChain outside a step: %v, missing %s\n", errors.As(err, &unsupported), unsupported.Missing)
+	fmt.Printf("AppendToChain outside a step: %v, missing %s\n", errors.As(err, &unsupported), unsupported.Missing)
 
 	// snippet:hatchet
 	job := workflow.Job{Workflow: "import-file", Chain: []workflow.Job{{Workflow: "notify"}}}
 	err = workflow.CheckJob(hatchet.New(hatchet.Config{}).Capabilities(), job)
 	// snippet:end
-	fmt.Fprintf(out, "on hatchet: ErrUnsupported %v (%v)\n", errors.Is(err, workflow.ErrUnsupported), err)
+	fmt.Printf("on hatchet: ErrUnsupported %v (%v)\n", errors.Is(err, workflow.ErrUnsupported), err)
 	return nil
 }
 

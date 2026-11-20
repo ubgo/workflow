@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 
 	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/workflowtest"
@@ -12,8 +13,8 @@ import (
 
 // TestRun runs the program and checks the lines the guide shows.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `render got "42 rows"
@@ -21,7 +22,7 @@ tiny-1: succeeded
 delayed start refused: true
 workflow: Job.RunAt unsupported by this driver (missing DelayedStart): job for workflow report
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }

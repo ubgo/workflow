@@ -1,0 +1,22 @@
+func ValidateQuery(q Query) error {
+	if err := workflow.ValidateRunQuery(q.RunQuery); err != nil {
+		return err
+	}
+	if err := workflow.CheckRunQuery(QueryCaps, q.RunQuery); err != nil {
+		return err
+	}
+	for _, s := range q.Sources {
+		if err := workflow.ValidateSource(s); err != nil {
+			return fmt.Errorf("recorder query: %w", err)
+		}
+	}
+	for _, o := range q.Outcomes {
+		if !o.Valid() {
+			return fmt.Errorf("%w: recorder query: unknown outcome %q", workflow.ErrInvalid, o)
+		}
+	}
+	if len(q.Search) > MaxSearchLen {
+		return fmt.Errorf("%w: recorder query: Search is %d bytes, more than %d", workflow.ErrInvalid, len(q.Search), MaxSearchLen)
+	}
+	return nil
+}

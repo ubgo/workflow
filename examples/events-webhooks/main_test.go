@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guides show: bus
 // deliveries and their deduplication, the webhook handler's status codes,
 // and Standard Webhooks refusing a changed body and a replay.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `bus:
@@ -36,7 +37,7 @@ standard webhooks:
   changed body: ErrSignature=true
   replayed after 10m: ErrSignature=true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

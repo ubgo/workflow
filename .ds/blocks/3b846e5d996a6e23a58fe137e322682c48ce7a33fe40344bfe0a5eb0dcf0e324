@@ -1,0 +1,7 @@
+func CaptureClock(clk clock.Clock) CaptureOption {
+	return func(c *captureConfig) {
+		if clk != nil {
+			c.clk = clk
+		}
+	}
+}

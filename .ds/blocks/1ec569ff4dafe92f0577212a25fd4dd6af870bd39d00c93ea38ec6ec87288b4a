@@ -1,0 +1,4 @@
+func HasStepEventSink(ctx context.Context) bool {
+	sinks, _ := ctx.Value(stepEventKey{}).([]StepEventSink)
+	return len(sinks) > 0
+}

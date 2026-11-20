@@ -118,6 +118,7 @@ When a step fails, four tools decide whether it is tried again:
 
 - If the reaction is part of the business process (refund the charge, mark the order failed), use `OnFailure`, so it travels with the workflow to every driver.
 - If it is cross-cutting (metrics, an audit log, freeing a lock), use `OnRunFinished`.
+- If what you want is a history of every run, with its steps, events and outcome, use the [run recorder](../observability/run-recorder.md) rather than writing your own observer: it is built from the same hook plus step and enqueue middleware.
 - Pitfall: `OnRunFinished` is guaranteed only where the driver declares `CapRunFinished` (memory, sqlstore and Redis). On Hatchet it is best-effort, so anything that relies on it needs a fallback, such as a TTL or a poller.
 
 ## Related

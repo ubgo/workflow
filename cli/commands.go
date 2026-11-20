@@ -324,7 +324,7 @@ func listCmd(kind string, withStatus bool) func(*flag.FlagSet) func(context.Cont
 				return e.printJSON(raw)
 			}
 			if len(page.Runs) == 0 {
-				fmt.Fprintln(e.out, "no runs match")
+				fprintln(e.out, "no runs match")
 				return nil
 			}
 			t := newTable(e.out, "RUN", "WORKFLOW", "QUEUE", "STATUS", "ATT", "ENQUEUED", "FINISHED", "ERROR")
@@ -339,10 +339,10 @@ func listCmd(kind string, withStatus bool) func(*flag.FlagSet) func(context.Cont
 				if page.Truncated {
 					more = "+"
 				}
-				fmt.Fprintf(e.out, "%d of %d%s\n", len(page.Runs), *page.Total, more)
+				fprintf(e.out, "%d of %d%s\n", len(page.Runs), *page.Total, more)
 			}
 			if page.Next != "" {
-				fmt.Fprintf(e.out, "next page: --cursor %s\n", page.Next)
+				fprintf(e.out, "next page: --cursor %s\n", page.Next)
 			}
 			return nil
 		}
@@ -411,7 +411,7 @@ func inspectCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 			return err
 		}
 		if len(r.Errors) > 0 {
-			fmt.Fprintln(e.out, "\nfailed attempts:")
+			fprintln(e.out, "\nfailed attempts:")
 			t := newTable(e.out, "ATTEMPT", "STEP", "AT", "ERROR")
 			for _, x := range r.Errors {
 				t.row(strconv.Itoa(x.Attempt), x.Step, fmtTime(x.At), oneLine(x.Error, 100))
@@ -425,11 +425,11 @@ func inspectCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 			if o.Error != "" {
 				state = "error: " + oneLine(o.Error, 80)
 			}
-			fmt.Fprintf(e.out, "\noutput of %s #%d (%s)\n%s", o.Step, o.Attempt, state, o.Text)
+			fprintf(e.out, "\noutput of %s #%d (%s)\n%s", o.Step, o.Attempt, state, o.Text)
 			if o.Truncated {
-				fmt.Fprint(e.out, "\n[truncated]")
+				fprint(e.out, "\n[truncated]")
 			}
-			fmt.Fprintln(e.out)
+			fprintln(e.out)
 		}
 		return nil
 	}
@@ -526,7 +526,7 @@ func actionCmd(fs *flag.FlagSet, sp actionSpec) func(context.Context, *env, []st
 			if e.asJSON {
 				return e.printJSON(raw)
 			}
-			fmt.Fprintf(e.out, "dry run: would %s run %s (%s, %s); nothing changed\n", sp.verb, r.Ref, r.Workflow, r.Status)
+			fprintf(e.out, "dry run: would %s run %s (%s, %s); nothing changed\n", sp.verb, r.Ref, r.Workflow, r.Status)
 			return nil
 		}
 		var out struct {
@@ -540,9 +540,9 @@ func actionCmd(fs *flag.FlagSet, sp actionSpec) func(context.Context, *env, []st
 			return e.printJSON(raw)
 		}
 		if out.Ref.RunID != "" || out.Ref.ScheduledID != "" {
-			fmt.Fprintf(e.out, "%s %s as %s\n", sp.past, id, out.Ref)
+			fprintf(e.out, "%s %s as %s\n", sp.past, id, out.Ref)
 		} else {
-			fmt.Fprintf(e.out, "%s %s\n", sp.past, id)
+			fprintf(e.out, "%s %s\n", sp.past, id)
 		}
 		return nil
 	}
@@ -550,7 +550,7 @@ func actionCmd(fs *flag.FlagSet, sp actionSpec) func(context.Context, *env, []st
 
 func printBulk(e *env, sp actionSpec, r bulkJSON) error {
 	if r.Cancelled != nil {
-		fmt.Fprintf(e.out, "cancelled %d runs\n", *r.Cancelled)
+		fprintf(e.out, "cancelled %d runs\n", *r.Cancelled)
 		return nil
 	}
 	if r.DryRun {
@@ -558,18 +558,18 @@ func printBulk(e *env, sp actionSpec, r bulkJSON) error {
 		if r.Truncated {
 			more = " (more match; the server stops at its bound)"
 		}
-		fmt.Fprintf(e.out, "dry run: would %s %d runs%s; nothing changed\n", sp.verb, r.Matched, more)
+		fprintf(e.out, "dry run: would %s %d runs%s; nothing changed\n", sp.verb, r.Matched, more)
 		for _, ref := range r.Sample {
-			fmt.Fprintf(e.out, "  %s\n", ref)
+			fprintf(e.out, "  %s\n", ref)
 		}
 		if r.Matched > len(r.Sample) {
-			fmt.Fprintf(e.out, "  … and %d more\n", r.Matched-len(r.Sample))
+			fprintf(e.out, "  … and %d more\n", r.Matched-len(r.Sample))
 		}
 		return nil
 	}
-	fmt.Fprintf(e.out, "matched %d, %s %d, skipped %d (changed meanwhile)\n", r.Matched, sp.past, r.Done, r.Skipped)
+	fprintf(e.out, "matched %d, %s %d, skipped %d (changed meanwhile)\n", r.Matched, sp.past, r.Done, r.Skipped)
 	if r.Truncated {
-		fmt.Fprintf(e.out, "more runs match: run the same command again for the next batch\n")
+		fprintf(e.out, "more runs match: run the same command again for the next batch\n")
 	}
 	return nil
 }
@@ -619,7 +619,7 @@ func pauseCmd(verb string) func(*flag.FlagSet) func(context.Context, *env, []str
 						state = "paused now"
 					}
 				}
-				fmt.Fprintf(e.out, "dry run: would %s %s (%s; %d pauses active); nothing changed\n", verb, what, state, len(cur.Pauses))
+				fprintf(e.out, "dry run: would %s %s (%s; %d pauses active); nothing changed\n", verb, what, state, len(cur.Pauses))
 				return nil
 			}
 			raw, err := e.api.do(ctx, "POST", verb, body, nil)
@@ -629,7 +629,7 @@ func pauseCmd(verb string) func(*flag.FlagSet) func(context.Context, *env, []str
 			if e.asJSON {
 				return e.printJSON(raw)
 			}
-			fmt.Fprintf(e.out, "%sd %s\n", verb, what)
+			fprintf(e.out, "%sd %s\n", verb, what)
 			return nil
 		}
 	}
@@ -663,17 +663,17 @@ func pausesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 			return e.printJSON(raw)
 		}
 		if len(out.Pauses) == 0 {
-			fmt.Fprintln(e.out, "nothing is paused")
+			fprintln(e.out, "nothing is paused")
 			return nil
 		}
 		for _, p := range out.Pauses {
 			switch {
 			case p.All:
-				fmt.Fprintln(e.out, "everything")
+				fprintln(e.out, "everything")
 			case p.Workflow != "":
-				fmt.Fprintln(e.out, "workflow "+p.Workflow)
+				fprintln(e.out, "workflow "+p.Workflow)
 			default:
-				fmt.Fprintln(e.out, "queue "+p.Queue)
+				fprintln(e.out, "queue "+p.Queue)
 			}
 		}
 		return nil
@@ -706,7 +706,7 @@ func queuesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 			return e.printJSON(raw)
 		}
 		if len(out.Queues) == 0 {
-			fmt.Fprintln(e.out, "no queued runs")
+			fprintln(e.out, "no queued runs")
 			return nil
 		}
 		t := newTable(e.out, "QUEUE", "DEPTH", "OLDEST WAIT", "WORKERS", "RUNNING")
@@ -721,7 +721,7 @@ func queuesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 			return err
 		}
 		if out.Truncated {
-			fmt.Fprintln(e.out, "depths are lower bounds: the server's scan limit was reached")
+			fprintln(e.out, "depths are lower bounds: the server's scan limit was reached")
 		}
 		return nil
 	}
@@ -795,7 +795,7 @@ func schedulesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 			return e.printJSON(b)
 		}
 		if len(all) == 0 {
-			fmt.Fprintln(e.out, "no schedules")
+			fprintln(e.out, "no schedules")
 			return nil
 		}
 		t := newTable(e.out, "ID", "NAME", "WORKFLOW", "TENANT", "CRON", "ZONE", "NEXT", "STATE")
@@ -880,9 +880,9 @@ func triggerCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 			if e.asJSON {
 				return e.printJSON(raw)
 			}
-			fmt.Fprintf(e.out, "dry run: would run schedule %s (workflow %s) now; nothing enqueued\n", s.ID, s.Workflow)
+			fprintf(e.out, "dry run: would run schedule %s (workflow %s) now; nothing enqueued\n", s.ID, s.Workflow)
 			if s.Overlap == "skip" {
-				fmt.Fprintln(e.out, "its overlap policy is skip: the real trigger is refused while its previous run is unfinished")
+				fprintln(e.out, "its overlap policy is skip: the real trigger is refused while its previous run is unfinished")
 			}
 			return nil
 		}
@@ -896,7 +896,7 @@ func triggerCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 		if e.asJSON {
 			return e.printJSON(raw)
 		}
-		fmt.Fprintf(e.out, "triggered %s as run %s\n", args[0], out.Ref)
+		fprintf(e.out, "triggered %s as run %s\n", args[0], out.Ref)
 		return nil
 	}
 }
@@ -943,7 +943,7 @@ func drainCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 				if e.asJSON {
 					return e.printJSON([]byte(fmt.Sprintf(`{"drained":true,"remaining":0,"waited_seconds":%g}`, waited.Seconds())))
 				}
-				fmt.Fprintf(e.out, "drained after %s\n", waited.Round(time.Second))
+				fprintf(e.out, "drained after %s\n", waited.Round(time.Second))
 				return nil
 			}
 			if waited >= *wait {
@@ -953,7 +953,7 @@ func drainCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 				return fmt.Errorf("drain: %d runs still queued or running after %s", left, wait.String())
 			}
 			if !e.asJSON {
-				fmt.Fprintf(e.errw, "%d runs left\n", left)
+				fprintf(e.errw, "%d runs left\n", left)
 			}
 			if err := e.opts.Sleep(ctx, *interval); err != nil {
 				return err
@@ -1006,7 +1006,7 @@ func metricsCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 			return err
 		}
 		if !out.Since.IsZero() {
-			fmt.Fprintf(e.out, "data since %s\n", fmtTime(out.Since))
+			fprintf(e.out, "data since %s\n", fmtTime(out.Since))
 		}
 		return nil
 	}
@@ -1077,7 +1077,7 @@ func nodesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 			return e.printJSON(raw)
 		}
 		if len(out.Nodes) == 0 {
-			fmt.Fprintln(e.out, "no node is online")
+			fprintln(e.out, "no node is online")
 			return nil
 		}
 		t := newTable(e.out, "NODE", "MODE", "QUEUES", "WORKERS", "RUNNING", "LAST SEEN")
@@ -1116,7 +1116,7 @@ func rescheduleCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error
 			if e.asJSON {
 				return e.printJSON(raw)
 			}
-			fmt.Fprintf(e.out, "dry run: would move run %s to %s; nothing changed\n", r.Ref, fmtTime(t))
+			fprintf(e.out, "dry run: would move run %s to %s; nothing changed\n", r.Ref, fmtTime(t))
 			return nil
 		}
 		var out struct {
@@ -1131,7 +1131,7 @@ func rescheduleCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error
 		if e.asJSON {
 			return e.printJSON(raw)
 		}
-		fmt.Fprintf(e.out, "rescheduled %s to %s\n", out.Ref, fmtTime(t))
+		fprintf(e.out, "rescheduled %s to %s\n", out.Ref, fmtTime(t))
 		return nil
 	}
 }
@@ -1155,7 +1155,7 @@ func cancelStepCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error
 			if e.asJSON {
 				return e.printJSON(raw)
 			}
-			fmt.Fprintf(e.out, "dry run: would cancel step %s of run %s (%s); nothing changed\n", args[1], r.Ref, r.Status)
+			fprintf(e.out, "dry run: would cancel step %s of run %s (%s); nothing changed\n", args[1], r.Ref, r.Status)
 			return nil
 		}
 		raw, err := e.api.do(ctx, "POST", runPath(args[0], *scheduled, "/steps/"+url.PathEscape(args[1])+"/cancel"), nil, nil)
@@ -1165,7 +1165,7 @@ func cancelStepCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error
 		if e.asJSON {
 			return e.printJSON(raw)
 		}
-		fmt.Fprintf(e.out, "cancelled step %s of %s\n", args[1], args[0])
+		fprintf(e.out, "cancelled step %s of %s\n", args[1], args[0])
 		return nil
 	}
 }

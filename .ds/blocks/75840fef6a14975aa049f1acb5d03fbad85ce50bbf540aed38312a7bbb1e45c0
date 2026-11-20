@@ -1,0 +1,9 @@
+func OutputLogger(ctx context.Context, fallback *slog.Logger) *slog.Logger {
+	if cp, ok := ctx.Value(captureKey{}).(*capture); ok {
+		return slog.New(&captureHandler{cp: cp})
+	}
+	if fallback != nil {
+		return fallback
+	}
+	return slog.Default()
+}

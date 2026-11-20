@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -25,7 +24,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-specs:", err)
 		os.Exit(1)
 	}
@@ -36,20 +35,20 @@ func main() {
 var monday = time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	steps := []func(io.Writer) error{calendar, seconds, zones, nextRuns, active, environment, storeJSON}
+func run(ctx context.Context) error {
+	steps := []func() error{calendar, seconds, zones, nextRuns, active, environment, storeJSON}
 	for _, step := range steps {
-		if err := step(out); err != nil {
+		if err := step(); err != nil {
 			return err
 		}
 	}
-	return localCron(ctx, out)
+	return localCron(ctx)
 }
 
 // calendar compiles a structured spec to the expression a person would
 // write, and shows the refusal of both day fields.
-func calendar(out io.Writer) error {
-	fmt.Fprintln(out, "calendar:")
+func calendar() error {
+	fmt.Println("calendar:")
 	// snippet:calendar
 	spec := cron.Calendar{
 		Hour:      []int{9},
@@ -61,15 +60,15 @@ func calendar(out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  %s\n", expr)
+	fmt.Printf("  %s\n", expr)
 	_, err = cron.Calendar{DayOfMonth: []int{13}, DayOfWeek: []time.Weekday{time.Friday}}.Expr()
-	fmt.Fprintf(out, "  ErrCalendar=%t\n", errors.Is(err, cron.ErrCalendar))
+	fmt.Printf("  ErrCalendar=%t\n", errors.Is(err, cron.ErrCalendar))
 	return nil
 }
 
 // seconds parses the six-field dialect and lists its first fires.
-func seconds(out io.Writer) error {
-	fmt.Fprintln(out, "seconds:")
+func seconds() error {
+	fmt.Println("seconds:")
 	// snippet:seconds
 	s, err := cron.ParseSeconds("*/20 * * * * *") // second minute hour day month weekday
 	if err != nil {
@@ -77,31 +76,31 @@ func seconds(out io.Writer) error {
 	}
 	// snippet:end
 	for _, t := range s.Between(monday, monday.Add(time.Minute), time.UTC, 3) {
-		fmt.Fprintf(out, "  %s\n", t.Format("15:04:05"))
+		fmt.Printf("  %s\n", t.Format("15:04:05"))
 	}
 	return nil
 }
 
 // zones loads zones by name and shows what LoadZone refuses.
-func zones(out io.Writer) error {
-	fmt.Fprintln(out, "zones:")
+func zones() error {
+	fmt.Println("zones:")
 	// snippet:zones
 	berlin, err := cron.LoadZone("Europe/Berlin")
 	if err != nil {
 		return err // fails at boot, not as a schedule firing at the wrong hour
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  loaded %s\n", berlin)
+	fmt.Printf("  loaded %s\n", berlin)
 	for _, name := range []string{"", "Local", "Europe/Berln"} {
 		_, err := cron.LoadZone(name)
-		fmt.Fprintf(out, "  %q ErrZone=%t\n", name, errors.Is(err, cron.ErrZone))
+		fmt.Printf("  %q ErrZone=%t\n", name, errors.Is(err, cron.ErrZone))
 	}
 	return nil
 }
 
 // nextRuns lists a Berlin schedule's next fires in its zone and in UTC.
-func nextRuns(out io.Writer) error {
-	fmt.Fprintln(out, "next runs:")
+func nextRuns() error {
+	fmt.Println("next runs:")
 	berlin, err := cron.LoadZone("Europe/Berlin")
 	if err != nil {
 		return err
@@ -118,15 +117,15 @@ func nextRuns(out io.Writer) error {
 		Count:    3,
 	})
 	for _, r := range runs {
-		fmt.Fprintf(out, "  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
+		fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
 	}
 	// snippet:end
 	return nil
 }
 
 // active lists the fires of a schedule limited to one week.
-func active(out io.Writer) error {
-	fmt.Fprintln(out, "active:")
+func active() error {
+	fmt.Println("active:")
 	s, err := cron.Parse("0 9 * * *")
 	if err != nil {
 		return err
@@ -139,14 +138,14 @@ func active(out io.Writer) error {
 	runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign})
 	// snippet:end
 	for _, r := range runs {
-		fmt.Fprintf(out, "  %s\n", r.Local.Format("Mon 2 Jan 15:04"))
+		fmt.Printf("  %s\n", r.Local.Format("Mon 2 Jan 15:04"))
 	}
 	return nil
 }
 
 // environment builds a ScheduleWhen that fires only in production.
-func environment(out io.Writer) error {
-	fmt.Fprintln(out, "environment:")
+func environment() error {
+	fmt.Println("environment:")
 	for _, env := range []string{"production", "staging"} {
 		// snippet:environment
 		when := workflow.AllWhen(
@@ -154,14 +153,14 @@ func environment(out io.Writer) error {
 			func(_ context.Context, t workflow.Tick) bool { return t.At.Weekday() != time.Sunday },
 		)
 		// snippet:end
-		fmt.Fprintf(out, "  %s fires=%t\n", env, when(context.Background(), workflow.Tick{At: monday}))
+		fmt.Printf("  %s fires=%t\n", env, when(context.Background(), workflow.Tick{At: monday}))
 	}
 	return nil
 }
 
 // storeJSON writes a schedule as JSON and reads it back.
-func storeJSON(out io.Writer) error {
-	fmt.Fprintln(out, "json:")
+func storeJSON() error {
+	fmt.Println("json:")
 	berlin, err := cron.LoadZone("Europe/Berlin")
 	if err != nil {
 		return err
@@ -182,16 +181,16 @@ func storeJSON(out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  %s\n", data)
-	fmt.Fprintf(out, "  back: %s %s %s\n", back.Name, back.Cron, back.Location)
+	fmt.Printf("  %s\n", data)
+	fmt.Printf("  back: %s %s %s\n", back.Name, back.Cron, back.Location)
 	_, err = workflow.UnmarshalSchedule([]byte(`{"v":2,"name":"x"}`), nil)
-	fmt.Fprintf(out, "  v2 ErrScheduleJSON=%t\n", errors.Is(err, workflow.ErrScheduleJSON))
+	fmt.Printf("  v2 ErrScheduleJSON=%t\n", errors.Is(err, workflow.ErrScheduleJSON))
 	return nil
 }
 
 // localCron runs a per-node cron on a fake clock for three minutes.
-func localCron(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "local cron:")
+func localCron(ctx context.Context) error {
+	fmt.Println("local cron:")
 	clk := clock.NewFake(monday)
 	ran := make(chan time.Time, 8)
 	// snippet:localcron
@@ -222,7 +221,7 @@ func localCron(ctx context.Context, out io.Writer) error {
 		clk.Advance(time.Minute)
 		select {
 		case at := <-ran:
-			fmt.Fprintf(out, "  ran for %s\n", at.Format("15:04"))
+			fmt.Printf("  ran for %s\n", at.Format("15:04"))
 		case <-time.After(5 * time.Second):
 			cancel()
 			return errors.New("the local cron did not run")

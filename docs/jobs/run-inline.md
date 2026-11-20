@@ -12,7 +12,7 @@ Sometimes there is nothing to queue: a command-line tool imports one file, a one
 <!-- snippet: examples/run-inline/main.go#inline -->
 ```go
 res, err := workflow.RunInline(ctx, importUsers(), workflow.Job{Payload: []byte(`"users.csv"`)},
-	workflow.InlineMiddleware(logSteps(out)), // the same middleware the driver gets
+	workflow.InlineMiddleware(logSteps()), // the same middleware the driver gets
 	workflow.InlineSleep(func(_ context.Context, d time.Duration) error {
 		waited = append(waited, d) // a test skips the backoff; the default really waits
 		return nil
@@ -21,7 +21,7 @@ res, err := workflow.RunInline(ctx, importUsers(), workflow.Job{Payload: []byte(
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "store output: %s\n", res.Outputs["store"])
+fmt.Printf("store output: %s\n", res.Outputs["store"])
 ```
 
 Steps run one at a time in a fixed order: of the steps whose parents have all succeeded, the first in declaration order goes next. Each gets its `StepInput`, a `StepInfo` whose `RunID` is `workflow.InlineRunID`, its timeout, and its retry policy (`EffectiveRetriesFor`, so `Job.Retry` applies too). The result holds every succeeded step's output and every step's attempt count.
@@ -42,13 +42,13 @@ approval := workflow.Workflow{Name: "approve", Steps: []workflow.Step{
 	{Name: "wait", Wait: &workflow.WaitSpec{Event: "approved", Key: "doc-7"}},
 }}
 _, err = workflow.RunInline(ctx, approval, workflow.Job{})
-fmt.Fprintln(out, "a wait step without InlineEvents is refused:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("a wait step without InlineEvents is refused:", errors.Is(err, workflow.ErrUnsupported))
 res, err = workflow.RunInline(ctx, approval, workflow.Job{},
 	workflow.InlineEvents(workflow.Event{Name: "approved", Key: "doc-7", Payload: []byte(`"by ada"`)}))
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "wait output: %s\n", res.Outputs["wait"])
+fmt.Printf("wait output: %s\n", res.Outputs["wait"])
 ```
 
 ## Try it

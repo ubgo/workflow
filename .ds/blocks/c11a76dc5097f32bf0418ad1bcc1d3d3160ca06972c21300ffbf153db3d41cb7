@@ -1,0 +1,5 @@
+func AllowReservedPrefix(ctx context.Context, prefix string) context.Context {
+	old := allowFrom(ctx)
+	a := reservedAllow{keys: old.keys, prefixes: append(slices.Clone(old.prefixes), prefix)}
+	return context.WithValue(ctx, reservedAllowKey{}, a)
+}

@@ -1,0 +1,3 @@
+type StepEventSink interface {
+	RecordStepEvent(ctx context.Context, e StepEvent)
+}

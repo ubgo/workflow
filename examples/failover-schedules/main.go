@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -35,7 +34,7 @@ var start = time.Date(2026, 1, 5, 8, 30, 0, 0, time.UTC)
 const tickWait = 5 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "failover-schedules:", err)
 		os.Exit(1)
 	}
@@ -53,18 +52,18 @@ func side(id string) string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- default: schedules on the primary only")
-	if err := demo(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	fmt.Println("-- default: schedules on the primary only")
+	if err := demo(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- WithSchedulesOnBoth: schedules on both backends")
-	return demo(ctx, out, failover.WithSchedulesOnBoth())
+	fmt.Println("-- WithSchedulesOnBoth: schedules on both backends")
+	return demo(ctx, failover.WithSchedulesOnBoth())
 }
 
 // demo makes one hourly schedule through a failover client built with
 // opts, lists it, lets one tick fall due, and pauses the schedule.
-func demo(ctx context.Context, out io.Writer, opts ...failover.Option) error {
+func demo(ctx context.Context, opts ...failover.Option) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -97,13 +96,13 @@ func demo(ctx context.Context, out io.Writer, opts ...failover.Option) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "Schedule returned an ID for:", side(string(id)))
+	fmt.Println("Schedule returned an ID for:", side(string(id)))
 	infos, err := c.Schedules(ctx)
 	if err != nil {
 		return err
 	}
 	for _, s := range infos { // one entry per copy, its ID prefixed by the backend
-		fmt.Fprintf(out, "  listed on %s\n", side(string(s.ID)))
+		fmt.Printf("  listed on %s\n", side(string(s.ID)))
 	}
 	// snippet:end
 
@@ -122,7 +121,7 @@ func demo(ctx context.Context, out io.Writer, opts ...failover.Option) error {
 		}
 	}
 	slices.Sort(sides)
-	fmt.Fprintf(out, "09:00 fired on: %s\n", strings.Join(sides, ", "))
+	fmt.Printf("09:00 fired on: %s\n", strings.Join(sides, ", "))
 
 	// snippet:pause
 	// The ID Schedule returned pauses every copy; a listed ID pauses one.
@@ -134,7 +133,7 @@ func demo(ctx context.Context, out io.Writer, opts ...failover.Option) error {
 		return err
 	}
 	for _, s := range infos {
-		fmt.Fprintf(out, "  %s paused: %v\n", side(string(s.ID)), s.Paused)
+		fmt.Printf("  %s paused: %v\n", side(string(s.ID)), s.Paused)
 	}
 	return nil
 }

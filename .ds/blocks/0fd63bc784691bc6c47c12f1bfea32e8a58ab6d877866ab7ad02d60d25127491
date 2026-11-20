@@ -1,0 +1,19 @@
+func RecordEventLevel(ctx context.Context, level slog.Level, msg string, attrs ...slog.Attr) {
+	sinks, _ := ctx.Value(stepEventKey{}).([]StepEventSink)
+	if len(sinks) == 0 {
+		return
+	}
+	e := StepEvent{Message: cutString(msg, MaxStepEventMessage), Level: level}
+	e.Step, _ = StepInfoFrom(ctx)
+	n := min(len(attrs), MaxStepEventAttrs)
+	if n > 0 {
+		e.Attrs = make([]EventAttr, 0, n)
+		for _, a := range attrs[:n] {
+			v := a.Value.Resolve().String()
+			e.Attrs = append(e.Attrs, EventAttr{Key: cutString(a.Key, MaxStepEventValue), Value: cutString(v, MaxStepEventValue)})
+		}
+	}
+	for _, s := range sinks {
+		s.RecordStepEvent(ctx, e)
+	}
+}

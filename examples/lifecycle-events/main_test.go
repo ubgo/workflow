@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun checks every line the guides show: the lifecycle events of a
@@ -12,8 +13,8 @@ import (
 // and attempt; and Stuck reporting a hung attempt once while it keeps
 // running to success.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- lifecycle
@@ -34,7 +35,7 @@ func TestRun(t *testing.T) {
   report step=build attempt=1 node=worker-1 started=09:00 running=6m0s
   the attempt kept running and ended succeeded
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

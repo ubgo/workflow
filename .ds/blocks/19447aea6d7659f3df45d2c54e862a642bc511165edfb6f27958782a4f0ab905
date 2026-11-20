@@ -1,0 +1,9 @@
+func WithTxAttempts(n int) Option {
+	return func(s *Store) error {
+		if n < 1 {
+			return fmt.Errorf("%w: sqlrecorder.WithTxAttempts(%d)", workflow.ErrInvalid, n)
+		}
+		s.attempts = n
+		return nil
+	}
+}

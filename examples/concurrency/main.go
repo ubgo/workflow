@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"slices"
@@ -52,14 +51,14 @@ func (g gated) handler(ctx context.Context, _ []byte) ([]byte, error) {
 }
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "concurrency:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	g := gated{started: make(chan string, 16), gates: map[string]chan struct{}{}}
 	for _, n := range []string{"acme-1", "acme-2", "globex-1", "sync-1", "preview-1", "preview-2", "mail-1", "mail-2", "mail-3"} {
 		g.gates[n] = make(chan struct{})
@@ -129,7 +128,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 
 	// One run per tenant: acme's second report waits, globex's runs.
-	fmt.Fprintln(out, "per key:")
+	fmt.Println("per key:")
 	// An enqueue error returns at once: the receives from g.started below
 	// would otherwise wait forever for a run that was never created.
 	a1, err := enqueue("report", "acme-1", map[string]string{"tenant": "acme"})
@@ -146,24 +145,24 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	<-g.started
 	<-g.started
-	fmt.Fprintf(out, "  acme-1 %s, acme-2 %s, globex-1 %s\n", status(a1), status(a2), status(g1))
+	fmt.Printf("  acme-1 %s, acme-2 %s, globex-1 %s\n", status(a1), status(a2), status(g1))
 	close(g.gates["acme-1"])
-	fmt.Fprintln(out, "  acme-1 finished, started:", <-g.started)
+	fmt.Println("  acme-1 finished, started:", <-g.started)
 	close(g.gates["acme-2"])
 	close(g.gates["globex-1"])
 
-	fmt.Fprintln(out, "drop newest:")
+	fmt.Println("drop newest:")
 	if _, err := enqueue("sync", "sync-1", nil); err != nil {
 		return err
 	}
 	<-g.started
 	// snippet:dropped
 	s2, err := enqueue("sync", "sync-2", nil) // the bucket is full
-	fmt.Fprintf(out, "  second sync: error %v, status %s\n", err, status(s2))
+	fmt.Printf("  second sync: error %v, status %s\n", err, status(s2))
 	// snippet:end
 	close(g.gates["sync-1"])
 
-	fmt.Fprintln(out, "cancel in progress:")
+	fmt.Println("cancel in progress:")
 	p1, err := enqueue("preview", "preview-1", nil)
 	if err != nil {
 		return err
@@ -173,10 +172,10 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  started %s; preview-1 %s, preview-2 %s\n", <-g.started, status(p1), status(p2))
+	fmt.Printf("  started %s; preview-1 %s, preview-2 %s\n", <-g.started, status(p1), status(p2))
 	close(g.gates["preview-2"])
 
-	fmt.Fprintln(out, "rate limit:")
+	fmt.Println("rate limit:")
 	d := map[string]string{"domain": "example.com"}
 	for _, n := range []string{"mail-1", "mail-2"} {
 		if _, err := enqueue("mail", n, d); err != nil {
@@ -189,23 +188,23 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	first := []string{<-g.started, <-g.started}
 	slices.Sort(first) // the two start on two workers, in either order
-	fmt.Fprintf(out, "  started %s; mail-3 %s\n", strings.Join(first, " and "), status(m3))
+	fmt.Printf("  started %s; mail-3 %s\n", strings.Join(first, " and "), status(m3))
 	clk.Advance(time.Minute)
-	fmt.Fprintf(out, "  a minute later, started %s\n", <-g.started)
+	fmt.Printf("  a minute later, started %s\n", <-g.started)
 	for _, n := range []string{"mail-1", "mail-2", "mail-3"} {
 		close(g.gates[n])
 	}
 
-	if err := priority(ctx, out); err != nil {
+	if err := priority(ctx); err != nil {
 		return err
 	}
-	return refusals(ctx, out)
+	return refusals(ctx)
 }
 
 // priority runs one worker, holds it busy, enqueues three jobs with
 // different priorities and prints the order they run in.
-func priority(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "priority:")
+func priority(ctx context.Context) error {
+	fmt.Println("priority:")
 	busy := make(chan struct{})
 	holding := make(chan struct{})
 	ran := make(chan string, 4)
@@ -247,7 +246,7 @@ func priority(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	close(busy)
-	fmt.Fprintf(out, "  %s, %s, %s\n", <-ran, <-ran, <-ran)
+	fmt.Printf("  %s, %s, %s\n", <-ran, <-ran, <-ran)
 	return nil
 }
 
@@ -255,8 +254,8 @@ func priority(ctx context.Context, out io.Writer) error {
 // driver runs Go functions only and refuses an expression at Start; the
 // Hatchet driver evaluates CEL only and refuses a Go function at Register
 // (it connects only at Start, so Register runs without a server).
-func refusals(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "refusals:")
+func refusals(ctx context.Context) error {
+	fmt.Println("refusals:")
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	// snippet:key-forms
 	byExpr := workflow.Workflow{
@@ -275,11 +274,11 @@ func refusals(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	err := m.Start(ctx)
-	fmt.Fprintln(out, "  memory, KeyExpr:", err)
+	fmt.Println("  memory, KeyExpr:", err)
 	m.Stop()
 
 	err = hatchet.New(hatchet.Config{}).Register(byFunc)
-	fmt.Fprintln(out, "  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
 	// snippet:end
 	return nil
 }

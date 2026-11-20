@@ -1,0 +1,15 @@
+func ValidateSource(s Source) error {
+	if s == "" {
+		return invalidf("source is empty")
+	}
+	if len(s) > MaxSourceLen {
+		return invalidf("source %q is longer than %d bytes", s, MaxSourceLen)
+	}
+	for _, r := range s {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-'
+		if !ok {
+			return invalidf("source %q has the character %q; use lower-case letters, digits and . _ -", s, r)
+		}
+	}
+	return nil
+}

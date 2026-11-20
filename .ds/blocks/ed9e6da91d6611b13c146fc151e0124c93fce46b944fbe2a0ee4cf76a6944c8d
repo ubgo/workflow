@@ -1,0 +1,37 @@
+func CaptureOutput(sink OutputSink, opts ...CaptureOption) workflow.Middleware {
+	cfg := captureConfig{clk: clock.Real{}, level: slog.LevelInfo, onSinkErr: func(context.Context, Output, error) {}}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		if sink == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, hasInfo := workflow.StepInfoFrom(ctx)
+			if cfg.only != nil && !cfg.only(info) {
+				return next(ctx, in)
+			}
+			cp := &capture{clk: cfg.clk, level: cfg.level, tee: cfg.tee}
+			started := cfg.clk.Now()
+			// The capture is also a StepEventSink, so an event the step
+			// records with workflow.RecordEvent lands with its log records.
+			sctx := workflow.WithStepEventSink(context.WithValue(ctx, captureKey{}, cp), cp)
+			out, err := next(sctx, in)
+			if err == nil && cfg.failOnly {
+				return out, err
+			}
+			o := Output{Info: info, HasInfo: hasInfo, Started: started, Finished: cfg.clk.Now(), Err: err}
+			cp.mu.Lock()
+			o.Records = cp.recs
+			cp.mu.Unlock()
+			if cfg.result && out != nil {
+				o.Result = append([]byte(nil), out...)
+			}
+			if serr := sink.Deliver(context.WithoutCancel(ctx), o); serr != nil {
+				cfg.onSinkErr(ctx, o, serr)
+			}
+			return out, err
+		}
+	}
+}

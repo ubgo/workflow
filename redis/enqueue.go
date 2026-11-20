@@ -106,9 +106,15 @@ func (c *Client) createArgs(id string, job workflow.Job, idem string, delayed bo
 	if !job.RunAt.IsZero() {
 		runAt = job.RunAt.UnixNano()
 	}
-	return []any{id, job.Workflow, string(job.Payload), labels, job.Priority, idem,
+	args := []any{id, job.Workflow, string(job.Payload), labels, job.Priority, idem,
 		now.UnixNano(), now.UnixMilli(), due, sid, retry, now.UnixMilli(), queue, job.Queue, adm, chain,
-		job.Tenant, runAt, rto}, nil
+		job.Tenant, runAt, rto}
+	// The Lua create helper reads exactly createArity values per run; a
+	// field added here without the script would shift every later value.
+	if len(args) != createArity {
+		return nil, fmt.Errorf("redis: create args: %d values, want %d", len(args), createArity)
+	}
+	return args, nil
 }
 
 // runDeadline is when a run of wf admitted now as job times out

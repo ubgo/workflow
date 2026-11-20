@@ -81,7 +81,7 @@ report, err := c.Enqueue(ctx, workflow.Job{Workflow: "build-report", Payload: []
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, <-ran) // the report runs; the paused mail queue holds the digest
+fmt.Println(<-ran) // the report runs; the paused mail queue holds the digest
 if err := waitDone(ctx, c, report); err != nil {
 	return err
 }
@@ -89,7 +89,7 @@ st, err := c.Status(ctx, held)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "digest while mail is paused:", st)
+fmt.Println("digest while mail is paused:", st)
 if err := c.Resume(ctx, workflow.PauseQueue("mail")); err != nil {
 	return err
 }

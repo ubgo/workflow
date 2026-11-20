@@ -44,7 +44,7 @@ page, err := c.Runs(ctx, workflow.RunQuery{Workflow: "nightly-report"}) // run q
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "runs on the jobs client:", len(page.Runs))
+fmt.Println("runs on the jobs client:", len(page.Runs))
 ```
 
 ## What it can do
@@ -62,9 +62,9 @@ err = c.Register(workflow.Workflow{
 	CronOverlap: workflow.OverlapSkip, // the scheduler would see only its forwarder runs
 	Steps:       []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 })
-fmt.Fprintln(out, "CronOverlap refused:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("CronOverlap refused:", errors.Is(err, workflow.ErrUnsupported))
 _, err = c.TriggerSchedule(ctx, "cron:nightly-report:0")
-fmt.Fprintln(out, "TriggerSchedule refused:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("TriggerSchedule refused:", errors.Is(err, workflow.ErrUnsupported))
 ```
 
 ## Several nodes
@@ -95,6 +95,17 @@ TriggerSchedule refused: true
 
 The 02:00 tick fires on the scheduler client's fake clock and the step runs on the jobs client, with the schedule's ID and the tick time on the run. `go test ./hybrid-placement` checks every line.
 
+## Record run history
+
+Apply a [run recorder](../observability/run-recorder.md) to the hybrid client, `workflow.Use(hybrid.New(scheduler, jobs), rec.Plugin())`, and register through the client `Use` returned. Its pieces land on the jobs side:
+
+- **Steps.** `Register` hands the jobs client the workflow with the recorder's step middleware already around each step; the forwarder the scheduler runs is the hybrid client's own step, so it is never recorded.
+- **Run ends.** `OnRunFinished` goes to the jobs client, so ends are delivered as that driver delivers them (every end on memory, the SQL driver and Redis).
+- **Enqueues.** A job the app enqueues on the hybrid client passes the recorder's enqueue middleware. A cron fire does not: the forwarder enqueues it on the jobs client directly, so the run is recorded from its first step, with source `schedule` and the schedule ID as reference (the forwarder passes the schedule labels on).
+- **The Reconciler.** Pass it the client `Use` returned: run queries go to the jobs client, so a pass backfills and checks the jobs, never the forwarder runs.
+
+The recorder's end-to-end suite does not run on the hybrid client itself; it runs on the drivers a jobs client is built from.
+
 ## Pitfalls
 
 - **An in-process scheduler forgets on restart.** Run-time schedules made with `Client.Schedule` on a memory scheduler are lost when the process stops; declare recurring work as `Workflow.Cron` so every boot restores it, or put the schedules on the durable driver.
@@ -108,4 +119,5 @@ The 02:00 tick fires on the scheduler client's fake clock and the step runs on t
 - [Choose a driver](../choosing/drivers.md), [The in-memory driver](memory.md), [The SQL driver](sqlstore.md), [The Redis driver](redis.md).
 - [Cron schedules](../schedules/cron.md), [Local cron](../schedules/local-cron.md) (per-node functions with no queue at all).
 - [Nodes and health](../operations/nodes.md).
+- [Record run history](../observability/run-recorder.md).
 - Example: [examples/hybrid-placement](../../examples/hybrid-placement/).

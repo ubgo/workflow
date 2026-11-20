@@ -41,14 +41,6 @@ func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 	return nil
 }
 
-// observing reports whether any lifecycle observer is registered (fixed at
-// Start, so read without a lock afterwards would race only before Start).
-func (c *Client) observing() bool {
-	c.lc.mu.Lock()
-	defer c.lc.mu.Unlock()
-	return len(c.lc.observers) > 0
-}
-
 // holdEvents marks run id as being inserted: its events wait for Inserted.
 func (c *Client) holdEvents(id string) {
 	c.lc.mu.Lock()

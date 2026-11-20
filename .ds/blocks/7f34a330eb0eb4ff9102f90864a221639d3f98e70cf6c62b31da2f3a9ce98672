@@ -1,0 +1,44 @@
+func (r *Recorder) StepMiddleware() workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := workflow.StepInfoFrom(ctx)
+			if !ok || info.RunID.IsZero() {
+				return next(ctx, in)
+			}
+			ref := workflow.RunRef{RunID: info.RunID}
+			src, srcRef := r.sourceOf(info.Labels)
+			var inBody []byte
+			inSize := len(in)
+			if r.stepBodies {
+				inBody, inSize = r.body(PayloadInfo{Kind: PayloadStepInput, Workflow: info.Workflow, Step: info.Step}, in)
+			}
+			start := StepStart{
+				Ref: ref, Workflow: info.Workflow, Queue: info.Queue, Tenant: info.Tenant, Labels: info.Labels,
+				Source: src, SourceRef: srcRef, Step: info.Step, Attempt: info.Attempt, Node: info.Node,
+				Input: inBody, InputSize: inSize, At: r.clk.Now(),
+			}
+			r.write(ctx, OpStartStep, ref, func(wctx context.Context) error { return r.store.StartStep(wctx, start) })
+
+			sctx := workflow.WithStepEventSink(ctx, stepSink{r: r, info: info})
+			sctx = workflow.WithOutcomeSetter(sctx, outcomeSetter{r: r, ref: ref})
+			out, err := next(sctx, in)
+
+			end := StepEnd{Ref: ref, Step: info.Step, Attempt: info.Attempt, Node: info.Node, ErrorHistory: r.errorHistory, At: r.clk.Now()}
+			_, snoozed := workflow.SnoozeDelay(err)
+			switch {
+			case err == nil:
+				end.Status = StepSucceeded
+				end.OutputSize = len(out)
+				if r.stepBodies {
+					end.Output, end.OutputSize = r.body(PayloadInfo{Kind: PayloadStepOutput, Workflow: info.Workflow, Step: info.Step}, out)
+				}
+			case snoozed:
+				end.Status, end.Error = StepSnoozed, err.Error()
+			default:
+				end.Status, end.Error, end.Stack = StepFailed, err.Error(), workflow.StackOf(err)
+			}
+			r.write(ctx, OpEndStep, ref, func(wctx context.Context) error { return r.store.EndStep(wctx, end) })
+			return out, err
+		}
+	}
+}

@@ -1,0 +1,11 @@
+func WithDefaultSource(s workflow.Source) Option {
+	return func(r *Recorder) error {
+		if s != "" {
+			if err := workflow.ValidateSource(s); err != nil {
+				return fmt.Errorf("recorder.WithDefaultSource: %w", err)
+			}
+		}
+		r.defaultSource = s
+		return nil
+	}
+}

@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -23,22 +22,22 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "upstream-limits:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := bucket(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := bucket(ctx); err != nil {
 		return err
 	}
-	return perPeriod(ctx, out)
+	return perPeriod(ctx)
 }
 
-func bucket(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "bucket:")
+func bucket(ctx context.Context) error {
+	fmt.Println("bucket:")
 	clk := clock.NewFake(time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC))
 	// snippet:limit
 	limit, err := workflow.NewUpstreamLimit(&workflow.MemoryBuckets{}, workflow.BucketSpec{
@@ -53,12 +52,12 @@ func bucket(ctx context.Context, out io.Writer) error {
 	for i := 1; i <= 5; i++ {
 		err := limit.Take(ctx, "shop:acme", 1) // one bucket per credential
 		wait, _ := workflow.RetryAfterDelay(err, 0)
-		fmt.Fprintf(out, "  call %d: throttled=%v retry after %s\n", i, errors.Is(err, workflow.ErrThrottled), wait)
+		fmt.Printf("  call %d: throttled=%v retry after %s\n", i, errors.Is(err, workflow.ErrThrottled), wait)
 	}
 	// snippet:end
 	clk.Advance(500 * time.Millisecond)
-	fmt.Fprintf(out, "  after 500ms: %v\n", limit.Take(ctx, "shop:acme", 1))
-	fmt.Fprintf(out, "  another key has its own bucket: %v\n", limit.Take(ctx, "shop:globex", 1))
+	fmt.Printf("  after 500ms: %v\n", limit.Take(ctx, "shop:acme", 1))
+	fmt.Printf("  another key has its own bucket: %v\n", limit.Take(ctx, "shop:globex", 1))
 
 	// snippet:observe
 	// The response said "X-Shopify-Shop-Api-Call-Limit: 1/4": other apps
@@ -71,17 +70,17 @@ func bucket(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  after Observe(1), a call of cost 3 waits %s\n", wait)
+	fmt.Printf("  after Observe(1), a call of cost 3 waits %s\n", wait)
 	err = limit.Take(ctx, "shop:acme", 5)
-	fmt.Fprintf(out, "  cost above capacity: ErrInvalid=%v permanent=%v\n", errors.Is(err, workflow.ErrInvalid), workflow.IsPermanent(err))
+	fmt.Printf("  cost above capacity: ErrInvalid=%v permanent=%v\n", errors.Is(err, workflow.ErrInvalid), workflow.IsPermanent(err))
 	err = limit.TakeOrSnooze(ctx, "shop:acme", 1)
 	d, snoozed := workflow.SnoozeDelay(err)
-	fmt.Fprintf(out, "  TakeOrSnooze on a full bucket: snooze=%v for %s\n", snoozed, d)
+	fmt.Printf("  TakeOrSnooze on a full bucket: snooze=%v for %s\n", snoozed, d)
 	return nil
 }
 
-func perPeriod(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "period:")
+func perPeriod(ctx context.Context) error {
+	fmt.Println("period:")
 	berlin, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
 		return err
@@ -93,10 +92,10 @@ func perPeriod(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  %-7s %s\n", p, k)
+		fmt.Printf("  %-7s %s\n", p, k)
 	}
 	_, err = workflow.PeriodKey(at, workflow.PeriodMonth, time.Local)
-	fmt.Fprintf(out, "  time.Local refused: %v\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("  time.Local refused: %v\n", errors.Is(err, workflow.ErrInvalid))
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -132,9 +131,9 @@ func perPeriod(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  key %s\n", job.IdempotencyKey)
-	fmt.Fprintf(out, "  second enqueue in the month returned the first run: %v\n", second == first)
+	fmt.Printf("  key %s\n", job.IdempotencyKey)
+	fmt.Printf("  second enqueue in the month returned the first run: %v\n", second == first)
 	_, err = workflow.OncePerPeriod(job, "customer-42", workflow.PeriodMonth, at, berlin)
-	fmt.Fprintf(out, "  a job that already has a key is refused: %v\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("  a job that already has a key is refused: %v\n", errors.Is(err, workflow.ErrInvalid))
 	return nil
 }

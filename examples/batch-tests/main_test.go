@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 
 	"github.com/ubgo/workflow"
 	"github.com/ubgo/workflow/batch"
@@ -15,12 +16,12 @@ import (
 
 // TestRun runs the program and checks the lines its README shows.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "notified ada\npublish enqueued\n"; out.String() != want {
-		t.Errorf("output:\n%s\nwant:\n%s", out.String(), want)
+	if want := "notified ada\npublish enqueued\n"; out != want {
+		t.Errorf("output:\n%s\nwant:\n%s", out, want)
 	}
 }
 

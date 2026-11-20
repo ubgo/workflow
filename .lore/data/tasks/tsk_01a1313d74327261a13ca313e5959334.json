@@ -1,11 +1,13 @@
 {
+  "_hlc": "2026-10-12T18:16:03.120Z/0000/",
   "_table": "tasks",
-  "_v": 1,
+  "_v": 2,
   "assigned_to_actor_id": null,
   "body": null,
   "commitment": "accepted",
   "completed_at": "2026-10-12T18:16:03.120599000Z",
   "created_at": "2026-10-12T17:51:13.458154000Z",
+  "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
   "deferred_until": null,
   "due_at": null,
@@ -19,5 +21,6 @@
   "status": "done",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
   "title": "Parity batch + workflowtest: Manager.Add, RetryFailed, pruning, Before/Progress, batch-and-wait step, fake batch/chain assertions, Fake pass-through, RunStep",
-  "updated_at": "2026-10-12T18:16:03.120612000Z"
+  "updated_at": "2026-10-12T18:16:03.120612000Z",
+  "updated_by": "act_00000000000070008000000000000000"
 }

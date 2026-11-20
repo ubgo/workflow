@@ -1,0 +1,1 @@
+type ErrorFunc func(ctx context.Context, op WriteOp, ref workflow.RunRef, err error)

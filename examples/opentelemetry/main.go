@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -34,19 +33,19 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "opentelemetry:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- default: the step span is a child of the enqueue span")
-	if err := traced(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	fmt.Println("-- default: the step span is a child of the enqueue span")
+	if err := traced(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "-- ParentNewRootLink and span names of our own")
+	fmt.Println("-- ParentNewRootLink and span names of our own")
 	// snippet:parenting
 	opts := []wfotel.Option{
 		wfotel.WithParenting(wfotel.ParentNewRootLink),
@@ -54,12 +53,12 @@ func run(ctx context.Context, out io.Writer) error {
 		wfotel.WithEnqueueSpanName(func(job workflow.Job) string { return "enqueue " + job.Workflow }),
 	}
 	// snippet:end
-	return traced(ctx, out, opts...)
+	return traced(ctx, opts...)
 }
 
 // traced runs one job through a client instrumented with opts and prints
 // the spans and metrics it produced.
-func traced(ctx context.Context, out io.Writer, opts ...wfotel.Option) error {
+func traced(ctx context.Context, opts ...wfotel.Option) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -116,13 +115,13 @@ func traced(ctx context.Context, out io.Writer, opts ...wfotel.Option) error {
 	}
 	enq, step := byKind[trace.SpanKindProducer], byKind[trace.SpanKindConsumer]
 	for _, s := range []tracetest.SpanStub{enq, step} {
-		fmt.Fprintf(out, "span %q kind=%s %s\n", s.Name, s.SpanKind, attrs(s.Attributes))
+		fmt.Printf("span %q kind=%s %s\n", s.Name, s.SpanKind, attrs(s.Attributes))
 	}
-	fmt.Fprintf(out, "same trace: %v, step parent is the enqueue span: %v, step links to it: %v\n",
+	fmt.Printf("same trace: %v, step parent is the enqueue span: %v, step links to it: %v\n",
 		step.SpanContext.TraceID() == enq.SpanContext.TraceID(),
 		step.Parent.SpanID() == enq.SpanContext.SpanID(),
 		slices.ContainsFunc(step.Links, func(l sdktrace.Link) bool { return l.SpanContext.SpanID() == enq.SpanContext.SpanID() }))
-	fmt.Fprintf(out, "run ID on the enqueue span: %v\n", slices.Contains(enq.Attributes, wfotel.AttrRunID.String(ref.RunID.String())))
+	fmt.Printf("run ID on the enqueue span: %v\n", slices.Contains(enq.Attributes, wfotel.AttrRunID.String(ref.RunID.String())))
 
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
@@ -130,14 +129,14 @@ func traced(ctx context.Context, out io.Writer, opts ...wfotel.Option) error {
 	}
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
-			fmt.Fprintf(out, "metric %s %s\n", m.Name, metricAttrs(m.Data))
+			fmt.Printf("metric %s %s\n", m.Name, metricAttrs(m.Data))
 		}
 	}
 
 	// snippet:twice
 	twice := middleware.WrapClient(client, inst.Enqueue())
 	_, err = twice.Enqueue(ctx, workflow.Job{Workflow: "send-email"})
-	fmt.Fprintln(out, "Enqueue middleware twice:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("Enqueue middleware twice:", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	return nil
 }

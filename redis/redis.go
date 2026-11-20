@@ -282,7 +282,6 @@ type Client struct {
 	heldQ           map[string]int                  // held runs per queue
 	observers       []workflow.RunFinishedFunc
 	tickObservers   []workflow.TickObserver
-	rateWake        time.Time // earliest moment a rate-limited pending run may start
 	lastHK          time.Time // last housekeeping pass, on the lease clock
 	notifyCh        chan struct{}
 	startedAt       time.Time // when Start ran, on the lease clock

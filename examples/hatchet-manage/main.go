@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -42,22 +41,22 @@ const (
 const envToken = "HATCHET_CLIENT_TOKEN"
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "hatchet-manage:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := refusals(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := refusals(ctx); err != nil {
 		return err
 	}
 	if os.Getenv(envToken) == "" {
-		fmt.Fprintln(out, envToken, "is not set: the live run is skipped")
+		fmt.Println(envToken, "is not set: the live run is skipped")
 		return nil
 	}
-	return live(ctx, out)
+	return live(ctx)
 }
 
 // noop is a step that returns its input.
@@ -65,25 +64,25 @@ func noop(_ context.Context, in []byte) ([]byte, error) { return in, nil }
 
 // refusals shows the parity features Hatchet cannot honour, refused
 // before anything connects.
-func refusals(ctx context.Context, out io.Writer) error {
+func refusals(ctx context.Context) error {
 	// snippet:refusals
 	c := hatchet.New(hatchet.Config{})
 	// Hatchet fixes a task's retries when it is declared: no deadline.
 	err := c.Register(workflow.Workflow{Name: "until", Retry: workflow.RetryPolicy{Max: 3, Until: time.Hour},
 		Steps: []workflow.Step{{Name: "only", Run: noop}}})
-	fmt.Fprintf(out, "Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 	// ... and no per-dispatch policy either.
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "any", Retry: &workflow.RetryPolicy{Max: 5}})
-	fmt.Fprintf(out, "Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 	// Each queue is its own Hatchet worker: queues cannot be ordered.
 	err = hatchet.New(hatchet.Config{Queues: []workflow.QueueConfig{{Name: "high", Priority: 10}}}).Start(ctx)
-	fmt.Fprintf(out, "QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 	// The driver says what it cannot do, so an app can check first.
 	for _, cp := range []workflow.Caps{workflow.CapPauseWorkflow, workflow.CapDeleteRun, workflow.CapDiscard} {
-		fmt.Fprintf(out, "%v: %v\n", cp, c.Capabilities().Has(cp))
+		fmt.Printf("%v: %v\n", cp, c.Capabilities().Has(cp))
 	}
 	// snippet:end
 	return nil
@@ -110,7 +109,7 @@ func waitFor(ctx context.Context, c workflow.Client, ref workflow.RunRef, want w
 // live runs the management calls on the engine named by the
 // HATCHET_CLIENT_* variables. Workflow names carry a random suffix so
 // repeated runs on one engine do not see each other's runs.
-func live(ctx context.Context, out io.Writer) error {
+func live(ctx context.Context) error {
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	report := "example-report-" + suffix
 	var attempts atomic.Int32
@@ -172,7 +171,7 @@ func live(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
+		fmt.Printf("failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
 	}
 	// snippet:end
 
@@ -185,7 +184,7 @@ func live(ctx context.Context, out io.Writer) error {
 	if err := waitFor(ctx, c, ref, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "after retry: succeeded, render attempts=%d\n", attempts.Load())
+	fmt.Printf("after retry: succeeded, render attempts=%d\n", attempts.Load())
 
 	// snippet:schedules
 	id, err := c.Schedule(ctx, workflow.Schedule{Workflow: report, Name: "nightly", Cron: "0 2 * * *", Location: time.UTC})
@@ -196,14 +195,14 @@ func live(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "same name, same definition, same ID:", again == id)
+	fmt.Println("same name, same definition, same ID:", again == id)
 	list, err := c.Schedules(ctx)
 	if err != nil {
 		return err
 	}
 	for _, s := range list {
 		if s.Workflow == report {
-			fmt.Fprintf(out, "schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
+			fmt.Printf("schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
 		}
 	}
 	// snippet:end
@@ -223,7 +222,7 @@ func live(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
+	fmt.Println("workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
 	if err := c.Resume(ctx, workflow.PauseWorkflow(report)); err != nil {
 		return err
 	}
@@ -231,7 +230,7 @@ func live(ctx context.Context, out io.Writer) error {
 	if err := waitFor(ctx, c, held, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "after resume: succeeded")
+	fmt.Println("after resume: succeeded")
 
 	// snippet:drain
 	dctx, stop := context.WithTimeout(ctx, drainTimeout)
@@ -243,6 +242,6 @@ func live(ctx context.Context, out io.Writer) error {
 	}
 	<-c.Done()
 	// snippet:end
-	fmt.Fprintln(out, "drained")
+	fmt.Println("drained")
 	return nil
 }

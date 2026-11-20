@@ -1,0 +1,13 @@
+type Recorder struct {
+	store         Store
+	clk           clock.Clock
+	redactor      Redactor
+	maxPayload    int
+	stepBodies    bool
+	errorHistory  int
+	defaultSource workflow.Source
+	results       workflow.ResultReader
+	onError       ErrorFunc
+	writeTimeout  time.Duration
+	name          string
+}

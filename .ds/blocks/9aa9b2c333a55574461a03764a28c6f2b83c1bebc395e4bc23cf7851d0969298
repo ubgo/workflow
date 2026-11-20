@@ -1,0 +1,9 @@
+func WithBatch(n int) ReconcileOption {
+	return func(r *Reconciler) error {
+		if n < 1 || n > workflow.MaxRunsLimit {
+			return fmt.Errorf("%w: recorder.WithBatch(%d) is outside [1, %d]", workflow.ErrInvalid, n, workflow.MaxRunsLimit)
+		}
+		r.batch = n
+		return nil
+	}
+}

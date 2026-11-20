@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -36,21 +35,21 @@ var errDown = errors.New("payments api down")
 var retries = map[string]int{"charge": 2, "validate": 2}
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "middleware-stack:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := showChainOrder(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := showChainOrder(ctx); err != nil {
 		return err
 	}
 
 	// The log lines go to out without the time and the random run ID, so
 	// the output is the same on every run.
-	logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey || a.Key == "run_id" || a.Key == "stack" {
@@ -78,7 +77,7 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 
 	// snippet:throttle
-	circuits := &announcingCircuit{MemoryCircuit: middleware.NewMemoryCircuit(clk), out: out}
+	circuits := &announcingCircuit{MemoryCircuit: middleware.NewMemoryCircuit(clk)}
 	throttle, err := middleware.ThrottleErrors(middleware.ThrottleConfig{
 		Clock:     clk,
 		Store:     circuits, // nil means a MemoryCircuit of its own
@@ -154,18 +153,18 @@ func run(ctx context.Context, out io.Writer) error {
 			if ev.Ref.RunID != ref.RunID {
 				continue
 			}
-			fmt.Fprintf(out, "run %s: %s", job.Workflow, ev.Status)
+			fmt.Printf("run %s: %s", job.Workflow, ev.Status)
 			if ev.Err != nil {
-				fmt.Fprintf(out, " (%v)", ev.Err)
+				fmt.Printf(" (%v)", ev.Err)
 			}
-			fmt.Fprintf(out, ", %d handler call(s)\n", calls[job.Workflow])
+			fmt.Printf(", %d handler call(s)\n", calls[job.Workflow])
 			calls[job.Workflow] = 0
 			return nil
 		}
 		return ctx.Err()
 	}
 
-	fmt.Fprintln(out, "-- step middleware")
+	fmt.Println("-- step middleware")
 	for _, job := range []workflow.Job{
 		{Workflow: "charge", Payload: []byte(`"order-1"`)},
 		{Workflow: "panics"},
@@ -178,7 +177,7 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintln(out, "-- throttle")
+	fmt.Println("-- throttle")
 	for range 3 {
 		if err := runOne(c, workflow.Job{Workflow: "call-api"}); err != nil {
 			return err
@@ -189,7 +188,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	return enqueueMiddleware(ctx, out, c, runOne)
+	return enqueueMiddleware(ctx, c, runOne)
 }
 
 // announcingCircuit is a CircuitStore of the app's own: it keeps the
@@ -199,7 +198,6 @@ func run(ctx context.Context, out io.Writer) error {
 // snippet:circuit-store
 type announcingCircuit struct {
 	*middleware.MemoryCircuit
-	out io.Writer
 }
 
 func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middleware.CircuitPolicy) error {
@@ -211,7 +209,7 @@ func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middl
 		return err
 	}
 	if open {
-		fmt.Fprintf(a.out, "circuit %q open for %s\n", key, p.Cooldown)
+		fmt.Printf("circuit %q open for %s\n", key, p.Cooldown)
 	}
 	return nil
 }
@@ -219,20 +217,20 @@ func (a *announcingCircuit) RecordError(ctx context.Context, key string, p middl
 // snippet:end
 
 // showChainOrder prints the order Chain runs its middleware in.
-func showChainOrder(ctx context.Context, out io.Writer) error {
+func showChainOrder(ctx context.Context) error {
 	// snippet:chain
 	tag := func(name string) workflow.Middleware {
 		return func(next workflow.Handler) workflow.Handler {
 			return func(ctx context.Context, in []byte) ([]byte, error) {
-				fmt.Fprintln(out, name, "before")
+				fmt.Println(name, "before")
 				res, err := next(ctx, in)
-				fmt.Fprintln(out, name, "after")
+				fmt.Println(name, "after")
 				return res, err
 			}
 		}
 	}
 	h := middleware.Chain(tag("a"), tag("b"))(func(context.Context, []byte) ([]byte, error) {
-		fmt.Fprintln(out, "handler")
+		fmt.Println("handler")
 		return nil, nil
 	})
 	_, err := h(ctx, nil)
@@ -242,14 +240,14 @@ func showChainOrder(ctx context.Context, out io.Writer) error {
 
 // enqueueMiddleware wraps the client's Enqueue: a middleware of the app's
 // own, Route and Unique, then the refusal of Unique put in twice.
-func enqueueMiddleware(ctx context.Context, out io.Writer, c workflow.Client, runOne func(workflow.Client, workflow.Job) error) error {
-	fmt.Fprintln(out, "-- enqueue middleware")
+func enqueueMiddleware(ctx context.Context, c workflow.Client, runOne func(workflow.Client, workflow.Job) error) error {
+	fmt.Println("-- enqueue middleware")
 
 	// snippet:enqueue-own
 	audit := func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 			ref, err := next(ctx, job)
-			fmt.Fprintf(out, "enqueue %s tier=%q queue=%q err=%v\n", job.Workflow, job.Labels["tier"], job.Labels["queue"], err)
+			fmt.Printf("enqueue %s tier=%q queue=%q err=%v\n", job.Workflow, job.Labels["tier"], job.Labels["queue"], err)
 			return ref, err
 		}
 	}
@@ -273,13 +271,13 @@ func enqueueMiddleware(ctx context.Context, out io.Writer, c workflow.Client, ru
 	}
 	// snippet:duplicate
 	_, err := client.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[string]string{"order": "o-7"}})
-	fmt.Fprintln(out, "same order again:", errors.Is(err, workflow.ErrDuplicate))
+	fmt.Println("same order again:", errors.Is(err, workflow.ErrDuplicate))
 	// snippet:end
 
 	// snippet:twice
 	twice := middleware.WrapClient(middleware.WrapClient(c, unique), unique)
 	_, err = twice.Enqueue(ctx, workflow.Job{Workflow: "charge", Labels: map[string]string{"order": "o-8"}})
-	fmt.Fprintln(out, "unique twice:", errors.Is(err, workflow.ErrInvalid), err)
+	fmt.Println("unique twice:", errors.Is(err, workflow.ErrInvalid), err)
 	// snippet:end
 	return nil
 }

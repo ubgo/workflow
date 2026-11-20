@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // offline is what the program prints with no engine: the refusals.
@@ -20,12 +21,12 @@ Discard: false
 // before anything connects.
 func TestRefusals(t *testing.T) {
 	t.Setenv(envToken, "")
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := offline + "HATCHET_CLIENT_TOKEN is not set: the live run is skipped\n"
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }
@@ -36,8 +37,8 @@ func TestLive(t *testing.T) {
 	if os.Getenv(envToken) == "" {
 		t.Skipf("%s is not set: the live run needs a Hatchet engine (see README.md)", envToken)
 	}
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := offline + `failed run: queue=reports step=render error="renderer offline"
@@ -48,7 +49,7 @@ workflow listed as paused: true
 after resume: succeeded
 drained
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }

@@ -15,7 +15,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"os"
 	"slices"
@@ -31,7 +30,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "sentry-reporting:", err)
 		os.Exit(1)
 	}
@@ -54,7 +53,7 @@ func (t *memTransport) SendEvent(e *sentrygo.Event) {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	tr := &memTransport{}
 	// snippet:init
 	// In an app: sentrygo.Init(sentrygo.ClientOptions{Dsn: os.Getenv("SENTRY_DSN")})
@@ -123,18 +122,18 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
-	fmt.Fprintln(out, "events sent:", len(tr.events))
+	fmt.Println("events sent:", len(tr.events))
 	e := tr.events[0]
-	fmt.Fprintln(out, "level:", e.Level)
-	fmt.Fprintln(out, "error:", e.Exception[len(e.Exception)-1].Value)
+	fmt.Println("level:", e.Level)
+	fmt.Println("error:", e.Exception[len(e.Exception)-1].Value)
 	for _, k := range slices.Sorted(maps.Keys(e.Tags)) {
-		fmt.Fprintf(out, "tag %s=%s\n", k, e.Tags[k])
+		fmt.Printf("tag %s=%s\n", k, e.Tags[k])
 	}
-	fmt.Fprintln(out, "fingerprint:", strings.Join(e.Fingerprint, " "))
+	fmt.Println("fingerprint:", strings.Join(e.Fingerprint, " "))
 	body, err := json.Marshal(e) // what would go over the wire
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "payload sent:", strings.Contains(string(body), "4242"), "user label sent:", strings.Contains(string(body), "u-7"))
+	fmt.Println("payload sent:", strings.Contains(string(body), "4242"), "user label sent:", strings.Contains(string(body), "u-7"))
 	return nil
 }

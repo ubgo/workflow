@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -16,14 +17,20 @@ import (
 const (
 	// LabelPrefixInternal is owned by the middleware package (unique
 	// locks, claim-check references).
+	//
+	//ds:def id=labelprefixinternal-mvjqh2yy owner=@khanakia stability=stable
 	LabelPrefixInternal = "ubgo.workflow/"
 
 	// LabelPrefixBatch is owned by the batch package (batch ID and job
 	// index).
+	//
+	//ds:def id=labelprefixbatch-vq6yb5d4 owner=@khanakia stability=stable
 	LabelPrefixBatch = "workflow.batch."
 
 	// LabelPrefixOTel is owned by the otel package (trace context carried
 	// from Enqueue to the step).
+	//
+	//ds:def id=labelprefixotel-8avw4pw8 owner=@khanakia stability=stable
 	LabelPrefixOTel = "otel."
 )
 
@@ -34,10 +41,14 @@ var reservedLabelPrefixes = [...]string{LabelPrefixInternal, LabelPrefixBatch, L
 
 // ReservedLabelPrefixes returns every label prefix the library reserves
 // for itself, as a fresh slice.
+//
+//ds:def id=reservedlabelprefixes-s6pnbs6s owner=@khanakia stability=stable
 func ReservedLabelPrefixes() []string { return slices.Clone(reservedLabelPrefixes[:]) }
 
 // ReservedLabel reports whether key falls under a reserved prefix, and
 // which.
+//
+//ds:def id=reservedlabel-be47d7qr owner=@khanakia stability=stable
 func ReservedLabel(key string) (prefix string, ok bool) {
 	for _, p := range reservedLabelPrefixes {
 		if strings.HasPrefix(key, p) {
@@ -52,12 +63,23 @@ func ReservedLabel(key string) (prefix string, ok bool) {
 // letting the owning package drop or overwrite them silently. Keys are
 // checked in sorted order, so the error is the same on every call.
 //
+// The source labels (LabelSource, LabelSourceRef) are the exception: an
+// app sets them (WithSource), so they pass when their values are valid.
+//
 // It is for labels an app wrote. The library's own packages set reserved
 // labels on the jobs they pass down, so a driver's Enqueue calls
 // CheckJobLabels instead, which lets those through; ValidateSchedule does (schedules are written only by apps), and each
 // package that owns a prefix refuses incoming labels under its own.
+//
+//ds:def id=validatelabels-henfu882 owner=@khanakia stability=stable
 func ValidateLabels(labels map[string]string) error {
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if settable, err := checkAppReserved(k, labels[k]); settable {
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		if p, ok := ReservedLabel(k); ok {
 			return invalidf("label %q uses the reserved prefix %q", k, p)
 		}
@@ -91,6 +113,8 @@ func allowFrom(ctx context.Context) reservedAllow {
 // input, not a sandbox: code in the same process that calls it can set
 // any label it names, as it could call any other function. Only the
 // owning package should.
+//
+//ds:def id=allowreservedlabels-4czg8eyz owner=@khanakia stability=stable
 func AllowReservedLabels(ctx context.Context, keys ...string) context.Context {
 	old := allowFrom(ctx)
 	a := reservedAllow{keys: make(map[string]bool, len(old.keys)+len(keys)), prefixes: old.prefixes}
@@ -106,6 +130,8 @@ func AllowReservedLabels(ctx context.Context, keys ...string) context.Context {
 // AllowReservedPrefix is AllowReservedLabels for every key under prefix,
 // for the package that owns a whole prefix (batch for LabelPrefixBatch,
 // otel for LabelPrefixOTel).
+//
+//ds:def id=allowreservedprefix-f884j92u owner=@khanakia stability=stable
 func AllowReservedPrefix(ctx context.Context, prefix string) context.Context {
 	old := allowFrom(ctx)
 	a := reservedAllow{keys: old.keys, prefixes: append(slices.Clone(old.prefixes), prefix)}
@@ -118,10 +144,22 @@ func AllowReservedPrefix(ctx context.Context, prefix string) context.Context {
 // Every driver calls it first in its public Enqueue (and any other public
 // entry that takes a Job from an app), never on its internal paths (a
 // fired schedule, a chained job, a retry), which carry labels the library
-// wrote. Keys are checked in sorted order, so the error is stable.
+// wrote. The source labels (LabelSource, LabelSourceRef) pass without an
+// allowance when their values are valid (see WithSource). Keys are checked
+// in sorted order, so the error is stable.
+//
+//ds:def id=checkjoblabels-p6m28b9h owner=@khanakia stability=stable
 func CheckJobLabels(ctx context.Context, job Job) error {
 	a := allowFrom(ctx)
 	for _, k := range slices.Sorted(maps.Keys(job.Labels)) {
+		// The source labels are reserved yet app-settable (WithSource):
+		// they pass when their value is valid, whoever set them.
+		if settable, err := checkAppReserved(k, job.Labels[k]); settable {
+			if err != nil {
+				return fmt.Errorf("job for %q: %w", job.Workflow, err)
+			}
+			continue
+		}
 		p, ok := ReservedLabel(k)
 		if !ok || a.keys[k] {
 			continue

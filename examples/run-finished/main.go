@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -28,12 +27,12 @@ var errDeclined = errors.New("card declined")
 
 func main() {
 	ctx := context.Background()
-	if err := run(ctx, os.Stdout); err != nil {
+	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "run-finished:", err)
 		os.Exit(1)
 	}
 	if os.Getenv(envToken) != "" {
-		if err := runHatchet(ctx, os.Stdout); err != nil {
+		if err := runHatchet(ctx); err != nil {
 			fmt.Fprintln(os.Stderr, "run-finished on Hatchet:", err)
 			os.Exit(1)
 		}
@@ -41,7 +40,7 @@ func main() {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -64,7 +63,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return errors.New("this driver cannot report run ends; poll Status instead")
 	}
 	guaranteed := c.Capabilities().Has(workflow.CapRunFinished)
-	fmt.Fprintln(out, "every run end is delivered:", guaranteed)
+	fmt.Println("every run end is delivered:", guaranteed)
 
 	ends := make(chan workflow.RunEvent, 8)
 	err := n.OnRunFinished(func(ctx context.Context, ev workflow.RunEvent) {
@@ -82,11 +81,11 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:late
 	err = n.OnRunFinished(func(context.Context, workflow.RunEvent) {})
-	fmt.Fprintln(out, "observer after Start refused:", errors.Is(err, workflow.ErrAlreadyStarted))
+	fmt.Println("observer after Start refused:", errors.Is(err, workflow.ErrAlreadyStarted))
 	// snippet:end
 
 	print := func(ev workflow.RunEvent) {
-		fmt.Fprintf(out, "%s %s order=%s err=%v cancelled=%v\n",
+		fmt.Printf("%s %s order=%s err=%v cancelled=%v\n",
 			ev.Workflow, ev.Status, ev.Labels["order"], ev.Err, errors.Is(ev.Err, workflow.ErrCancelled))
 	}
 	for _, job := range []workflow.Job{

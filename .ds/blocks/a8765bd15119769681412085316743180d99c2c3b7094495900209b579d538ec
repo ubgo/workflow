@@ -1,0 +1,7 @@
+func WithRunQuerier(rq workflow.RunQuerier, caps workflow.Caps) Option {
+	return func(a *Admin) {
+		if rq != nil {
+			a.rq, a.rqCaps = rq, caps
+		}
+	}
+}

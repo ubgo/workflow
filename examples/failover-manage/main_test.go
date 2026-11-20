@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: Runs
@@ -12,8 +13,8 @@ import (
 // finds one run, CancelAll cancels the waiting run on each backend, and
 // Pause holds the workflow on both.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- every run, from both backends, newest first
@@ -35,7 +36,7 @@ func TestRun(t *testing.T) {
 -- pause on both backends
   paused: invoice
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

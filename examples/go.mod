@@ -14,12 +14,14 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-mysql v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
-	github.com/ubgo/sqlb/contrib/migrate v0.1.0
-	github.com/ubgo/workflow v0.0.0
+	github.com/ubgo/sqlb/contrib/migrate v0.1.1
+	github.com/ubgo/workflow v0.1.1
 	github.com/ubgo/workflow/admin v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/cli v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/hatchet v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/otel v0.0.0-00010101000000-000000000000
+	github.com/ubgo/workflow/recorder v0.1.0
+	github.com/ubgo/workflow/recorder/sqlrecorder v0.0.0
 	github.com/ubgo/workflow/sqlstore v0.0.0-00010101000000-000000000000
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0
@@ -95,6 +97,7 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/ubgo/workflow/redis v0.0.0-00010101000000-000000000000
 	github.com/ubgo/workflow/sentry v0.0.0-00010101000000-000000000000
+	github.com/ubgo/workflow/sqlstore/pgnotify v0.0.0-00010101000000-000000000000
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -126,6 +129,8 @@ replace (
 	github.com/ubgo/workflow/admin => ../admin
 	github.com/ubgo/workflow/hatchet => ../hatchet
 	github.com/ubgo/workflow/otel => ../otel
+	github.com/ubgo/workflow/recorder => ../recorder
+	github.com/ubgo/workflow/recorder/sqlrecorder => ../recorder/sqlrecorder
 	github.com/ubgo/workflow/sqlstore => ../sqlstore
 )
 
@@ -134,3 +139,5 @@ replace github.com/ubgo/workflow/sentry => ../sentry
 replace github.com/ubgo/workflow/redis => ../redis
 
 replace github.com/ubgo/workflow/cli => ../cli
+
+replace github.com/ubgo/workflow/sqlstore/pgnotify => ../sqlstore/pgnotify

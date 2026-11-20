@@ -1,0 +1,9 @@
+func RunStore(t *testing.T, newStore NewStore) {
+	t.Helper()
+	if newStore == nil {
+		t.Fatal("recordertest: newStore is nil")
+	}
+	for _, c := range storeCases {
+		t.Run(c.name, func(t *testing.T) { c.run(t, newStore) })
+	}
+}

@@ -1,0 +1,7 @@
+func CaptureOnSinkError(fn func(ctx context.Context, out Output, err error)) CaptureOption {
+	return func(c *captureConfig) {
+		if fn != nil {
+			c.onSinkErr = fn
+		}
+	}
+}

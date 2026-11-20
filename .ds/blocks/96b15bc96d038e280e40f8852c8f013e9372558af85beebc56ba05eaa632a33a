@@ -1,0 +1,3 @@
+func WithBackfillWindow(d time.Duration) ReconcileOption {
+	return func(r *Reconciler) error { return positive("WithBackfillWindow", d, &r.window) }
+}

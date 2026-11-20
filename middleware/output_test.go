@@ -244,3 +244,28 @@ func TestCaptureOutputOnMemoryDriver(t *testing.T) {
 		t.Fatalf("file = %q", s)
 	}
 }
+
+// TestCaptureOutputTakesStepEvents: an event recorded with
+// workflow.RecordEvent is captured with the log records, under the
+// capture level.
+func TestCaptureOutputTakesStepEvents(t *testing.T) {
+	sink := &outputs{}
+	mw := middleware.CaptureOutput(middleware.OutputSinkFunc(func(_ context.Context, o middleware.Output) error {
+		sink.mu.Lock()
+		defer sink.mu.Unlock()
+		sink.got = append(sink.got, o)
+		return nil
+	}), middleware.CaptureLevel(slog.LevelInfo))
+	h := mw(func(ctx context.Context, in []byte) ([]byte, error) {
+		workflow.RecordEvent(ctx, "fetched", slog.Int("rows", 4))
+		workflow.RecordEventLevel(ctx, slog.LevelDebug, "too quiet")
+		return in, nil
+	})
+	if _, err := h(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	recs := sink.got[0].Records
+	if len(recs) != 1 || recs[0].Message != "fetched" || recs[0].Attrs[0].Key != "rows" || recs[0].Attrs[0].Value.String() != "4" {
+		t.Fatalf("records = %+v", recs)
+	}
+}

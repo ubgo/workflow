@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -25,7 +24,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "cron-builder:", err)
 		os.Exit(1)
 	}
@@ -36,8 +35,8 @@ func main() {
 var monday = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "frequencies:")
+func run(ctx context.Context) error {
+	fmt.Println("frequencies:")
 	// snippet:frequencies
 	frequencies := []cron.Builder{
 		cron.EverySeconds(30),
@@ -57,11 +56,11 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		next := s.Next(monday, time.UTC)
-		fmt.Fprintf(out, "  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
+		fmt.Printf("  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "refusals:")
+	fmt.Println("refusals:")
 	// snippet:refusals
 	for _, f := range []cron.Builder{
 		cron.EveryMinutes(7),                     // */7 would fire at :56 and :00
@@ -71,17 +70,17 @@ func run(ctx context.Context, out io.Writer) error {
 		cron.DailyAt("9:5"),                      // minutes take two digits
 	} {
 		_, err := f.Expr()
-		fmt.Fprintf(out, "  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
+		fmt.Printf("  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "on a workflow:")
-	return onWorkflow(ctx, out)
+	fmt.Println("on a workflow:")
+	return onWorkflow(ctx)
 }
 
 // onWorkflow registers a workflow whose cron comes from the builder and
 // lets a fake week pass.
-func onWorkflow(ctx context.Context, out io.Writer) error {
+func onWorkflow(ctx context.Context) error {
 	clk := clock.NewFake(monday)
 	c := memory.New(memory.WithClock(clk))
 	fired := make(chan time.Time, 8)
@@ -125,6 +124,6 @@ func onWorkflow(ctx context.Context, out io.Writer) error {
 			return errors.New("the reminder did not fire")
 		}
 	}
-	fmt.Fprintln(out, " ", strings.Join(days, ", "))
+	fmt.Println(" ", strings.Join(days, ", "))
 	return nil
 }

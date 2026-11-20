@@ -4,7 +4,7 @@
 
 ## Before you start
 
-- `go get github.com/ubgo/workflow/sqlstore@latest` plus one database driver from sqlb's contrib modules (see [Pick a database](#pick-a-database)).
+- `go get github.com/ubgo/workflow/sqlstore@latest` plus one database driver from sqlb's contrib modules (see [Pick a database](#pick-a-database)). The module itself requires no database driver: it takes your `*sql.DB` and a dialect, so your app downloads only the driver it opens the pool with.
 - A workflow to run: [First workflow](../start/first-workflow.md).
 - The schema is applied by an explicit `Migrate` call; read [Migrations](../operations/migrations.md) before your first deploy.
 
@@ -20,7 +20,7 @@ db, err := driversqlite.Open(path) // a file; ":memory:" would be lost on exit
 if err != nil {
 	return err
 }
-defer db.Close()
+defer func() { err = errors.Join(err, db.Close()) }()
 ```
 
 Step 2: build the client and migrate. The options here are the ones a production worker usually sets; every one is optional.
@@ -131,6 +131,7 @@ worker, err := sqlstore.New(db, dialect,
 
 Polling stays on as the fallback, so a lost, late or duplicated notification changes when work starts, never whether it runs. Measured on the host Postgres with a one-second poll, enqueue on one client to step start on another, 15 samples each: polling p50 591 ms, p95 897 ms; with `pgnotify` p50 38 ms, p95 99 ms (a shared development machine under load).
 
+- `pgnotify` is its own module, so only an app that uses it downloads pgx: `go get github.com/ubgo/workflow/sqlstore/pgnotify@latest`. Upgrade `sqlstore` to v0.1.1 or later with it: v0.1.0 still carried the package, and the two together are an ambiguous import.
 - `pgnotify`'s `Listen` needs the pgx stdlib driver (`driverpgx.Open` uses it), because `database/sql` cannot wait for a notification; on another driver it returns `pgnotify.ErrDriver` and the client keeps polling. `Notify` works through any Postgres driver.
 - `Listen` holds one pool connection for as long as the client runs: size the pool one connection above the workers.
 - LISTEN does not work through a transaction-mode pooler (PgBouncer in transaction or statement mode); point the pool at Postgres itself or leave the notifier off.
@@ -168,7 +169,7 @@ Two stores keep workflow state in the same database. `Client.JournalStore()` is 
 
 ## Enqueue inside a pgx transaction
 
-`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`: `pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })` hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
+`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`, its own module (`go get github.com/ubgo/workflow/sqlstore/pgxtx@latest`, with `sqlstore` v0.1.1 or later): `pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })` hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
 
 ## Database errors
 
@@ -266,7 +267,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
+	fmt.Printf("failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
 }
 // The fix is deployed.
 broken.Store(false)
@@ -283,7 +284,7 @@ Step 4: stop a worker gracefully. `Drain` stops claiming, waits for running atte
 dctx, dcancel := context.WithTimeout(ctx, 5*time.Second)
 defer dcancel()
 err = mail.Drain(dctx) // stop claiming, let running attempts finish, stop
-fmt.Fprintln(out, "mail worker drained:", err == nil)
+fmt.Println("mail worker drained:", err == nil)
 <-mail.Done()
 ```
 
@@ -339,6 +340,18 @@ status after the end: succeeded
 
 The last line is the point of the driver: the run's outcome is a row, readable after the run ended and after a restart.
 
+## Record run history
+
+A [run recorder](../observability/run-recorder.md) applied with `workflow.Use(client, rec.Plugin())` records every run of this driver, and its SQL store, `recorder/sqlrecorder`, can live in the same database: its tables carry their own prefix (`wf_rec_` by default), so they never collide with the driver's.
+
+- **Every end is recorded.** The driver declares `CapRunFinished`: each run end is claimed from the table under a lease and delivered at least once, by one client with observers, including ends that happened while no client was running. Every worker wrapped with [`rec.Plugin()`](ds:block?id=rec-recorder-plugin-u7hfc2yc) over the same store is such a client, and the recorder's writes are upserts, so a repeat is harmless.
+- **Records outlive the driver's retention.** [Retention](../operations/retention.md) deletes or archives finished runs from the queue tables; the record, with its steps and events, stays until the recorder's own two-stage [retention](../observability/run-recorder.md#retention) removes it.
+- **Web nodes take `EnqueuePlugin`.** A client built with `WithEnqueueOnly()` delivers no run ends, so `rec.Plugin()` would record nothing but the enqueue there; apply [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv) on the web node and `rec.Plugin()` on the workers over the same store ([Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue), [examples/recorder-split](../../examples/recorder-split/)).
+- **`EnqueueTx` and `EnqueueMany` pass no enqueue middleware.** They are methods of the driver's client, not of the client `Use` returns, so a run they create is recorded from its first step, with the source its labels carry, rather than at enqueue.
+- **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a Reconciler pass records runs created past the recorder (the ones above, an outbox relay through the bare client) before they start.
+
+The recorder's end-to-end suite runs its driver cases on this driver on SQLite, Postgres and MySQL, recording into `sqlrecorder` in the driver's own database, and splits it into an enqueue-only web node and a worker on each engine.
+
 ## Pitfalls
 
 - **One more pool connection with `pgnotify`.** Its listener holds a connection for as long as the client runs; a pool sized exactly to the workers starves a worker.
@@ -356,6 +369,7 @@ The last line is the point of the driver: the run's outcome is a row, readable a
 
 - [Run several workers](../operations/deploy.md#run-several-workers) and [shut down cleanly](../operations/deploy.md#shut-down-cleanly)
 - [Migrations](../operations/migrations.md), [Retention](../operations/retention.md), [Tuning](../operations/tuning.md)
+- [Record run history](../observability/run-recorder.md): a run history the app owns, in the same database
 - [The in-memory driver](memory.md) and [the Hatchet driver](hatchet.md)
 - [Transactional enqueue](../reliability/transactional-enqueue.md), [Tenants](../jobs/tenants.md), [Nodes and health](../operations/nodes.md)
 - Examples: [sqlite-worker](../../examples/sqlite-worker/), [postgres-cluster](../../examples/postgres-cluster/), [sql-queue-workers](../../examples/sql-queue-workers/)

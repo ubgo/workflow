@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // want is the program's whole output, the one its README and guide show.
@@ -22,11 +23,11 @@ process A's dispatch ended with an error: true
 // line it prints: the stalled job cancelled, the jobs process A never
 // started run by process B, and Finally once.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out, filepath.Join(t.TempDir(), "wf.db")); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background(), filepath.Join(t.TempDir(), "wf.db")) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

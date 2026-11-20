@@ -14,7 +14,6 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -30,7 +29,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "admin-cli:", err)
 		os.Exit(1)
 	}
@@ -40,7 +39,7 @@ func main() {
 const opsToken = "ops-token"
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC))
@@ -89,8 +88,8 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	workflowCmd := func(args ...string) int {
 		return cli.Run(ctx, args, cli.Options{
-			Stdout: out,
-			Stderr: out,
+			Stdout: os.Stdout,
+			Stderr: os.Stdout,
 			Getenv: func(k string) string { return env[k] },
 			Name:   "workflow",
 		})
@@ -98,9 +97,9 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:end
 
 	cmd := func(args ...string) {
-		fmt.Fprintln(out, "$ workflow", strings.Join(args, " "))
+		fmt.Println("$ workflow", strings.Join(args, " "))
 		code := workflowCmd(args...)
-		fmt.Fprintln(out, "exit", code)
+		fmt.Println("exit", code)
 	}
 	cmd("retry", "--all", "--workflow", "send-email", "--dry-run")
 	cmd("retry", "--all", "--workflow", "send-email")

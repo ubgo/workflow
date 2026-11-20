@@ -1,0 +1,12 @@
+type MemoryStore struct {
+	clk       clock.Clock
+	retention Retention
+
+	mu sync.Mutex
+	// runs is every record by Key (KeyOf). A record holds its steps; a
+	// step holds its events.
+	runs map[string]*RunRecord
+	// bySched maps a ScheduledID to the Key its record lives under, so a
+	// record moved under its RunID is still found by the ScheduledID.
+	bySched map[workflow.ScheduledID]string
+}

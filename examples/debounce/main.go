@@ -9,8 +9,8 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -33,7 +33,7 @@ const (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "debounce:", err)
 		os.Exit(1)
 	}
@@ -56,22 +56,22 @@ func reindex(ran chan<- string) workflow.Workflow {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := inOneProcess(ctx, out); err != nil {
+func run(ctx context.Context) (err error) {
+	if err := inOneProcess(ctx); err != nil {
 		return err
 	}
 	dir, err := os.MkdirTemp("", "debounce-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	return acrossProcesses(ctx, out, filepath.Join(dir, "queue.db"))
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	return acrossProcesses(ctx, filepath.Join(dir, "queue.db"))
 }
 
 // inOneProcess debounces on the memory driver with a fake clock, so the
 // ten-second window passes at once.
-func inOneProcess(ctx context.Context, out io.Writer) error {
-	fmt.Fprintln(out, "-- Debounce a burst")
+func inOneProcess(ctx context.Context) error {
+	fmt.Println("-- Debounce a burst")
 	ran := make(chan string, 3)
 
 	// snippet:debounce
@@ -116,18 +116,18 @@ func inOneProcess(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "job %d: %s\n", i+1, st)
+		fmt.Printf("job %d: %s\n", i+1, st)
 	}
 	clk.Advance(10 * time.Second) // quiet for the window
-	fmt.Fprintln(out, "ran with", <-ran)
+	fmt.Println("ran with", <-ran)
 	return nil
 }
 
 // acrossProcesses runs two sqlstore clients on one SQLite file, standing
 // in for two servers on one Postgres or MySQL database. Each has its own
 // Debounce middleware; they share the bursts through the debounce table.
-func acrossProcesses(ctx context.Context, out io.Writer, path string) error {
-	fmt.Fprintln(out, "-- A store shared by every process")
+func acrossProcesses(ctx context.Context, path string) error {
+	fmt.Println("-- A store shared by every process")
 	ran := make(chan string, 3)
 
 	type process struct {
@@ -189,13 +189,13 @@ func acrossProcesses(ctx context.Context, out io.Writer, path string) error {
 		}
 		refs = append(refs, ref)
 	}
-	fmt.Fprintln(out, "ran with", <-ran)
+	fmt.Println("ran with", <-ran)
 	for i, ref := range refs {
 		st, err := waitTerminal(ctx, b.sql, ref)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "job %d (from process %s): %s\n", i+1, []string{"A", "B", "A"}[i], st)
+		fmt.Printf("job %d (from process %s): %s\n", i+1, []string{"A", "B", "A"}[i], st)
 	}
 	return nil
 }

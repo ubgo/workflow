@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -23,7 +22,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "secret-guard:", err)
 		os.Exit(1)
 	}
@@ -52,7 +51,7 @@ type syncArgs struct {
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -80,19 +79,19 @@ func run(ctx context.Context, out io.Writer) error {
 	c := middleware.WrapClient(mc, workflow.SecretGuard(nil)) // nil: the stock detector
 	// snippet:end
 
-	fmt.Fprintln(out, "refused:")
+	fmt.Println("refused:")
 	// snippet:refused
 	_, err = c.Enqueue(ctx, workflow.Job{
 		Workflow: "sync-shop",
 		Payload:  []byte(`{"shop":"acme","api_key":"shpat_live_value","note":"-----BEGIN RSA PRIVATE KEY-----"}`),
 	})
-	fmt.Fprintln(out, " ", err)
-	fmt.Fprintln(out, "  ErrSecretInPayload:", errors.Is(err, workflow.ErrSecretInPayload), "ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println(" ", err)
+	fmt.Println("  ErrSecretInPayload:", errors.Is(err, workflow.ErrSecretInPayload), "ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "sync-shop", Labels: map[string]string{"auth_token": "abc"}})
-	fmt.Fprintln(out, " ", err)
+	fmt.Println(" ", err)
 
-	fmt.Fprintln(out, "accepted:")
+	fmt.Println("accepted:")
 	// snippet:ref
 	payload, err := json.Marshal(syncArgs{Shop: "acme", Token: workflow.SecretRef{Ref: "shops/acme/token"}})
 	if err != nil {
@@ -103,24 +102,24 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  payload %s\n", payload)
+	fmt.Printf("  payload %s\n", payload)
 	res, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 2 * time.Millisecond})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  result %s\n", res)
+	fmt.Printf("  result %s\n", res)
 
-	fmt.Fprintln(out, "rules:")
+	fmt.Println("rules:")
 	// snippet:rules
 	d := workflow.NewSecretDetector(workflow.SecretRules{
 		AllowKeys:  []string{"page_token"}, // a pagination cursor, not a credential
 		AllowRules: []string{"jwt"},        // this app passes signed links
 	})
 	for _, f := range d.Detect(workflow.Job{Payload: []byte(`{"page_token":"p2","password":"hunter2"}`)}) {
-		fmt.Fprintf(out, "  %s (%s)\n", f.Where, f.Rule)
+		fmt.Printf("  %s (%s)\n", f.Where, f.Rule)
 	}
 	// snippet:end
 	_, err = workflow.ResolveSecret(ctx, secrets, workflow.SecretRef{})
-	fmt.Fprintf(out, "  empty SecretRef: ErrNoSecretRef=%v permanent=%v\n", errors.Is(err, workflow.ErrNoSecretRef), workflow.IsPermanent(err))
+	fmt.Printf("  empty SecretRef: ErrNoSecretRef=%v permanent=%v\n", errors.Is(err, workflow.ErrNoSecretRef), workflow.IsPermanent(err))
 	return nil
 }

@@ -1,0 +1,29 @@
+func (s *Store) Migrate(ctx context.Context) error {
+	have, err := s.schemaVersion(ctx)
+	if err != nil {
+		return err
+	}
+	if have > SchemaVersion {
+		return fmt.Errorf("sqlrecorder: the database schema is version %d, newer than this release's %d", have, SchemaVersion)
+	}
+	if have == SchemaVersion {
+		return nil
+	}
+	for _, stmt := range s.ddl() {
+		if err := s.execRetry(ctx, stmt); err != nil {
+			return fmt.Errorf("sqlrecorder: migrate: %w\n%s", err, stmt)
+		}
+	}
+	a := &args{d: s.d}
+	from := ""
+	if s.d == MySQL {
+		from = " FROM DUAL" // MySQL needs a FROM before WHERE
+	}
+	tbl := s.table(tableSchema)
+	ins := "INSERT INTO " + tbl + " (" + s.d.quote("version") + ") SELECT " + a.add(SchemaVersion) + from +
+		" WHERE NOT EXISTS (SELECT 1 FROM " + tbl + " AS x)"
+	if err := s.execRetry(ctx, ins, a.vals...); err != nil {
+		return fmt.Errorf("sqlrecorder: record schema version: %w", err)
+	}
+	return nil
+}

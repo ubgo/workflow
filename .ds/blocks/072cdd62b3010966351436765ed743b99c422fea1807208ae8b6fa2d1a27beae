@@ -1,0 +1,1 @@
+func (r *Recorder) Store() Store { return r.store }

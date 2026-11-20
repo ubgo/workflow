@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -33,14 +32,14 @@ const awaitPoll = 10 * time.Millisecond
 var errFlaky = errors.New("upstream timed out")
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "batch-lifecycle:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -80,11 +79,11 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 		slices.Sort(got)
 		for _, l := range got {
-			fmt.Fprintln(out, l)
+			fmt.Println(l)
 		}
 	}
 
-	fmt.Fprintln(out, "-- before and progress")
+	fmt.Println("-- before and progress")
 	// snippet:before
 	_, err := m.Dispatch(ctx, batch.Batch{
 		Name:     "thumbnails",
@@ -99,13 +98,13 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	print(5) // before, three progress, finally
 
-	fmt.Fprintln(out, "-- a job adds jobs to its batch")
+	fmt.Println("-- a job adds jobs to its batch")
 	if _, err := m.Dispatch(ctx, batch.Batch{Name: "split", Jobs: []workflow.Job{{Workflow: "split"}}, Then: "then", Finally: "finally"}); err != nil {
 		return err
 	}
 	print(2)
 
-	fmt.Fprintln(out, "-- retry the failed jobs")
+	fmt.Println("-- retry the failed jobs")
 	// snippet:retry
 	id, err := m.Dispatch(ctx, batch.Batch{
 		Name:          "sync",
@@ -123,17 +122,17 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "retried", n)
+	fmt.Println("retried", n)
 	print(2) // then and finally: this time every job succeeded
 	// snippet:end
 
-	fmt.Fprintln(out, "-- a workflow waits for a batch")
+	fmt.Println("-- a workflow waits for a batch")
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "import", Payload: []byte("4")}); err != nil {
 		return err
 	}
 	print(1)
 
-	fmt.Fprintln(out, "-- many jobs without a batch")
+	fmt.Println("-- many jobs without a batch")
 	// snippet:bulk
 	refs, err := batch.EnqueueMany(ctx, c, []workflow.Job{
 		{Workflow: "resize"}, {Workflow: "resize"}, {Workflow: "resize"},
@@ -141,10 +140,10 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "started", len(refs), "runs")
+	fmt.Println("started", len(refs), "runs")
 	// snippet:end
 
-	fmt.Fprintln(out, "-- prune")
+	fmt.Println("-- prune")
 	clk.Advance(48 * time.Hour)
 	// snippet:prune
 	pruned, err := m.Prune(ctx, batch.PruneFilter{
@@ -154,7 +153,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "pruned", pruned)
+	fmt.Println("pruned", pruned)
 	// snippet:end
 	return nil
 }

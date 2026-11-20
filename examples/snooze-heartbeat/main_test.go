@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks its whole output: two snoozes that
 // spend no attempt, a hung attempt failed by its heartbeat timeout and a
 // retry that beats, and a run timeout that runs OnTimeout, not OnFailure.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `snooze:
@@ -31,7 +32,7 @@ run timeout:
   ErrRunTimeout true, IsTimeout true, ErrStepTimeout false
   ran OnTimeout with payload "q3"
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

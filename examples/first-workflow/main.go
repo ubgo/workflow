@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync"
 	"time"
@@ -22,7 +21,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "first-workflow:", err)
 		os.Exit(1)
 	}
@@ -45,12 +44,12 @@ type joined struct {
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	var mu sync.Mutex
 	say := func(format string, args ...any) {
 		mu.Lock()
 		defer mu.Unlock()
-		fmt.Fprintf(out, format+"\n", args...)
+		fmt.Printf(format+"\n", args...)
 	}
 	var charges int
 

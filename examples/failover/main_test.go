@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: a job
@@ -12,8 +13,8 @@ import (
 // the fake clock moves past it, and only DefaultClassifier fails over on an
 // unmarked error.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- Fail over to a second backend
@@ -36,7 +37,7 @@ capabilities include Cron: true
 default classifier: failed over to secondary
 strict classifier: returned "unexpected reply"
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

@@ -196,8 +196,8 @@ github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0 h1:Lc2RiI7VPzSQ72SHS4guTFupgSE92F
 github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0/go.mod h1:nISS7UdAB/3CWlB2XVvUeVU/92xwnPrVsC5eFwit3h0=
 github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0 h1:zKHbpLblDCaNAO8Orqu5dtNf3wpw4S0qbvTIwqWx26I=
 github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0/go.mod h1:GDLe0KjDQyWI5iTFGyuUegzxCIVZhDMh18mn/MJRrdc=
-github.com/ubgo/sqlb/contrib/migrate v0.1.0 h1:MjRAVcmeIBmbn6i+Bisk+i5VYxPzcJY1E1WxaRsG2XQ=
-github.com/ubgo/sqlb/contrib/migrate v0.1.0/go.mod h1:4+fByCL6mQ3yjkTlw8ZwgeHg+sNdG+jFCxb82rpZy9A=
+github.com/ubgo/sqlb/contrib/migrate v0.1.1 h1:AlioIxuAH+JH95oe2Qm7gKxHTYHBI7G7RpznSgjgWkU=
+github.com/ubgo/sqlb/contrib/migrate v0.1.1/go.mod h1:4+fByCL6mQ3yjkTlw8ZwgeHg+sNdG+jFCxb82rpZy9A=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasttemplate v1.2.2 h1:lxLXG0uE3Qnshl9QyaK6XJxMXlQZELvChBOCmQD0Loo=

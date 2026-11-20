@@ -13,8 +13,8 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,18 +35,18 @@ const grace = 50 * time.Millisecond
 const pollInterval = 20 * time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "graceful-drain-report:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := inMemory(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := inMemory(ctx); err != nil {
 		return err
 	}
-	return durable(ctx, out)
+	return durable(ctx)
 }
 
 // stuckWorkflow's step reports its attempt number, then holds until its
@@ -69,16 +69,16 @@ func stuckWorkflow(attempts chan<- int, release <-chan struct{}) workflow.Workfl
 }
 
 // printReport is the log line a deploy script writes.
-func printReport(out io.Writer, label string) func(workflow.DrainReport, bool) {
+func printReport(label string) func(workflow.DrainReport, bool) {
 	return func(r workflow.DrainReport, detailed bool) {
-		fmt.Fprintf(out, "%s: detailed=%v finished steps=%d runs=%d, cut off %d\n", label, detailed, r.FinishedSteps, r.FinishedRuns, len(r.Cut))
+		fmt.Printf("%s: detailed=%v finished steps=%d runs=%d, cut off %d\n", label, detailed, r.FinishedSteps, r.FinishedRuns, len(r.Cut))
 		for _, c := range r.Cut {
-			fmt.Fprintf(out, "  cut: %s/%s attempt %d -> %s\n", c.Workflow, c.Step, c.Attempt, c.Disposition)
+			fmt.Printf("  cut: %s/%s attempt %d -> %s\n", c.Workflow, c.Step, c.Attempt, c.Disposition)
 		}
 	}
 }
 
-func inMemory(ctx context.Context, out io.Writer) error {
+func inMemory(ctx context.Context) error {
 	attempts := make(chan int, 4)
 	c := memory.New()
 	if err := c.Register(stuckWorkflow(attempts, nil)); err != nil {
@@ -97,29 +97,29 @@ func inMemory(ctx context.Context, out io.Writer) error {
 	// Register this in the shutdown phase that runs before the database
 	// and HTTP listener close. It drains within the grace, or sooner if
 	// the phase's own ctx ends first, and reports what it cut off.
-	hook := workflow.ShutdownHookReport(c, grace, printReport(out, "memory"))
+	hook := workflow.ShutdownHookReport(c, grace, printReport("memory"))
 	err = hook(ctx)
 	// snippet:end
-	fmt.Fprintln(out, "memory: drain error is a deadline:", err == context.DeadlineExceeded)
+	fmt.Println("memory: drain error is a deadline:", err == context.DeadlineExceeded)
 	st, err := c.Status(ctx, ref)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "memory: cut run status:", st)
+	fmt.Println("memory: cut run status:", st)
 	return nil
 }
 
-func durable(ctx context.Context, out io.Writer) error {
+func durable(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "graceful-drain-report-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "jobs.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	attempts := make(chan int, 4)
 	a, err := worker(ctx, db, stuckWorkflow(attempts, nil))
@@ -130,8 +130,8 @@ func durable(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "sql: worker A runs attempt", <-attempts)
-	hook := workflow.ShutdownHookReport(a, grace, printReport(out, "sql"))
+	fmt.Println("sql: worker A runs attempt", <-attempts)
+	hook := workflow.ShutdownHookReport(a, grace, printReport("sql"))
 	_ = hook(ctx)
 
 	release := make(chan struct{})
@@ -141,14 +141,14 @@ func durable(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	defer b.Stop()
-	fmt.Fprintln(out, "sql: worker B runs attempt", <-attempts)
+	fmt.Println("sql: worker B runs attempt", <-attempts)
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(pollInterval) {
 		st, err := b.Status(ctx, ref)
 		if err != nil {
 			return err
 		}
 		if st.IsTerminal() {
-			fmt.Fprintln(out, "sql: run finished:", st)
+			fmt.Println("sql: run finished:", st)
 			return nil
 		}
 	}

@@ -1,0 +1,9 @@
+func Chain(rs ...Redactor) Redactor {
+	var c chain
+	for _, r := range rs {
+		if r != nil {
+			c = append(c, r)
+		}
+	}
+	return c
+}

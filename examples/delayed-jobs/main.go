@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -28,14 +27,14 @@ var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 type reminder struct{ To string }
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "delayed-jobs:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	sent := make(chan string, 4)
 	running := make(chan struct{}, 1)
@@ -95,7 +94,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "enqueued: scheduled id set %t, run id set %t, status %s\n",
+	fmt.Printf("enqueued: scheduled id set %t, run id set %t, status %s\n",
 		!ref.ScheduledID.IsZero(), !ref.RunID.IsZero(), st)
 	// snippet:end
 
@@ -113,13 +112,13 @@ func run(ctx context.Context, out io.Writer) error {
 	if st, err = c.Status(ctx, later); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "cancelled before it started:", st)
+	fmt.Println("cancelled before it started:", st)
 	// snippet:end
 	ev := <-finished
-	fmt.Fprintf(out, "run-finished: %s, cancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrCancelled))
+	fmt.Printf("run-finished: %s, cancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrCancelled))
 
 	clk.Advance(24 * time.Hour)
-	fmt.Fprintln(out, <-sent)
+	fmt.Println(<-sent)
 	<-finished
 
 	// snippet:status
@@ -127,7 +126,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "after it ran: %s, terminal %t\n", st, st.IsTerminal())
+	fmt.Printf("after it ran: %s, terminal %t\n", st, st.IsTerminal())
 	// snippet:end
 
 	// A RunAt that is not in the future starts the run now.
@@ -135,8 +134,8 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "past RunAt: run id set %t\n", !now.RunID.IsZero())
-	fmt.Fprintln(out, <-sent)
+	fmt.Printf("past RunAt: run id set %t\n", !now.RunID.IsZero())
+	fmt.Println(<-sent)
 	<-finished
 
 	// snippet:cancel-running
@@ -151,14 +150,14 @@ func run(ctx context.Context, out io.Writer) error {
 	if st, err = c.Status(ctx, exp); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "cancelled while running:", st)
+	fmt.Println("cancelled while running:", st)
 	// snippet:end
 	ev = <-finished
-	fmt.Fprintf(out, "run-finished: %s, cancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrCancelled))
+	fmt.Printf("run-finished: %s, cancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrCancelled))
 
 	// snippet:not-found
 	_, err = c.Status(ctx, workflow.RunRef{RunID: "run-404"})
-	fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+	fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 	// snippet:end
 	return nil
 }

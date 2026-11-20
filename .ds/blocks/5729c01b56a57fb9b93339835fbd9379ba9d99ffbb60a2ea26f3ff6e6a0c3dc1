@@ -1,0 +1,47 @@
+type RunRecord struct {
+	workflow.RunInfo
+
+	// Source is what started the run (workflow.SourceOf of its labels, or
+	// the recorder's default source, or SourceExternal for a backfilled
+	// run); SourceRef is the reference within it.
+	Source    workflow.Source
+	SourceRef string
+
+	// Outcome is the last outcome a step set (workflow.SetOutcome), or
+	// workflow.DefaultOutcome of the terminal status when none was set;
+	// "" while the run is unfinished and nothing was set. OutcomeNote is
+	// the note that came with a set outcome.
+	Outcome     workflow.Outcome
+	OutcomeNote string
+
+	// OutcomeSet is true when a step set the outcome, so a later default
+	// never overwrites it.
+	OutcomeSet bool
+
+	// PayloadSize and OutputSize are the sizes of the input and result as
+	// the recorder saw them; larger than len(Payload) or len(Output) when
+	// the body was not kept (WithMaxPayload).
+	PayloadSize int
+	OutputSize  int
+
+	// Stale is set by the Reconciler when the client still reports the run
+	// unfinished (or does not know it) and nothing was recorded for it for
+	// longer than its StaleAfter. It is a flag for an operator; nothing is
+	// cancelled. Any later write for the run clears it.
+	Stale bool
+
+	// UpdatedAt is the time of the last write that changed the run's life
+	// (enqueue, step start or end, event, outcome, finish), on the
+	// recorder's clock. The Reconciler measures staleness from it.
+	UpdatedAt time.Time
+
+	// CheckedAt is when the Reconciler last compared the record with the
+	// client; zero when it never did. It orders Pending so every
+	// unfinished record gets its turn.
+	CheckedAt time.Time
+
+	// Steps is every step attempt, ordered by start time then step name
+	// then attempt, each with its events. Store.Run fills it; listings
+	// (Records, Runs) leave it nil to stay cheap.
+	Steps []StepRecord
+}

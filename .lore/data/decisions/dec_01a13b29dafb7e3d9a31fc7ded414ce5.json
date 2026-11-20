@@ -1,10 +1,12 @@
 {
+  "_hlc": "2026-10-14T16:06:01.211Z/0000/",
   "_table": "decisions",
-  "_v": 1,
+  "_v": 2,
   "archived_at": null,
   "body": "job > step > workflow > default lives in EffectiveRetriesFor with DefaultRetryMax; policies are never merged field by field. All drivers already agreed; the fix was single-sourcing and documenting.",
   "confidence": null,
   "created_at": "2026-10-14T16:06:01.211929760Z",
+  "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
   "id": "dec_01a13b29dafb7e3d9a31fc7ded414ce5",
   "last_validated_at": null,
@@ -16,5 +18,6 @@
   "superseded_by_id": null,
   "title": "Retry precedence in one function",
   "trust_score": 0.5,
-  "updated_at": "2026-10-14T16:06:01.211930132Z"
+  "updated_at": "2026-10-14T16:06:01.211930132Z",
+  "updated_by": "act_00000000000070008000000000000000"
 }

@@ -32,7 +32,7 @@ schedule nightly: last run succeeded, next fire 02:00 UTC
 <!-- snippet: examples/redis-worker/main.go#client -->
 ```go
 rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
-defer rdb.Close()
+defer func() { err = errors.Join(err, rdb.Close()) }()
 prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 newWorker := func() (*redis.Client, error) {
 	return redis.New(rdb,
@@ -72,7 +72,7 @@ if err != nil {
 // A closure is a Go value that cannot be stored in Redis, so the
 // driver does not declare CapClosure and has no EnqueueFunc.
 _, isClosure := any(c).(workflow.ClosureEnqueuer)
-fmt.Fprintln(out, "closures:", caps.Has(workflow.CapClosure), isClosure)
+fmt.Println("closures:", caps.Has(workflow.CapClosure), isClosure)
 ```
 
 `main_test.go` runs the program and checks the offline lines, and the live ones when `REDIS_URL` is set.

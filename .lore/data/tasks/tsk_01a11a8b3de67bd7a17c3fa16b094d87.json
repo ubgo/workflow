@@ -1,11 +1,13 @@
 {
+  "_hlc": "2026-10-08T08:04:55.398Z/0000/",
   "_table": "tasks",
-  "_v": 1,
+  "_v": 2,
   "assigned_to_actor_id": null,
   "body": "Two planning notes disagree: about 50,000 events and 2,000 pending (memory) vs a Hatchet page claiming a 51,200 pending cap. Check the engine limits docs.",
   "commitment": "proposed",
   "completed_at": null,
   "created_at": "2026-10-08T08:04:55.398774000Z",
+  "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
   "deferred_until": null,
   "due_at": null,
@@ -19,5 +21,6 @@
   "status": "todo",
   "tasklist_id": "tlt_01a115558b5a71b1bb0667223e4f59cd",
   "title": "Verify engine per-run limits (history events, pending activities/children)",
-  "updated_at": "2026-10-08T08:04:55.398774000Z"
+  "updated_at": "2026-10-08T08:04:55.398774000Z",
+  "updated_by": "act_afbe7ed1d969752697eebecaac20e9dc"
 }

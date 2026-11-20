@@ -1,0 +1,11 @@
+func AllowReservedLabels(ctx context.Context, keys ...string) context.Context {
+	old := allowFrom(ctx)
+	a := reservedAllow{keys: make(map[string]bool, len(old.keys)+len(keys)), prefixes: old.prefixes}
+	for k := range old.keys {
+		a.keys[k] = true
+	}
+	for _, k := range keys {
+		a.keys[k] = true
+	}
+	return context.WithValue(ctx, reservedAllowKey{}, a)
+}

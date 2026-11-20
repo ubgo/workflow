@@ -1,0 +1,1 @@
+type OutputSinkFunc func(ctx context.Context, out Output) error

@@ -30,7 +30,7 @@ err = c.Register(workflow.Workflow{
 			return "auth-" + o.ID, nil // sealed again by DecodeStep before the engine keeps it
 		})},
 		{Name: "capture", After: []string{"authorize"}, Run: workflow.Define(func(ctx context.Context, auth string) (string, error) {
-			fmt.Fprintln(out, "capture got", auth)
+			fmt.Println("capture got", auth)
 			return "", nil
 		})},
 	},
@@ -47,7 +47,7 @@ On the client, `WithCodec`. Its extra middleware runs after sealing, so the exam
 // stored runs after sealing, so it sees exactly what the driver keeps.
 stored := func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-		fmt.Fprintf(out, "driver stores a sealed payload: %v, card visible: %v\n",
+		fmt.Printf("driver stores a sealed payload: %v, card visible: %v\n",
 			strings.HasPrefix(string(job.Payload), `"wfenc1:`), bytes.Contains(job.Payload, []byte("4242")))
 		return next(ctx, job)
 	}

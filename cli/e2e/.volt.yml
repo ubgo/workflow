@@ -1,0 +1,2 @@
+# Workspace plumbing, never released: the CLI end-to-end tests against the real admin handler.
+internal: true

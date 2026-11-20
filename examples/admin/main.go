@@ -32,7 +32,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "admin:", err)
 		os.Exit(1)
 	}
@@ -67,7 +67,7 @@ var auth = admin.Auth[user]{
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -120,13 +120,15 @@ func run(ctx context.Context, out io.Writer) error {
 		if err != nil {
 			return 0, err.Error()
 		}
-		defer resp.Body.Close()
-		b, _ := io.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
+		if err = errors.Join(err, resp.Body.Close()); err != nil {
+			return 0, err.Error()
+		}
 		return resp.StatusCode, strings.TrimSpace(string(b))
 	}
 
 	code, _ := call("GET", "/admin/failures", "", "")
-	fmt.Fprintln(out, "anonymous GET /failures:", code)
+	fmt.Println("anonymous GET /failures:", code)
 
 	code, body := call("GET", "/admin/failures", "t-vic", "")
 	var page struct {
@@ -142,10 +144,10 @@ func run(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("failures: %d %s", code, body)
 	}
 	failed := page.Runs[0]
-	fmt.Fprintf(out, "viewer GET /failures: %d, 1 failed run, step %q: %s\n", code, failed.FailedStep, failed.Error)
+	fmt.Printf("viewer GET /failures: %d, 1 failed run, step %q: %s\n", code, failed.FailedStep, failed.Error)
 
 	code, body = call("POST", "/admin/runs/"+failed.Ref.RunID+"/retry", "t-vic", "")
-	fmt.Fprintln(out, "viewer POST retry:", code, body)
+	fmt.Println("viewer POST retry:", code, body)
 
 	smtpDown.Store(false)
 	code, _ = call("POST", "/admin/runs/"+failed.Ref.RunID+"/retry", "t-ann", "")
@@ -156,11 +158,11 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "admin POST retry: %d, run now %s\n", code, info.Status)
+	fmt.Printf("admin POST retry: %d, run now %s\n", code, info.Status)
 
 	// Pause the queue: new runs are accepted and wait.
 	code, _ = call("POST", "/admin/pause", "t-ann", `{"queue":"emails"}`)
-	fmt.Fprintln(out, "admin POST /pause emails:", code)
+	fmt.Println("admin POST /pause emails:", code)
 	for _, to := range []string{"dan", "eve", "fay"} {
 		if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "send-email", Payload: []byte(`"` + to + `"`)}); err != nil {
 			return err
@@ -176,7 +178,7 @@ func run(ctx context.Context, out io.Writer) error {
 		if a.Resolved {
 			state = "resolved"
 		}
-		fmt.Fprintf(out, "%s %s queue=%s depth=%d (max %d)\n", state, a.Kind, a.Queue, a.Depth, a.Threshold.MaxDepth)
+		fmt.Printf("%s %s queue=%s depth=%d (max %d)\n", state, a.Kind, a.Queue, a.Depth, a.Threshold.MaxDepth)
 	}), []admin.Threshold{{Queue: "emails", MaxDepth: 2}, {MaxDepth: 1000, MaxWait: 10 * time.Minute}},
 		admin.WithInterval(30*time.Second))
 	if err != nil {
@@ -199,7 +201,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer reg.Unregister()
+	defer func() { err = errors.Join(err, reg.Unregister()) }()
 	// snippet:end
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
@@ -210,14 +212,14 @@ func run(ctx context.Context, out io.Writer) error {
 			if g, ok := mt.Data.(metricdata.Gauge[int64]); ok && mt.Name == wfotel.MetricQueueDepth {
 				for _, p := range g.DataPoints {
 					q, _ := p.Attributes.Value(wfotel.AttrQueue)
-					fmt.Fprintf(out, "%s{workflow.queue=%s} = %d\n", mt.Name, q.AsString(), p.Value)
+					fmt.Printf("%s{workflow.queue=%s} = %d\n", mt.Name, q.AsString(), p.Value)
 				}
 			}
 		}
 	}
 
 	code, _ = call("POST", "/admin/resume", "t-ann", `{"queue":"emails"}`)
-	fmt.Fprintln(out, "admin POST /resume emails:", code)
+	fmt.Println("admin POST /resume emails:", code)
 	if err := waitFor(ctx, c, map[workflow.Status]int{workflow.StatusSucceeded: 6, workflow.StatusQueued: 0}); err != nil {
 		return err
 	}

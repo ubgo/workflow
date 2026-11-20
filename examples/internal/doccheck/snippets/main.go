@@ -121,9 +121,17 @@ func checkFile(w io.Writer, root, file string, sync bool) (int, error) {
 	rel, _ := filepath.Rel(root, file)
 	lines := strings.Split(string(b), "\n")
 	problems, changed := 0, false
+	// say prints one file:line message; the first failed write is kept and
+	// returned, so a closed output is an error rather than a silent pass.
+	var writeErr error
+	say := func(line int, format string, a ...any) {
+		if _, err := fmt.Fprintf(w, "%s:%d: %s\n", rel, line, fmt.Sprintf(format, a...)); err != nil && writeErr == nil {
+			writeErr = err
+		}
+	}
 	report := func(line int, format string, a ...any) {
 		problems++
-		fmt.Fprintf(w, "%s:%d: %s\n", rel, line, fmt.Sprintf(format, a...))
+		say(line, format, a...)
 	}
 	var out []string
 	for i := 0; i < len(lines); i++ {
@@ -163,7 +171,7 @@ func checkFile(w io.Writer, root, file string, sync bool) (int, error) {
 		} else if sync {
 			out = append(out, want...)
 			changed = true
-			fmt.Fprintf(w, "%s:%d: synced from %s\n", rel, at, label(m[1], m[2]))
+			say(at, "synced from %s", label(m[1], m[2]))
 		} else {
 			out = append(out, got...)
 			report(at, "stale snippet: differs from %s (run task docs:snippets:sync)", label(m[1], m[2]))
@@ -176,7 +184,7 @@ func checkFile(w io.Writer, root, file string, sync bool) (int, error) {
 			return problems, err
 		}
 	}
-	return problems, nil
+	return problems, writeErr
 }
 
 func label(file, name string) string {

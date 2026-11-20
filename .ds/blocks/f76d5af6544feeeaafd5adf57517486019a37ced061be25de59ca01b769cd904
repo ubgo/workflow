@@ -1,0 +1,9 @@
+func WithReconcileClock(c clock.Clock) ReconcileOption {
+	return func(r *Reconciler) error {
+		if c == nil {
+			return fmt.Errorf("%w: recorder.WithReconcileClock(nil)", workflow.ErrInvalid)
+		}
+		r.clk = c
+		return nil
+	}
+}

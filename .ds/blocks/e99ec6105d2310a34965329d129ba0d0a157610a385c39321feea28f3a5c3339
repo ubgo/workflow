@@ -1,0 +1,1 @@
+const QueryCaps = workflow.CapRunQuery | workflow.CapLabelPrefix | workflow.CapTenant | workflow.CapDueQuery

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/ubgo/workflow"
@@ -24,7 +23,7 @@ const envToken = "HATCHET_CLIENT_TOKEN"
 // one trigger starts a coordinator run, whose task starts every job as a
 // child run, and the Hatchet BatchSource learns the children's ends from
 // the engine's run list by their batch label.
-func runHatchet(ctx context.Context, out io.Writer) error {
+func runHatchet(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	// Workflow names unique to this run, so two runs on one shared engine
@@ -74,10 +73,10 @@ func runHatchet(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "hatchet: coordinated=%v, one parent run=%v\n", st.Coordinated, !st.Parent.IsZero())
+	fmt.Printf("hatchet: coordinated=%v, one parent run=%v\n", st.Coordinated, !st.Parent.IsZero())
 	select {
 	case p := <-done:
-		fmt.Fprintf(out, "hatchet: finally succeeded=%d of %d\n", p.Succeeded, p.Total)
+		fmt.Printf("hatchet: finally succeeded=%d of %d\n", p.Succeeded, p.Total)
 	case <-time.After(finallyTimeout):
 		return fmt.Errorf("hatchet: no Finally within %s", finallyTimeout)
 	}
@@ -88,7 +87,7 @@ func runHatchet(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	_, err = plain.Dispatch(ctx, batch.Batch{Jobs: jobs[:1]})
-	fmt.Fprintln(out, "hatchet: coordinated batch without a LabelSource refused:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("hatchet: coordinated batch without a LabelSource refused:", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	return nil
 }

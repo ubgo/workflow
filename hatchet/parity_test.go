@@ -252,7 +252,7 @@ func TestDeliveryKey(t *testing.T) {
 	if deliveryKey("r", a) == deliveryKey("r", b) {
 		t.Fatal("two ends of one run share a key")
 	}
-	if deliveryKey("r", a) != deliveryKey("r", a) {
+	if first := deliveryKey("r", a); first != deliveryKey("r", a) {
 		t.Fatal("the same end gets two keys")
 	}
 	if deliveryKey("r", time.Time{}) != "r" {

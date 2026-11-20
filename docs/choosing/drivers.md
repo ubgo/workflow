@@ -16,6 +16,7 @@ Which backend runs your workflows: the in-process memory driver, the SQL driver 
 | Enqueue inside your own SQL transaction | no | `Client.EnqueueTx` | through the outbox | through the outbox |
 | Durable memo journal and shared leaky bucket for [`Memo`](../workflows/memoisation.md) and [`UpstreamLimit`](../jobs/upstream-limits.md) | in-process only | `JournalStore`, `BucketStore` (tables) | `JournalStore`, `BucketStore` (keys) | in-process only; bring your own store |
 | Batches | per job | per job; durable batch store (`Client.BatchStore`) | per job, completion by status polling | native bulk triggers (`batch.GroupRunner`), an opt-in coordinator run |
+| Run history with the [recorder](../observability/run-recorder.md) | every end recorded; `sqlrecorder` or `MemoryStore` | every end recorded; `sqlrecorder` in the same database | every end recorded; no Redis store, use `sqlrecorder` | run ends best effort: run the `Reconciler`; the record outlives the engine's retention |
 | Guide | [memory](../drivers/memory.md#create-the-client) | [sqlstore](../drivers/sqlstore.md#create-the-client) | [redis](../drivers/redis.md#create-the-client) | [hatchet](../drivers/hatchet.md#create-the-client) |
 | Example | [quickstart](../../examples/quickstart/) | [sqlite-worker](../../examples/sqlite-worker/), [postgres-cluster](../../examples/postgres-cluster/) | [redis-worker](../../examples/redis-worker/) | [hatchet-worker](../../examples/hatchet-worker/) |
 
@@ -31,6 +32,7 @@ The capability rows are printed by the [capabilities](../../examples/capabilitie
 - **If you already run Redis and need durable jobs, cron and workflows**, use the redis driver: runs are claimed whole under a lease, writes are fenced, a tick fires once across clients, and it has everything the SQL driver has except closures and transactional enqueue ([The Redis driver](../drivers/redis.md)).
 - **If you already run Hatchet, or want its dashboard and engine-side scheduling**, use the hatchet driver. Write concurrency and rate-limit keys as CEL (`workflow.KeyExpr`), keep crons in UTC, and do not rely on misfire policies or retry jitter, which it refuses.
 - **If one backend must not be a single point of failure for enqueues**, put `failover.New(primary, secondary)` in front of two drivers; every job then needs an idempotency key ([Fail over to a second backend](../reliability/failover.md#fail-over-to-a-second-backend)).
+- **If people must see who started each run and what each step did, past the driver's own retention**, add the [run recorder](../observability/run-recorder.md) on any driver: module `recorder`, plus `recorder/sqlrecorder` to keep the history in Postgres, MySQL 8 or SQLite. On Hatchet run its `Reconciler` too.
 - **If you start on one and expect to move**, write against `workflow.Client` only, keep keys as Go functions unless you are on Hatchet, and run your workflows through a `FakeLike` test for each target driver.
 
 ## Pitfalls

@@ -1,0 +1,9 @@
+func WithRetention(r recorder.Retention) Option {
+	return func(s *Store) error {
+		if err := recorder.ValidateRetention(r); err != nil {
+			return err
+		}
+		s.retention = r
+		return nil
+	}
+}

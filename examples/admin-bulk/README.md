@@ -39,13 +39,13 @@ preview, err := adm.RetryAll(ctx, failed, admin.BulkOptions{DryRun: true})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
+fmt.Printf("dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
 
 res, err := adm.RetryAll(ctx, failed, admin.BulkOptions{})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
+fmt.Printf("retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
 ```
 
 Delete by filter: refused without one, bounded by Max, then done:
@@ -53,20 +53,20 @@ Delete by filter: refused without one, bounded by Max, then done:
 <!-- snippet: examples/admin-bulk/main.go#delete -->
 ```go
 _, err = adm.DeleteAll(ctx, workflow.RunQuery{}, admin.BulkOptions{DryRun: true})
-fmt.Fprintln(out, "delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
 
 done := workflow.RunQuery{Workflow: "send-email", Statuses: []workflow.Status{workflow.StatusSucceeded}}
 preview, err = adm.DeleteAll(ctx, done, admin.BulkOptions{DryRun: true, Max: 3})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
+fmt.Printf("dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
 
 res, err = adm.DeleteAll(ctx, done, admin.BulkOptions{})
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "deleted %d of %d\n", res.Done, res.Matched)
+fmt.Printf("deleted %d of %d\n", res.Done, res.Matched)
 ```
 
 Run ends in five-minute steps for a chart:
@@ -82,7 +82,7 @@ if err != nil {
 	return err
 }
 for _, p := range series.Points {
-	fmt.Fprintf(out, "%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
+	fmt.Printf("%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
 }
 ```
 

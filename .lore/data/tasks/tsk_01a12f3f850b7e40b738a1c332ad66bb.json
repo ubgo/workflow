@@ -1,11 +1,13 @@
 {
+  "_hlc": "2026-10-12T09:08:17.101Z/0000/",
   "_table": "tasks",
-  "_v": 1,
+  "_v": 2,
   "assigned_to_actor_id": null,
   "body": null,
   "commitment": "accepted",
   "completed_at": "2026-10-12T09:08:17.101671000Z",
   "created_at": "2026-10-12T08:34:14.411933000Z",
+  "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
   "deferred_until": null,
   "due_at": null,
@@ -19,5 +21,6 @@
   "status": "done",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
   "title": "No-hardwire hatchet: logger, tunings, clock, refusals for the new core options (I7 C3 C4)",
-  "updated_at": "2026-10-12T09:08:17.101673000Z"
+  "updated_at": "2026-10-12T09:08:17.101673000Z",
+  "updated_by": "act_00000000000070008000000000000000"
 }

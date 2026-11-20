@@ -1,0 +1,10 @@
+func WithBackfillQuery(q workflow.RunQuery) ReconcileOption {
+	return func(r *Reconciler) error {
+		q.From, q.Limit, q.Cursor = time.Time{}, 0, ""
+		if err := workflow.ValidateRunQuery(q); err != nil {
+			return fmt.Errorf("recorder.WithBackfillQuery: %w", err)
+		}
+		r.scope = q
+		return nil
+	}
+}

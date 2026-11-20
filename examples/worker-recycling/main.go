@@ -12,7 +12,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -36,23 +35,23 @@ const jobs = 5
 const runTimeout = 20 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "worker-recycling:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "worker-recycling-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	if err := runMaxJobs(ctx, out, filepath.Join(dir, "app.db")); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	if err := runMaxJobs(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return fmt.Errorf("max jobs: %w", err)
 	}
-	if err := runMaxMemory(ctx, out); err != nil {
+	if err := runMaxMemory(ctx); err != nil {
 		return fmt.Errorf("max memory: %w", err)
 	}
 	return nil
@@ -72,12 +71,12 @@ func thumbnail(done *atomic.Int64) workflow.Workflow {
 // runMaxJobs enqueues a backlog, then plays a supervisor: it starts a
 // worker generation, which serves until it has finished two jobs, and
 // starts another until a generation finds the queue empty.
-func runMaxJobs(ctx context.Context, out io.Writer, path string) error {
+func runMaxJobs(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	var done atomic.Int64
 	if err := enqueueBacklog(ctx, db, &done); err != nil {
 		return err
@@ -106,16 +105,16 @@ func runMaxJobs(ctx context.Context, out io.Writer, path string) error {
 		var rec *workflow.RecycleError
 		switch {
 		case errors.As(err, &rec):
-			fmt.Fprintf(out, "generation %d: recycled (%s), jobs done: %d\n", gen, rec.Reason, rec.Jobs)
+			fmt.Printf("generation %d: recycled (%s), jobs done: %d\n", gen, rec.Reason, rec.Jobs)
 			continue // a real worker exits 0 here and its supervisor starts a new process
 		case err != nil:
 			return err
 		}
-		fmt.Fprintf(out, "generation %d: queue empty, jobs done: %d, exit\n", gen, done.Load()-before)
+		fmt.Printf("generation %d: queue empty, jobs done: %d, exit\n", gen, done.Load()-before)
 		// snippet:end
 		break
 	}
-	fmt.Fprintf(out, "done: %d of %d\n", done.Load(), jobs)
+	fmt.Printf("done: %d of %d\n", done.Load(), jobs)
 	return nil
 }
 
@@ -149,7 +148,7 @@ func enqueueBacklog(ctx context.Context, db *sql.DB, done *atomic.Int64) error {
 // runMaxMemory recycles an in-memory worker whose heap reading crosses a
 // threshold, read through an injected function and checked on a fake
 // clock.
-func runMaxMemory(ctx context.Context, out io.Writer) error {
+func runMaxMemory(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	var heap atomic.Uint64
 	heap.Store(200 << 20)
@@ -177,7 +176,7 @@ func runMaxMemory(ctx context.Context, out io.Writer) error {
 			if !errors.As(err, &rec) {
 				return fmt.Errorf("stop cause %v, want a RecycleError", err)
 			}
-			fmt.Fprintf(out, "memory worker: recycled (%s) at %d MiB, ErrRecycle %v\n",
+			fmt.Printf("memory worker: recycled (%s) at %d MiB, ErrRecycle %v\n",
 				rec.Reason, rec.Memory>>20, errors.Is(err, workflow.ErrRecycle))
 			return nil
 		case <-time.After(20 * time.Millisecond):

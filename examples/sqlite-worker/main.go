@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,7 +34,7 @@ import (
 const runTimeout = 10 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "sqlite-worker:", err)
 		os.Exit(1)
 	}
@@ -59,23 +60,23 @@ func receiptWorkflow() workflow.Workflow {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := runMemory(ctx, out); err != nil {
+func run(ctx context.Context) (err error) {
+	if err := runMemory(ctx); err != nil {
 		return fmt.Errorf("memory: %w", err)
 	}
 	dir, err := os.MkdirTemp("", "sqlite-worker-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	if err := runSQLite(ctx, out, filepath.Join(dir, "app.db")); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	if err := runSQLite(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return fmt.Errorf("sqlite: %w", err)
 	}
 	return nil
 }
 
 // runMemory runs the workflow on the in-memory driver and waits for its end.
-func runMemory(ctx context.Context, out io.Writer) error {
+func runMemory(ctx context.Context) error {
 	// snippet:memory
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil)) // your app's logger
 	c := memory.New(
@@ -99,26 +100,26 @@ func runMemory(ctx context.Context, out io.Writer) error {
 
 	// snippet:memory-caps
 	caps := c.Capabilities()
-	fmt.Fprintln(out, "memory durable:", caps.Has(workflow.CapDurable))
-	fmt.Fprintln(out, "memory cron:", caps.Has(workflow.CapCron))
+	fmt.Println("memory durable:", caps.Has(workflow.CapDurable))
+	fmt.Println("memory cron:", caps.Has(workflow.CapCron))
 	// snippet:end
 
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "send-receipt", Payload: []byte(`{"Order":"A-1"}`)}); err != nil {
 		return err
 	}
 	ev := <-ended
-	fmt.Fprintln(out, "memory run:", ev.Status)
+	fmt.Println("memory run:", ev.Status)
 	return nil
 }
 
 // runSQLite runs the workflow on the SQL driver over a SQLite file.
-func runSQLite(ctx context.Context, out io.Writer, path string) error {
+func runSQLite(ctx context.Context, path string) (err error) {
 	// snippet:open
 	db, err := driversqlite.Open(path) // a file; ":memory:" would be lost on exit
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	// snippet:end
 
 	var lostRaces atomic.Int64
@@ -170,11 +171,11 @@ func runSQLite(ctx context.Context, out io.Writer, path string) error {
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "sqlite durable:", c.Capabilities().Has(workflow.CapDurable))
-	fmt.Fprintln(out, "run id kind:", strings.SplitN(string(ref.RunID), "_", 2)[0])
+	fmt.Println("sqlite durable:", c.Capabilities().Has(workflow.CapDurable))
+	fmt.Println("run id kind:", strings.SplitN(string(ref.RunID), "_", 2)[0])
 	select {
 	case ev := <-ended:
-		fmt.Fprintln(out, "sqlite run:", ev.Status)
+		fmt.Println("sqlite run:", ev.Status)
 	case <-time.After(runTimeout):
 		return fmt.Errorf("the run did not finish within %s", runTimeout)
 	}
@@ -182,7 +183,7 @@ func runSQLite(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "status after the end:", st)
+	fmt.Println("status after the end:", st)
 	return nil
 }
 

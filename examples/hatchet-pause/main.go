@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -43,22 +42,22 @@ const (
 const envToken = "HATCHET_CLIENT_TOKEN"
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "hatchet-pause:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := refusals(ctx, out); err != nil {
+func run(ctx context.Context) error {
+	if err := refusals(ctx); err != nil {
 		return err
 	}
 	if os.Getenv(envToken) == "" {
-		fmt.Fprintln(out, envToken, "is not set: the live run is skipped")
+		fmt.Println(envToken, "is not set: the live run is skipped")
 		return nil
 	}
-	return live(ctx, out)
+	return live(ctx)
 }
 
 // noop is a step that returns its input.
@@ -66,21 +65,21 @@ func noop(_ context.Context, in []byte) ([]byte, error) { return in, nil }
 
 // refusals shows what the driver does without Config.API, before anything
 // connects.
-func refusals(ctx context.Context, out io.Writer) error {
+func refusals(ctx context.Context) error {
 	// snippet:refusals
 	c := hatchet.New(hatchet.Config{}) // no API
 	caps := c.Capabilities()
-	fmt.Fprintf(out, "without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
+	fmt.Printf("without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
 
 	err := c.Pause(ctx, workflow.PauseWorkflow("reports"))
-	fmt.Fprintf(out, "Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 	err = c.PauseSchedule(ctx, workflow.ScheduleTarget{ID: "any"})
-	fmt.Fprintf(out, "PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 	// NewAPI reads the tenant from the token, so a value that is not one
 	// is refused at once.
 	_, err = hatchet.NewAPI("not-a-token", "")
-	fmt.Fprintf(out, "NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	return nil
 }
@@ -106,7 +105,7 @@ func waitFor(ctx context.Context, c workflow.Client, ref workflow.RunRef, want w
 // live pauses a workflow and a schedule on the engine named by the
 // HATCHET_CLIENT_* variables. The workflow name carries a random suffix so
 // repeated runs on one engine do not see each other's runs.
-func live(ctx context.Context, out io.Writer) error {
+func live(ctx context.Context) error {
 	report := "example-pause-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 
 	// snippet:api
@@ -121,7 +120,7 @@ func live(ctx context.Context, out io.Writer) error {
 	})
 	// snippet:end
 	caps := c.Capabilities()
-	fmt.Fprintf(out, "with API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
+	fmt.Printf("with API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
 	if err := c.Register(workflow.Workflow{Name: report, Steps: []workflow.Step{{Name: "render", Run: noop}}}); err != nil {
 		return err
 	}
@@ -143,14 +142,14 @@ func live(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
+	fmt.Println("workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
 	// snippet:end
 	time.Sleep(holdCheck)
 	st, err := c.Status(ctx, held)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "held run finished while paused:", st.IsTerminal())
+	fmt.Println("held run finished while paused:", st.IsTerminal())
 	// snippet:resume-workflow
 	if err := c.Resume(ctx, workflow.PauseWorkflow(report)); err != nil {
 		return err
@@ -159,11 +158,11 @@ func live(ctx context.Context, out io.Writer) error {
 	if err := waitFor(ctx, c, held, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "after resume: succeeded")
+	fmt.Println("after resume: succeeded")
 
 	// The engine keeps one pause per workflow: there is no pause-everything.
 	err = c.Pause(ctx, workflow.PauseAll())
-	fmt.Fprintf(out, "PauseAll: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Printf("PauseAll: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 	// snippet:pause-schedule
 	id, err := c.Schedule(ctx, workflow.Schedule{Workflow: report, Name: "nightly", Cron: "0 2 * * *", Location: time.UTC})
@@ -176,24 +175,24 @@ func live(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	if err := printSchedule(ctx, c, report, out); err != nil {
+	if err := printSchedule(ctx, c, report); err != nil {
 		return err
 	}
 	if err := c.ResumeSchedule(ctx, workflow.ScheduleTarget{ID: id}); err != nil {
 		return err
 	}
-	return printSchedule(ctx, c, report, out)
+	return printSchedule(ctx, c, report)
 }
 
 // printSchedule prints whether the workflow's schedule is paused.
-func printSchedule(ctx context.Context, c workflow.ScheduleLister, wf string, out io.Writer) error {
+func printSchedule(ctx context.Context, c workflow.ScheduleLister, wf string) error {
 	list, err := c.Schedules(ctx)
 	if err != nil {
 		return err
 	}
 	for _, s := range list {
 		if s.Workflow == wf {
-			fmt.Fprintf(out, "schedule %s: paused=%v\n", s.Name, s.Paused)
+			fmt.Printf("schedule %s: paused=%v\n", s.Name, s.Paused)
 		}
 	}
 	return nil

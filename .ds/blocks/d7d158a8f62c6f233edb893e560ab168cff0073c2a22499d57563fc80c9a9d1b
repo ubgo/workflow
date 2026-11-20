@@ -1,0 +1,22 @@
+func FileSink(path string, mode FileMode) OutputSink {
+	var mu sync.Mutex
+	return OutputSinkFunc(func(_ context.Context, out Output) error {
+		mu.Lock()
+		defer mu.Unlock()
+		flag := os.O_CREATE | os.O_WRONLY
+		if mode == FileAppend {
+			flag |= os.O_APPEND
+		} else {
+			flag |= os.O_TRUNC
+		}
+		f, err := os.OpenFile(path, flag, fileSinkPerm)
+		if err != nil {
+			return err
+		}
+		if err := FormatOutput(f, out); err != nil {
+			_ = f.Close()
+			return err
+		}
+		return f.Close()
+	})
+}

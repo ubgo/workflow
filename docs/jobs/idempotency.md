@@ -22,7 +22,7 @@ second, err := c.Enqueue(ctx, job) // a retried HTTP request, a redelivered mess
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "second enqueue returned the first run:", second == first)
+fmt.Println("second enqueue returned the first run:", second == first)
 ```
 
 The second `Enqueue` returns the first run's `RunRef` and a nil error: the caller cannot tell, and does not need to, whether it started the run or found it. Keys are scoped to the workflow, so `invoice:order-42` on two workflows is two keys.
@@ -35,7 +35,7 @@ third, err := c.Enqueue(ctx, job) // the first run has finished: the key is free
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "after the run finished, a new run:", third != first)
+fmt.Println("after the run finished, a new run:", third != first)
 ```
 
 ## Require or ignore keys
@@ -76,7 +76,7 @@ Require a key on work that must never run twice by accident (payouts, charges), 
 <!-- snippet: examples/idempotency/main.go#required -->
 ```go
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "payout"})
-fmt.Fprintln(out, "payout without a key:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("payout without a key:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 Turn keys off on work where a shared key would be a bug, so a caller that copies a key from another job does not suppress runs:
@@ -91,7 +91,7 @@ b, err := c.Enqueue(ctx, workflow.Job{Workflow: "ping", IdempotencyKey: "same"})
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "ping with the same key twice, two runs:", a != b)
+fmt.Println("ping with the same key twice, two runs:", a != b)
 ```
 
 A key is never dropped silently. A driver without `CapIdempotencyKey` refuses a job that carries one, even under `IdempotencyOff`, because the key is the caller's request; and `IdempotencyRequired` makes `Start` refuse such a driver. The example uses the test `Fake`, told to claim every capability but this one, to stand for such a driver:
@@ -108,7 +108,7 @@ if err := f.Start(ctx); err != nil {
 	return err
 }
 _, err := f.Enqueue(ctx, workflow.Job{Workflow: "invoice", IdempotencyKey: "invoice:order-42"})
-fmt.Fprintln(out, "no CapIdempotencyKey:", err)
+fmt.Println("no CapIdempotencyKey:", err)
 ```
 
 ## Once per period

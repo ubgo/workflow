@@ -1,0 +1,7 @@
+type Redactor interface {
+	// RedactPayload returns body as it may be stored.
+	RedactPayload(info PayloadInfo, body []byte) []byte
+
+	// RedactAttr returns a as it may be stored.
+	RedactAttr(info PayloadInfo, a workflow.EventAttr) workflow.EventAttr
+}

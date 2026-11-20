@@ -1,0 +1,2 @@
+# Workspace plumbing, never released: the tests of sqlrecorder on a real SQLite database.
+internal: true

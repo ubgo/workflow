@@ -1,0 +1,1 @@
+func CaptureOnlyFailures() CaptureOption { return func(c *captureConfig) { c.failOnly = true } }

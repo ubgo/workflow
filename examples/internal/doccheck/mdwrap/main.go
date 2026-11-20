@@ -15,6 +15,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -70,13 +71,14 @@ func run(w io.Writer, paths []string) (int, error) {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
 			lines, err := wrapped(f)
-			if err != nil {
+			if err = errors.Join(err, f.Close()); err != nil {
 				return fmt.Errorf("%s: %w", p, err)
 			}
 			for _, l := range lines {
-				fmt.Fprintf(w, "%s:%d\n", p, l)
+				if _, err := fmt.Fprintf(w, "%s:%d\n", p, l); err != nil {
+					return err
+				}
 			}
 			total += len(lines)
 			return nil

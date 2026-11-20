@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +34,7 @@ var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 const runTimeout = 10 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "functions:", err)
 		os.Exit(1)
 	}
@@ -72,16 +71,16 @@ func sendWelcome(sent *atomic.Int64, caught chan<- string) workflow.Func[welcome
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	if err := runMemory(ctx, out); err != nil {
+func run(ctx context.Context) (err error) {
+	if err := runMemory(ctx); err != nil {
 		return fmt.Errorf("memory: %w", err)
 	}
 	dir, err := os.MkdirTemp("", "functions-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
-	if err := runRestart(ctx, out, filepath.Join(dir, "app.db")); err != nil {
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	if err := runRestart(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return fmt.Errorf("sqlite: %w", err)
 	}
 	return nil
@@ -89,7 +88,7 @@ func run(ctx context.Context, out io.Writer) error {
 
 // runMemory enqueues the Func on the in-memory driver: once with a retry,
 // once failing for good so the catch runs, and once by an unknown name.
-func runMemory(ctx context.Context, out io.Writer) error {
+func runMemory(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
@@ -114,13 +113,13 @@ func runMemory(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-ends
-	fmt.Fprintf(out, "%s: %s after %d attempts, step %q\n", ev.Workflow, ev.Status, sent.Load(), workflow.FuncStep)
+	fmt.Printf("%s: %s after %d attempts, step %q\n", ev.Workflow, ev.Status, sent.Load(), workflow.FuncStep)
 
 	if _, err := fn.Enqueue(ctx, c, welcome{Email: "eve@example.invalid"}); err != nil {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "bad address: %s, catch ran for %q\n", ev.Status, <-caught)
+	fmt.Printf("bad address: %s, catch ran for %q\n", ev.Status, <-caught)
 
 	// snippet:by-name
 	job, err := workflow.FuncJob("send-invoice", map[string]string{"Order": "A-1"})
@@ -129,18 +128,18 @@ func runMemory(ctx context.Context, out io.Writer) error {
 	}
 	_, err = c.Enqueue(ctx, job) // nothing registered "send-invoice" here
 	// snippet:end
-	fmt.Fprintf(out, "unregistered name: ErrNotFound %v\n", errors.Is(err, workflow.ErrNotFound))
+	fmt.Printf("unregistered name: ErrNotFound %v\n", errors.Is(err, workflow.ErrNotFound))
 	return nil
 }
 
 // runRestart enqueues a delayed run with one SQL client, stops it, and
 // lets a second client on the same database file run it.
-func runRestart(ctx context.Context, out io.Writer, path string) error {
+func runRestart(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	clk := clock.NewFake(start)
 	var sent atomic.Int64
 	caught := make(chan string, 1)
@@ -176,7 +175,7 @@ func runRestart(ctx context.Context, out io.Writer, path string) error {
 	}
 	// snippet:end
 	first.Stop()
-	fmt.Fprintln(out, "first process stopped with the run waiting")
+	fmt.Println("first process stopped with the run waiting")
 
 	// The second process: register the same name and start.
 	second, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithClock(clk), sqlstore.WithPollInterval(50*time.Millisecond))
@@ -204,7 +203,7 @@ func runRestart(ctx context.Context, out io.Writer, path string) error {
 			if ev.Ref.ScheduledID != ref.ScheduledID {
 				continue
 			}
-			fmt.Fprintf(out, "second process ran %s: %s\n", ev.Workflow, ev.Status)
+			fmt.Printf("second process ran %s: %s\n", ev.Workflow, ev.Status)
 			return nil
 		case <-time.After(100 * time.Millisecond):
 			clk.Advance(time.Second) // move the fake clock so the poller ticks

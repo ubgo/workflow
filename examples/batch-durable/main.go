@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -48,15 +47,15 @@ func main() {
 		fmt.Fprintln(os.Stderr, "batch-durable:", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
-	if err := run(context.Background(), os.Stdout, filepath.Join(dir, "wf.db")); err != nil {
+	err = errors.Join(run(context.Background(), filepath.Join(dir, "wf.db")), os.RemoveAll(dir))
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "batch-durable:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer, path string) error {
+func run(ctx context.Context, path string) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -64,7 +63,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	// Both managers read time from this clock, so the lease can be ended
 	// with Advance instead of waiting a minute.
 	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
@@ -99,7 +98,7 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "process A started jobs 0 and 1, then stalled on job 2")
+	fmt.Println("process A started jobs 0 and 1, then stalled on job 2")
 
 	// Process B: another client on the same database.
 	b, err := newClient(ctx, db)
@@ -128,17 +127,17 @@ func run(ctx context.Context, out io.Writer, path string) error {
 	// snippet:end
 
 	p := <-finally
-	fmt.Fprintf(out, "finally: %d jobs, %d succeeded, %d cancelled\n", p.Total, p.Succeeded, p.CancelledJobs)
+	fmt.Printf("finally: %d jobs, %d succeeded, %d cancelled\n", p.Total, p.Succeeded, p.CancelledJobs)
 	st, err := store.Get(ctx, id)
 	if err != nil {
 		return err
 	}
 	for i, j := range st.Jobs {
-		fmt.Fprintf(out, "job %d: %s\n", i, j.Status)
+		fmt.Printf("job %d: %s\n", i, j.Status)
 	}
 
 	killA() // A's stalled call returns: its lease is gone, so it starts nothing more
-	fmt.Fprintln(out, "process A's dispatch ended with an error:", <-dispatched != nil)
+	fmt.Println("process A's dispatch ended with an error:", <-dispatched != nil)
 	return nil
 }
 

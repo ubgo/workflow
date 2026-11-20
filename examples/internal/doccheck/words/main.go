@@ -82,12 +82,12 @@ func run(w io.Writer, words, files []string) (int, error) {
 }
 
 // checkFile prints file:line: word for each line of p that contains a word.
-func checkFile(w io.Writer, p string, words []string) (int, error) {
+func checkFile(w io.Writer, p string, words []string) (_ int, err error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { err = errors.Join(err, f.Close()) }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLine)
 	n, line := 0, 0
@@ -96,7 +96,9 @@ func checkFile(w io.Writer, p string, words []string) (int, error) {
 		low := strings.ToLower(sc.Text())
 		for _, word := range words {
 			if strings.Contains(low, word) {
-				fmt.Fprintf(w, "%s:%d: %s\n", p, line, word)
+				if _, err := fmt.Fprintf(w, "%s:%d: %s\n", p, line, word); err != nil {
+					return n, err
+				}
 				n++
 			}
 		}

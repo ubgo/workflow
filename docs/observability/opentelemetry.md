@@ -4,7 +4,7 @@ The `otel` module adds OpenTelemetry tracing and metrics to any driver as one st
 
 ## Before you start
 
-- `go get github.com/ubgo/workflow/otel@latest`. It is its own module (Go 1.25), so the OpenTelemetry SDK never becomes a dependency of the core.
+- `go get github.com/ubgo/workflow/otel@latest`. It is its own module (Go 1.25) and requires only the OpenTelemetry API, so it never becomes a dependency of the core and never brings an SDK: your app uses the SDK and exporters it already runs.
 - A `TracerProvider` and a `MeterProvider` from your app's OpenTelemetry setup. The example uses the SDK's in-memory span exporter and a manual metric reader, so it prints what a backend would receive.
 - The runnable program for this page is [examples/opentelemetry](../../examples/opentelemetry/).
 
@@ -84,7 +84,7 @@ The enqueue middleware refuses a job that already carries a label under `otel.` 
 ```go
 twice := middleware.WrapClient(client, inst.Enqueue())
 _, err = twice.Enqueue(ctx, workflow.Job{Workflow: "send-email"})
-fmt.Fprintln(out, "Enqueue middleware twice:", errors.Is(err, workflow.ErrInvalid))
+fmt.Println("Enqueue middleware twice:", errors.Is(err, workflow.ErrInvalid))
 ```
 
 ## Metrics
@@ -134,7 +134,7 @@ reg, err := inst.ObserveQueueDepth(adm.QueueDepths) // read at every collection
 if err != nil {
 	return err
 }
-defer reg.Unregister()
+defer func() { err = errors.Join(err, reg.Unregister()) }()
 ```
 
 Unregister the returned registration when the client stops. Alerts on a depth or wait threshold are the [admin Monitor](../admin/alerts.md), which needs no metrics backend.

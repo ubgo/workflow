@@ -1,0 +1,27 @@
+func CheckJobLabels(ctx context.Context, job Job) error {
+	a := allowFrom(ctx)
+	for _, k := range slices.Sorted(maps.Keys(job.Labels)) {
+		// The source labels are reserved yet app-settable (WithSource):
+		// they pass when their value is valid, whoever set them.
+		if settable, err := checkAppReserved(k, job.Labels[k]); settable {
+			if err != nil {
+				return fmt.Errorf("job for %q: %w", job.Workflow, err)
+			}
+			continue
+		}
+		p, ok := ReservedLabel(k)
+		if !ok || a.keys[k] {
+			continue
+		}
+		if slices.ContainsFunc(a.prefixes, func(ap string) bool { return strings.HasPrefix(k, ap) }) {
+			continue
+		}
+		return invalidf("job for %q: label %q uses the reserved prefix %q; only the package owning it may set it", job.Workflow, k, p)
+	}
+	for _, next := range job.Chain {
+		if err := CheckJobLabels(ctx, next); err != nil {
+			return err
+		}
+	}
+	return nil
+}

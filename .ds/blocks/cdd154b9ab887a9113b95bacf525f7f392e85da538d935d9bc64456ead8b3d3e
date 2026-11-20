@@ -1,0 +1,7 @@
+func CaptureLevel(l slog.Leveler) CaptureOption {
+	return func(c *captureConfig) {
+		if l != nil {
+			c.level = l
+		}
+	}
+}

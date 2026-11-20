@@ -1,11 +1,13 @@
 {
+  "_hlc": "2026-10-11T04:46:57.721Z/0000/",
   "_table": "tasks",
-  "_v": 1,
+  "_v": 2,
   "assigned_to_actor_id": null,
   "body": "Raised by wf-middleware. (B) A codec-encoded parent output embedded in StepInput's JSON object (several parents) cannot be decoded by a step middleware, because the middleware sees the merged object, not each parent's bytes. (C) Signal Event payloads become a wait step's output without passing through the codec. Likely fix: the merge happens after decode, i.e. drivers apply step-input middleware per parent before StepInput, or the codec wraps only the job payload and Signal payloads at the client boundary. Decide before the codec is claimed to cover every byte at rest.",
   "commitment": "accepted",
   "completed_at": "2026-10-11T04:46:57.721193000Z",
   "created_at": "2026-10-10T11:13:27.154261000Z",
+  "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
   "deferred_until": null,
   "due_at": null,
@@ -19,5 +21,6 @@
   "status": "done",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
   "title": "Codec vs multi-parent merge and Signal payloads",
-  "updated_at": "2026-10-11T04:46:57.721206000Z"
+  "updated_at": "2026-10-11T04:46:57.721206000Z",
+  "updated_by": "act_00000000000070008000000000000000"
 }

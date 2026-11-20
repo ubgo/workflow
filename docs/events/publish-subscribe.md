@@ -51,7 +51,7 @@ if err != nil {
 	return err
 }
 for i, d := range again.Deliveries {
-	fmt.Fprintf(out, "  republish of %s returned the first run: %v\n", d.Subscription, d.Ref == first.Deliveries[i].Ref)
+	fmt.Printf("  republish of %s returned the first run: %v\n", d.Subscription, d.Ref == first.Deliveries[i].Ref)
 }
 ```
 

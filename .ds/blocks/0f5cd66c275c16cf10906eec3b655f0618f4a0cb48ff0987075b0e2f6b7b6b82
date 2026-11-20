@@ -1,0 +1,13 @@
+func SetOutcome(ctx context.Context, o Outcome, note string) error {
+	if !o.Valid() {
+		return invalidf("outcome %q is not one of %v", o, outcomes)
+	}
+	if len(note) > MaxOutcomeNote {
+		return invalidf("outcome note is %d bytes, more than %d", len(note), MaxOutcomeNote)
+	}
+	s, ok := ctx.Value(outcomeSetterKey{}).(OutcomeSetter)
+	if !ok || s == nil {
+		return Unsupported("SetOutcome", "no run recorder is bound on ctx, or ctx is not a step's")
+	}
+	return s.SetOutcome(ctx, o, note)
+}

@@ -1,0 +1,4 @@
+type RecordPage struct {
+	Runs []RunRecord
+	Next string
+}

@@ -468,7 +468,8 @@ func TestAwaitStep_NeedsStepInfo(t *testing.T) {
 	if _, err := step.Run(context.Background(), nil); !workflow.IsPermanent(err) {
 		t.Errorf("Run without StepInfo = %v, want a permanent error", err)
 	}
-	if batch.AwaitID("r1", "fan") != batch.AwaitID("r1", "fan") || batch.AwaitID("r1", "fan") == batch.AwaitID("r2", "fan") {
+	first := batch.AwaitID("r1", "fan")
+	if first != batch.AwaitID("r1", "fan") || first == batch.AwaitID("r2", "fan") {
 		t.Error("AwaitID is not a function of run and step")
 	}
 }

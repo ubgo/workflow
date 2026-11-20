@@ -93,7 +93,7 @@ runs := workflow.NextRuns(workflow.NextRunsQuery{
 	Count:    3,
 })
 for _, r := range runs {
-	fmt.Fprintf(out, "  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
+	fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
 }
 ```
 

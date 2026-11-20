@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 	_ "time/tzdata" // Asia/Kolkata on hosts without a zone database
@@ -29,19 +28,19 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "capabilities:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	db, err := driversqlite.Memory()
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:declare
 	sqlc, err := sqlstore.New(db, sqlb.SQLiteDialect{})
@@ -58,7 +57,7 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	for _, d := range drivers {
 		caps := d.c.Capabilities()
-		fmt.Fprintf(out, "%-8s durable=%-5v %s\n", d.name, caps.Has(workflow.CapDurable), caps)
+		fmt.Printf("%-8s durable=%-5v %s\n", d.name, caps.Has(workflow.CapDurable), caps)
 	}
 	// snippet:end
 
@@ -79,10 +78,10 @@ func run(ctx context.Context, out io.Writer) error {
 		}}},
 	}
 	need := workflow.Requires(digest)
-	fmt.Fprintln(out, "digest needs:", need)
+	fmt.Println("digest needs:", need)
 	for _, d := range drivers {
 		if missing := d.c.Capabilities().Missing(need); missing != 0 {
-			fmt.Fprintf(out, "  %s lacks %s\n", d.name, missing)
+			fmt.Printf("  %s lacks %s\n", d.name, missing)
 		}
 	}
 	// snippet:end
@@ -90,9 +89,9 @@ func run(ctx context.Context, out io.Writer) error {
 	// snippet:refusal
 	err = workflow.CheckCaps(hatchet.New(hatchet.Config{}).Capabilities(), digest)
 	if ue, ok := errors.AsType[*workflow.UnsupportedError](err); ok {
-		fmt.Fprintf(out, "refused: field=%s missing=%s reason=%q\n", ue.Field, ue.Missing, ue.Reason)
+		fmt.Printf("refused: field=%s missing=%s reason=%q\n", ue.Field, ue.Missing, ue.Reason)
 	}
-	fmt.Fprintln(out, "is ErrUnsupported:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("is ErrUnsupported:", errors.Is(err, workflow.ErrUnsupported))
 
 	// The Hatchet driver also refuses at Register what its engine cannot
 	// express, naming the field: here a Go key function, where Hatchet
@@ -102,52 +101,52 @@ func run(ctx context.Context, out io.Writer) error {
 		Concurrency: &workflow.Concurrency{Key: workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["tenant"] }), MaxRuns: 1},
 		Steps:       digest.Steps,
 	}
-	fmt.Fprintln(out, "hatchet Register:", hatchet.New(hatchet.Config{}).Register(perTenant))
+	fmt.Println("hatchet Register:", hatchet.New(hatchet.Config{}).Register(perTenant))
 	// snippet:end
 
 	// snippet:schedule
 	nightly := workflow.Schedule{Name: "acme-nightly", Workflow: "digest", Cron: "0 2 * * *", Location: kolkata}
-	fmt.Fprintln(out, "schedule needs:", workflow.RequiresSchedule(nightly))
-	fmt.Fprintln(out, "on hatchet:", workflow.CheckScheduleCaps(hatchet.New(hatchet.Config{}).Capabilities(), nightly))
-	fmt.Fprintln(out, "on memory: ", workflow.CheckScheduleCaps(memory.New().Capabilities(), nightly))
+	fmt.Println("schedule needs:", workflow.RequiresSchedule(nightly))
+	fmt.Println("on hatchet:", workflow.CheckScheduleCaps(hatchet.New(hatchet.Config{}).Capabilities(), nightly))
+	fmt.Println("on memory: ", workflow.CheckScheduleCaps(memory.New().Capabilities(), nightly))
 	// snippet:end
 
 	// snippet:job
 	job := workflow.Job{Workflow: "digest", RunAt: time.Date(2026, 12, 1, 9, 0, 0, 0, kolkata), IdempotencyKey: "digest-2026-12-01"}
-	fmt.Fprintln(out, "job needs:", workflow.RequiresJob(job))
+	fmt.Println("job needs:", workflow.RequiresJob(job))
 	// snippet:end
 
-	if err := validation(out); err != nil {
+	if err := validation(); err != nil {
 		return err
 	}
-	if err := sentinels(ctx, out); err != nil {
+	if err := sentinels(ctx); err != nil {
 		return err
 	}
-	labels(out)
+	labels()
 	return nil
 }
 
 // validation shows that specs are checked before anything runs.
-func validation(out io.Writer) error {
+func validation() error {
 	// snippet:validate
 	bad := workflow.Workflow{Name: "import", Steps: []workflow.Step{
 		{Name: "load", After: []string{"parse"}, Run: func(ctx context.Context, in []byte) ([]byte, error) { return in, nil }},
 	}}
 	err := workflow.Validate(bad)
-	fmt.Fprintln(out, "Validate:", err)
-	fmt.Fprintln(out, "is ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("Validate:", err)
+	fmt.Println("is ErrInvalid:", errors.Is(err, workflow.ErrInvalid))
 
 	err = memory.New().Register(bad) // every driver's Register validates
-	fmt.Fprintln(out, "Register:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("Register:", errors.Is(err, workflow.ErrInvalid))
 
 	err = workflow.ValidateSchedule(workflow.Schedule{Workflow: "digest", Cron: "0 9 * * *"})
-	fmt.Fprintln(out, "ValidateSchedule:", err)
+	fmt.Println("ValidateSchedule:", err)
 	// snippet:end
 	return nil
 }
 
 // sentinels shows the lifecycle and lookup errors every driver returns.
-func sentinels(ctx context.Context, out io.Writer) error {
+func sentinels(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	wf := workflow.Workflow{Name: "ping", Steps: []workflow.Step{{Name: "pong", Run: func(ctx context.Context, in []byte) ([]byte, error) { return in, nil }}}}
@@ -158,18 +157,18 @@ func sentinels(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	_, err := c.Enqueue(ctx, workflow.Job{Workflow: "ping"})
-	fmt.Fprintln(out, "before Start:", errors.Is(err, workflow.ErrNotStarted))
+	fmt.Println("before Start:", errors.Is(err, workflow.ErrNotStarted))
 
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
-	fmt.Fprintln(out, "Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
+	fmt.Println("second Start:", errors.Is(c.Start(ctx), workflow.ErrAlreadyStarted))
+	fmt.Println("Register after Start:", errors.Is(c.Register(wf), workflow.ErrAlreadyStarted))
 
 	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "pnig"})
-	fmt.Fprintln(out, "unknown workflow:", errors.Is(err, workflow.ErrNotFound))
+	fmt.Println("unknown workflow:", errors.Is(err, workflow.ErrNotFound))
 	_, err = c.Status(ctx, workflow.RunRef{RunID: "no-such-run"})
-	fmt.Fprintln(out, "unknown run:", errors.Is(err, workflow.ErrNotFound))
+	fmt.Println("unknown run:", errors.Is(err, workflow.ErrNotFound))
 	// snippet:end
 
 	// snippet:unavailable
@@ -177,20 +176,20 @@ func sentinels(ctx context.Context, out io.Writer) error {
 	// original error stays reachable for errors.Is and errors.As.
 	refused := errors.New("dial tcp 10.0.0.5:7077: connection refused")
 	err = workflow.Unavailable(fmt.Errorf("enqueue: %w", refused))
-	fmt.Fprintln(out, "outage:", workflow.IsUnavailable(err), errors.Is(err, refused))
-	fmt.Fprintln(out, "refusal is no outage:", workflow.IsUnavailable(workflow.Unsupported("Job.RunAt", "")))
+	fmt.Println("outage:", workflow.IsUnavailable(err), errors.Is(err, refused))
+	fmt.Println("refusal is no outage:", workflow.IsUnavailable(workflow.Unsupported("Job.RunAt", "")))
 	// snippet:end
 	return nil
 }
 
 // labels shows the label prefixes the library keeps for itself.
-func labels(out io.Writer) {
+func labels() {
 	// snippet:labels
-	fmt.Fprintln(out, "reserved:", workflow.ReservedLabelPrefixes())
+	fmt.Println("reserved:", workflow.ReservedLabelPrefixes())
 	prefix, ok := workflow.ReservedLabel("otel.traceparent")
-	fmt.Fprintln(out, "otel.traceparent reserved:", ok, prefix)
+	fmt.Println("otel.traceparent reserved:", ok, prefix)
 
 	err := workflow.ValidateLabels(map[string]string{"tenant": "acme", "workflow.batch.id": "b1"})
-	fmt.Fprintln(out, "ValidateLabels:", err)
+	fmt.Println("ValidateLabels:", err)
 	// snippet:end
 }

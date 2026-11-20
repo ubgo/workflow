@@ -13,7 +13,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -27,7 +26,7 @@ import (
 var errSMTP = errors.New("smtp: connection refused")
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "admin-bulk:", err)
 		os.Exit(1)
 	}
@@ -37,7 +36,7 @@ func main() {
 var start = time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -97,13 +96,13 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
+	fmt.Printf("dry run: would retry %d, sample %d, done %d\n", preview.Matched, len(preview.Sample), preview.Done)
 
 	res, err := adm.RetryAll(ctx, failed, admin.BulkOptions{})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
+	fmt.Printf("retried %d of %d, skipped %d, more to do: %t\n", res.Done, res.Matched, res.Skipped, res.Truncated)
 	// snippet:end
 	for range res.Done {
 		<-ends
@@ -111,20 +110,20 @@ func run(ctx context.Context, out io.Writer) error {
 
 	// snippet:delete
 	_, err = adm.DeleteAll(ctx, workflow.RunQuery{}, admin.BulkOptions{DryRun: true})
-	fmt.Fprintln(out, "delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println("delete without a filter refused:", errors.Is(err, workflow.ErrInvalid))
 
 	done := workflow.RunQuery{Workflow: "send-email", Statuses: []workflow.Status{workflow.StatusSucceeded}}
 	preview, err = adm.DeleteAll(ctx, done, admin.BulkOptions{DryRun: true, Max: 3})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
+	fmt.Printf("dry run: would delete %d (Max 3), more match: %t\n", preview.Matched, preview.Truncated)
 
 	res, err = adm.DeleteAll(ctx, done, admin.BulkOptions{})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "deleted %d of %d\n", res.Done, res.Matched)
+	fmt.Printf("deleted %d of %d\n", res.Done, res.Matched)
 	// snippet:end
 
 	// snippet:chart
@@ -137,7 +136,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, p := range series.Points {
-		fmt.Fprintf(out, "%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
+		fmt.Printf("%s succeeded=%d failed=%d total=%d\n", p.At.Format("15:04"), p.Succeeded, p.Failed, p.Total())
 	}
 	// snippet:end
 	return nil

@@ -1,6 +1,8 @@
 version: '3'
 
-# The SQL driver module. SQLite tests need nothing; the Postgres tests run
+# The SQL driver module. Its tests live in ./enginetest, a never-released
+# module, so the drivers they open stay out of sqlstore; every test task here
+# runs PKGS: the sqlstore, enginetest, pgnotify and pgxtx modules. SQLite tests need nothing; the Postgres tests run
 # against a throwaway Postgres from compose.yml (test:pg) or the host's
 # Postgres.app (test:pg:host, the Mac), in a dedicated database,
 # ubgo_workflow_test, each test in its own table prefix. Heavy runs take the machine-wide testlock.
@@ -8,6 +10,8 @@ version: '3'
 set: [pipefail]
 
 vars:
+  # Every package of the four modules this directory holds.
+  PKGS: ./... ./enginetest/... ./pgnotify/... ./pgxtx/...
   PG_DB: ubgo_workflow_test
   PG_DSN: postgres://{{.USER}}@localhost:5432/ubgo_workflow_test?sslmode=disable
   # compose.yml's throwaway Postgres (profile postgres), superuser.
@@ -19,7 +23,7 @@ vars:
 tasks:
   test:
     desc: Race tests on SQLite (the Postgres cases skip without WFTEST_PG_DSN; see test:pg)
-    cmds: ['testlock go test -race ./...']
+    cmds: ['testlock go test -race {{.PKGS}}']
 
   test:pg:
     desc: Race tests on SQLite and Postgres 18 (compose.yml's throwaway postgres profile, removed after the run pass or fail)
@@ -32,7 +36,7 @@ tasks:
       - defer: {task: pg:down}
       - task: up
         vars: {PROFILE: postgres}
-      - 'WFTEST_PG_DSN="{{.PG_COMPOSE_DSN}}" go test -race -timeout 20m ./...'
+      - 'WFTEST_PG_DSN="{{.PG_COMPOSE_DSN}}" go test -race -timeout 20m {{.PKGS}}'
 
   pg:down:
     desc: Remove the throwaway Postgres and its data (test:pg already does this after every run)
@@ -41,7 +45,7 @@ tasks:
   test:pg:host:
     desc: Race tests on SQLite and the host's Postgres.app (the Mac shared stack; creates the ubgo_workflow_test database when missing)
     deps: [db:create]
-    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 20m ./..."']
+    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 20m {{.PKGS}}"']
 
   test:mysql:
     desc: Race tests on SQLite and MySQL 8 (compose.yml's throwaway mysql profile, removed after the run pass or fail)
@@ -55,7 +59,7 @@ tasks:
       - defer: {task: mysql:down}
       - task: up
         vars: {PROFILE: mysql}
-      - 'WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -timeout 20m ./...'
+      - 'WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -timeout 20m {{.PKGS}}'
 
   # `up --wait` is retried: on rootless Docker a port released by the previous
   # run's container can still read as in use for a moment ("address already
@@ -77,7 +81,7 @@ tasks:
 
   vet:
     desc: go vet over the module, test files included
-    cmds: ['go vet ./...']
+    cmds: ['go vet {{.PKGS}}']
 
   check:
     desc: gofmt, vet and the race tests on SQLite and Postgres

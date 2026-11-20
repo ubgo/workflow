@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: by
@@ -11,8 +12,8 @@ import (
 // once; with WithSchedulesOnBoth it is listed once per backend, each tick
 // fires on both, and the ID Schedule returned pauses both copies.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `-- default: schedules on the primary only
@@ -28,7 +29,7 @@ Schedule returned an ID for: both
   primary paused: true
   secondary paused: true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

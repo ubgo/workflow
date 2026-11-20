@@ -1,0 +1,9 @@
+func WithTablePrefix(p string) Option {
+	return func(s *Store) error {
+		if len(p) > maxPrefix || !prefixPattern.MatchString(p) {
+			return fmt.Errorf("%w: sqlrecorder.WithTablePrefix(%q): use [a-z][a-z0-9_]*, at most %d characters", workflow.ErrInvalid, p, maxPrefix)
+		}
+		s.prefix = p
+		return nil
+	}
+}

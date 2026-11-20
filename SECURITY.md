@@ -19,11 +19,12 @@ We will acknowledge your report within a few days and keep you updated on remedi
 
 ## Supported versions
 
-Nothing is tagged yet. Until the first release, security fixes land on `main` only.
-
 | Version | Supported |
 |---|---|
-| `main` | ✅ |
+| latest `v0.x` | ✅ |
+| any earlier `v0.x` | ❌ |
+
+The library is pre-GA. Under SemVer a `v0.x` release may break, so the only supported version is the newest one; fixes are not backported. Each module is tagged on its own, so "newest" means the newest tag of the module you use.
 
 Once releases exist, fixes are applied to the latest `v0.x`; under SemVer a `v0.x` release may break, so fixes are not backported to an earlier `v0.x`.
 

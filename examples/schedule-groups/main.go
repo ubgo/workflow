@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -35,7 +34,7 @@ const (
 const tickWait = 5 * time.Second
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-groups:", err)
 		os.Exit(1)
 	}
@@ -63,7 +62,7 @@ func officeHours(berlin *time.Location, name, workflowName, expr string) workflo
 func noop(context.Context, []byte) ([]byte, error) { return nil, nil }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	berlin, err := time.LoadLocation("Europe/Berlin")
@@ -106,12 +105,12 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "-- the group in the schedule list")
-	if err := listGroup(ctx, c, out); err != nil {
+	fmt.Println("-- the group in the schedule list")
+	if err := listGroup(ctx, c); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- 09:00: both schedules of the group fire")
+	fmt.Println("-- 09:00: both schedules of the group fire")
 	if err := clk.BlockUntil(ctx, 3); err != nil { // one timer per schedule
 		return err
 	}
@@ -131,9 +130,9 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "runs of the group:", len(page.Runs))
+	fmt.Println("runs of the group:", len(page.Runs))
 
-	fmt.Fprintln(out, "-- pause the group")
+	fmt.Println("-- pause the group")
 	// snippet:pause
 	infos, err := c.Schedules(ctx)
 	if err != nil {
@@ -148,11 +147,11 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 	}
 	// snippet:end
-	return listGroup(ctx, c, out)
+	return listGroup(ctx, c)
 }
 
 // listGroup prints every schedule with its group and next fire time.
-func listGroup(ctx context.Context, c workflow.ScheduleLister, out io.Writer) error {
+func listGroup(ctx context.Context, c workflow.ScheduleLister) error {
 	// snippet:list
 	infos, err := c.Schedules(ctx)
 	if err != nil {
@@ -167,7 +166,7 @@ func listGroup(ctx context.Context, c workflow.ScheduleLister, out io.Writer) er
 		if !s.Paused {
 			next = "next " + s.Next.In(s.Location).Format("15:04 MST")
 		}
-		fmt.Fprintf(out, "  %-13s %-12s %s\n", s.Name, group, next)
+		fmt.Printf("  %-13s %-12s %s\n", s.Name, group, next)
 	}
 	// snippet:end
 	return nil

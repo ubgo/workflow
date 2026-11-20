@@ -1,10 +1,13 @@
 {
+  "_hlc": "2026-10-07T07:47:57.795Z/0000/",
   "_table": "projects",
-  "_v": 1,
+  "_v": 2,
   "archived_at": null,
   "created_at": "2026-10-07T07:47:57.795797000Z",
+  "created_by": "act_00000000000070008000000000000000",
   "id": "prj_01a115555ae37c48ae7fddcfa96da417",
   "name": "workflow",
   "origin_url": "git@github.com:ubgo/workflow.git",
-  "updated_at": "2026-10-07T07:47:57.795798000Z"
+  "updated_at": "2026-10-07T07:47:57.795798000Z",
+  "updated_by": "act_00000000000070008000000000000000"
 }

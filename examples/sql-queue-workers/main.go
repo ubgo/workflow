@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -34,26 +33,26 @@ const waitLimit = 10 * time.Second
 const poll = 20 * time.Millisecond
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "sql-queue-workers:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	dir, err := os.MkdirTemp("", "sql-queue-workers-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	var broken atomic.Bool
 	broken.Store(true)
@@ -123,14 +122,14 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "email while mail is paused:", st)
+	fmt.Println("email while mail is paused:", st)
 	if err := reports.Resume(ctx, workflow.PauseQueue("mail")); err != nil {
 		return err
 	}
 	if err := wait(ctx, reports, ref, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "email after resume: succeeded, on queue", <-ranOn)
+	fmt.Println("email after resume: succeeded, on queue", <-ranOn)
 
 	failed, err := reports.Enqueue(ctx, workflow.Job{Workflow: "build-report", Labels: map[string]string{"tenant": "acme"}})
 	if err != nil {
@@ -146,7 +145,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
+		fmt.Printf("failed: %s at step %s on queue %s\n", r.Workflow, r.FailedStep, r.Queue)
 	}
 	// The fix is deployed.
 	broken.Store(false)
@@ -158,19 +157,19 @@ func run(ctx context.Context, out io.Writer) error {
 	if err := wait(ctx, reports, again, workflow.StatusSucceeded); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "after retry: gather ran %d time(s), render %d\n", gathered.Load(), rendered.Load())
+	fmt.Printf("after retry: gather ran %d time(s), render %d\n", gathered.Load(), rendered.Load())
 	if err := reports.Delete(ctx, again); err != nil {
 		return err
 	}
 	if _, err := reports.Status(ctx, again); errors.Is(err, workflow.ErrNotFound) {
-		fmt.Fprintln(out, "after delete: not found")
+		fmt.Println("after delete: not found")
 	}
 
 	// snippet:drain
 	dctx, dcancel := context.WithTimeout(ctx, 5*time.Second)
 	defer dcancel()
 	err = mail.Drain(dctx) // stop claiming, let running attempts finish, stop
-	fmt.Fprintln(out, "mail worker drained:", err == nil)
+	fmt.Println("mail worker drained:", err == nil)
 	<-mail.Done()
 	// snippet:end
 	return nil

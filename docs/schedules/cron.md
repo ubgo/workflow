@@ -75,7 +75,7 @@ second, err := sq.Schedule(ctx, nightly)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "  sqlstore, same name twice, same schedule:", first == second)
+fmt.Println("  sqlstore, same name twice, same schedule:", first == second)
 ```
 
 The memory driver upserts the same way (the example prints `true` for it too). On Hatchet a named schedule is one trigger per workflow and name with a stable ID; a changed definition replaces the trigger on the engine behind that same ID. Without a `Name`, every call adds a schedule on every driver.
@@ -108,7 +108,7 @@ if err != nil {
 t := monday
 for range 3 {
 	t = s.Next(t, ny) // strictly after t, evaluated in New York
-	fmt.Fprintln(out, " ", t.Format(layout))
+	fmt.Println(" ", t.Format(layout))
 }
 ```
 
@@ -124,7 +124,7 @@ var days []string
 for _, f := range fires {
 	days = append(days, f.Format("Mon 2 Jan"))
 }
-fmt.Fprintln(out, "  1st of the month or a Monday:", strings.Join(days, ", "))
+fmt.Println("  1st of the month or a Monday:", strings.Join(days, ", "))
 ```
 
 ## Build an expression from a frequency
@@ -151,7 +151,7 @@ for _, f := range frequencies {
 		return err
 	}
 	next := s.Next(monday, time.UTC)
-	fmt.Fprintf(out, "  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
+	fmt.Printf("  %-18s next %s\n", s.String(), next.Format("Mon 2 Jan 15:04:05"))
 }
 ```
 
@@ -210,7 +210,7 @@ for _, f := range []cron.Builder{
 	cron.DailyAt("9:5"),                      // minutes take two digits
 } {
 	_, err := f.Expr()
-	fmt.Fprintf(out, "  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
+	fmt.Printf("  ErrBuilder=%t %v\n", errors.Is(err, cron.ErrBuilder), err)
 }
 ```
 
@@ -265,7 +265,7 @@ Every parse error is a `*cron.ParseError` naming the field (`minute`, `hour`, `d
 ```go
 _, err = cron.Parse("0 25 * * *")
 if pe, ok := errors.AsType[*cron.ParseError](err); ok {
-	fmt.Fprintf(out, "  field %s, value %q: %v\n", pe.Field, pe.Value, err)
+	fmt.Printf("  field %s, value %q: %v\n", pe.Field, pe.Value, err)
 }
 ```
 

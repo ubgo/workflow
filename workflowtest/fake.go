@@ -180,8 +180,7 @@ type Fake struct {
 	triggers []workflow.ScheduleID         // successful TriggerSchedule calls, in order
 	forced   []FakeForce                   // successful ForceComplete and ForceFail calls, in order
 	paused   map[workflow.PauseTarget]bool // pauses in force
-	unscheds []workflow.ScheduleID
-	closures []workflow.ClosureJob // EnqueueClosure calls, in order
+	closures []workflow.ClosureJob         // EnqueueClosure calls, in order
 }
 
 // fakeRun is one recorded, never-executed run.
@@ -222,11 +221,6 @@ func NewFake(opts ...FakeOption) *Fake {
 	}
 	return f
 }
-
-// parseCron runs the configured parser and fails closed, as the memory
-// driver does: a parser that returns neither a schedule nor an error is
-// refused.
-func (f *Fake) parseCron(expr string) (cron.Schedule, error) { return f.parseCronFor(expr, false) }
 
 // parseCronFor parses with cron.ParseSeconds for a seconds schedule
 // (Schedule.Seconds, Workflow.CronSeconds), as the drivers do.

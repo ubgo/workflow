@@ -1,0 +1,9 @@
+func WithErrorHistory(n int) Option {
+	return func(r *Recorder) error {
+		if n < 0 {
+			return fmt.Errorf("%w: recorder.WithErrorHistory(%d)", workflow.ErrInvalid, n)
+		}
+		r.errorHistory = n
+		return nil
+	}
+}

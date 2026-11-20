@@ -115,7 +115,7 @@ refused := []workflow.Workflow{
 }
 for _, wf := range refused {
 	err := c.Register(wf) // refused here, before anything connects
-	fmt.Fprintf(out, "%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
+	fmt.Printf("%s: ErrUnsupported=%v\n  %v\n", wf.Name, errors.Is(err, workflow.ErrUnsupported), err)
 }
 ```
 
@@ -205,7 +205,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
+	fmt.Printf("failed run: queue=%s step=%s error=%q\n", r.Queue, r.FailedStep, r.Error)
 }
 ```
 
@@ -237,14 +237,14 @@ again, err := c.Schedule(ctx, workflow.Schedule{Workflow: report, Name: "nightly
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "same name, same definition, same ID:", again == id)
+fmt.Println("same name, same definition, same ID:", again == id)
 list, err := c.Schedules(ctx)
 if err != nil {
 	return err
 }
 for _, s := range list {
 	if s.Workflow == report {
-		fmt.Fprintf(out, "schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
+		fmt.Printf("schedule %s: %s, next fire in UTC at %s\n", s.Name, s.Cron, s.Next.Format("15:04"))
 	}
 }
 ```
@@ -288,17 +288,17 @@ Without it the driver declares neither capability and refuses both calls before 
 ```go
 c := hatchet.New(hatchet.Config{}) // no API
 caps := c.Capabilities()
-fmt.Fprintf(out, "without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
+fmt.Printf("without API: PauseWorkflow=%v SchedulePause=%v\n", caps.Has(workflow.CapPauseWorkflow), caps.Has(workflow.CapSchedulePause))
 
 err := c.Pause(ctx, workflow.PauseWorkflow("reports"))
-fmt.Fprintf(out, "Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Pause: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 err = c.PauseSchedule(ctx, workflow.ScheduleTarget{ID: "any"})
-fmt.Fprintf(out, "PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // NewAPI reads the tenant from the token, so a value that is not one
 // is refused at once.
 _, err = hatchet.NewAPI("not-a-token", "")
-fmt.Fprintf(out, "NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
+fmt.Printf("NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
 ```
 
 With it, after `Start`, pause a workflow and resume it:
@@ -316,7 +316,7 @@ paused, err := c.Paused(ctx)
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
+fmt.Println("workflow listed as paused:", slices.Contains(paused, workflow.PauseWorkflow(report)))
 ```
 
 <!-- snippet: examples/hatchet-pause/main.go#resume-workflow -->
@@ -351,7 +351,7 @@ The program [hatchet-pause](../../examples/hatchet-pause/) runs the refusals wit
 
 `ScheduleInfo.Last` (`CapScheduleHistory`) is not stored by the driver: `Schedules` reads it from the engine's run list, as the newest run the engine fired for the trigger, or that `TriggerSchedule` started for it, within `Config.ScheduleHistoryWindow` (a week by default, `hatchet.DefaultScheduleHistoryWindow`).
 
-`Config.EnqueueOnly` (`CapEnqueueOnly`) makes a client for web nodes: `Enqueue`, `Status`, `Cancel`, `Signal`, `Schedule` and the listings work without `Start` and without a worker, connecting on first use; `Start` starts nothing and `OnRunFinished` is refused ([Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)).
+`Config.EnqueueOnly` (`CapEnqueueOnly`) makes a client for web nodes: `Enqueue`, `Status`, `Cancel`, `Signal`, `Schedule` and the listings work without `Start` and without a worker, connecting on first use; `Start` starts nothing and `OnRunFinished` is refused ([Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)); a run recorder takes `EnqueuePlugin` there ([Record runs from web nodes](#record-runs-from-web-nodes)).
 
 The driver refuses `OverlapSkip` by field name, because the engine fires ticks without asking a worker, and it claims no error history, shutdown requeue or force: the engine has no call that completes or fails a run from outside, and a worker stopped by its `Start` context spends the attempts it cut short, so use `Drain` for a clean deploy.
 
@@ -363,19 +363,19 @@ c := hatchet.New(hatchet.Config{})
 // Hatchet fixes a task's retries when it is declared: no deadline.
 err := c.Register(workflow.Workflow{Name: "until", Retry: workflow.RetryPolicy{Max: 3, Until: time.Hour},
 	Steps: []workflow.Step{{Name: "only", Run: noop}}})
-fmt.Fprintf(out, "Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Retry.Until: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // ... and no per-dispatch policy either.
 _, err = c.Enqueue(ctx, workflow.Job{Workflow: "any", Retry: &workflow.RetryPolicy{Max: 5}})
-fmt.Fprintf(out, "Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("Job.Retry: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // Each queue is its own Hatchet worker: queues cannot be ordered.
 err = hatchet.New(hatchet.Config{Queues: []workflow.QueueConfig{{Name: "high", Priority: 10}}}).Start(ctx)
-fmt.Fprintf(out, "QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
+fmt.Printf("QueueConfig.Priority: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsupported))
 
 // The driver says what it cannot do, so an app can check first.
 for _, cp := range []workflow.Caps{workflow.CapPauseWorkflow, workflow.CapDeleteRun, workflow.CapDiscard} {
-	fmt.Fprintf(out, "%v: %v\n", cp, c.Capabilities().Has(cp))
+	fmt.Printf("%v: %v\n", cp, c.Capabilities().Has(cp))
 }
 ```
 
@@ -466,6 +466,32 @@ Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's worka
 - The engine loads a scheduled run into its ticker about five seconds before it is due and fires it at the loaded time: `Reschedule` refuses a start due within 15 seconds.
 - Workflow pause takes a mandatory queue TTL, after which the engine cancels the held runs, and an empty or unparsable TTL silently becomes five minutes. `Pause` sends a hundred years. Anyone pausing through the dashboard or their own REST calls must set a long TTL too.
 
+## Record run history
+
+The engine keeps its runs as long as its own retention says, lists them the way it sees them, and keeps no step timeline. A [run recorder](../observability/run-recorder.md) keeps a history your app owns next to it: `workflow.Use(hatchet.New(cfg), rec.Plugin())`, then register and start through the client `Use` returned. What differs on this driver:
+
+- **Run ends are best effort: run the Reconciler.** The driver implements `OnRunFinished` by polling the engine's run list and does not claim `CapRunFinished`, so a run end can be missed: a run that was older than `Config.RunFinishedWindow` when it ended, a run that ended while no process was polling and was created more than `Config.RunFinishedCatchUp` before the next `Start`, a delayed start cancelled before it fired (only the process that cancelled it reports that). Run [`recorder.NewReconciler(c, store)`](ds:block?id=rec-newreconciler-su363hcv) with `go rc.Run(ctx)` next to the client: each pass reads unfinished records back from the engine and finishes them.
+- **The record outlives the engine's retention.** Once the engine prunes a run, the record still answers; an unfinished record whose run the engine no longer knows is flagged stale, never cancelled.
+- **The record keeps every attempt's error.** The driver claims no `CapErrorHistory`, so `RunInfo.Errors` is empty here, while the recorder's step middleware stores each failed attempt with its error on the record.
+- **Results.** The driver declares `CapResult`, so [`recorder.WithResultReader(c)`](ds:block?id=rec-withresultreader-wrjsqy26) stores a succeeded run's result on the record.
+- **Backfill costs engine calls.** The Reconciler lists the engine's runs of the backfill window, and `Runs` reads each listed run in full. On an engine other apps share, scope it with [`recorder.WithBackfillQuery(workflow.RunQuery{Workflow: ...})`](ds:block?id=rec-withbackfillquery-qc3kqct7) or `Tenant`, and keep `RunQuery.LabelPrefixes` out of it: the driver refuses them (no `CapLabelPrefix`).
+
+The recorder's end-to-end suite runs its driver cases against a live engine (with `HATCHET_CLIENT_TOKEN` set), recording into [`recorder.MemoryStore`](ds:block?id=rec-memorystore-smz35v44).
+
+### Record runs from web nodes
+
+A client built with `Config.EnqueueOnly` refuses `OnRunFinished`, so `workflow.Use(web, rec.Plugin())` fails there with an error matching `workflow.ErrUnsupported`. Give the web node the recorder's enqueue half, [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv), and the worker processes the full plugin, over one store every process reaches:
+
+```go
+rec, err := recorder.New(store) // a store every process reaches: sqlrecorder on a shared database
+// The web node: it enqueues and runs nothing, so it records only what it accepted.
+web, err := workflow.Use(hatchet.New(hatchet.Config{EnqueueOnly: true}), rec.EnqueuePlugin())
+// Each worker process: steps, events and the run's end, into the same record.
+worker, err := workflow.Use(hatchet.New(hatchet.Config{WorkerName: "thumbnails"}), rec.Plugin())
+```
+
+The web node records the run with its source, labels and input when the engine accepts it; the worker records the steps and the end into the same record, because every write is an upsert keyed by the run. Run the Reconciler on a worker, where `OnRunFinished` works. The same split runs without an engine on the SQL driver in [examples/recorder-split](../../examples/recorder-split/) ([Record run history › Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue)); against a live engine the recorder's end-to-end suite runs it with `sqlrecorder` on SQLite.
+
 ## Reach the Hatchet SDK
 
 `Client.Native()` returns the SDK client, the one escape hatch for what the workflow API does not cover (the run list, workers, the dashboard's data). It is nil before `Start` unless `Config.Client` was given. Do not start a second worker on it.
@@ -514,6 +540,7 @@ worker listed through Native: true
 - Without `Step.Timeout`, a step on a crashed worker waits up to `StepTimeout` (a day by default) before it is retried.
 - A tick missed while the engine was down is dropped: Hatchet never catches up, and no misfire policy is accepted.
 - `OnRunFinished` is best-effort. Use the memory or SQL driver when every run end must reach an observer.
+- A run recorder without a Reconciler can leave records unfinished: `OnRunFinished` is the recorder's only end signal on a run whose end the poller missed ([Record run history](#record-run-history)).
 - `Clock` does not make the engine's own timers fake: steps, sleeps and crons run on the engine's time.
 
 ## Related
@@ -525,3 +552,4 @@ worker listed through Native: true
 - Example: [hatchet-manage](../../examples/hatchet-manage/) (queues, run list, retry, schedules, drain)
 - Example: [hatchet-pause](../../examples/hatchet-pause/) (workflow and schedule pause through `Config.API`)
 - [Run-finished hook](../observability/run-finished.md)
+- [Record run history](../observability/run-recorder.md) and example [recorder-split](../../examples/recorder-split/) (a web node and a worker)

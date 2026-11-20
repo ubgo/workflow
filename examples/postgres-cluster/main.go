@@ -20,7 +20,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -57,20 +56,20 @@ const (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "postgres-cluster:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	db, dialect, prefix, cleanup, err := open(ctx)
 	if err != nil {
 		return err
 	}
-	defer cleanup()
-	return cluster(ctx, out, db, dialect, prefix)
+	defer func() { err = errors.Join(err, cleanup()) }()
+	return cluster(ctx, db, dialect, prefix)
 }
 
 // counts records how often each run's step executed, across all workers.
@@ -90,7 +89,7 @@ func (c *counts) hit(ctx context.Context) {
 
 // cluster starts the workers, enqueues the jobs, fires one cron tick and
 // shuts everything down.
-func cluster(ctx context.Context, out io.Writer, db *sql.DB, dialect sqlb.Dialect, prefix string) error {
+func cluster(ctx context.Context, db *sql.DB, dialect sqlb.Dialect, prefix string) error {
 	ran := &counts{n: map[workflow.RunID]int{}}
 	ticks := make(chan time.Time, 10)
 	// One scheduling clock for every worker, so the program decides when
@@ -159,14 +158,14 @@ func cluster(ctx context.Context, out io.Writer, db *sql.DB, dialect sqlb.Dialec
 		}
 	}
 	ran.mu.Unlock()
-	fmt.Fprintf(out, "%d jobs, %d ran exactly once\n", jobs, once)
+	fmt.Printf("%d jobs, %d ran exactly once\n", jobs, once)
 
 	// Move the shared clock past 10:00: all three workers see the tick due,
 	// one fires it.
 	clk.Advance(time.Minute)
 	select {
 	case at := <-ticks:
-		fmt.Fprintln(out, "hourly-report fired at", at.Format("15:04"))
+		fmt.Println("hourly-report fired at", at.Format("15:04"))
 	case <-time.After(tickTimeout):
 		return fmt.Errorf("the cron tick did not fire within %s", tickTimeout)
 	}
@@ -174,7 +173,7 @@ func cluster(ctx context.Context, out io.Writer, db *sql.DB, dialect sqlb.Dialec
 	case <-ticks:
 		return errors.New("the cron tick fired twice")
 	case <-time.After(secondTickWindow):
-		fmt.Fprintln(out, "fired once across", workers, "workers")
+		fmt.Println("fired once across", workers, "workers")
 	}
 
 	// snippet:shutdown
@@ -189,7 +188,7 @@ func cluster(ctx context.Context, out io.Writer, db *sql.DB, dialect sqlb.Dialec
 	if _, err := clients[0].Enqueue(ctx, workflow.Job{Workflow: "resize"}); !errors.Is(err, workflow.ErrNotStarted) {
 		return fmt.Errorf("calling Enqueue after Stop: %v, want ErrNotStarted", err)
 	}
-	fmt.Fprintln(out, "stopped; Enqueue now fails with", workflow.ErrNotStarted)
+	fmt.Println("stopped; Enqueue now fails with", workflow.ErrNotStarted)
 	return nil
 }
 
@@ -216,7 +215,7 @@ func waitAll(ctx context.Context, c *sqlstore.Client, refs []workflow.RunRef) er
 
 // open returns the database to run on: Postgres when PG_DSN is set (under a
 // fresh table prefix whose tables cleanup drops), else a SQLite file.
-func open(ctx context.Context) (*sql.DB, sqlb.Dialect, string, func(), error) {
+func open(ctx context.Context) (*sql.DB, sqlb.Dialect, string, func() error, error) {
 	if dsn := os.Getenv(envDSN); dsn != "" {
 		db, err := driverpgx.Open(dsn)
 		if err != nil {
@@ -227,13 +226,13 @@ func open(ctx context.Context) (*sql.DB, sqlb.Dialect, string, func(), error) {
 			return nil, nil, "", nil, err
 		}
 		prefix := "cluster_" + hex.EncodeToString(b[:]) + "_"
-		return db, sqlb.PostgresDialect{}, prefix, func() {
+		return db, sqlb.PostgresDialect{}, prefix, func() error {
 			// The demo's result is already printed; a failed drop only
 			// leaves tables behind, so it is reported, not fatal.
 			if err := dropPrefix(ctx, db, prefix); err != nil {
 				fmt.Fprintln(os.Stderr, "postgres-cluster: dropping tables under", prefix+":", err)
 			}
-			db.Close()
+			return db.Close()
 		}, nil
 	}
 	dir, err := os.MkdirTemp("", "postgres-cluster-*")
@@ -242,22 +241,21 @@ func open(ctx context.Context) (*sql.DB, sqlb.Dialect, string, func(), error) {
 	}
 	db, err := driversqlite.Open(filepath.Join(dir, "cluster.db"))
 	if err != nil {
-		os.RemoveAll(dir)
-		return nil, nil, "", nil, err
+		return nil, nil, "", nil, errors.Join(err, os.RemoveAll(dir))
 	}
-	return db, sqlb.SQLiteDialect{}, "wf_", func() { db.Close(); os.RemoveAll(dir) }, nil
+	return db, sqlb.SQLiteDialect{}, "wf_", func() error { return errors.Join(db.Close(), os.RemoveAll(dir)) }, nil
 }
 
 // dropPrefix drops every table under prefix in the current schema, so a
 // demo run against a shared Postgres leaves nothing behind. A scan or
 // iteration error is returned rather than skipped: a partial list would
 // leave tables behind while looking like a clean run.
-func dropPrefix(ctx context.Context, db *sql.DB, prefix string) error {
+func dropPrefix(ctx context.Context, db *sql.DB, prefix string) (err error) {
 	rows, err := db.QueryContext(ctx, `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE $1`, prefix+"%")
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	var names []string
 	for rows.Next() {
 		var n string

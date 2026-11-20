@@ -1,0 +1,3 @@
+func WithOutcomeSetter(ctx context.Context, s OutcomeSetter) context.Context {
+	return context.WithValue(ctx, outcomeSetterKey{}, s)
+}

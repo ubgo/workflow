@@ -15,7 +15,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +32,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-hooks:", err)
 		os.Exit(1)
 	}
@@ -88,7 +87,7 @@ func (h *heartbeat) wait(n int) error {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	mem := memory.New(memory.WithClock(clk))
 	var c workflow.Client = mem // the optional interfaces are found by type assertion, as through any wrapper
@@ -168,13 +167,13 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- schedules")
-	if err := list(ctx, c, out); err != nil {
+	fmt.Println("-- schedules")
+	if err := list(ctx, c); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- ticks")
-	hour := func() error { return advanceHour(ctx, clk, ticks, ends, out) }
+	fmt.Println("-- ticks")
+	hour := func() error { return advanceHour(ctx, clk, ticks, ends) }
 	for _, step := range []func(){
 		nil,                               // 08:00 outside the window
 		nil,                               // 09:00 fires
@@ -191,14 +190,14 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 	}
 
-	fmt.Fprintln(out, "-- pause")
+	fmt.Println("-- pause")
 	// snippet:pause
 	pauser := c.(workflow.SchedulePauser)
 	if err := pauser.PauseSchedule(ctx, workflow.ScheduleTarget{ID: id}); err != nil {
 		return err
 	}
 	// snippet:end
-	if err := list(ctx, c, out); err != nil {
+	if err := list(ctx, c); err != nil {
 		return err
 	}
 	if err := hour(); err != nil { // 14:00 paused
@@ -217,13 +216,13 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- heartbeat pings")
+	fmt.Println("-- heartbeat pings")
 	// Tick hooks and run hooks run on separate observer goroutines, so wait
 	// for all eight pings (four fired ticks, four run ends) to land.
 	if err := srv.wait(8); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, " ", srv)
+	fmt.Println(" ", srv)
 	return nil
 }
 
@@ -239,7 +238,7 @@ func syncOrders(clk clock.Clock) workflow.Handler {
 }
 
 // list prints every live schedule with its next fire time.
-func list(ctx context.Context, c workflow.Client, out io.Writer) error {
+func list(ctx context.Context, c workflow.Client) error {
 	// snippet:list
 	infos, err := c.(workflow.ScheduleLister).Schedules(ctx)
 	if err != nil {
@@ -250,7 +249,7 @@ func list(ctx context.Context, c workflow.Client, out io.Writer) error {
 		if !s.Next.IsZero() {
 			next = s.Next.In(s.Location).Format("Mon 15:04 MST")
 		}
-		fmt.Fprintf(out, "  %-12s %-11s %-9q next %s\n", s.Workflow, s.Name, s.Cron, next)
+		fmt.Printf("  %-12s %-11s %-9q next %s\n", s.Workflow, s.Name, s.Cron, next)
 	}
 	// snippet:end
 	return err
@@ -258,7 +257,7 @@ func list(ctx context.Context, c workflow.Client, out io.Writer) error {
 
 // advanceHour moves the clock to the next hourly tick, then prints the
 // tick's outcome and, for a fired tick, how its run ended.
-func advanceHour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tick, ends <-chan workflow.RunEvent, out io.Writer) error {
+func advanceHour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tick, ends <-chan workflow.RunEvent) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil {
 		return err
 	}
@@ -272,12 +271,12 @@ func advanceHour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tic
 	}
 	at := t.At.In(time.UTC).Format("15:04")
 	if t.Outcome != workflow.TickFired {
-		fmt.Fprintf(out, "  %s %s (%s)\n", at, t.Outcome, t.Reason)
+		fmt.Printf("  %s %s (%s)\n", at, t.Outcome, t.Reason)
 		return nil
 	}
 	select {
 	case ev := <-ends:
-		fmt.Fprintf(out, "  %s fired, run %s\n", at, ev.Status)
+		fmt.Printf("  %s fired, run %s\n", at, ev.Status)
 	case <-time.After(5 * time.Second):
 		return errors.New("the fired run did not end in 5s")
 	}

@@ -40,7 +40,7 @@ A previous run the driver no longer knows, because it was deleted or pruned by r
 trig := c.(workflow.ScheduleTriggerer)
 _, err = trig.TriggerSchedule(ctx, id)
 if errors.Is(err, workflow.ErrOverlap) {
-	fmt.Fprintln(out, "  refused:", err)
+	fmt.Println("  refused:", err)
 }
 ```
 
@@ -69,7 +69,7 @@ if err != nil {
 	return err
 }
 for _, s := range infos {
-	fmt.Fprintf(out, "  %s overlap=%s last fire %s run %s (%s), next %s\n",
+	fmt.Printf("  %s overlap=%s last fire %s run %s (%s), next %s\n",
 		s.Name, s.Overlap, s.Last.Fire.Format("15:04"), s.Last.Run.RunID, s.Last.Status,
 		s.Next.Format("15:04"))
 }

@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -26,14 +25,14 @@ import (
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start)
@@ -117,25 +116,25 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-ends
-	fmt.Fprintf(out, "send-sms with Job.Retry{Max: 4}: %s after %d attempts\n", ev.Status, sms.Load())
+	fmt.Printf("send-sms with Job.Retry{Max: 4}: %s after %d attempts\n", ev.Status, sms.Load())
 
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "sync-crm"}); err != nil {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "sync-crm with Until 2m: %s after %d attempts, %s after the first\n", ev.Status, pushes.Load(), clk.Now().Sub(start))
+	fmt.Printf("sync-crm with Until 2m: %s after %d attempts, %s after the first\n", ev.Status, pushes.Load(), clk.Now().Sub(start))
 
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "call-partner-api"}); err != nil {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "call-partner-api with MaxErrors 2: %s after %d attempts (3 releases, 2 errors)\n", ev.Status, rate.Load())
+	fmt.Printf("call-partner-api with MaxErrors 2: %s after %d attempts (3 releases, 2 errors)\n", ev.Status, rate.Load())
 
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "ship-order"}); err != nil {
 		return err
 	}
 	ev = <-ends
-	fmt.Fprintf(out, "ship-order discarded: %s after %d attempt, OnFailure ran %d times, ErrDiscarded: %v\n",
+	fmt.Printf("ship-order discarded: %s after %d attempt, OnFailure ran %d times, ErrDiscarded: %v\n",
 		ev.Status, ship.Load(), onFailure.Load(), errors.Is(ev.Err, workflow.ErrDiscarded))
 	return nil
 }

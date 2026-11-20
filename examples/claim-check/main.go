@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -24,7 +23,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "claim-check:", err)
 		os.Exit(1)
 	}
@@ -43,7 +42,7 @@ func describe(in []byte) string {
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
@@ -55,7 +54,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
 			info, _ := workflow.StepInfoFrom(ctx)
 			attempts++
-			fmt.Fprintf(out, "%s: queue carried %s\n", info.Step, describe(in))
+			fmt.Printf("%s: queue carried %s\n", info.Step, describe(in))
 			return next(ctx, in)
 		}
 	}
@@ -75,11 +74,11 @@ func run(ctx context.Context, out io.Writer) error {
 
 	if err := mc.Register(workflow.Workflow{Name: "report", Steps: []workflow.Step{
 		{Name: "load", Run: func(ctx context.Context, in []byte) ([]byte, error) {
-			fmt.Fprintf(out, "load: handler got %d bytes\n", len(in))
+			fmt.Printf("load: handler got %d bytes\n", len(in))
 			return bytes.Repeat([]byte("r"), 200), nil // a large output
 		}},
 		{Name: "summarise", After: []string{"load"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
-			fmt.Fprintf(out, "summarise: handler got %d bytes; blobs held: %d\n", len(in), store.Len())
+			fmt.Printf("summarise: handler got %d bytes; blobs held: %d\n", len(in), store.Len())
 			return []byte("ok"), nil
 		}},
 	}}); err != nil {
@@ -107,7 +106,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- Move big payloads out of the queue")
+	fmt.Println("-- Move big payloads out of the queue")
 	// snippet:enqueue
 	big := fmt.Appendf(nil, `{"rows":%q}`, strings.Repeat("x", 500))
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "report", Payload: big}); err != nil {
@@ -115,10 +114,10 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	// snippet:end
 	ev := <-finished
-	fmt.Fprintln(out, "run:", ev.Status, "token label set:", ev.Labels[middleware.ClaimCheckLabel] != "")
+	fmt.Println("run:", ev.Status, "token label set:", ev.Labels[middleware.ClaimCheckLabel] != "")
 
-	fmt.Fprintln(out, "-- Delete blobs when the run finishes")
-	fmt.Fprintln(out, "blobs held after the run:", store.Len())
+	fmt.Println("-- Delete blobs when the run finishes")
+	fmt.Println("blobs held after the run:", store.Len())
 
 	// A blob that is gone before its step runs fails the step for good.
 	attempts = 0
@@ -133,6 +132,6 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	clk.Advance(time.Minute)
 	ev = <-finished
-	fmt.Fprintln(out, "late run:", ev.Status, "ErrBlobNotFound:", errors.Is(ev.Err, middleware.ErrBlobNotFound), "attempts:", attempts)
+	fmt.Println("late run:", ev.Status, "ErrBlobNotFound:", errors.Is(ev.Err, middleware.ErrBlobNotFound), "attempts:", attempts)
 	return nil
 }

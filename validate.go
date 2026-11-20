@@ -57,10 +57,10 @@ func validateStep(s Step) error {
 		return errors.New("exactly one of Run, Wait and Sleep must be set")
 	}
 	if s.Sleep < 0 {
-		return errors.New("Sleep is negative")
+		return errors.New("negative Sleep")
 	}
 	if s.Timeout < 0 {
-		return errors.New("Timeout is negative")
+		return errors.New("negative Timeout")
 	}
 	if s.HeartbeatTimeout < 0 {
 		return errors.New("HeartbeatTimeout is negative")

@@ -1,0 +1,21 @@
+type Output struct {
+	// Info is the attempt's StepInfo; HasInfo is false when the ctx
+	// carried none (a handler called outside a driver).
+	Info    workflow.StepInfo
+	HasInfo bool
+
+	// Started and Finished bound the attempt, on the middleware's clock.
+	Started, Finished time.Time
+
+	// Records are the log records the step wrote through OutputLogger, in
+	// order, at or above the capture level.
+	Records []OutputRecord
+
+	// Result is the step's output bytes. It is nil unless CaptureResult
+	// was given, because a result may hold payload data an app wants kept
+	// out of logs, files and mail.
+	Result []byte
+
+	// Err is the attempt's error; nil when it succeeded.
+	Err error
+}

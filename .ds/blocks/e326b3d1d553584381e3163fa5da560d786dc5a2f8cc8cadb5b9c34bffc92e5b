@@ -1,0 +1,19 @@
+func New(s Store, opts ...Option) (*Recorder, error) {
+	if s == nil {
+		return nil, fmt.Errorf("%w: recorder.New: nil Store", workflow.ErrInvalid)
+	}
+	r := &Recorder{
+		store: s, clk: clock.Real{}, maxPayload: DefaultMaxPayload, stepBodies: true,
+		errorHistory: workflow.DefaultErrorHistory, writeTimeout: DefaultWriteTimeout, name: DefaultPluginName,
+		onError: logError,
+	}
+	for _, o := range opts {
+		if o == nil {
+			continue
+		}
+		if err := o(r); err != nil {
+			return nil, err
+		}
+	}
+	return r, nil
+}

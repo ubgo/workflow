@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 	"time"
@@ -27,7 +26,7 @@ import (
 var errFlaky = errors.New("smtp: try again")
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "run-all:", err)
 		os.Exit(1)
 	}
@@ -37,7 +36,7 @@ func main() {
 var start = time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	clk := clock.NewFake(start) // never advanced below
@@ -85,7 +84,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
+	fmt.Printf("succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
 		rep.Succeeded, rep.Failed, rep.Waiting, sends.Load(), clk.Now().Format("Jan 2 15:04"))
 	// snippet:end
 
@@ -99,7 +98,7 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
+	fmt.Printf("after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
 	// snippet:end
 
 	// snippet:stalled
@@ -110,7 +109,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	rep, err = c.RunAll(ctx) // a paused run never moves: RunAll gives up
-	fmt.Fprintf(out, "paused: stalled=%t succeeded=%d\n", errors.Is(err, memory.ErrRunAllStalled), rep.Succeeded)
+	fmt.Printf("paused: stalled=%t succeeded=%d\n", errors.Is(err, memory.ErrRunAllStalled), rep.Succeeded)
 	// snippet:end
 	return nil
 }

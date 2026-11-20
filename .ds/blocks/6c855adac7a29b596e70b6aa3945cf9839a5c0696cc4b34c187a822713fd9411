@@ -1,0 +1,3 @@
+func WithResultReader(rr workflow.ResultReader) Option {
+	return func(r *Recorder) error { r.results = rr; return nil }
+}

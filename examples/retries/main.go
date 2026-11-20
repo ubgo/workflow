@@ -14,7 +14,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -47,15 +46,15 @@ type attempt struct {
 }
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "retries:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
-	printBackoff(out)
+func run(ctx context.Context) error {
+	printBackoff()
 
 	clk := clock.NewFake(start)
 	attempts := make(chan attempt, 16)
@@ -165,19 +164,19 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 
 	for _, wf := range []string{"sync", "import", "charge", "lookup", "signup"} {
-		fmt.Fprintf(out, "\n%s:\n", wf)
-		ev, err := drive(ctx, c, clk, wf, attempts, finished, out)
+		fmt.Printf("\n%s:\n", wf)
+		ev, err := drive(ctx, c, clk, wf, attempts, finished)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  run %s", ev.Status)
+		fmt.Printf("  run %s", ev.Status)
 		if ev.Err != nil {
-			fmt.Fprintf(out, " (permanent: %t): %v", workflow.IsPermanent(ev.Err), ev.Err)
+			fmt.Printf(" (permanent: %t): %v", workflow.IsPermanent(ev.Err), ev.Err)
 		}
-		fmt.Fprintln(out)
+		fmt.Println()
 	}
 
-	return refusals(out)
+	return refusals()
 }
 
 // drive enqueues one run of wf and prints each attempt. After a failed
@@ -186,7 +185,7 @@ func run(ctx context.Context, out io.Writer) error {
 // computes, which is the delay the driver computed too: both call
 // RetryPolicy.NextDelay with the same jitter source.
 func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
-	attempts <-chan attempt, finished <-chan workflow.RunEvent, out io.Writer) (workflow.RunEvent, error) {
+	attempts <-chan attempt, finished <-chan workflow.RunEvent) (workflow.RunEvent, error) {
 	t0 := clk.Now()
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: wf}); err != nil {
 		return workflow.RunEvent{}, err
@@ -194,12 +193,12 @@ func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
 	for {
 		select {
 		case a := <-attempts:
-			fmt.Fprintf(out, "  %s attempt %d at +%s", a.step, a.n, a.at.Sub(t0))
+			fmt.Printf("  %s attempt %d at +%s", a.step, a.n, a.at.Sub(t0))
 			if a.err == nil {
-				fmt.Fprintln(out, ": ok")
+				fmt.Println(": ok")
 				continue
 			}
-			fmt.Fprintf(out, ": %v\n", a.err)
+			fmt.Printf(": %v\n", a.err)
 			if !a.policy.Retryable(a.err, a.n) {
 				continue
 			}
@@ -221,12 +220,12 @@ func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
 // printBackoff prints the delays a policy produces, with and without
 // jitter. Delay and JitteredDelay are pure functions, so this needs no
 // client.
-func printBackoff(out io.Writer) {
+func printBackoff() {
 	// snippet:delays
 	b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5}
 	for n := 1; n <= 5; n++ {
 		// JitteredDelay takes the uniform draw in [0, 1) as an argument.
-		fmt.Fprintf(out, "retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
+		fmt.Printf("retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
 	}
 	// snippet:end
 }
@@ -235,8 +234,8 @@ func printBackoff(out io.Writer) {
 // it when the workflow is registered, instead of retrying differently.
 // The Hatchet client connects only at Start, so Register runs without a
 // server.
-func refusals(out io.Writer) error {
-	fmt.Fprintln(out, "\nrefusals:")
+func refusals() error {
+	fmt.Println("\nrefusals:")
 	// snippet:refusal
 	wf := workflow.Workflow{
 		Name: "sync",
@@ -246,14 +245,14 @@ func refusals(out io.Writer) error {
 		},
 		Steps: []workflow.Step{{Name: "call", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 	}
-	fmt.Fprintln(out, "  needs:", workflow.Requires(wf))
-	fmt.Fprintln(out, "  memory:", memory.New().Register(wf))
+	fmt.Println("  needs:", workflow.Requires(wf))
+	fmt.Println("  memory:", memory.New().Register(wf))
 	err := hatchet.New(hatchet.Config{}).Register(wf)
-	fmt.Fprintln(out, "  hatchet:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("  hatchet:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
 
 	wf.Retry.Backoff.Jitter = 0
 	wf.Retry.DelayFor = workflow.RetryAfterDelay
-	fmt.Fprintln(out, "  hatchet:", hatchet.New(hatchet.Config{}).Register(wf))
+	fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(wf))
 	// snippet:end
 	return nil
 }

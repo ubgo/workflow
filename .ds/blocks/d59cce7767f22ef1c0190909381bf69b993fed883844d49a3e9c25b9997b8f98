@@ -1,0 +1,3 @@
+func WithMemoryRetention(r Retention) MemoryOption {
+	return func(s *MemoryStore) { s.retention = r }
+}

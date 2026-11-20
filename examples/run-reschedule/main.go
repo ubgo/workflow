@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"slices"
 	"strings"
@@ -31,14 +30,14 @@ import (
 var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "run-reschedule:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	started := make(chan string, 4)
 	stored := make(chan string, 1)
@@ -97,8 +96,8 @@ func run(ctx context.Context, out io.Writer) error {
 		refs[r.name] = ref
 	}
 
-	fmt.Fprintln(out, "due in the next hour:")
-	if err := dueNextHour(ctx, c, clk, out); err != nil {
+	fmt.Println("due in the next hour:")
+	if err := dueNextHour(ctx, c, clk); err != nil {
 		return err
 	}
 
@@ -108,9 +107,9 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "rescheduled r-2h to +45m, same ref %t\n", moved == refs["r-2h"])
-	fmt.Fprintln(out, "due in the next hour:")
-	if err := dueNextHour(ctx, c, clk, out); err != nil {
+	fmt.Printf("rescheduled r-2h to +45m, same ref %t\n", moved == refs["r-2h"])
+	fmt.Println("due in the next hour:")
+	if err := dueNextHour(ctx, c, clk); err != nil {
 		return err
 	}
 
@@ -124,11 +123,11 @@ func run(ctx context.Context, out io.Writer) error {
 		ran = append(ran, ev.Labels["name"]+" "+string(ev.Status))
 	}
 	slices.Sort(ran) // the two runs finish in either order
-	fmt.Fprintf(out, "after an hour: %s\n", strings.Join(ran, ", "))
+	fmt.Printf("after an hour: %s\n", strings.Join(ran, ", "))
 	_, err = c.Reschedule(ctx, refs["r-30m"], clk.Now().Add(time.Hour))
-	fmt.Fprintf(out, "reschedule a finished run: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
+	fmt.Printf("reschedule a finished run: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
 
-	fmt.Fprintln(out, "cancel one step:")
+	fmt.Println("cancel one step:")
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "update-prices"})
 	if err != nil {
 		return err
@@ -139,8 +138,8 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintf(out, "  store got %s\n", <-stored)
-	fmt.Fprintf(out, "  update-prices %s\n", (<-finished).Status)
+	fmt.Printf("  store got %s\n", <-stored)
+	fmt.Printf("  update-prices %s\n", (<-finished).Status)
 
 	ref, err = c.Enqueue(ctx, workflow.Job{Workflow: "sync-feed"})
 	if err != nil {
@@ -151,14 +150,14 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 	ev := <-finished
-	fmt.Fprintf(out, "  sync-feed %s, ErrStepCancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrStepCancelled))
+	fmt.Printf("  sync-feed %s, ErrStepCancelled %t\n", ev.Status, errors.Is(ev.Err, workflow.ErrStepCancelled))
 	err = c.CancelStep(ctx, ref, "pull")
-	fmt.Fprintf(out, "  cancel it again: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
+	fmt.Printf("  cancel it again: ErrWrongState %t\n", errors.Is(err, workflow.ErrWrongState))
 	return nil
 }
 
 // dueNextHour prints the delayed runs due within the next hour.
-func dueNextHour(ctx context.Context, c *memory.Client, clk *clock.Fake, out io.Writer) error {
+func dueNextHour(ctx context.Context, c *memory.Client, clk *clock.Fake) error {
 	// snippet:due
 	now := clk.Now()
 	page, err := c.Runs(ctx, workflow.RunQuery{
@@ -169,7 +168,7 @@ func dueNextHour(ctx context.Context, c *memory.Client, clk *clock.Fake, out io.
 		return err
 	}
 	for _, r := range page.Runs {
-		fmt.Fprintf(out, "  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
+		fmt.Printf("  %s due at +%s, %s\n", r.Labels["name"], r.RunAt.Sub(now), r.Status)
 	}
 	// snippet:end
 	return nil

@@ -1,0 +1,29 @@
+func (r *Recorder) OnRunFinished(ctx context.Context, ev workflow.RunEvent) {
+	now := r.clk.Now()
+	src, srcRef := r.sourceOf(ev.Labels)
+	f := Finish{
+		Ref: ev.Ref, Workflow: ev.Workflow, Tenant: ev.Tenant, Labels: ev.Labels, Source: src, SourceRef: srcRef,
+		Status: ev.Status, FailedStep: ev.Step, FinishedAt: ev.FinishedAt, At: now,
+	}
+	if f.FinishedAt.IsZero() {
+		f.FinishedAt = now
+	}
+	if ev.Err != nil {
+		f.Error = ev.Err.Error()
+	}
+	if r.results != nil && ev.Status == workflow.StatusSucceeded {
+		rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.writeTimeout)
+		out, err := r.results.Result(rctx, ev.Ref)
+		cancel()
+		switch {
+		case err == nil:
+			f.Output, f.OutputSize = r.body(PayloadInfo{Kind: PayloadResult, Workflow: ev.Workflow}, out)
+		case errors.Is(err, workflow.ErrUnsupported):
+			// The client keeps no results; the record holds the step
+			// outputs only. Not worth an error on every run.
+		default:
+			r.onError(ctx, OpReadResult, ev.Ref, err)
+		}
+	}
+	r.write(ctx, OpFinishRun, ev.Ref, func(wctx context.Context) error { return r.store.FinishRun(wctx, f) })
+}

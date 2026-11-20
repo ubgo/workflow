@@ -248,3 +248,12 @@ func TestDispatchValidation(t *testing.T) {
 		t.Errorf("DiscardedAs running = %v, want ErrInvalid", err)
 	}
 }
+
+// TestBatchLabelMatchesCoreSource pins the batch ID key the core's
+// SourceOf reads (the core cannot import this package).
+func TestBatchLabelMatchesCoreSource(t *testing.T) {
+	src, ref := workflow.SourceOf(map[string]string{batch.LabelBatch: "b1"})
+	if src != workflow.SourceBatch || ref != "b1" {
+		t.Fatalf("SourceOf(batch label) = %q %q", src, ref)
+	}
+}

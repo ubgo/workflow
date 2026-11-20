@@ -1,0 +1,9 @@
+func PerWorkflow(byName map[string]Redactor, fallback Redactor) Redactor {
+	m := make(map[string]Redactor, len(byName))
+	for k, v := range byName {
+		if v != nil {
+			m[k] = v
+		}
+	}
+	return &perWorkflow{byName: m, fallback: fallback}
+}

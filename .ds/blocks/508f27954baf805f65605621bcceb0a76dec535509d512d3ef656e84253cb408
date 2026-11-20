@@ -1,0 +1,8 @@
+func WriterSink(w io.Writer) OutputSink {
+	var mu sync.Mutex
+	return OutputSinkFunc(func(_ context.Context, out Output) error {
+		mu.Lock()
+		defer mu.Unlock()
+		return FormatOutput(w, out)
+	})
+}

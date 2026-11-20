@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sync/atomic"
 
@@ -21,14 +20,14 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
@@ -96,7 +95,7 @@ func run(ctx context.Context, out io.Writer) error {
 			return err
 		}
 		ev := <-ends
-		fmt.Fprintf(out, "%-34s %-9s after %d attempt(s), OnFailure ran %d, ErrDiscarded %v\n",
+		fmt.Printf("%-34s %-9s after %d attempt(s), OnFailure ran %d, ErrDiscarded %v\n",
 			label+":", ev.Status, attempts.Load(), alerts.Load(), errors.Is(ev.Err, workflow.ErrDiscarded))
 		return nil
 	}

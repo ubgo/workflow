@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun checks every line the guide shows: the capability split, the
@@ -11,8 +12,8 @@ import (
 // with its schedule label, the run kept by the jobs client, and the two
 // refusals.
 func TestRun(t *testing.T) {
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `cron: true (scheduler)  run query: true (jobs)  trigger: false
@@ -21,7 +22,7 @@ runs on the jobs client: 1
 CronOverlap refused: true
 TriggerSchedule refused: true
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

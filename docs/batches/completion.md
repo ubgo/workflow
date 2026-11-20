@@ -65,7 +65,7 @@ if err != nil {
 	return err
 }
 for _, pc := range st.Pending {
-	fmt.Fprintf(out, "pending %s: attempts=%d last error: %s\n", pc.Kind, pc.Attempts, pc.LastError)
+	fmt.Printf("pending %s: attempts=%d last error: %s\n", pc.Kind, pc.Attempts, pc.LastError)
 }
 clk.Advance(batch.DefaultCallbackRetry) // the failed attempt's claim ends
 if err := m.RetryCallbacks(ctx); err != nil {

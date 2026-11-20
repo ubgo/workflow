@@ -198,7 +198,8 @@
 //
 // A client finds work another client made due at its next poll
 // (WithPollInterval, a second by default). WithNotifier adds wake-ups on top:
-// with pgnotify.New(db) on Postgres, an enqueue, a finished step, a retry or
+// with pgnotify.New(db) on Postgres (sqlstore/pgnotify, its own module so
+// only an app that uses it downloads pgx), an enqueue, a finished step, a retry or
 // a resume on one client sends a NOTIFY and every idle client listening on
 // the tables' channel starts at once. Measured on the host Postgres with a
 // one-second poll, 15 samples each, enqueue to step start on another client:
@@ -344,7 +345,7 @@
 // let its relay enqueue after the commit, at least once.
 //
 // An app whose transactions are pgx transactions passes them through the
-// sqlstore/pgxtx package: pgxtx.Run hands EnqueueTx (or outbox.Write) a
+// sqlstore/pgxtx module: pgxtx.Run hands EnqueueTx (or outbox.Write) a
 // *sql.Tx whose statements run on the app's pgx.Tx.
 //
 // # Uniqueness locks

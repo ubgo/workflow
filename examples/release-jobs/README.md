@@ -35,7 +35,7 @@ var maintenance atomic.Bool // set by the app while the partner API is down
 inMaintenance := func(context.Context, []byte) bool { return maintenance.Load() }
 
 c := memory.New(memory.WithClock(clk), memory.WithMiddleware(
-	attempts(out), // outermost, so it sees each release as a failed attempt
+	attempts(), // outermost, so it sees each release as a failed attempt
 	middleware.Release(inMaintenance, 10*time.Minute),
 ))
 err := c.Register(workflow.Workflow{
@@ -70,7 +70,7 @@ st, err = waitDone(ctx, c, ref)
 if err != nil {
 	return err
 }
-fmt.Fprintf(out, "run: %s at %s\n", st, clk.Now().Format("15:04"))
+fmt.Printf("run: %s at %s\n", st, clk.Now().Format("15:04"))
 ```
 
 Unique until a step starts: the enqueue half wraps the client, the step half goes on the worker:

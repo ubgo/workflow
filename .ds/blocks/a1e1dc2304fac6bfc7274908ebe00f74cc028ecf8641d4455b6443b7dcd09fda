@@ -1,0 +1,38 @@
+type Store interface {
+	// UpsertRun records that a run was accepted (the enqueue seam) or found
+	// on the client (the Reconciler's backfill).
+	UpsertRun(ctx context.Context, w RunWrite) error
+
+	// StartStep records that a step attempt started.
+	StartStep(ctx context.Context, s StepStart) error
+
+	// EndStep records that a step attempt ended.
+	EndStep(ctx context.Context, e StepEnd) error
+
+	// AddEvent appends a timeline event to a step attempt.
+	AddEvent(ctx context.Context, e EventWrite) error
+
+	// SetOutcome records the outcome a step set.
+	SetOutcome(ctx context.Context, o OutcomeWrite) error
+
+	// FinishRun records that a run reached a terminal status.
+	FinishRun(ctx context.Context, f Finish) error
+
+	// MarkChecked records a Reconciler check of an unfinished run.
+	MarkChecked(ctx context.Context, c Check) error
+
+	// Runs answers workflow.RunQuerier from the store's records.
+	Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error)
+
+	// Records lists records with the recorder-only filters (Query); its
+	// records carry no Steps.
+	Records(ctx context.Context, q Query) (RecordPage, error)
+
+	// Run returns one record with its steps and their events.
+	Run(ctx context.Context, ref workflow.RunRef) (RunRecord, error)
+
+	// Pending returns up to limit unfinished records (status not
+	// terminal), the least recently checked first (never checked before
+	// any checked), for the Reconciler. They carry no Steps.
+	Pending(ctx context.Context, limit int) ([]RunRecord, error)
+}

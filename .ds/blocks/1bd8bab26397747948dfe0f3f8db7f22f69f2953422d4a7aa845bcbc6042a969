@@ -1,0 +1,3 @@
+func RecordEvent(ctx context.Context, msg string, attrs ...slog.Attr) {
+	RecordEventLevel(ctx, slog.LevelInfo, msg, attrs...)
+}

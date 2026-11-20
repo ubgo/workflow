@@ -35,7 +35,7 @@ Set it as `Workflow.Retry`, the default for every step, or as `Step.Retry` for o
 b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5}
 for n := 1; n <= 5; n++ {
 	// JitteredDelay takes the uniform draw in [0, 1) as an argument.
-	fmt.Fprintf(out, "retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
+	fmt.Printf("retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
 }
 ```
 
@@ -424,14 +424,14 @@ wf := workflow.Workflow{
 	},
 	Steps: []workflow.Step{{Name: "call", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 }
-fmt.Fprintln(out, "  needs:", workflow.Requires(wf))
-fmt.Fprintln(out, "  memory:", memory.New().Register(wf))
+fmt.Println("  needs:", workflow.Requires(wf))
+fmt.Println("  memory:", memory.New().Register(wf))
 err := hatchet.New(hatchet.Config{}).Register(wf)
-fmt.Fprintln(out, "  hatchet:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
+fmt.Println("  hatchet:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
 
 wf.Retry.Backoff.Jitter = 0
 wf.Retry.DelayFor = workflow.RetryAfterDelay
-fmt.Fprintln(out, "  hatchet:", hatchet.New(hatchet.Config{}).Register(wf))
+fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(wf))
 ```
 
 - **Hatchet's backoff is `Factor^n` seconds.** The Hatchet driver refuses a `Backoff` whose `Initial` is not `Factor` seconds (the example's `Initial: 2s, Factor: 2` is the shape it accepts), any `Jitter`, and any `DelayFor`, including `RetryAfterDelay`. Keep jitter and server-named delays to the memory and SQL drivers, or give Hatchet workflows a plain policy.

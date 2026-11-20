@@ -1,0 +1,17 @@
+func PruneEvery(ctx context.Context, p Pruner, interval time.Duration, onError func(error)) error {
+	if p == nil || interval <= 0 {
+		return fmt.Errorf("%w: recorder.PruneEvery needs a Pruner and a positive interval", workflow.ErrInvalid)
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		if _, err := p.Prune(ctx); err != nil && onError != nil && ctx.Err() == nil {
+			onError(err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.C:
+		}
+	}
+}

@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -30,7 +29,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "outbox:", err)
 		os.Exit(1)
 	}
@@ -42,19 +41,19 @@ var ship = workflow.Workflow{Name: "ship", Steps: []workflow.Step{{
 }}}
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	dir, err := os.MkdirTemp("", "outbox-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 	db, err := driversqlite.Open(filepath.Join(dir, "app.db"))
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	if _, err := db.ExecContext(ctx, "CREATE TABLE orders (id INTEGER PRIMARY KEY, item TEXT NOT NULL)"); err != nil {
 		return err
 	}
@@ -86,7 +85,7 @@ func run(ctx context.Context, out io.Writer) error {
 		}
 	})
 
-	fmt.Fprintln(out, "-- Write jobs inside your transaction")
+	fmt.Println("-- Write jobs inside your transaction")
 	// snippet:write
 	ob, err := outbox.New(db, sqlb.SQLiteDialect{}, outbox.WithClock(clk))
 	if err != nil {
@@ -100,7 +99,11 @@ func run(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback() // a no-op once committed
+	defer func() {
+		if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
 	if _, err := tx.ExecContext(ctx, "INSERT INTO orders (id, item) VALUES (1, 'book')"); err != nil {
 		return err
 	}
@@ -124,7 +127,7 @@ func run(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- Relay entries to any client")
+	fmt.Println("-- Relay entries to any client")
 	// snippet:relay
 	relay, err := ob.NewRelay(target)
 	if err != nil {
@@ -135,33 +138,33 @@ func run(ctx context.Context, out io.Writer) error {
 	}
 	relay.Notify() // relay now rather than at the next poll
 	// snippet:end
-	fmt.Fprintln(out, "shipped", <-shipped)
+	fmt.Println("shipped", <-shipped)
 	relay.Stop()
 	left, err := relay.Flush(ctx) // the rolled-back write left nothing to relay
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "entries left after the rollback:", left)
+	fmt.Println("entries left after the rollback:", left)
 
-	fmt.Fprintln(out, "-- Failed and dead entries")
-	if err := deadEntries(ctx, out, db, ob, target, &down, clk, shipped); err != nil {
+	fmt.Println("-- Failed and dead entries")
+	if err := deadEntries(ctx, db, ob, target, &down, clk, shipped); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "-- Targets without idempotency keys")
-	return withoutKeys(ctx, out, db, ob)
+	fmt.Println("-- Targets without idempotency keys")
+	return withoutKeys(ctx, db, ob)
 }
 
 // deadEntries sends one entry while the target is down until it goes dead,
 // lists it, then requeues it once the target is back.
-func deadEntries(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outbox, target workflow.Client,
+func deadEntries(ctx context.Context, db *sql.DB, ob *outbox.Outbox, target workflow.Client,
 	down *atomic.Bool, clk *clock.Fake, shipped <-chan string) error {
 	// snippet:dead
 	relay, err := ob.NewRelay(target,
 		outbox.WithBackoff(workflow.Backoff{Initial: time.Minute, Factor: 2, Max: time.Hour}),
 		outbox.WithMaxAttempts(2), // dead after two failed enqueues; the default retries forever
 		outbox.WithOnDead(func(ctx context.Context, e outbox.DeadEntry, cause error) {
-			fmt.Fprintln(out, "dead:", e.Job.Workflow, "after", e.Attempts, "attempts:", cause)
+			fmt.Println("dead:", e.Job.Workflow, "after", e.Attempts, "attempts:", cause)
 		}))
 	if err != nil {
 		return err
@@ -178,7 +181,7 @@ func deadEntries(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outb
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "accepted while down:", n)
+	fmt.Println("accepted while down:", n)
 	clk.Advance(time.Minute)
 	if _, err := relay.Flush(ctx); err != nil { // attempt 2 fails: dead
 		return err
@@ -190,7 +193,7 @@ func deadEntries(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outb
 		return err
 	}
 	for _, e := range dead {
-		fmt.Fprintf(out, "listed: %s attempts=%d last error=%q\n", e.Job.Payload, e.Attempts, e.LastErr)
+		fmt.Printf("listed: %s attempts=%d last error=%q\n", e.Job.Payload, e.Attempts, e.LastErr)
 	}
 	down.Store(false) // the target is back
 	for _, e := range dead {
@@ -203,13 +206,13 @@ func deadEntries(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outb
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "accepted after requeue:", n)
-	fmt.Fprintln(out, "shipped", <-shipped)
+	fmt.Println("accepted after requeue:", n)
+	fmt.Println("shipped", <-shipped)
 	return nil
 }
 
 // withoutKeys relays to a target that cannot dedup by idempotency key.
-func withoutKeys(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outbox) error {
+func withoutKeys(ctx context.Context, db *sql.DB, ob *outbox.Outbox) error {
 	// A Fake claiming every capability of the memory driver except
 	// CapIdempotencyKey stands in for such a target.
 	noKeys := workflowtest.NewFake(workflowtest.FakeCaps(memory.New().Capabilities() &^ workflow.CapIdempotencyKey))
@@ -222,7 +225,7 @@ func withoutKeys(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outb
 
 	// snippet:allow-duplicates
 	_, err := ob.NewRelay(noKeys)
-	fmt.Fprintln(out, "refused without AllowDuplicates:", errors.Is(err, workflow.ErrUnsupported))
+	fmt.Println("refused without AllowDuplicates:", errors.Is(err, workflow.ErrUnsupported))
 	relay, err := ob.NewRelay(noKeys, outbox.AllowDuplicates()) // a redelivered entry runs twice
 	if err != nil {
 		return err
@@ -236,17 +239,21 @@ func withoutKeys(ctx context.Context, out io.Writer, db *sql.DB, ob *outbox.Outb
 		return err
 	}
 	jobs := noKeys.Jobs()
-	fmt.Fprintf(out, "accepted: %d, idempotency key sent: %q\n", n, jobs[len(jobs)-1].IdempotencyKey)
+	fmt.Printf("accepted: %d, idempotency key sent: %q\n", n, jobs[len(jobs)-1].IdempotencyKey)
 	return nil
 }
 
 // writeOne writes one ship job in its own committed transaction.
-func writeOne(ctx context.Context, db *sql.DB, ob *outbox.Outbox, payload string) error {
+func writeOne(ctx context.Context, db *sql.DB, ob *outbox.Outbox, payload string) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); !errors.Is(rbErr, sql.ErrTxDone) {
+			err = errors.Join(err, rbErr)
+		}
+	}()
 	if _, err := ob.Write(ctx, tx, workflow.Job{Workflow: "ship", Payload: []byte(payload)}); err != nil {
 		return err
 	}

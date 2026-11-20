@@ -1,0 +1,9 @@
+func DefaultOutcome(status Status) Outcome {
+	switch status {
+	case StatusSucceeded:
+		return OutcomeSuccess
+	case StatusFailed, StatusDiscarded:
+		return OutcomeError
+	}
+	return ""
+}

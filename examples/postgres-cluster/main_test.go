@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 const want = `30 jobs, 30 ran exactly once
@@ -30,11 +31,11 @@ func TestRunPostgres(t *testing.T) {
 
 func check(t *testing.T) {
 	t.Helper()
-	var out strings.Builder
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)
 	}
 }

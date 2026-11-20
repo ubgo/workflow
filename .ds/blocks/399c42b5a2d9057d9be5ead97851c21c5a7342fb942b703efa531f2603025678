@@ -1,0 +1,9 @@
+func WithName(name string) Option {
+	return func(r *Recorder) error {
+		if name == "" {
+			return fmt.Errorf("%w: recorder.WithName(\"\")", workflow.ErrInvalid)
+		}
+		r.name = name
+		return nil
+	}
+}

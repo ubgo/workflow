@@ -1,0 +1,38 @@
+func (s *Store) Prune(ctx context.Context) (recorder.PruneResult, error) {
+	var res recorder.PruneResult
+	if s.retention.IsZero() {
+		return res, nil
+	}
+	now := s.clk.Now()
+	named := slices.Sorted(maps.Keys(s.retention.PerWorkflow))
+	type scope struct {
+		rule recorder.RetentionRule
+		// workflow is the one workflow of a PerWorkflow rule; empty for the
+		// default rule, which covers every workflow not in named.
+		workflow string
+	}
+	scopes := []scope{{rule: s.retention.RetentionRule}}
+	for _, wf := range named {
+		scopes = append(scopes, scope{rule: s.retention.PerWorkflow[wf], workflow: wf})
+	}
+	for _, sc := range scopes {
+		if sc.rule.Runs > 0 {
+			n, archived, err := s.pruneRuns(ctx, now.Add(-sc.rule.Runs), sc.workflow, named)
+			res.RunsDeleted += n
+			res.Archived += archived
+			if err != nil {
+				return res, err
+			}
+		}
+	}
+	for _, sc := range scopes {
+		if sc.rule.Steps > 0 {
+			n, err := s.pruneSteps(ctx, now.Add(-sc.rule.Steps), sc.workflow, named)
+			res.StepsCleared += n
+			if err != nil {
+				return res, err
+			}
+		}
+	}
+	return res, nil
+}

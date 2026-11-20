@@ -35,7 +35,7 @@ if err != nil {
 	return err
 }
 for _, r := range page.Runs {
-	fmt.Fprintf(out, "  child of %s, parent run matches: %v\n",
+	fmt.Printf("  child of %s, parent run matches: %v\n",
 		r.Labels[workflow.LabelParentStep], r.Labels[workflow.LabelParentRun] == ref.RunID.String())
 }
 ```
@@ -76,8 +76,8 @@ if err != nil {
 _, err = workflow.AwaitResult(ctx, c, ref, await)
 var failed *workflow.RunFailedError
 if errors.As(err, &failed) {
-	fmt.Fprintf(out, "  a failed child fails the parent: %s\n", failed.Status)
-	fmt.Fprintf(out, "  parent error names the child: %v\n", strings.Contains(failed.Err, `await child "resize" #1`))
+	fmt.Printf("  a failed child fails the parent: %s\n", failed.Status)
+	fmt.Printf("  parent error names the child: %v\n", strings.Contains(failed.Err, `await child "resize" #1`))
 }
 ```
 

@@ -86,7 +86,7 @@ err = c.Migrate(ctx)
 if tooNew, ok := errors.AsType[*sqlstore.SchemaTooNewError](err); ok {
 	// The code is older than the schema: deploy the newer release again
 	// rather than run this one. Nothing was changed.
-	fmt.Fprintln(out, "refused, unknown migrations:", tooNew.Unknown)
+	fmt.Println("refused, unknown migrations:", tooNew.Unknown)
 }
 ```
 
@@ -115,7 +115,7 @@ for i, m := range scripts {
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "wrote", name)
+	fmt.Println("wrote", name)
 }
 ```
 
@@ -166,11 +166,11 @@ scripts, err := sqlstore.MigrationScripts(sqlb.PostgresDialect{},
 if err != nil {
 	return err
 }
-fmt.Fprintln(out, "postgres:", firstLine(scripts[0].Statements[0]))
-fmt.Fprintln(out, "ledger owner:", scripts[0].Owner)
+fmt.Println("postgres:", firstLine(scripts[0].Statements[0]))
+fmt.Println("ledger owner:", scripts[0].Owner)
 
 _, err = sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithSchema("jobs"))
-fmt.Fprintln(out, "sqlite:", err)
+fmt.Println("sqlite:", err)
 ```
 
 ## Try it

@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,27 +26,27 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "migrations-export:", err)
 		os.Exit(1)
 	}
 }
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, out io.Writer) error {
+func run(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "migrations-export-*")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(dir)
+	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 
 	steps := []func() error{
-		func() error { return migrateAndList(ctx, out, filepath.Join(dir, "app.db")) },
-		func() error { return export(out, filepath.Join(dir, "sql")) },
-		func() error { return applyYourself(ctx, out, filepath.Join(dir, "tool.db")) },
-		func() error { return uniqueOnly(ctx, out, filepath.Join(dir, "locks.db")) },
-		func() error { return tooNew(ctx, out, filepath.Join(dir, "app.db")) },
-		func() error { return schemaOption(out, filepath.Join(dir, "app.db")) },
+		func() error { return migrateAndList(ctx, filepath.Join(dir, "app.db")) },
+		func() error { return export(filepath.Join(dir, "sql")) },
+		func() error { return applyYourself(ctx, filepath.Join(dir, "tool.db")) },
+		func() error { return uniqueOnly(ctx, filepath.Join(dir, "locks.db")) },
+		func() error { return tooNew(ctx, filepath.Join(dir, "app.db")) },
+		func() error { return schemaOption(filepath.Join(dir, "app.db")) },
 	}
 	for _, step := range steps {
 		if err := step(); err != nil {
@@ -58,12 +57,12 @@ func run(ctx context.Context, out io.Writer) error {
 }
 
 // migrateAndList runs Migrate twice and prints the ledger it wrote.
-func migrateAndList(ctx context.Context, out io.Writer, path string) error {
+func migrateAndList(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:migrate
 	c, err := sqlstore.New(db, sqlb.SQLiteDialect{})
@@ -80,13 +79,13 @@ func migrateAndList(ctx context.Context, out io.Writer, path string) error {
 	}
 	// snippet:end
 
-	fmt.Fprintln(out, "ledger after Migrate:")
-	return printLedger(ctx, out, db, "wf_")
+	fmt.Println("ledger after Migrate:")
+	return printLedger(ctx, db, "wf_")
 }
 
 // export writes every migration as a .sql file, the way a team that ships
 // DDL through its own tool would.
-func export(out io.Writer, dir string) error {
+func export(dir string) error {
 	// snippet:export
 	scripts, err := sqlstore.MigrationScripts(sqlb.PostgresDialect{},
 		sqlstore.WithTablePrefix("jobs_"), // the same table options the app's New gets
@@ -105,7 +104,7 @@ func export(out io.Writer, dir string) error {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintln(out, "wrote", name)
+		fmt.Println("wrote", name)
 	}
 	// snippet:end
 	return nil
@@ -113,12 +112,12 @@ func export(out io.Writer, dir string) error {
 
 // applyYourself applies MigrationScripts with plain Exec calls, as an
 // external tool would, then starts a client that never ran Migrate.
-func applyYourself(ctx context.Context, out io.Writer, path string) error {
+func applyYourself(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:apply
 	scripts, err := sqlstore.MigrationScripts(sqlb.SQLiteDialect{})
@@ -146,18 +145,18 @@ func applyYourself(ctx context.Context, out io.Writer, path string) error {
 	}
 	c.Stop()
 	// snippet:end
-	fmt.Fprintln(out, "started on a schema applied without Migrate")
+	fmt.Println("started on a schema applied without Migrate")
 	return nil
 }
 
 // uniqueOnly migrates only the uniqueness-lock store into an empty database,
 // as an app on Hatchet that wants durable unique jobs would.
-func uniqueOnly(ctx context.Context, out io.Writer, path string) error {
+func uniqueOnly(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:unique
 	locks, err := sqlstore.NewUniqueStore(db, sqlb.SQLiteDialect{})
@@ -168,18 +167,18 @@ func uniqueOnly(ctx context.Context, out io.Writer, path string) error {
 		return err
 	}
 	// snippet:end
-	fmt.Fprintln(out, "ledger after UniqueStore.Migrate:")
-	return printLedger(ctx, out, db, "wf_")
+	fmt.Println("ledger after UniqueStore.Migrate:")
+	return printLedger(ctx, db, "wf_")
 }
 
 // tooNew records a migration this code has never heard of, as a newer
 // release would, and shows that Migrate and Start refuse the database.
-func tooNew(ctx context.Context, out io.Writer, path string) error {
+func tooNew(ctx context.Context, path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 	// Stands in for a newer release's Migrate.
 	if _, err := db.ExecContext(ctx, `INSERT INTO wf_migrations (owner, name, checksum, applied_at) VALUES (?, ?, ?, ?)`,
 		sqlstore.MigrationOwner, "099_from_the_future", "x", "2027-01-01T00:00:00Z"); err != nil {
@@ -195,7 +194,7 @@ func tooNew(ctx context.Context, out io.Writer, path string) error {
 	if tooNew, ok := errors.AsType[*sqlstore.SchemaTooNewError](err); ok {
 		// The code is older than the schema: deploy the newer release again
 		// rather than run this one. Nothing was changed.
-		fmt.Fprintln(out, "refused, unknown migrations:", tooNew.Unknown)
+		fmt.Println("refused, unknown migrations:", tooNew.Unknown)
 	}
 	// snippet:end
 	if !errors.Is(err, sqlstore.ErrSchemaTooNew) {
@@ -204,18 +203,18 @@ func tooNew(ctx context.Context, out io.Writer, path string) error {
 	if err := c.Start(ctx); !errors.Is(err, sqlstore.ErrSchemaTooNew) {
 		return fmt.Errorf("calling Start on a newer schema: %v, want ErrSchemaTooNew", err)
 	}
-	fmt.Fprintln(out, "Start refused too:", sqlstore.ErrSchemaTooNew)
+	fmt.Println("Start refused too:", sqlstore.ErrSchemaTooNew)
 	return nil
 }
 
 // schemaOption shows WithSchema: schema-qualified DDL for Postgres, and the
 // refusal on SQLite.
-func schemaOption(out io.Writer, path string) error {
+func schemaOption(path string) (err error) {
 	db, err := driversqlite.Open(path)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { err = errors.Join(err, db.Close()) }()
 
 	// snippet:schema
 	scripts, err := sqlstore.MigrationScripts(sqlb.PostgresDialect{},
@@ -225,11 +224,11 @@ func schemaOption(out io.Writer, path string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "postgres:", firstLine(scripts[0].Statements[0]))
-	fmt.Fprintln(out, "ledger owner:", scripts[0].Owner)
+	fmt.Println("postgres:", firstLine(scripts[0].Statements[0]))
+	fmt.Println("ledger owner:", scripts[0].Owner)
 
 	_, err = sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithSchema("jobs"))
-	fmt.Fprintln(out, "sqlite:", err)
+	fmt.Println("sqlite:", err)
 	// snippet:end
 	if err == nil {
 		return errors.New("WithSchema on SQLite was accepted")
@@ -245,18 +244,18 @@ func firstLine(s string) string {
 }
 
 // printLedger lists the ledger's (owner, name) rows in the order applied.
-func printLedger(ctx context.Context, out io.Writer, db *sql.DB, prefix string) error {
+func printLedger(ctx context.Context, db *sql.DB, prefix string) (err error) {
 	rows, err := db.QueryContext(ctx, `SELECT owner, name FROM `+prefix+`migrations ORDER BY owner, name`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
 		var owner, name string
 		if err := rows.Scan(&owner, &name); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  %s %s\n", owner, name)
+		fmt.Printf("  %s %s\n", owner, name)
 	}
 	return rows.Err()
 }
