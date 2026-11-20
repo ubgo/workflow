@@ -4,6 +4,27 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
+The core `v0.2.0` and every separate module at `v0.2.0`: `admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify` and `sqlstore/pgxtx`. Each separate module requires the core `v0.2.0` (and `recorder/sqlrecorder` requires `recorder/v0.2.0`). `cli`, `recorder/sqlrecorder`, `sentry`, `sqlstore/pgnotify` and `sqlstore/pgxtx` have no code change since their last tag; they move to v0.2.0 so the set moves together. This is a minor release because `workflow.Caps` changed shape, which breaks code that combined capabilities with operators.
+
+### Upgrading from 0.1
+
+Only code that builds or compares `workflow.Caps` values changes; code that calls `Has`, `Missing`, `String` or compares two sets with `==` builds as before. Every capability keeps its name, number and meaning.
+
+| 0.1 | 0.2 |
+|---|---|
+| `workflow.CapDurable \| workflow.CapCron` | `workflow.CapsOf(workflow.CapDurable, workflow.CapCron)` or `workflow.CapDurable.With(workflow.CapCron)` |
+| `caps \|= workflow.CapCron` | `caps = caps.With(workflow.CapCron)` |
+| `caps &^ workflow.CapCron` | `caps.Without(workflow.CapCron)` |
+| `a & b` | `a.Intersect(b)` |
+| `a&b != 0` | `a.HasAny(b)` |
+| `caps == 0` | `caps.IsZero()` |
+| `var caps workflow.Caps = 0` | `var caps workflow.Caps` or `workflow.Caps{}` |
+| `const myCaps = workflow.CapDurable \| ...` | `var myCaps = workflow.CapsOf(workflow.CapDurable, ...)` |
+
+`workflow.CapX` and `recorder.QueryCaps` are variables now, since Go has no constants of a struct type, so a `const` that used them becomes a `var`. A `Caps` stored as JSON by v0.1.x (a number) still decodes to the same set; v0.2.0 writes its `String()` form, such as `"Durable|Cron"`, which v0.1.x cannot read, so upgrade every reader before a writer when caps travel between processes.
+
 ### Changed
 
 - **Breaking (source):** `workflow.Caps` is a set with room for 256 capabilities instead of a `uint64` with 64 bits, of which 61 were taken. Every capability keeps its name, number and meaning, and `Has`, `Missing`, `String`, `==` and every function signature are unchanged. Code that combined capabilities with operators or declared them as constants changes: `a|b` becomes `workflow.CapsOf(a, b)` or `a.With(b)`, `a&^b` becomes `a.Without(b)`, `a&b` becomes `a.Intersect(b)`, `a&b != 0` becomes `a.HasAny(b)`, `c == 0` becomes `c.IsZero()`, `const` becomes `var`, and `0` becomes `workflow.Caps{}`. `workflow.CapX` and `recorder.QueryCaps` are variables, since Go has no constants of a struct type.
