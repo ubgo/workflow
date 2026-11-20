@@ -99,10 +99,11 @@ func (q LineageQuery) match(l Lineage) bool {
 
 // LineageStore keeps lineage records. It is where Datasets writes every
 // update and where its triggers read which versions they already used,
-// so a store shared by every process that calls Updated (a table in the
-// app's database) makes triggers and lineage fleet-wide; MemoryLineage,
-// the default, is in-process. Implementations must be safe for
-// concurrent use.
+// so a store shared by every process that calls Updated
+// (sqlstore.LineageStore, a table in the app's database, or
+// redis.LineageStore) makes triggers and lineage fleet-wide;
+// MemoryLineage, the default, is in-process. Implementations must be safe
+// for concurrent use; workflowtest.LineageStoreContract checks one.
 type LineageStore interface {
 	// Record saves l. A record equal to one already saved in Kind,
 	// Dataset, Version, Run, Workflow, Step and Trigger is ignored

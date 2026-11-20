@@ -204,11 +204,14 @@
 //     one script) and DisableStore (middleware.DisableStore, the
 //     switches of middleware.AutoDisable: a hash per key, Fail one
 //     script, so exactly one of many concurrent Fails reports the
-//     crossing and an endpoint is switched off for every worker) keep
-//     state other processes share; each has a constructor
+//     crossing and an endpoint is switched off for every worker) and
+//     LineageStore (events.LineageStore, the dataset versions and trigger
+//     consumption of events.Datasets: a record is one script that keeps
+//     the first of equal facts, indexed by sorted sets read newest first)
+//     keep state other processes share; each has a constructor
 //     (NewJournalStore, NewBucketStore, NewDebounceStore, NewDataStore,
-//     NewInbox, NewDisableStore) and a Client method over the client's
-//     prefix.
+//     NewInbox, NewDisableStore, NewLineageStore) and a Client method over
+//     the client's prefix.
 //   - WithEnqueueOnly makes a client for web nodes that enqueue and never
 //     run work; Register is optional there.
 package redis

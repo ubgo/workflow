@@ -116,7 +116,10 @@ type DatasetOption func(*Datasets)
 
 // WithLineage sets where lineage and the triggers' consumed versions are
 // kept. The default is a new MemoryLineage, which only one process sees;
-// processes sharing triggers need one shared store.
+// processes sharing triggers need one shared store: sqlstore.LineageStore
+// (SQLite, Postgres, MySQL; migrated by its own Migrate) or
+// redis.LineageStore, or an implementation of their own checked with
+// workflowtest.LineageStoreContract.
 func WithLineage(store LineageStore) DatasetOption { return func(d *Datasets) { d.store = store } }
 
 // WithDatasetClock sets the clock that stamps lineage records; the default

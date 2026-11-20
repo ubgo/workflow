@@ -428,6 +428,22 @@
 // ubgo/workflow/sqlstore/disable, 001_disable) in the shared ledger,
 // applied by DisableStore.Migrate and not by Client.Migrate, so an app
 // that never switches endpoints gets no table for it.
+//
+// # Dataset lineage
+//
+// LineageStore is a durable events.LineageStore, where events.Datasets
+// keeps every produced dataset version and every version a trigger
+// consumed: an append-only table <prefix>lineage, so every process
+// sharing the database decides triggers from the same records and the
+// lineage queries answer for the fleet. Record is an insert under a unique
+// hash of the record's identifying fields, so the same fact recorded
+// twice, by any process, keeps the first; Find orders by At (seconds and
+// nanoseconds) and then by recording, newest first, with indexes for a
+// dataset's records by kind, a run's records, and a trigger's records of a
+// dataset. Take it from a Client (Client.LineageStore) or build it with
+// NewLineageStore over any *sql.DB; its table has its own migration list
+// (owner ubgo/workflow/sqlstore/lineage, 001_lineage), applied by
+// LineageStore.Migrate and not by Client.Migrate.
 // Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
 // triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds

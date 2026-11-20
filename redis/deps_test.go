@@ -12,9 +12,9 @@ import (
 
 // allowedImport reports whether a package of this module may import
 // path: the standard library (no dot in the first element), go-redis,
-// or packages of the workflow core module (its root, clock, cron and
-// middleware packages; middleware is imported for the DebounceStore
-// type). All of those come with the core module this driver already
+// or packages of the workflow core module (its root, clock, cron,
+// middleware and events packages; middleware is imported for the
+// DebounceStore and DisableStore types, events for LineageStore). All of those come with the core module this driver already
 // requires, so go-redis stays the only third-party dependency. A driver,
 // store or other ubgo module (sqlb, a SQL driver) would make every app on
 // Redis download it.
@@ -26,7 +26,7 @@ func allowedImport(path string) bool {
 	case path == "github.com/redis/go-redis/v9", strings.HasPrefix(path, "github.com/redis/go-redis/v9/"):
 		return true
 	case path == "github.com/ubgo/workflow", path == "github.com/ubgo/workflow/clock", path == "github.com/ubgo/workflow/cron",
-		path == "github.com/ubgo/workflow/middleware":
+		path == "github.com/ubgo/workflow/middleware", path == "github.com/ubgo/workflow/events":
 		return true
 	}
 	return false
