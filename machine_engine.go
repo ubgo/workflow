@@ -244,6 +244,7 @@ func (m *machine[D]) step(ctx context.Context, in []byte) ([]byte, error) {
 	from := slices.Clone(rec.Leaves)
 	res := MachineResult{}
 	event := call.Event
+	var rejected error // MachineReject's refusal of an event that started the instance
 	switch {
 	case call.Timer != nil:
 		n := m.nodes[call.Timer.State]
@@ -284,7 +285,14 @@ func (m *machine[D]) step(ctx context.Context, in []byte) ([]byte, error) {
 			}
 		}
 		if !res.Handled && m.spec.Unhandled == MachineReject {
-			return nil, Permanent(fmt.Errorf("%w (machine %q key %q, event %q, states %v)", ErrUnhandledEvent, name, key, event, rec.Leaves))
+			rejected = Permanent(fmt.Errorf("%w (machine %q key %q, event %q, states %v)", ErrUnhandledEvent, name, key, event, rec.Leaves))
+			if !res.Started {
+				return nil, rejected
+			}
+			// The event started the instance and was then refused: keep
+			// the start (its entry actions ran and must not run again on
+			// the next event), refuse the event.
+			event = MachineStartEvent
 		}
 	}
 	if !res.Handled && !res.Started {
@@ -316,13 +324,18 @@ func (m *machine[D]) step(ctx context.Context, in []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	rec.LastRun, rec.LastOut = info.RunID, out
+	if rejected == nil {
+		rec.LastRun, rec.LastOut = info.RunID, out
+	}
 	b, err := encodeJSON("machine "+name+" record", rec)
 	if err != nil {
 		return nil, err
 	}
 	if err := m.spec.Store.Save(ctx, run, objectStateKey, b); err != nil {
 		return nil, fmt.Errorf("workflow: machine %q key %q: save: %w", name, key, err)
+	}
+	if rejected != nil {
+		return nil, rejected
 	}
 	return out, nil
 }

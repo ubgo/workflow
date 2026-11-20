@@ -260,7 +260,7 @@ if workflow.IsUnhandledEvent(err) {
 }
 ```
 
-Rejected and ignored events change nothing and leave no entry in the log.
+Rejected and ignored events change nothing and leave no entry in the log, with one exception: an event sent to a key never started starts the instance first, and that start is kept (and logged as `workflow.MachineStartEvent`) even when the event itself is then rejected, so the initial entry actions never run twice.
 
 ## Read an instance and its log
 

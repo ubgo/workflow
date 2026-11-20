@@ -465,7 +465,7 @@ func machineReject(t *testing.T, h MachineHarness) {
 		Initial:     "a",
 		Store:       store,
 		Unhandled:   workflow.MachineReject,
-		States:      []workflow.MachineState[flowData]{{Name: "a"}, {Name: "b"}},
+		States:      []workflow.MachineState[flowData]{{Name: "a", Entry: []workflow.MachineAction[flowData]{flowTrace("in a")}}, {Name: "b"}},
 		Transitions: []workflow.MachineTransition[flowData]{{From: "a", Event: "go", To: "b"}},
 	})
 	if err != nil {
@@ -483,5 +483,20 @@ func machineReject(t *testing.T, h MachineHarness) {
 	snap, _, _ := workflow.MachineStatus[flowData](context.Background(), store, "sm-strict", "s")
 	if !slices.Equal(snap.States, []string{"b"}) || snap.Seq != 2 {
 		t.Fatalf("a rejected event changed the instance: %+v", snap)
+	}
+	// A refused first event keeps the start it caused: the initial entry
+	// actions ran once and do not run again on the next event.
+	for i := range 2 {
+		ref, err := workflow.SendEvent(context.Background(), c, "sm-strict", "fresh", "nope", nil, workflow.Job{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := flowAwait(t, c, ref); !workflow.IsUnhandledEvent(err) {
+			t.Fatalf("refused first event %d: %v", i, err)
+		}
+	}
+	fresh, ok, _ := workflow.MachineStatus[flowData](context.Background(), store, "sm-strict", "fresh")
+	if !ok || !slices.Equal(fresh.States, []string{"a"}) || !slices.Equal(fresh.Data.Trace, []string{"in a"}) {
+		t.Fatalf("an instance started by a refused event: %v %+v", ok, fresh)
 	}
 }
