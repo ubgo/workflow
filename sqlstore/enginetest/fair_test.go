@@ -29,7 +29,12 @@ func (f *fairRecorder) step(pause time.Duration) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		key, _, _ := strings.Cut(string(in), ":")
 		if key == "hold" {
-			f.held <- struct{}{}
+			// Non-blocking: a hold run whose lease expired on a loaded
+			// machine runs again, and a blocked send would pin a worker.
+			select {
+			case f.held <- struct{}{}:
+			default:
+			}
 			select {
 			case <-f.release:
 			case <-ctx.Done():

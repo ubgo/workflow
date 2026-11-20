@@ -92,9 +92,12 @@ var fairCases = []testCase{
 	}},
 	{"a higher Job.Priority still goes first", func(e *env) {
 		e.need(workflow.CapsOf(workflow.CapRoundRobin, workflow.CapQueue))
-		backlog := append(fairBacklog("a", 3), fairRun{"b", "b1"}, fairRun{"a", "urgent"})
-		order := fairOrder(e, nil, backlog, map[string]int{"a:urgent": 5})
-		want := "a:urgent a:a1 b:b1 a:a2 a:a3"
+		// The urgent run has a key of its own: a run of key a would use
+		// up a's turn, and whether a's earlier runs got their turns
+		// before it arrived depends on when the driver admits them.
+		backlog := append(fairBacklog("a", 3), fairRun{"b", "b1"}, fairRun{"u", "urgent"})
+		order := fairOrder(e, nil, backlog, map[string]int{"u:urgent": 5})
+		want := "u:urgent a:a1 b:b1 a:a2 a:a3"
 		if got := strings.Join(order, " "); got != want {
 			e.t.Fatalf("order of starts:\n got %s\nwant %s", got, want)
 		}
