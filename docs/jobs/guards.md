@@ -74,6 +74,8 @@ c := middleware.WrapClient(mc,
 
 Two options change what a full queue does. `BoundedWait(poll, clk)` blocks the enqueue, re-reading the count every `poll`, until there is room or the caller's ctx ends, for producers that should slow down rather than drop work. `BoundedDelay(d, clk)` makes the limit soft: the job is enqueued to start `d` later instead of being refused, which spreads a burst out.
 
+On the memory driver a bound is also a memory bound: every waiting run lives in the process, so `Bounded` with `DepthFromRuns` keeps a burst from growing it without end (an offline device queueing uploads, for instance). The run a worker holds is not waiting and does not count.
+
 `ErrQueueFull` and `ErrQuotaExceeded` are backpressure, not outages: neither matches `workflow.ErrUnavailable`, so a failover client never sends a job to its secondary because the primary is busy.
 
 ## Keep jobs out of quiet hours

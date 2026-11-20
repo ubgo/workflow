@@ -9,10 +9,10 @@ An **Example** link goes to a program under `examples/` (or a Go example test) t
 ## Contents
 
 - [Core contract](#core-contract) (19)
-- [Workflows and steps](#workflows-and-steps) (45)
+- [Workflows and steps](#workflows-and-steps) (49)
 - [Events](#events) (12)
-- [Jobs](#jobs) (73)
-- [Schedules](#schedules) (48)
+- [Jobs](#jobs) (75)
+- [Schedules](#schedules) (49)
 - [Drivers](#drivers) (32)
 - [Middleware](#middleware) (16)
 - [Batches](#batches) (19)
@@ -94,8 +94,12 @@ Multi-step workflows: steps in a graph, typed handlers, waits for events and dur
 | One run per partition key with a status per partition and a retry of the failed ones (`EnqueuePartitions`, `PartitionSet`, `PartitionKey`, `PartitionStatus`, `PartitionRun`, `RetryFailedPartitions`, `PartitionOf`, `LabelPartitionSet`, `LabelPartitionKey`) | `workflow` | [partitions › Start one run per partition](../workflows/partitions.md#start-one-run-per-partition) | [partitioned-runs](../../examples/partitioned-runs/) |
 | Trigger rules, tolerated steps, error routing and exit handlers (`WithRules`, `RulesSpec`, `TriggerRule`, `CatchRoute`, `StepFailure`, `ParentFailures`, `ErrStepsFailed`) | `workflow` | [trigger rules › Tolerate a step, route its failure, always clean up](../workflows/trigger-rules.md#tolerate-a-step-route-its-failure-always-clean-up) | [flow-patterns](../../examples/flow-patterns/) |
 | A timer that does not stop the step (`Boundary`) | `workflow` | [trigger rules › A timer that does not stop the step](../workflows/trigger-rules.md#a-timer-that-does-not-stop-the-step) | — |
+| Setup and teardown (`RulesSpec.Finally` with `SetRunData`/`RunData`) | `workflow` | [trigger rules › Setup and teardown](../workflows/trigger-rules.md#setup-and-teardown) | — |
 | Sagas with memoised compensation (`Saga`, `NewSaga`, `ErrCompensated`, `ErrSagaAborted`) | `workflow` | [sagas › Do, then abort](../workflows/sagas.md#do-then-abort) | [flow-patterns](../../examples/flow-patterns/) |
 | Multi-choice and deferred choice (`MultiChoice`, `MultiChoiceSpec`, `Race`, `RaceSpec`, `SignalChoice`) | `workflow` | [multi-choice and races › Multi-choice](../workflows/multi-choice-and-race.md#multi-choice), [› Race](../workflows/multi-choice-and-race.md#race-the-first-answer-wins) | [flow-patterns](../../examples/flow-patterns/) |
+| A merge that waits only for the branches taken (local synchronizing merge over `MultiChoice` branch steps) | `workflow` | [multi-choice and races › Merge only the branches that ran](../workflows/multi-choice-and-race.md#merge-only-the-branches-that-ran) | — |
+| A default branch at a deadline (a delayed job sending `SignalChoice`) | `workflow` | [multi-choice and races › A default branch at a deadline](../workflows/multi-choice-and-race.md#a-default-branch-at-a-deadline) | — |
+| Wait for all of, any of, or a mix of conditions (wait steps joined, `Race`, a child run with `CancelChildren`) | `workflow` | [multi-choice and races › Wait for all of, any of, or a mix](../workflows/multi-choice-and-race.md#wait-for-all-of-any-of-or-a-mix) | — |
 | Poll until a condition holds, sleep until a time (`Poll`, `PollSpec`, `ErrPollTimeout`, `SleepUntil`) | `workflow` | [polling and approvals › Poll until a condition holds](../workflows/polling-and-approval.md#poll-until-a-condition-holds) | [flow-patterns](../../examples/flow-patterns/) |
 | Human approval with signed links (`ApprovalStep`, `ApprovalSpec`, `Approve`, `Reject`, `Decision`, `DecisionOf`, `ApprovalEvent`, `NewApprovalToken`, `ApprovalSigner`, `ErrApprovalToken`) | `workflow` | [polling and approvals › Human approval](../workflows/polling-and-approval.md#human-approval) | [flow-patterns](../../examples/flow-patterns/) |
 | Step groups, early end, recursion limit, step-shape guard, typed enqueue and result (`Group`, `EndRun`, `EndRuns`, `RecursionLimit`, `LabelDepth`, `ErrDepth`, `ShapeGuard`, `Shape`, `LabelShape`, `ErrShapeChanged`, `EnqueueOf`, `AwaitResultOf`) | `workflow` | [groups and guards › Step groups](../workflows/groups-and-guards.md#step-groups) | [flow-patterns](../../examples/flow-patterns/) |
@@ -185,6 +189,7 @@ Enqueueing work and controlling how it runs: delays, keys, retries, concurrency,
 | Reschedule a delayed run (`RunRescheduler`) | `workflow` | [manage runs › Reschedule a delayed run](../jobs/manage-runs.md#reschedule-a-delayed-run) | [run-reschedule](../../examples/run-reschedule/) |
 | Cancel one step (`StepCanceller`, `ErrStepCancelled`) | `workflow` | [manage runs › Cancel one step](../jobs/manage-runs.md#cancel-one-step) | [run-reschedule](../../examples/run-reschedule/) |
 | Weighted queues (`QueueConfig.Weight`, `PickWeighted`) | `workflow` | [queues › Share a worker between queues by weight](../jobs/queues.md#share-a-worker-between-queues-by-weight) | [queue-weights](../../examples/queue-weights/) |
+| Run one step on an accelerator (a child run on its own queue, `WithQueues` per node) | `workflow`, drivers | [queues › Run one step on an accelerator](../jobs/queues.md#run-one-step-on-an-accelerator) | — |
 | FIFO per key (`Concurrency.FIFO`, `CapKeyFIFO`) | `workflow` | [concurrency › Keep one key's runs in order](../jobs/concurrency.md#keep-one-keys-runs-in-order) | [queue-weights](../../examples/queue-weights/) |
 | Process a redelivered message once per consumer (`Inbox`, `InboxConsumer`, `InboxKey`, `MemoryInbox`, `ErrInboxBusy`, `ErrInboxLost`, `DefaultInboxLease`, `DefaultInboxKeep`, `workflowtest.InboxContract`; `sqlstore.Inbox` with `MarkTx`, `redis.Inbox`) | `workflow`, `sqlstore`, `redis` | [idempotency › Drop redelivered messages with an inbox](../jobs/idempotency.md#drop-redelivered-messages-with-an-inbox) | [consumer-inbox](../../examples/consumer-inbox/) |
 | Re-run a failed run from an earlier step (`RunResetter`, `StepsFrom`) | `workflow` | [manage-runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step) | — |
@@ -192,6 +197,7 @@ Enqueueing work and controlling how it runs: delays, keys, retries, concurrency,
 | Edit a scheduled run (`RunEditor`, `JobEdit`, `CheckJobEdit`) | `workflow`, `memory`, `sqlstore`, `redis` | [edit a scheduled run](../jobs/edit-runs.md) | [edit-run](../../examples/edit-run/) |
 | Search runs by payload fields (`RunQuery.Payload`, `CapPayloadSearch`) | `workflow`, drivers | [manage runs › Search inside payloads](../jobs/manage-runs.md#search-inside-payloads) | [run-control](../../examples/run-control/) |
 | Suspend and resume one run (`Suspension`, `SuspendRun`, `ResumeRun`, `RunSuspended`, `DefaultSuspendPoll`) | `workflow` | [manage runs › Suspend one run](../jobs/manage-runs.md#suspend-one-run) | [run-control](../../examples/run-control/) |
+| Detours: hold, skip or redo one run (`SuspendRun`, `ResumeRun`, `ResetRun`, `Retry`, `ForceComplete`, `ForceFail`, `CancelStep`, `RunEditor`) | `workflow` | [manage runs › Detours: hold, skip, redo](../jobs/manage-runs.md#detours-hold-skip-redo) | — |
 | Start a run over HTTP, read its status and result, follow it with Server-Sent Events (`httprun.New`, `Config`, `Auth`) | `httprun` | [http-start › Step 2: mount the handler](../jobs/http-start.md#step-2-mount-the-handler) | [http-status](../../examples/http-status/) |
 | Stream partial output from a step (`Emit`, `Stream`, `StreamSink`, `StreamReader`, `StreamCloser`, `StreamChunk`, `StreamMiddleware`, `StreamCloseOnFinish`, `MemoryStream`, `NewMemoryStream`, `ErrStreamFull`) | `workflow` | [http-start › Step 3: stream output from a step](../jobs/http-start.md#step-3-stream-output-from-a-step) | [http-status](../../examples/http-status/) |
 | Push a job to an HTTP endpoint signed with Standard Webhooks, and run it on the receiving side (`push.Deliver`, `Handler`, `Envelope`, `Signer`, `StatusError`) | `push` | [push delivery › The sending side](../jobs/push-delivery.md#the-sending-side) | [push-delivery](../../examples/push-delivery/) |
@@ -241,6 +247,7 @@ Cron on a workflow or at run time, in a time zone, with a policy for missed tick
 | Environment gating and combined conditions (`InEnvironment`, `AllWhen`) | `workflow` | [conditions › Run only in some environments](../schedules/conditions.md#run-only-in-some-environments) | [schedule-specs](../../examples/schedule-specs/) |
 | Keep only the newest finished runs of a schedule (`Schedule.KeepRuns`, `Workflow.CronKeepRuns`, `CapScheduleKeep`) | `workflow` | [manage › Keep the newest runs](../schedules/manage.md#keep-the-newest-runs) | — |
 | A schedule stored as versioned JSON (`Schedule.MarshalJSON`, `UnmarshalSchedule`, `ScheduleJSONVersion`, `ErrScheduleJSON`) | `workflow` | [manage › Store a schedule as JSON](../schedules/manage.md#store-a-schedule-as-json) | [schedule-specs](../../examples/schedule-specs/) |
+| A schedule cursor kept between runs (`DataStore`, `Folder("schedule/<id>")`, `UpdateData`) | `workflow` | [manage schedules › Keep a cursor between runs](../schedules/manage.md#keep-a-cursor-between-runs) | — |
 | An in-process cron on every node (`LocalCron`, `NewLocalCron`, `LocalCronFunc`, `WithLocalCronClock`, `WithLocalCronParser`, `WithLocalCronErrors`, `ErrLocalCronStarted`) | `workflow` | [local-cron › Run a function on every node](../schedules/local-cron.md#run-a-function-on-every-node) | [schedule-specs](../../examples/schedule-specs/) |
 | Skip stale scheduled runs (`middleware.LatestOnly`, `LatestOnlyConfig`) | `middleware` | [latest-only](../schedules/latest-only.md) | — |
 | Seven-field cron with a year (`cron.ParseYear`, `MinYear`, `MaxYear`, `Fields`, `FieldsOf`) | `cron` | [cron › A year field](../schedules/cron.md#a-year-field) | [schedule-export](../../examples/schedule-export/) |
