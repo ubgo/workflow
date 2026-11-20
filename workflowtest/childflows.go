@@ -111,7 +111,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return json.Marshal(res)
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapIdempotencyKey|workflow.CapResult)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -148,7 +148,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return json.Marshal(res)
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapIdempotencyKey|workflow.CapResult|workflow.CapCancel)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult, workflow.CapCancel)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +179,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return json.Marshal(res)
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapIdempotencyKey|workflow.CapResult|workflow.CapForceRun|workflow.CapCancel)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult, workflow.CapForceRun, workflow.CapCancel)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -204,7 +204,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return nil, err
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapIdempotencyKey|workflow.CapCancel|workflow.CapRunQuery)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapCancel, workflow.CapRunQuery)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -238,7 +238,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return nil, nil
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapIdempotencyKey|workflow.CapCancelAll|workflow.CapRunQuery)
+		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapCancelAll, workflow.CapRunQuery)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -274,7 +274,7 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 			return json.Marshal(res)
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapIdempotencyKey)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
@@ -294,9 +294,11 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 }
 
 // needCaps skips the case when c lacks any of want.
-func needCaps(t *testing.T, c workflow.Client, want workflow.Caps) {
+func needCaps(t *testing.T, c workflow.Client, want ...workflow.Caps) {
 	t.Helper()
-	if missing := c.Capabilities().Missing(want); missing != 0 {
-		t.Skipf("driver lacks %s", missing)
+	for _, w := range want {
+		if !c.Capabilities().Has(w) {
+			t.Skipf("driver lacks %s", w)
+		}
 	}
 }

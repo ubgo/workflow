@@ -59,7 +59,8 @@ func TestSignalHelpersRefuse(t *testing.T) {
 	if err := workflow.CancelSteps(ctx, noSnooze{nil}, workflow.RunRef{RunID: "r"}, "a"); !errors.As(err, &ue) {
 		t.Fatalf("CancelSteps without StepCanceller: %v", err)
 	}
-	noWait := capsOnly{memory.New(), memory.New().Capabilities() &^ workflow.CapWaitForEvent}
+	var none workflow.Caps
+	noWait := capsOnly{memory.New(), none}
 	if _, err := workflow.Update(ctx, noWait, workflow.NewMemoryPromises(), workflow.Event{Name: "e"}, workflow.AwaitOptions{}); !errors.As(err, &ue) || ue.Missing != workflow.CapWaitForEvent {
 		t.Fatalf("Update without CapWaitForEvent: %v", err)
 	}

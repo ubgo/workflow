@@ -246,7 +246,7 @@ func checkJoin(client Client, name string, n int, spec JoinSpec) error {
 			return Permanent(&UnsupportedError{Field: "JoinSpec.Rest", Missing: CapCancel, Reason: "the children's driver cannot cancel a run"})
 		}
 	case JoinCompleteRest:
-		if _, ok := client.(RunForcer); !ok || !client.Capabilities().Has(CapForceRun|CapCancel) {
+		if _, ok := client.(RunForcer); !ok || !client.Capabilities().Has(CapForceRun) || !client.Capabilities().Has(CapCancel) {
 			return Permanent(&UnsupportedError{Field: "JoinSpec.Rest", Missing: CapForceRun, Reason: "the children's driver cannot force a run complete"})
 		}
 	default:

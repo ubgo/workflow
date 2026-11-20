@@ -36,7 +36,7 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 
 	t.Run("broadcast", func(t *testing.T) {
 		c := h.Start(t, waiter("sig-waiter"))
-		needCaps(t, c, workflow.CapWaitForEvent|workflow.CapResult)
+		needCaps(t, c, workflow.CapWaitForEvent, workflow.CapResult)
 		ctx := context.Background()
 		var refs []workflow.RunRef
 		for range 3 {
@@ -69,7 +69,7 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 
 	t.Run("signal-with-start", func(t *testing.T) {
 		c := h.Start(t, waiter("sig-waiter"))
-		needCaps(t, c, workflow.CapWaitForEvent|workflow.CapIdempotencyKey|workflow.CapResult)
+		needCaps(t, c, workflow.CapWaitForEvent, workflow.CapIdempotencyKey, workflow.CapResult)
 		ctx := context.Background()
 		job := workflow.Job{Workflow: "sig-waiter", IdempotencyKey: "cart-7", Labels: map[string]string{"key": "cart-7"}}
 		first, err := workflow.SignalWithStart(ctx, c, job, workflow.Event{Name: "go", Key: "cart-7", Payload: []byte(`"item"`)})
@@ -124,7 +124,7 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 			return workflow.AwaitPromise(ctx, store, id, 5*time.Millisecond)
 		}}}}
 		c := h.Start(t, wf)
-		needCaps(t, c, workflow.CapSnooze|workflow.CapResult)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapResult)
 		store = h.Promises(t, c)
 		ctx := context.Background()
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "sig-approval", Payload: []byte(`"req-1"`)})
@@ -163,7 +163,7 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 			return json.Marshal(map[string]any{"round": n, "from": from})
 		}}}}
 		c = h.Start(t, wf)
-		needCaps(t, c, workflow.CapIdempotencyKey|workflow.CapRunQuery)
+		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapRunQuery)
 		ctx := context.Background()
 		if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "sig-poller", Payload: []byte("1"), Labels: map[string]string{"tenant-ish": "a"}}); err != nil {
 			t.Fatal(err)

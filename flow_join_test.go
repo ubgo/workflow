@@ -262,10 +262,11 @@ func TestJoinRefusals(t *testing.T) {
 	}
 }
 
-// noSnooze hides CapSnooze, as a driver without it would.
+// noSnooze reports no capabilities, so it lacks CapSnooze as a driver
+// without it would.
 type noSnooze struct{ workflow.Client }
 
-func (n noSnooze) Capabilities() workflow.Caps { return n.Client.Capabilities() &^ workflow.CapSnooze }
+func (n noSnooze) Capabilities() workflow.Caps { var none workflow.Caps; return none }
 
 func TestJoinNeedsSnooze(t *testing.T) {
 	g := newGate()

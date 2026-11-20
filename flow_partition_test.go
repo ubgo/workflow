@@ -230,12 +230,11 @@ func TestPartitionsJobBuilder(t *testing.T) {
 	waitRefs(t, c, refs[1:2])
 }
 
-// noRunQuery hides the run query from a client's capabilities.
+// noRunQuery reports no capabilities, so it lacks the run query and
+// idempotency keys.
 type noRunQuery struct{ workflow.Client }
 
-func (n noRunQuery) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ (workflow.CapRunQuery | workflow.CapIdempotencyKey)
-}
+func (n noRunQuery) Capabilities() workflow.Caps { var none workflow.Caps; return none }
 
 func TestPartitionsRefusals(t *testing.T) {
 	c := partitionClient(t, (&partitionRecorder{}).workflow())
