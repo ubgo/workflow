@@ -1,7 +1,8 @@
 {
   "_v": 2,
   "features": [
-    "hlc"
+    "hlc",
+    "task_tree"
   ],
   "format": 2,
   "migrated_at": "2026-11-19T09:52:52Z",
