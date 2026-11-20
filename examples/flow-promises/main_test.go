@@ -17,7 +17,7 @@ func TestRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `promise:
-  before approval the run is: waiting
+  before approval the run has ended: false
   after approval: "approved by finance"
   a second, different outcome is refused: true
 signal with start and update:

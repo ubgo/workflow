@@ -179,7 +179,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("  before payment the run is:", st)
+	fmt.Println("  before payment the run has ended:", st.IsTerminal())
 	close(release)
 	out, err = workflow.AwaitResult(ctx, c, ref, await)
 	if err != nil {

@@ -104,7 +104,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("  before approval the run is:", st)
+	fmt.Println("  before approval the run has ended:", st.IsTerminal())
 	// snippet:resolve
 	if err := workflow.ResolvePromise(ctx, c, promises, "req-42", []byte(`"approved by finance"`)); err != nil {
 		return err

@@ -24,7 +24,7 @@ when:
   "icon.png" -> "icon.png"
   "poster-large.png" -> resized "poster-large.png"
 milestone:
-  before payment the run is: running
+  before payment the run has ended: false
   after payment: {"pay":null,"ship":"shipped"}
 soft timeout:
   step returned before its hard timeout: true
