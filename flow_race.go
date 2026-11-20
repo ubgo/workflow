@@ -24,9 +24,12 @@ type RaceSpec struct {
 	// Event is the event name every competitor signals.
 	Event string
 
-	// Key or KeyFrom pick the run, as in WaitSpec.
+	// Key or KeyFrom pick the run, as in WaitSpec; OwnRun races on the
+	// signals addressed to the run itself (SignalChoiceRun; needs
+	// CapWaitOwnRun).
 	Key     string
 	KeyFrom ConcurrencyKey
+	OwnRun  bool
 
 	// Timeout bounds the wait (WaitSpec.Timeout); zero waits forever. A
 	// timeout fails the run with ErrWaitTimeout. To give the race a
@@ -86,7 +89,7 @@ func Race(r RaceSpec) ([]Step, error) {
 	if err != nil {
 		return nil, err
 	}
-	wait := Step{Name: waitName, After: slices.Clone(r.After), Wait: &WaitSpec{Event: r.Event, Key: r.Key, KeyFrom: r.KeyFrom, Timeout: r.Timeout}}
+	wait := Step{Name: waitName, After: slices.Clone(r.After), Wait: &WaitSpec{Event: r.Event, Key: r.Key, KeyFrom: r.KeyFrom, OwnRun: r.OwnRun, Timeout: r.Timeout}}
 	return append([]Step{wait}, choice...), nil
 }
 
@@ -102,4 +105,19 @@ func SignalChoice(ctx context.Context, c Client, event, key, branch string, payl
 		return err
 	}
 	return c.Signal(ctx, Event{Name: event, Key: key, Payload: b})
+}
+
+// SignalChoiceRun sends branch, with payload for the branch, to the run
+// ref names when it races on event with RaceSpec.OwnRun, through
+// SignalRun. As with SignalChoice, the first signal the run takes
+// decides.
+func SignalChoiceRun(ctx context.Context, c Client, ref RunRef, event, branch string, payload []byte) error {
+	if branch == "" {
+		return invalidf("SignalChoiceRun needs a branch")
+	}
+	b, err := json.Marshal(raceSignal{Branch: branch, Payload: payload})
+	if err != nil {
+		return err
+	}
+	return SignalRun(ctx, c, ref, event, b)
 }

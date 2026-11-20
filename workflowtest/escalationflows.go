@@ -95,8 +95,9 @@ func (g *sigGate) entered(t *testing.T) {
 // handlers running between steps in send order and leaving other names
 // alone; escalations handled while the parent joins its children; a
 // handler error retried with the step and the signal handled again; the
-// RunSignalReader contract (take once, unknown ids); a handler that ends
-// the run. A driver without a case's capability or RunSignalReader skips
+// RunSignalReader contract (take once, unknown ids); ApproveRun,
+// RejectRun, SignalChoiceRun and UpdateRun reaching only the run they
+// name; a handler that ends the run. A driver without a case's capability or RunSignalReader skips
 // that case.
 func RunEscalationFlows(t *testing.T, h EscalationHarness) {
 	echo := func(_ context.Context, in []byte) ([]byte, error) { return in, nil }
@@ -423,6 +424,85 @@ func RunEscalationFlows(t *testing.T, h EscalationHarness) {
 		flowStatus(t, c, a, workflow.StatusSucceeded)
 		if done, err := r.PendingSignals(ctx, a.RunID, []string{"m"}, 0); err != nil || len(done) != 0 {
 			t.Fatalf("pending of a finished run: %+v %v; want none", done, err)
+		}
+	})
+
+	t.Run("by-run-helpers", func(t *testing.T) {
+		promises := workflow.NewMemoryPromises()
+		approval, err := workflow.ApprovalStep(workflow.ApprovalSpec{Name: "approve", OwnRun: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		approve := workflow.Workflow{Name: "esc-approve", Steps: []workflow.Step{approval,
+			{Name: "echo", After: []string{"approve"}, Run: echo}}}
+		race, err := workflow.Race(workflow.RaceSpec{Name: "pick", Event: "pick", OwnRun: true, Branches: []workflow.Branch{
+			{Name: "left", Run: func(_ context.Context, in []byte) ([]byte, error) { return append([]byte("left:"), in...), nil }},
+			{Name: "right", Run: func(_ context.Context, in []byte) ([]byte, error) { return append([]byte("right:"), in...), nil }},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		racer := workflow.Workflow{Name: "esc-race", Steps: race}
+		updater := workflow.Workflow{Name: "esc-update", Steps: []workflow.Step{
+			{Name: "ask", Wait: &workflow.WaitSpec{Event: "ask", OwnRun: true}},
+			{Name: "answer", After: []string{"ask"}, Run: workflow.UpdateHandler(promises, func(_ context.Context, in []byte) ([]byte, error) {
+				return append([]byte("answered "), in...), nil
+			})},
+		}}
+		c := h.Start(t, nil, approve, racer, updater)
+		needCaps(t, c, workflow.CapWaitOwnRun, workflow.CapResult)
+		ctx := context.Background()
+		enqueue := func(wf string) [2]workflow.RunRef {
+			var refs [2]workflow.RunRef
+			for i := range refs {
+				ref, err := c.Enqueue(ctx, workflow.Job{Workflow: wf})
+				if err != nil {
+					t.Fatal(err)
+				}
+				flowStatus(t, c, ref, workflow.StatusWaiting)
+				refs[i] = ref
+			}
+			return refs
+		}
+
+		ap := enqueue("esc-approve")
+		if err := workflow.ApproveRun(ctx, c, ap[0], "ana", "ok"); err != nil {
+			t.Fatal(err)
+		}
+		if err := workflow.RejectRun(ctx, c, ap[1], "bo", "no"); err != nil {
+			t.Fatal(err)
+		}
+		for i, want := range []bool{true, false} {
+			out, err := flowAwait(t, c, ap[i])
+			var d workflow.Decision
+			if err != nil || json.Unmarshal(out, &d) != nil || d.Approved != want {
+				t.Fatalf("approval %d: %s %v; want approved=%v", i, out, err, want)
+			}
+		}
+
+		rc := enqueue("esc-race")
+		if err := workflow.SignalChoiceRun(ctx, c, rc[1], "pick", "right", []byte("b")); err != nil {
+			t.Fatal(err)
+		}
+		if err := workflow.SignalChoiceRun(ctx, c, rc[0], "pick", "left", []byte("a")); err != nil {
+			t.Fatal(err)
+		}
+		for i, want := range []string{"left:a", "right:b"} {
+			if out, err := flowAwait(t, c, rc[i]); err != nil || string(out) != want {
+				t.Fatalf("race %d: %q %v; want %q", i, out, err, want)
+			}
+		}
+
+		up := enqueue("esc-update")
+		uctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		out, err := workflow.UpdateRun(uctx, c, promises, up[1], "ask", []byte("q1"), workflow.AwaitOptions{Poll: 5 * time.Millisecond})
+		if err != nil || string(out) != "answered q1" {
+			t.Fatalf("UpdateRun: %q %v", out, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+		if st, err := c.Status(ctx, up[0]); err != nil || st != workflow.StatusWaiting {
+			t.Fatalf("the other run took the update: %s %v", st, err)
 		}
 	})
 

@@ -153,3 +153,30 @@ func TestSignalRunUsesRunSignaller(t *testing.T) {
 		t.Fatalf("Use's client did not forward SignalRun: %+v", p.got)
 	}
 }
+
+func TestByRunHelperRefusals(t *testing.T) {
+	for _, a := range []workflow.ApprovalSpec{
+		{Name: "a"},
+		{Name: "a", OwnRun: true, Key: "k"},
+		{Name: "a", OwnRun: true, KeyFrom: workflow.KeyFunc(func(workflow.Job) string { return "k" })},
+	} {
+		if _, err := workflow.ApprovalStep(a); !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("ApprovalStep(%+v): %v", a, err)
+		}
+	}
+	s, err := workflow.ApprovalStep(workflow.ApprovalSpec{Name: "a", OwnRun: true})
+	if err != nil || !s.Wait.OwnRun || s.Wait.Key != "" {
+		t.Fatalf("OwnRun approval step %+v %v", s.Wait, err)
+	}
+	steps, err := workflow.Race(workflow.RaceSpec{Name: "r", Event: "e", OwnRun: true, Branches: []workflow.Branch{{Name: "x", Run: func(_ context.Context, in []byte) ([]byte, error) { return in, nil }}}})
+	if err != nil || !steps[0].Wait.OwnRun {
+		t.Fatalf("OwnRun race %+v %v", steps, err)
+	}
+	ctx := context.Background()
+	if err := workflow.SignalChoiceRun(ctx, memory.New(), workflow.RunRef{RunID: "r"}, "e", "", nil); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("SignalChoiceRun without a branch: %v", err)
+	}
+	if _, err := workflow.UpdateRun(ctx, memory.New(), workflow.NewMemoryPromises(), workflow.RunRef{}, "u", nil, workflow.AwaitOptions{}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("UpdateRun without a run: %v", err)
+	}
+}
