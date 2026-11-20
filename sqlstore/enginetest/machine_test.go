@@ -1,6 +1,7 @@
 package enginetest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/ubgo/workflow"
@@ -23,6 +24,47 @@ func TestMachineFlows(t *testing.T) {
 				},
 				Store: func(_ *testing.T, c workflow.Client) workflow.JournalStore {
 					return c.(*sqlstore.Client).JournalStore()
+				},
+			})
+		})
+	}
+}
+
+// TestReplayFlows proves replayed orchestration on every engine, its
+// history in the journal table and its waits as snoozes.
+func TestReplayFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			workflowtest.RunReplayFlows(t, workflowtest.ReplayHarness{
+				Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+					db, prefix := e.open(t)
+					sc := newClient(t, e, db, prefix)
+					c, err := workflow.Use(sc, workflow.Journal(sc.JournalStore()))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, wf := range wfs {
+						if err := c.Register(wf); err != nil {
+							t.Fatal(err)
+						}
+					}
+					ctx, cancel := context.WithCancel(context.Background())
+					t.Cleanup(cancel)
+					if err := c.Start(ctx); err != nil {
+						t.Fatal(err)
+					}
+					return c
+				},
+				Promises: func(t *testing.T, _ workflow.Client) workflow.PromiseStore {
+					db, prefix := e.open(t)
+					s, err := sqlstore.NewPromiseStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := s.Migrate(context.Background()); err != nil {
+						t.Fatal(err)
+					}
+					return s
 				},
 			})
 		})
