@@ -161,6 +161,7 @@ type handlerConfig struct {
 	stacks   bool
 	logger   *slog.Logger
 	maxBody  int64
+	tenant   any // a TenantScope[P] from WithTenantScope; nil: unscoped
 }
 
 // WithPayloads includes each run's payload (base64) in run responses. By
@@ -207,6 +208,9 @@ type handler[P any] struct {
 	auth Auth[P]
 	cfg  handlerConfig
 	mux  *http.ServeMux
+	// tenant confines callers to one tenant (WithTenantScope); nil
+	// without one.
+	tenant *tenantGate[P]
 }
 
 // NewHandler returns the admin JSON API over a. It is closed by default:
@@ -315,6 +319,7 @@ func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handl
 	mux.HandleFunc("GET /ui", h.uiRedirect)
 	mux.HandleFunc("GET /ui/{file...}", h.uiFile)
 	h.mux = mux
+	h.tenant = h.newTenantGate()
 	return h
 }
 
@@ -339,7 +344,7 @@ func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, h.cfg.maxBody)
 	}
 	ctx := context.WithValue(r.Context(), principalKey[P]{}, who)
-	h.mux.ServeHTTP(w, r.WithContext(ctx))
+	h.route(w, r.WithContext(ctx), who)
 }
 
 // identify calls Identify, turning a panic into an error so it fails
@@ -406,7 +411,8 @@ func (h *handler[P]) capabilities(w http.ResponseWriter, r *http.Request) {
 		Missing   string    `json:"missing,omitempty"`
 		Reason    string    `json:"reason,omitempty"`
 	}
-	sup := h.a.Support()
+	sup := scopeSupport(r.Context(), h.a.Support())
+	tenant, scoped := TenantFrom(r.Context())
 	out := struct {
 		Capabilities string `json:"capabilities"`
 		Operations   []op   `json:"operations"`
@@ -416,7 +422,10 @@ func (h *handler[P]) capabilities(w http.ResponseWriter, r *http.Request) {
 		// Metrics is true when run-end history can be read (WithMetrics),
 		// so a screen hides the charts otherwise.
 		Metrics bool `json:"metrics"`
-	}{Capabilities: h.a.c.Capabilities().String(), Operations: make([]op, 0, len(sup)), Output: h.a.HasOutputs(), Metrics: h.a.HasMetrics()}
+		// Tenant is the tenant a scoped caller is confined to
+		// (WithTenantScope), so a screen can say so; absent otherwise.
+		Tenant string `json:"tenant,omitempty"`
+	}{Capabilities: h.a.c.Capabilities().String(), Operations: make([]op, 0, len(sup)), Output: h.a.HasOutputs(), Metrics: h.a.HasMetrics() && !scoped, Tenant: tenant}
 	for _, s := range sup {
 		o := op{Operation: s.Operation, Supported: s.Supported, Reason: s.Reason}
 		if !s.Missing.IsZero() {
@@ -659,6 +668,7 @@ func (h *handler[P]) listSchedules(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, ActionListSchedules, err)
 		return
 	}
+	all = scopeSchedules(r.Context(), all)
 	out := struct {
 		Schedules []scheduleJSON `json:"schedules"`
 		Next      string         `json:"next,omitempty"`
