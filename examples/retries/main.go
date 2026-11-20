@@ -190,16 +190,20 @@ func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: wf}); err != nil {
 		return workflow.RunEvent{}, err
 	}
+	// show prints one attempt and reports whether the policy retries it.
+	show := func(a attempt) bool {
+		fmt.Printf("  %s attempt %d at +%s", a.step, a.n, a.at.Sub(t0))
+		if a.err == nil {
+			fmt.Println(": ok")
+			return false
+		}
+		fmt.Printf(": %v\n", a.err)
+		return a.policy.Retryable(a.err, a.n)
+	}
 	for {
 		select {
 		case a := <-attempts:
-			fmt.Printf("  %s attempt %d at +%s", a.step, a.n, a.at.Sub(t0))
-			if a.err == nil {
-				fmt.Println(": ok")
-				continue
-			}
-			fmt.Printf(": %v\n", a.err)
-			if !a.policy.Retryable(a.err, a.n) {
+			if !show(a) {
 				continue
 			}
 			// snippet:next-delay
@@ -210,7 +214,17 @@ func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
 			}
 			clk.Advance(d)
 		case ev := <-finished:
-			return ev, nil
+			// A step sends its attempt before the run can finish, but select
+			// picks at random among ready cases, so attempts may still be
+			// queued here: print them before the run's end.
+			for {
+				select {
+				case a := <-attempts:
+					show(a)
+				default:
+					return ev, nil
+				}
+			}
 		case <-ctx.Done():
 			return workflow.RunEvent{}, ctx.Err()
 		}
