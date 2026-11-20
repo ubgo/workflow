@@ -31,6 +31,7 @@ type Forward struct {
 
 var (
 	_ RunQuerier       = Forward{}
+	_ RunEditor        = Forward{}
 	_ RunRetrier       = Forward{}
 	_ RunDeleter       = Forward{}
 	_ BulkCanceller    = Forward{}
@@ -239,6 +240,14 @@ func (f Forward) Reschedule(ctx context.Context, ref RunRef, at time.Time) (RunR
 		return i.Reschedule(ctx, ref, at)
 	}
 	return RunRef{}, lacks("Reschedule", Caps{})
+}
+
+// EditRun forwards to Inner's RunEditor.
+func (f Forward) EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef, error) {
+	if i, ok := f.Inner.(RunEditor); ok {
+		return i.EditRun(ctx, ref, edit)
+	}
+	return RunRef{}, lacks("EditRun", Caps{})
 }
 
 // CancelStep forwards to Inner's StepCanceller.

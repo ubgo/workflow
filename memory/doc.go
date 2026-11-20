@@ -63,7 +63,10 @@
 //     key (concurrency, rate limit or WaitSpec.KeyFrom) is refused at Start
 //     with an UnsupportedError. QueueNewest and
 //     RoundRobin hold the new run until its bucket has room (each bucket is
-//     capped at MaxRuns, so no key can starve another); DropNewest and
+//     capped at MaxRuns, so no key can starve another); with RoundRobin the
+//     workers also take the waiting steps of different keys in turn (the
+//     key served longest ago first), so a key with a backlog does not
+//     delay the others behind it; DropNewest and
 //     CancelNewest record the new run as StatusCancelled; CancelInProgress
 //     cancels the bucket's oldest running run to make room. A cancelled
 //     run releases its slot at once, even if a handler that ignores its

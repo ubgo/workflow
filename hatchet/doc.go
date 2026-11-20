@@ -139,7 +139,9 @@
 // RunQuery.Statuses) rather than answered with a page that says "none".
 // A RunQuery.LabelPrefixes filter is refused the same way by Runs and
 // CancelAll (field RunQuery.LabelPrefixes, no CapLabelPrefix): the
-// engine filters metadata by exact value only.
+// engine filters metadata by exact value only. A RunQuery.Payload filter
+// is refused by Runs (field RunQuery.Payload, no CapPayloadSearch) for
+// the same reason.
 // A Job.Chain is refused at Enqueue, RunGroup and SpawnGroup (field
 // Job.Chain, no CapChain), and no chain editor is put on a step's ctx,
 // so PrependToChain and AppendToChain return an UnsupportedError: a

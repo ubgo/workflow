@@ -43,7 +43,7 @@ var parityCaps = workflow.CapsOf(
 	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
 	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
-	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, batch2Caps,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch, batch2Caps,
 	workflow.CapSlotCost,
 )
 
@@ -1024,6 +1024,16 @@ func (c *Client) wakeLocal() {
 	close(c.wake)
 	c.wake = make(chan struct{})
 	c.signalWorker()
+}
+
+// wakeWorkers wakes one idle worker of this client (each worker that
+// finds work wakes the next), without waking the dispatcher.
+func (c *Client) wakeWorkers() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.stopped {
+		c.signalWorker()
+	}
 }
 
 // signalWorker wakes one idle worker, if any is waiting and none is

@@ -71,6 +71,8 @@ fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflo
 | `ConcurrencyCancelNewest` | Is recorded as cancelled and never runs | Keeps running |
 | `ConcurrencyCancelInProgress` | Runs | The oldest running run of the bucket is cancelled to make room |
 
+With `ConcurrencyRoundRobin` the memory driver also hands its workers the waiting steps of different keys in turn, the key served longest ago first, so a tenant that enqueued a thousand runs does not delay a tenant that enqueued one; Hatchet does the same with its group round-robin. The SQL and Redis drivers cap each bucket at `MaxRuns` but take waiting steps in priority and arrival order.
+
 Use queueing for work that must all happen (reports, imports), dropping for work where one run in flight is enough (a "sync now" button pressed twice), and cancel-in-progress for work where only the latest matters (a preview re-rendered on every keystroke).
 
 <!-- snippet: examples/concurrency/main.go#strategies -->

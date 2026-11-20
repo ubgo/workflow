@@ -187,6 +187,27 @@ for _, try := range []string{"first", "second"} {
 
 Drivers call `workflow.MarkInserted` once a new run is stored and `workflow.MarkDuplicate` when an idempotency key returns the holder's run; `UniqueWith` calls `MarkDuplicate` when it returns the holder. The first mark wins. The memory, Redis, SQL and Hatchet drivers report outcomes. When the holder's run is not known yet (a race with its own enqueue), `ReturnExisting` still returns `ErrDuplicate`.
 
+## Replace a scheduled duplicate
+
+A digest mail is scheduled for tonight; each new comment enqueues it again with the full list so far. The newest arguments should win, not the first. `UniqueConfig.Replace` makes a duplicate update the holder while it is still scheduled: its payload, priority and, when the new job sets one, `RunAt` become the new job's (through `workflow.RunEditor`), and the holder's `RunRef` comes back marked a duplicate. A holder that has started is left alone, and the duplicate is answered as without `Replace` (`ReturnExisting` or `ErrDuplicate`).
+
+<!-- snippet: examples/run-control/main.go#unique-replace -->
+```go
+mw, err := middleware.UniqueWith(middleware.UniqueConfig{
+	By:      func(j workflow.Job) string { return "digest:" + j.Labels["user"] },
+	Store:   middleware.NewMemoryUnique(clock.Real{}),
+	TTL:     24 * time.Hour,
+	Client:  mc, // implements workflow.RunEditor
+	Replace: true,
+})
+if err != nil {
+	return err
+}
+c := middleware.WrapClient(mc, mw)
+```
+
+`Replace` needs a `Client` implementing `workflow.RunEditor` and a store implementing `UniqueHolders`; `UniqueWith` refuses it otherwise (`ErrInvalid`). To collapse a burst of jobs into one run that sees only the latest, without a schedule, see [debounce](debounce.md).
+
 ## A store shared by every process
 
 `MemoryUnique` makes the lock hold in one process: two servers would each accept one job. `sqlstore.UniqueStore` keeps the locks as rows of `<prefix>unique_locks` (`wf_unique_locks` by default), so the lock holds across every process that shares the database. Its semantics are `MemoryUnique`'s exactly, and `Acquire` is atomic across processes: one upsert on Postgres and SQLite, and on MySQL a delete of the expired row followed by an insert that the primary key lets only one process win.

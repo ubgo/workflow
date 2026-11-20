@@ -8,6 +8,7 @@ type Op string
 // The operations Supports answers for.
 const (
 	OpReschedule Op = "reschedule"  // RunRescheduler
+	OpEditRun    Op = "edit-run"    // RunEditor
 	OpCancelStep Op = "cancel-step" // StepCanceller
 	OpNodes      Op = "nodes"       // NodeLister
 	OpLifecycle  Op = "lifecycle"   // LifecycleNotifier
@@ -33,6 +34,9 @@ func Supports(c Client, op Op) bool {
 		return ok
 	case OpCancelStep:
 		_, ok := c.(StepCanceller)
+		return ok
+	case OpEditRun:
+		_, ok := c.(RunEditor)
 		return ok
 	case OpNodes:
 		_, ok := c.(NodeLister)

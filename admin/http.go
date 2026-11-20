@@ -64,6 +64,8 @@ const (
 	// one step of a run.
 	ActionRescheduleRun Action = "runs.reschedule"  // POST /runs/{id}/reschedule
 	ActionCancelStep    Action = "runs.cancel_step" // POST /runs/{id}/steps/{step}/cancel
+	// ActionEditRun changes a scheduled run's payload, priority or start.
+	ActionEditRun Action = "runs.edit" // POST /runs/{id}/edit
 	// ActionUI is loading the web UI's page and its files. The UI's data
 	// comes from the routes above, each authorized with its own action,
 	// so a caller allowed only ActionUI sees an empty screen.
@@ -79,7 +81,7 @@ var Actions = []Action{
 	ActionPauseSchedule, ActionResumeSchedule, ActionShowSchedule, ActionTriggerSchedule,
 	ActionForceComplete, ActionForceFail, ActionShowOutput, ActionUI,
 	ActionRetryRuns, ActionDeleteRuns, ActionMetrics,
-	ActionListNodes, ActionHealth, ActionRescheduleRun, ActionCancelStep,
+	ActionListNodes, ActionHealth, ActionRescheduleRun, ActionCancelStep, ActionEditRun,
 }
 
 // ReadOnly reports whether the action only reads. An Authorizer that gives
@@ -99,7 +101,8 @@ func (a Action) ReadOnly() bool {
 type Resource struct {
 	// Run is the run for ActionShowRun, ActionRetryRun, ActionCancelRun,
 	// ActionDeleteRun, ActionForceComplete, ActionForceFail,
-	// ActionShowOutput, ActionRescheduleRun and ActionCancelStep.
+	// ActionShowOutput, ActionRescheduleRun, ActionCancelStep and
+	// ActionEditRun.
 	Run workflow.RunRef
 	// Query is the filter for ActionListRuns, ActionListFailures,
 	// ActionCancelRuns, ActionRetryRuns and ActionDeleteRuns, so an
@@ -116,6 +119,9 @@ type Resource struct {
 	Step string
 	// At is the new time for ActionRescheduleRun.
 	At time.Time
+	// Edit is the change for ActionEditRun, so an Authorizer can allow
+	// some fields and not others.
+	Edit *workflow.JobEdit
 	// Pause is the target for ActionPause and ActionResume.
 	Pause *workflow.PauseTarget
 	// Schedule is the schedule for ActionPauseSchedule,
@@ -157,11 +163,13 @@ type Auth[P any] struct {
 type HandlerOption func(*handlerConfig)
 
 type handlerConfig struct {
-	payloads bool
-	stacks   bool
-	logger   *slog.Logger
-	maxBody  int64
-	tenant   any // a TenantScope[P] from WithTenantScope; nil: unscoped
+	payloads  bool
+	stacks    bool
+	logger    *slog.Logger
+	maxBody   int64
+	tenant    any                           // a TenantScope[P] from WithTenantScope; nil: unscoped
+	audit     AuditSink                     // WithAudit (audit.go)
+	traceLink func(workflow.RunInfo) string // WithTraceLink (tracelink.go)
 }
 
 // WithPayloads includes each run's payload (base64) in run responses. By
@@ -256,6 +264,7 @@ type handler[P any] struct {
 //	GET    /health                 the client's health report: live, ready and each check
 //	POST   /runs/{id}/reschedule   move a delayed run; body {"at":"RFC 3339"}
 //	POST   /runs/{id}/steps/{step}/cancel  withdraw one step of a run
+//	POST   /runs/{id}/edit         change a scheduled run; body {"payload":<JSON>,"priority":n,"run_at":"RFC 3339"}, each optional
 //	GET    /ui/               the web UI (see below); GET / and GET /ui redirect to it
 //
 // Run filters: workflow, queue, tenant (CapTenant), due_from and due_to
@@ -314,6 +323,7 @@ func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handl
 	mux.HandleFunc("GET /nodes", h.listNodes)
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("POST /runs/{id}/reschedule", h.reschedule)
+	mux.HandleFunc("POST /runs/{id}/edit", h.editRun)
 	mux.HandleFunc("POST /runs/{id}/steps/{step}/cancel", h.cancelStep)
 	mux.HandleFunc("GET /{$}", h.uiRedirect)
 	mux.HandleFunc("GET /ui", h.uiRedirect)
@@ -344,7 +354,9 @@ func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, h.cfg.maxBody)
 	}
 	ctx := context.WithValue(r.Context(), principalKey[P]{}, who)
+	w, ctx, aw := h.startAudit(w, ctx)
 	h.route(w, r.WithContext(ctx), who)
+	h.finishAudit(ctx, who, aw)
 }
 
 // identify calls Identify, turning a panic into an error so it fails
@@ -372,6 +384,7 @@ func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Ac
 		}()
 		return h.auth.Authorize(r.Context(), Request[P]{Who: who, Action: action, Resource: res, HTTP: r})
 	}()
+	noteAuthorize(r.Context(), action, res, err)
 	if err != nil {
 		writeError(w, http.StatusForbidden, CodeForbidden, "not allowed: "+string(action))
 		return false
@@ -384,6 +397,7 @@ func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Ac
 // filter field or the capability; anything else is logged and answered
 // with a bare 500, so a database error never reaches the browser.
 func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
+	noteError(w, err)
 	switch {
 	case errors.Is(err, workflow.ErrInvalid):
 		writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
@@ -525,7 +539,9 @@ func (h *handler[P]) showRun(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, ActionShowRun, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.runJSON(info))
+	out := h.runJSON(info)
+	out.TraceURL = h.traceURL(info)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *handler[P]) retryRun(w http.ResponseWriter, r *http.Request) {
@@ -1267,6 +1283,8 @@ type runJSON struct {
 	HasOutput bool `json:"has_output,omitempty"`
 	// AttemptedBy is the nodes that ran its attempts (CapNodeIdentity).
 	AttemptedBy []string `json:"attempted_by,omitempty"`
+	// TraceURL links the run's trace (WithTraceLink); run detail only.
+	TraceURL string `json:"trace_url,omitempty"`
 }
 
 type progressJSON struct {
@@ -1393,6 +1411,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
+	noteError(w, errors.New(msg)) // the audit entry's Err when no operation error came first
 	writeJSON(w, status, struct {
 		Error struct {
 			Code    string `json:"code"`
