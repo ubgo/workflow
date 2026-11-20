@@ -55,13 +55,20 @@ The stores that apps use without the queue have their own lists, under their own
 
 | Store | Owner constant | Migrations | Applied by |
 |---|---|---|---|
-| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history` | `Client.Migrate` |
-| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique` | `Client.Migrate` or `UniqueStore.Migrate` |
+| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version` | `Client.Migrate` |
+| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
 | `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
 | `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
+| `JournalStore` (memoised results; `PromiseStore` shares its table) | `sqlstore.JournalMigrationOwner` | `001_journal` | `Client.Migrate` or `JournalStore.Migrate` |
+| `BucketStore` (upstream limits) | `sqlstore.BucketMigrationOwner` | `001_buckets` | `Client.Migrate` or `BucketStore.Migrate` |
+| `DataStore` (run, folder and global data) | `sqlstore.DataMigrationOwner` | `001_data` | `Client.Migrate` or `DataStore.Migrate` |
+| `Inbox` (consumer inbox) | `sqlstore.InboxMigrationOwner` | `001_inbox` | `Client.Migrate` or `Inbox.Migrate` |
 | The transactional outbox | `outbox.MigrationOwner` (`ubgo/workflow/sqlstore/outbox`) | `001_outbox` | `Outbox.Migrate` only |
+| `AggregateStore` (aggregated jobs) | `sqlstore.AggregateMigrationOwner` | `001_aggregate` | `AggregateStore.Migrate` only |
+| `DisableStore` (endpoint switches for `AutoDisable`) | `sqlstore.DisableMigrationOwner` | `001_disable` | `DisableStore.Migrate` only |
+| `LineageStore` (dataset lineage) | `sqlstore.LineageMigrationOwner` | `001_lineage` | `LineageStore.Migrate` only |
 
-`Client.Migrate` applies the first four. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
+`Client.Migrate` applies the first eight, a set fixed at v0.2.0. The others migrate only through their own `Migrate` (or their `MigrationScripts`), and so will every store added later: upgrading the library never makes `Client.Migrate` create tables your app did not ask for. An app that uses one of them calls its `Migrate` next to `Client.Migrate`; each takes the same ledger lock, so both are safe from every process at start-up. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
 
 <!-- snippet: examples/migrations-export/main.go#unique -->
 ```go
@@ -74,7 +81,7 @@ if err := locks.Migrate(ctx); err != nil { // its own list: only the lock table
 }
 ```
 
-The ledger then holds one row, `ubgo/workflow/sqlstore/unique 001_unique`. The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)).
+The ledger then holds the unique store's rows only. The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
 
 ## Rolling back the code
 

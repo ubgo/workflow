@@ -150,6 +150,7 @@ pages read: offset 0 1x, offset 10 2x, offset 20 1x
 
 ## Pitfalls
 
+- `Client.Migrate` does not create the aggregate tables, on purpose: like the outbox, the store migrates on its own, so an app that never aggregates gets no tables for it. Call `AggregateStore.Migrate` after `Client.Migrate` (or apply `AggregateStore.MigrationScripts()`); without it the first `Append` fails with a missing table ([each store's migration list](../operations/migrations.md#each-stores-migration-list)).
 - `Aggregate` returns an `UnsupportedError` (matching `workflow.ErrUnsupported`) on a client without `CapDelayedStart`; a config without workflows or a positive `Window`, or a negative `MaxItems`, is `workflow.ErrInvalid`.
 - A job of an aggregated workflow may not carry an `IdempotencyKey` or a `Chain` (`ErrInvalid`): the flush run is not that job's run. Its `RunAt` is replaced; its `Queue`, `Tenant`, `Priority`, `Retry` and labels are copied onto the flush run it triggers.
 - Payloads must be JSON (`ErrInvalid` before anything is stored), since the step gets them as a JSON array; set `RawItems` and read them with `AggregatedItems` for other bytes.

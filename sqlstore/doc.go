@@ -476,6 +476,28 @@
 // then stays in the search_path with its rows owned as "<owner>@<schema>".
 // SQLite and MySQL refuse WithSchema.
 //
+// # Which tables Migrate creates
+//
+// Client.Migrate (and MigrationScripts) applies a fixed set of migration
+// lists: the queue's (MigrationOwner) and those of the stores that shipped
+// inside it by v0.2.0, UniqueStore, DebounceStore, OutputStore,
+// JournalStore (which PromiseStore shares), BucketStore, DataStore and
+// Inbox. Every other store has its own list under its own owner in the
+// same <prefix>migrations ledger and is created only by that store's
+// Migrate (or its MigrationScripts): the outbox (outbox.Outbox.Migrate),
+// AggregateStore, DisableStore and LineageStore. The rule that decides it:
+// upgrading the library never makes Client.Migrate create tables an app
+// did not ask for, so a store added from now on always migrates on its
+// own, and an app that uses one calls its Migrate next to Client.Migrate:
+//
+//	if err := c.Migrate(ctx); err != nil { ... }
+//	agg := c.AggregateStore()
+//	if err := agg.Migrate(ctx); err != nil { ... } // Client.Migrate does not create these tables
+//
+// A store's Migrate takes the same ledger lock as Client.Migrate, so both
+// may run from every process at start-up. TestClientMigrateOwnersAreFixed
+// in the engine tests pins the set.
+//
 // # Schema versions
 //
 // The schema is a list of numbered migrations (migrations.go; 001_initial
