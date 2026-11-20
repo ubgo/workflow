@@ -387,9 +387,23 @@ func (c *Client) prune(ctx context.Context) error {
 	return err
 }
 
+// overdueRepass is how soon the dispatcher passes again when nextDue finds
+// a delayed run already due: it fell due after promote read the clock.
+// Short, so the run starts at once; not zero, so a database that keeps
+// failing promote is not hammered.
+const overdueRepass = 20 * time.Millisecond
+
 // nextDue is the earliest future due time among this client's delayed
 // runs, ready steps in backoff, sleeps, wait deadlines, schedules and rate
 // windows.
+//
+// A delayed run already due brings the next pass forward to overdueRepass:
+// promote takes every one of them, so one still there fell due between
+// promote and this read, and nothing else would wake the dispatcher for it
+// (with a long WithPollInterval it waited for the poll). The other queries
+// ask for the earliest due time after now, so a row already due that this
+// client leaves alone (a deadline or a schedule another pass or node
+// handles) cannot hide the later due times of its table.
 func (c *Client) nextDue(ctx context.Context) (int64, error) {
 	now := c.nowNanos()
 	var best int64
@@ -405,13 +419,16 @@ func (c *Client) nextDue(ctx context.Context) (int64, error) {
 		{"SELECT MIN(due) FROM {steps} WHERE " + c.inNames() + " AND status IN (?, ?, ?, ?) AND due > ?",
 			c.nameArgs(stepReady, stepSnoozed, stepSleeping, stepWaiting, now)},
 		{"SELECT MIN(run_at) FROM {runs} WHERE " + c.inNames() + " AND status = ?", c.nameArgs(runScheduled)},
-		{"SELECT MIN(i.deadline) FROM {runs} r JOIN {run_info} i ON i.run_id = r.id WHERE r." + c.inNames() + " AND r.status = ? AND i.deadline > 0",
-			c.nameArgs(runActive)},
-		{"SELECT MIN(next_fire) FROM {schedules} WHERE " + c.inNames() + " AND active = 1", c.nameArgs()},
+		{"SELECT MIN(i.deadline) FROM {runs} r JOIN {run_info} i ON i.run_id = r.id WHERE r." + c.inNames() + " AND r.status = ? AND i.deadline > ?",
+			c.nameArgs(runActive, now)},
+		{"SELECT MIN(next_fire) FROM {schedules} WHERE " + c.inNames() + " AND active = 1 AND next_fire > ?", c.nameArgs(now)},
 	} {
 		var v sql.NullInt64
 		if err := c.st.one(ctx, c.st.db, q.sql, q.args, &v); err != nil {
 			return best, err
+		}
+		if v.Valid && v.Int64 <= now {
+			v.Int64 = now + int64(overdueRepass) // only the delayed-run query can return a time already past
 		}
 		consider(v)
 	}
