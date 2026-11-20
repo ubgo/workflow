@@ -179,9 +179,9 @@ func (c *Client) onStep(ctx context.Context, ref stepRef, status string, fn func
 		if err != nil || row.status != runActive {
 			return err
 		}
-		reg := c.reg(row.workflow)
-		if reg == nil {
-			return nil
+		reg, err := c.runsRun(ctx, tx, row) // nil: another version's definition advances it
+		if err != nil || reg == nil {
+			return err
 		}
 		var st string
 		var due int64
@@ -284,9 +284,9 @@ func (c *Client) deliver(ctx context.Context) error {
 			if err != nil || row.status != runActive {
 				return err
 			}
-			reg := c.reg(row.workflow)
-			if reg == nil {
-				return nil
+			reg, err := c.runsRun(ctx, tx, row) // nil: another version's definition takes the signal
+			if err != nil || reg == nil {
+				return err
 			}
 			var st string
 			var taken int64
@@ -315,8 +315,11 @@ func (c *Client) deliver(ctx context.Context) error {
 func (c *Client) recoverFailing(ctx context.Context) error {
 	var ids []string
 	var id string
-	err := c.st.each(ctx, c.st.db, "SELECT id FROM {runs} WHERE "+c.inNames()+" AND status = ? AND fail_until < ? LIMIT ?",
-		c.nameArgs(runFailing, c.expiredBefore(), c.fetch), func() error { ids = append(ids, id); return nil }, &id)
+	// Only runs of a version this client's definition runs (LO-11): it
+	// runs that definition's OnFailure.
+	vw, vargs := c.versionWhere("r.id", "r.workflow")
+	err := c.st.each(ctx, c.st.db, "SELECT r.id FROM {runs} r WHERE r."+c.inNames()+" AND r.status = ? AND r.fail_until < ? AND "+vw+" LIMIT ?",
+		c.nameArgs(append(append([]any{runFailing, c.expiredBefore()}, vargs...), c.fetch)...), func() error { ids = append(ids, id); return nil }, &id)
 	if err != nil {
 		return err
 	}

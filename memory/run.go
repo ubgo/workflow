@@ -1013,6 +1013,9 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 		ReadyAt:  t.readyAt,
 		Tenant:   t.r.job.Tenant,
 		Node:     c.nodeID(),
+		// One process holds one definition of each workflow, so every
+		// run's version is the registered one (LO-11).
+		Version: t.r.reg.wf.Version,
 	})
 	actx, cancel := context.WithCancelCause(rctx)
 	defer cancel(nil)

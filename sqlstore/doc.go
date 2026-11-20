@@ -402,7 +402,11 @@
 // owner ubgo/workflow/sqlstore/inbox.
 // Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
-// triggered to run, reported in ScheduleInfo.Tenant.
+// triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds
+// run_version (CapWorkflowVersion): a versioned run's Workflow.Version,
+// read by admission, claims and failure takeover, and checked before a
+// sleep, signal or run timeout advances a run, so a client takes only the
+// run versions its definition runs.
 //
 // # Database policies
 //

@@ -23,6 +23,8 @@
 // CapDiscard, CapDiscardExhausted (RetryPolicy.DiscardOnExhaust) and
 // CapRunStates (StatusRetrying with the next attempt,
 // StatusDiscarded), CapSnooze, CapHeartbeat, CapRunTimeout, CapTenant,
+// CapWorkflowVersion (a run's version in its hash, its ready and pending
+// sets per version, so a worker claims only the versions it runs),
 // CapNodeIdentity, CapResult, CapDueQuery, CapMisfireSkip,
 // CapMisfireFireOnce, CapMisfireFireAll, CapCronZone, CapCronSeconds,
 // CapScheduleActive, CapScheduleKeep, CapTickTime, CapScheduleWhen,

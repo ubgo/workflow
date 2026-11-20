@@ -74,6 +74,7 @@ var p4Caps = workflow.CapsOf(
 var p5Caps = workflow.CapsOf(
 	workflow.CapTenant, workflow.CapResult, workflow.CapDueQuery, workflow.CapNodeIdentity, workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+	workflow.CapWorkflowVersion, // run_version (migration 010)
 )
 
 // Run states as stored in runs.status. Scheduled, the three terminal ones
@@ -401,11 +402,14 @@ func WithStopWhenIdle(grace time.Duration) Option {
 // database or hangs off the value: two clients over one database are two
 // workers of one queue, and two clients over two prefixes share nothing.
 type Client struct {
-	st       *store
-	clk      clock.Clock
-	leaseClk clock.Clock
-	lease    time.Duration
-	poll     time.Duration
+	// verFilter limits admission and claims to the run versions this
+	// client's definitions run (LO-11); built at Start, read-only after.
+	verFilter versionFilter
+	st        *store
+	clk       clock.Clock
+	leaseClk  clock.Clock
+	lease     time.Duration
+	poll      time.Duration
 	// leaseSkew is WithLeaseSkew: how long past a lease's end other
 	// clients wait before taking it over.
 	leaseSkew time.Duration
@@ -810,6 +814,7 @@ func (c *Client) Start(ctx context.Context) error {
 	for name := range c.wfs {
 		c.names = append(c.names, name)
 	}
+	c.verFilter = c.buildVersionFilter()
 	c.mu.Unlock()
 
 	if err := c.syncClock(ctx); err != nil {

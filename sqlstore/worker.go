@@ -25,6 +25,7 @@ type attempt struct {
 	reclaims int64  // lease expiries of this attempt, this claim included
 	queue    string // the run's queue (counted in Client.running)
 	tenant   string // the run's Job.Tenant
+	version  int    // the run's workflow version (run_version), StepInfo.Version
 	started  int64  // when it was claimed, on the scheduling clock
 	readyAt  int64  // when it became claimable (steps.due), StepInfo.ReadyAt
 	token    string
@@ -86,15 +87,18 @@ func (c *Client) claimWhere(queues []any) string {
 	if len(queues) > 0 {
 		q = " AND " + queueOf + " IN (" + inList(len(queues)) + ")"
 	}
+	vw, _ := c.versionWhere("st.run_id", "st.workflow")
 	return "st.workflow IN (" + inList(len(c.names)) + ") AND ((st.status IN (?, ?) AND st.due <= ?) OR (st.status = ? AND st.lease_until < ?))" +
-		q + c.limitSQL() + " AND " + notPaused + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
+		q + c.limitSQL() + " AND " + notPaused + " AND " + vw + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
 }
 
 func (c *Client) claimArgs(queues []any) []any {
 	args := append([]any(nil), c.names...)
 	args = append(args, stepReady, stepSnoozed, c.nowNanos(), stepRunning, c.expiredBefore())
 	args = append(args, queues...)
-	return append(args, c.limitArgs()...)
+	args = append(args, c.limitArgs()...)
+	_, vargs := c.versionWhere("st.run_id", "st.workflow")
+	return append(args, vargs...)
 }
 
 // claim takes one step and leases it to this client, or returns nil when
@@ -212,14 +216,15 @@ func (c *Client) claimFrom(ctx context.Context, queues []any) (*attempt, error) 
 		}
 		cand := &attempt{token: token, started: c.nowNanos(), leaseFrom: leaseFrom}
 		var tenant, nodes sql.NullString
+		var version sql.NullInt64
 		err := c.st.one(ctx, tx, "SELECT st.id, st.run_id, st.workflow, st.name, st.in_data, st.attempts, st.failures, st.reclaims, st.due, "+queueOf+
-			", i.tenant, i.nodes FROM {steps} st LEFT JOIN {run_info} i ON i.run_id = st.run_id WHERE st.lease_token = ?",
+			", i.tenant, i.nodes, (SELECT rv.version FROM {run_version} rv WHERE rv.run_id = st.run_id) FROM {steps} st LEFT JOIN {run_info} i ON i.run_id = st.run_id WHERE st.lease_token = ?",
 			[]any{token}, &cand.stepID, &cand.runID, &cand.workflow, &cand.name, &cand.in, &cand.attempts, &cand.failures, &cand.reclaims, &cand.readyAt, &cand.queue,
-			&tenant, &nodes)
+			&tenant, &nodes, &version)
 		if err != nil {
 			return fmt.Errorf("sqlstore: read claimed step: %w", err)
 		}
-		cand.tenant = tenant.String
+		cand.tenant, cand.version = tenant.String, int(version.Int64)
 		if nodes.Valid {
 			if err := c.addRunNode(ctx, tx, cand.runID, nodes.String); err != nil {
 				return err
@@ -329,6 +334,7 @@ func (c *Client) call(ctx context.Context, reg *registered, step workflow.Step, 
 		Labels:   labels,
 		Tenant:   a.tenant,
 		Node:     c.nodeID,
+		Version:  a.version,
 	})
 	ctx = workflow.WithProgressReporter(ctx, c.progressReporter(a))
 	a.edits = c.newChainEditor(a.runID)

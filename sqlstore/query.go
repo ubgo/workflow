@@ -136,11 +136,12 @@ type infoRow struct {
 // run_ext x.
 const infoCols = "r.seq, r.id, r.scheduled_id, r.workflow, r.payload, r.labels, r.priority, r.bucket, r.rate_keys, r.status, r.sig_floor, r.finished_at, r.err," +
 	" COALESCE(x.queue, '" + workflow.DefaultQueue + "'), r.created_at, x.started_at, r.fail_step, x.discarded," +
-	" r.run_at, i.tenant, i.output, i.has_output, i.progress, i.nodes"
+	" r.run_at, i.tenant, i.output, i.has_output, i.progress, i.nodes," +
+	" (SELECT rv.version FROM {run_version} rv WHERE rv.run_id = r.id)"
 
 func (r *infoRow) targets() []any {
 	return append(r.run.targets(), &r.queue, &r.created, &r.started, &r.failStep, &r.discarded,
-		&r.runAt, &r.extra.tenant, &r.extra.output, &r.extra.hasOutput, &r.extra.progress, &r.extra.nodes)
+		&r.runAt, &r.extra.tenant, &r.extra.output, &r.extra.hasOutput, &r.extra.progress, &r.extra.nodes, &r.extra.version)
 }
 
 // Runs lists the runs of every workflow in this database (not only those

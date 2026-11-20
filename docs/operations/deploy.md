@@ -122,6 +122,51 @@ if err := c.Start(wctx); err != nil {
 
 A [run recorder](../observability/run-recorder.md) on a web node takes `rec.EnqueuePlugin()`, not `rec.Plugin()`: an enqueue-only client delivers no run ends (Hatchet's refuses `OnRunFinished`), so the web node records each accepted run with its source and input, and the workers, wrapped with `rec.Plugin()` over the same store, record the steps and the end ([Record run history › Web nodes that only enqueue](../observability/run-recorder.md#web-nodes-that-only-enqueue), [examples/recorder-split](../../examples/recorder-split/)).
 
+## Deploy a new version while old workers run
+
+During a rolling deploy old and new processes run side by side. When the new code changes a workflow so that a run started by it would break on the old code (a step added, removed or renamed, a payload shape changed), give the definition a version: `Workflow.Version`. Every run records the `Version` of the client that enqueued it, and a worker admits, runs and advances only runs whose version lies in its definition's `[MinVersion, Version]`. A run started by the new code never reaches an old worker; it waits, queued, until a worker that runs its version takes it, as a run of a workflow no worker has registered does. `MinVersion` zero (the default) lets the new definition drain the runs its predecessors started, so a deploy needs no pause; set `MinVersion` to `Version` to pin each run to the code that started it and keep old workers until their runs are done. An unversioned definition (`Version` 0) runs only unversioned runs.
+
+A definition that runs older versions runs them with its own steps, so a step whose behaviour changed branches on `StepInfo.Version`, the run's version:
+
+<!-- snippet: examples/rolling-deploy/main.go#v2 -->
+```go
+return workflow.Workflow{Name: "checkout", Version: 2, Steps: []workflow.Step{
+	{Name: "fraud", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		if info, _ := workflow.StepInfoFrom(ctx); info.Version < 2 {
+			j.add("new: no fraud check for a run the old code started (run v%d)", info.Version)
+			return in, nil // the old checkout already took the order
+		}
+		j.add("new: fraud check (run v%d)", version(ctx))
+		return in, nil
+	}},
+	{Name: "charge", After: []string{"fraud"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		j.add("new: charge (run v%d)", version(ctx))
+		return in, nil
+	}},
+	{Name: "email", After: []string{"charge"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		if info, _ := workflow.StepInfoFrom(ctx); info.Version < 2 {
+			j.add("new: plain email for a run the old code started (run v%d)", info.Version)
+			return in, nil
+		}
+		j.add("new: email with the fraud score (run v%d)", version(ctx))
+		return in, nil
+	}},
+}}
+```
+
+Until a new worker is up, the new runs wait:
+
+<!-- snippet: examples/rolling-deploy/main.go#waiting -->
+```go
+st, err := old.Status(ctx, second)
+if err != nil {
+	return err
+}
+fmt.Println("  the v2 run on a fleet of v1 workers:", st) // queued until a v2 worker takes it
+```
+
+`RunInfo.Version` shows each run's version in the admin API and `Runs`. The memory, SQL and Redis drivers declare `CapWorkflowVersion`; the SQL driver keeps the version in `<prefix>run_version` (migration `010_run_version`), the Redis driver in the run and in per-version keys. Hatchet refuses a versioned workflow at `Register`: it hands a run to any worker that registered the workflow's name.
+
 ## Shut down cleanly
 
 On SIGTERM, cancel the context you passed to `Start` and call `Stop`. `Stop` waits until every goroutine the client started has exited. Steps that were still running are handed back at once, so another worker takes them without waiting for their lease to expire; the runs stay in the database for the next client.
@@ -232,6 +277,8 @@ PG_DSN="postgres://$USER@localhost:5432/ubgo_workflow_test?sslmode=disable" go r
 - **A requeue without penalty needs a clean stop.** Cancelling `Start`'s context and calling `Stop` hands steps back at once; a killed process (SIGKILL, OOM, a lost machine) leaves them until the lease expires, and that attempt is counted, as a crash should be.
 - **An enqueue-only client never delivers run ends.** Register run-finished observers (alerts, reporters, unique-lock release) on the workers.
 - Cancel reaches a step on another worker at that worker's next lease renewal, a third of the lease later.
+- **Versions only work between releases that have them.** A worker built before workflow versions existed runs every run of the workflow's name. Ship a release with the workflow at `Version` 0 or 1 first, then bump it in a later one. A web node that enqueues without registering the workflow stamps version 0, so register the workflow on web nodes too.
+- **A definition with `MinVersion` below `Version` runs old runs with its own steps.** On the SQL driver a run an old worker already started keeps its step rows, so keep the old step names in the new definition, or pin versions and let old workers drain.
 
 ## Related
 
@@ -239,4 +286,5 @@ PG_DSN="postgres://$USER@localhost:5432/ubgo_workflow_test?sslmode=disable" go r
 - [Migrations](migrations.md), [Retention](retention.md), [Tuning](tuning.md)
 - [Nodes and health](nodes.md): which node ran each attempt, liveness and readiness probes, scheduler-only and worker-only processes
 - Example: [postgres-cluster](../../examples/postgres-cluster/)
+- Example: [rolling-deploy](../../examples/rolling-deploy/) (workflow versions while old and new workers share a database)
 - Example: [graceful-drain-report](../../examples/graceful-drain-report/) (a drain with a grace period and its report)

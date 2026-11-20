@@ -141,6 +141,7 @@ The full list, from `hatchet/doc.go`:
 | `Job.Queue` other than the workflow's queue | `Enqueue` | Set `Workflow.Queue`; a run goes to whichever worker registered its workflow |
 | `QueueConfig.Priority` | `Start` | Separate workers (or processes) per queue, sized with `Workers` |
 | A non-zero `QueueConfig.Limit` | `Start` | `Workers` per queue worker, or `Workflow.Concurrency` for a limit across workers: the engine has no count for a whole queue (no `CapQueueLimitGlobal`) |
+| `Workflow.Version` or `MinVersion` | `Register` | Keep old and new code on separate workflow names during a rolling deploy: the engine hands a run to any worker that registered the name (no `CapWorkflowVersion`) |
 | `RetryPolicy.DiscardOnExhaust` | `Register` | None: the engine has no discarded status, so a run out of retries is `failed` (no `CapDiscardExhausted`) |
 | `Workflow.ScheduleWhen`, `Workflow.CronWindows`, `Schedule.Windows` | `Register`, `Schedule` | Check the condition inside the step; the engine fires every tick itself |
 | A `RunQuery` or `CancelAll` filter naming `StatusRetrying` or `StatusDiscarded` | `Runs`, `CancelAll` | None: a run in backoff reads `queued` and a discarded run `failed` (no `CapRunStates`); see [Run states](../jobs/run-states.md) |

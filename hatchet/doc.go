@@ -149,7 +149,11 @@
 // a worker's slots once, when the worker is created, and has no call to
 // change them. It does not implement workflow.ClosureEnqueuer (no
 // CapClosure), so workflow.EnqueueClosure refuses: a Go closure cannot be
-// sent to the engine. A durable closure by name (workflow.NewFunc,
+// sent to the engine. It declares no CapWorkflowVersion and Register
+// refuses Workflow.Version and MinVersion: the engine hands a run to any
+// worker that registered the workflow's name, so it cannot keep a run
+// started by new code away from an old worker during a rolling deploy.
+// A durable closure by name (workflow.NewFunc,
 // RegisterFunc, FuncJob) needs nothing of the driver: it is a one-step
 // workflow, registered and declared like any other, so a process that
 // registered the name runs it and an unregistered name is refused at

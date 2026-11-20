@@ -40,6 +40,13 @@ local function release_idem(b, id, f)
   end
 end
 local function readykey(b, wf, q) return b .. ':ready:' .. q .. '/' .. wf end
+-- rname is the name a run's ready, since, wfq and pending keys use: its
+-- workflow, plus a newline, 'v' and its version when it has one (LO-11),
+-- so a worker claims and admits only the versions it runs.
+local function rname(wf, ver)
+  if ver and ver ~= '' and ver ~= '0' then return wf .. '\nv' .. ver end
+  return wf
+end
 -- sincekey is the companion of a ready set: the same runs scored by when
 -- they became claimable (ms on the scheduling clock), for QueueLoads.
 local function sincekey(b, wf, q) return b .. ':since:' .. q .. '/' .. wf end
@@ -50,16 +57,18 @@ local readyNow = 0
 -- worker: the ready set of its queue once admitted, else the pending set
 -- of its workflow, which a worker that registered the workflow admits.
 local function enready(b, id)
-  local h = redis.call('HMGET', rk(b, id), 'wf', 'q', 'prio', 'adm', 'seq')
+  local h = redis.call('HMGET', rk(b, id), 'wf', 'q', 'prio', 'adm', 'seq', 'ver')
   local score = -tonumber(h[3])
   -- a FIFO workflow (Concurrency.FIFO) orders by enqueue order alone
   if redis.call('HEXISTS', b .. ':fifo', h[1]) == 1 then score = tonumber(h[5] or '0') end
+  local r = rname(h[1], h[6])
+  if r ~= h[1] then redis.call('SADD', b .. ':wfv:' .. h[1], h[6]) end
   if h[4] == '1' then
-    redis.call('ZADD', readykey(b, h[1], h[2]), score, id)
-    redis.call('ZADD', sincekey(b, h[1], h[2]), 'NX', readyNow, id)
-    redis.call('SADD', b .. ':wfq:' .. h[1], h[2])
+    redis.call('ZADD', readykey(b, r, h[2]), score, id)
+    redis.call('ZADD', sincekey(b, r, h[2]), 'NX', readyNow, id)
+    redis.call('SADD', b .. ':wfq:' .. r, h[2])
   else
-    redis.call('ZADD', b .. ':pending:' .. h[1], score, id)
+    redis.call('ZADD', b .. ':pending:' .. r, score, id)
   end
 end
 -- ended is what every terminal transition shares: the run leaves every
@@ -68,11 +77,12 @@ end
 -- the retention clock starts.
 local function ended(b, id, retention)
   local key = rk(b, id)
-  local h = redis.call('HMGET', key, 'wf', 'q', 'idem', 'ck')
+  local h = redis.call('HMGET', key, 'wf', 'q', 'idem', 'ck', 'ver')
+  local r = rname(h[1], h[5])
   redis.call('ZREM', b .. ':due', id)
-  redis.call('ZREM', readykey(b, h[1], h[2] or ''), id)
-  redis.call('ZREM', sincekey(b, h[1], h[2] or ''), id)
-  redis.call('ZREM', b .. ':pending:' .. h[1], id)
+  redis.call('ZREM', readykey(b, r, h[2] or ''), id)
+  redis.call('ZREM', sincekey(b, r, h[2] or ''), id)
+  redis.call('ZREM', b .. ':pending:' .. r, id)
   redis.call('ZREM', b .. ':leases', id)
   redis.call('ZREM', b .. ':floors', id)
   redis.call('ZREM', b .. ':rto', id)
@@ -119,7 +129,7 @@ local function create(b, a, i)
     'prio', a[i+4], 'idem', a[i+5], 'enq', a[i+6], 'sid', a[i+9], 'retry', a[i+10],
     'status', status, 'steps', '{}', 'attempts', '0', 'reclaims', '0', 'owner', '',
     'q', a[i+12], 'jq', a[i+13], 'adm', a[i+14], 'chain', a[i+15], 'sf', sf,
-    'tn', a[i+16], 'runat', a[i+17], 'rto', a[i+18], 'seq', seq)
+    'tn', a[i+16], 'runat', a[i+17], 'rto', a[i+18], 'seq', seq, 'ver', a[i+19])
   if tonumber(a[i+18]) > 0 then redis.call('ZADD', b .. ':rto', a[i+18], id) end
   redis.call('ZADD', b .. ':runs', a[i+7], id)
   redis.call('ZADD', b .. ':floors', sf, id)
@@ -146,7 +156,7 @@ end
 `
 
 // createArity is how many ARGV values create reads per run.
-const createArity = 19
+const createArity = 20
 
 // enqueueScript: ARGV base, idem field (empty for none), then the create
 // values. With an idempotency field held by an unfinished run it creates
@@ -168,8 +178,9 @@ return {'new'}
 // ('all': every queue; 'some': only the listed ones), n, then n triples of
 // queue, priority and rank (among queues of equal priority the lower rank
 // goes first: the client's weighted draw; equal ranks fall back to
-// Job.Priority and age), then the served workflow names. It returns false
-// when nothing is ready, else {id, HGETALL of the run}.
+// Job.Priority and age), then per served workflow its name and the
+// lowest and highest run version it runs (LO-11). It returns false when
+// nothing is ready, else {id, HGETALL of the run}.
 var claimScript = goredis.NewScript(luaPrelude + `
 local b, now, lnow, luntil, tok, started = ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
 readyNow = tonumber(now)
@@ -204,19 +215,27 @@ local first = 9 + 3 * n
 local qof
 for _ = 1, 100 do
   local best, bestKey, bp, br, bs
-  for i = first, #ARGV do
-    local wf = ARGV[i]
+  for i = first, #ARGV, 3 do
+    local wf, lo, hi = ARGV[i], tonumber(ARGV[i + 1]), tonumber(ARGV[i + 2])
     if not paused['w:' .. wf] then
-      for _, q in ipairs(redis.call('SMEMBERS', b .. ':wfq:' .. wf)) do
-        if (mode == 'all' or qprio[q]) and not paused['q:' .. q] then
-          local key = readykey(b, wf, q)
-          local r = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-          if r[1] then qof = qof or {} qof[key] = {wf, q} end
-          if r[1] then
-            local p, rank, s = qprio[q] or 0, qrank[q] or 0, tonumber(r[2])
-            if not best or p > bp or (p == bp and (rank < br or (rank == br and
-                (s < bs or (s == bs and r[1] < best))))) then
-              best, bestKey, bp, br, bs = r[1], key, p, rank, s
+      local names = {}
+      if lo == 0 then names[1] = wf end
+      for _, v in ipairs(redis.call('SMEMBERS', b .. ':wfv:' .. wf)) do
+        local n = tonumber(v)
+        if n and n >= lo and n <= hi then names[#names + 1] = rname(wf, v) end
+      end
+      for _, rn in ipairs(names) do
+        for _, q in ipairs(redis.call('SMEMBERS', b .. ':wfq:' .. rn)) do
+          if (mode == 'all' or qprio[q]) and not paused['q:' .. q] then
+            local key = readykey(b, rn, q)
+            local r = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+            if r[1] then qof = qof or {} qof[key] = {rn, q} end
+            if r[1] then
+              local p, rank, s = qprio[q] or 0, qrank[q] or 0, tonumber(r[2])
+              if not best or p > bp or (p == bp and (rank < br or (rank == br and
+                  (s < bs or (s == bs and r[1] < best))))) then
+                best, bestKey, bp, br, bs = r[1], key, p, rank, s
+              end
             end
           end
         end
@@ -375,7 +394,7 @@ local keep = tonumber(redis.call('HGET', sk, 'keep') or '0') or 0
 local made, id, at = 0, nil, nil
 for j = 0, n - 1 do
   if skip and made == 1 then break end
-  local i = 8 + j * 20
+  local i = 8 + j * 21 -- a tick time, then createArity (20) values
   create(b, ARGV, i)
   id, at = ARGV[i], ARGV[i - 1]
   if keep > 0 then redis.call('ZADD', b .. ':sruns:' .. sid, ARGV[i + 7], id) end
@@ -597,10 +616,10 @@ for i = 1, nl do lim[i], per[i] = tonumber(ARGV[8 + 2 * i]), tonumber(ARGV[9 + 2
 local first, width = 10 + 2 * nl, 4 + nl
 local wake = 0
 local held = {}
-local pend = b .. ':pending:' .. wf
 for j = first, #ARGV, width do
   local id, q, bucket, rto = ARGV[j], ARGV[j + 1], ARGV[j + 2], ARGV[j + 3]
   local st = redis.call('HGET', rk(b, id), 'status')
+  local pend = b .. ':pending:' .. rname(wf, redis.call('HGET', rk(b, id), 'ver'))
   if not redis.call('ZSCORE', pend, id) then
     -- admitted or ended meanwhile
   elseif not st or terminal(st) then

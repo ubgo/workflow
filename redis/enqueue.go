@@ -94,10 +94,13 @@ func (c *Client) createArgs(id string, job workflow.Job, idem string, delayed bo
 	if delayed {
 		due, sid = job.RunAt.UnixMilli(), scheduledPrefix+id
 	}
-	queue, adm, rto := "", "0", int64(0)
+	queue, adm, rto, ver := "", "0", int64(0), 0
 	c.mu.Lock()
 	reg, ok := c.wfs[job.Workflow]
 	c.mu.Unlock()
+	if ok {
+		ver = reg.wf.Version // the run's version is the enqueuing definition's (LO-11)
+	}
 	if ok && !hasPolicy(reg.wf) {
 		queue, adm = workflow.EffectiveQueue(reg.wf, job), "1"
 		rto = runDeadline(reg.wf, job, now)
@@ -108,7 +111,7 @@ func (c *Client) createArgs(id string, job workflow.Job, idem string, delayed bo
 	}
 	args := []any{id, job.Workflow, string(job.Payload), labels, job.Priority, idem,
 		now.UnixNano(), now.UnixMilli(), due, sid, retry, now.UnixMilli(), queue, job.Queue, adm, chain,
-		job.Tenant, runAt, rto}
+		job.Tenant, runAt, rto, ver}
 	// The Lua create helper reads exactly createArity values per run; a
 	// field added here without the script would shift every later value.
 	if len(args) != createArity {
@@ -362,6 +365,7 @@ type stored struct {
 	rto         int64           // RunTimeout deadline, Unix ms on the scheduling clock; 0 for none
 	stepCancels map[string]bool // steps an operator withdrew (CancelStep)
 	tenant      string
+	version     int // the run's workflow version (LO-11); 0 when unversioned
 	runAt       time.Time
 	output      []byte
 	progress    *workflow.Progress
@@ -433,6 +437,7 @@ func decodeRun(id string, h map[string]string) (*stored, error) {
 	r.forced = h["forced"] == "1"
 	r.finishedRaw = h["finished"]
 	r.tenant = h["tn"]
+	r.version, _ = strconv.Atoi(h["ver"])
 	r.rto, _ = strconv.ParseInt(h["rto"], 10, 64)
 	for k := range h {
 		if step, ok := cutPrefix(k, "xs:"); ok {
@@ -502,6 +507,7 @@ func (r *stored) info() workflow.RunInfo {
 		Attempts:    r.attempts,
 		Errors:      r.errs,
 		Tenant:      r.tenant,
+		Version:     r.version,
 		RunAt:       r.runAt,
 		Progress:    r.progress,
 		AttemptedBy: r.by,

@@ -62,6 +62,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 |---|---|---|
 | [sqlite-worker](sqlite-worker) | One workflow on memory, then on SQLite with production options (workers, polling, leases, classifier, ID generator) | `memory`, `sqlstore` |
 | [postgres-cluster](postgres-cluster) | Three workers on one database (SQLite, or Postgres with PG_DSN): each job once, a cron tick once, clean shutdown | `sqlstore` |
+| [rolling-deploy](rolling-deploy) | Workflow versions while old and new workers share one SQLite file: a v2 run waits for a v2 worker, which also drains a v1 run and branches on StepInfo.Version | `workflow`, `sqlstore` |
 | [hatchet-worker](hatchet-worker) | What the Hatchet driver refuses before it connects, plus a live run when HATCHET_CLIENT_TOKEN is set | `hatchet` |
 | [migrations-export](migrations-export) | Migrate and its ledger, MigrationScripts as .sql files applied by hand, UniqueStore.Migrate alone, ErrSchemaTooNew, WithSchema | `sqlstore` |
 | [retention](retention) | WithRetention (ages, KeepLast, PerWorkflow, Undelivered), WithArchive, Prune, housekeeping options | `sqlstore` |

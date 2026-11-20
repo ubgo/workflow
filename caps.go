@@ -201,6 +201,12 @@ var (
 	CapDiscardExhausted = defineCap(59, "DiscardExhausted")
 	// CapDrainReport: Drain reports the runs it cut off (DrainReport).
 	CapDrainReport = defineCap(60, "DrainReport")
+	// CapWorkflowVersion: every run records the Workflow.Version of the
+	// client that enqueued it, and a worker admits, runs and advances
+	// only runs whose version its definition runs (MinVersion to
+	// Version), so during a rolling deploy a run started by new code
+	// never runs on old code (LO-11).
+	CapWorkflowVersion = defineCap(61, "WorkflowVersion")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -233,6 +239,9 @@ func Requires(wf Workflow) Caps {
 	}
 	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
 		c = c.With(CapRunTimeout)
+	}
+	if wf.Version != 0 || wf.MinVersion != 0 {
+		c = c.With(CapWorkflowVersion)
 	}
 	if len(wf.RateLimits) > 0 {
 		c = c.With(CapRateLimit)
