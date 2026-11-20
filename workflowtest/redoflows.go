@@ -90,6 +90,23 @@ func runLabels(t *testing.T, c workflow.Client, ref workflow.RunRef) map[string]
 	return page.Runs[0].Labels
 }
 
+// findByLabel asserts that a label query for key=val returns exactly
+// want, when c has RunQuerier.
+func findByLabel(t *testing.T, c workflow.Client, key, val string, want workflow.RunRef) {
+	t.Helper()
+	rq, ok := c.(workflow.RunQuerier)
+	if !ok || !c.Capabilities().Has(workflow.CapRunQuery) {
+		return
+	}
+	page, err := rq.Runs(context.Background(), workflow.RunQuery{Labels: map[string]string{key: val}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Runs) != 1 || page.Runs[0].Ref.RunID != want.RunID {
+		t.Fatalf("runs with %s=%s: %d runs (%v), want only %v", key, val, len(page.Runs), page.Runs, want.RunID)
+	}
+}
+
 // waitCount waits until n() is want, or fails after 10 seconds.
 func waitCount(t *testing.T, what string, n func() int32, want int32) {
 	t.Helper()
@@ -164,6 +181,7 @@ func RunRedoFlows(t *testing.T, h FlowHarness) {
 	if l := runLabels(t, c, ref); l != nil && (l[workflow.LabelRedo] != "true" || l["app"] != "x") {
 		t.Fatalf("labels after the reset: %v, want %s=true and app=x", l, workflow.LabelRedo)
 	}
+	findByLabel(t, c, workflow.LabelRedo, "true", ref)
 	if chained {
 		time.Sleep(50 * time.Millisecond) // give a wrong second handoff time to show
 		if n := e.nextRuns.Load(); n != 1 {
@@ -253,6 +271,7 @@ func RunForkFlows(t *testing.T, h FlowHarness) {
 			}
 		}
 	}
+	findByLabel(t, c, workflow.LabelForkOf, ref.RunID.String(), fork)
 	if chained {
 		time.Sleep(50 * time.Millisecond)
 		if n := e.nextRuns.Load(); n != 0 {
