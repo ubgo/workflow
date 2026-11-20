@@ -184,6 +184,7 @@ type Client struct {
 	recycle      workflow.Recycle // WithRecycle; zero never recycles
 	node         string           // WithNodeID; StepInfo.Node
 	payloadLimit int              // WithPayloadLimit; zero means none
+	schedHeap    bool             // WithScheduleHeap: one scheduler goroutine and timer for every schedule
 
 	mu       sync.Mutex
 	taskCond *sync.Cond // signalled when tasks are pushed or the client stops
@@ -195,20 +196,22 @@ type Client struct {
 	wg       sync.WaitGroup // every goroutine the client starts
 	seq      uint64         // IDs and first-come-first-served tiebreaks
 
-	runs    map[workflow.RunID]*run
-	delayed map[workflow.ScheduledID]*run
-	idem    map[idemKey]*run
-	waiters map[eventKey][]*waiter
-	signals map[eventKey][]signal // kept for runs that reach their wait later; see Signal
-	tasks   []*task               // step attempts waiting for a worker; see pickLocked
-	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
-	buckets map[bucketKey][]*run
-	rrTurn  map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
-	rrClock uint64               // counts those picks
-	rates   map[rateKey][]time.Time
-	rateAt  time.Time   // when the armed rate-limit timer fires; zero if none
-	rateTm  clock.Timer // the armed rate-limit timer
-	scheds  map[workflow.ScheduleID]*schedule
+	runs      map[workflow.RunID]*run
+	delayed   map[workflow.ScheduledID]*run
+	idem      map[idemKey]*run
+	waiters   map[eventKey][]*waiter
+	signals   map[eventKey][]signal // kept for runs that reach their wait later; see Signal
+	tasks     []*task               // step attempts waiting for a worker; see pickLocked
+	pending   []*run                // ready runs not yet admitted (concurrency or rate limit)
+	buckets   map[bucketKey][]*run
+	rrTurn    map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
+	rrClock   uint64               // counts those picks
+	rates     map[rateKey][]time.Time
+	rateAt    time.Time   // when the armed rate-limit timer fires; zero if none
+	rateTm    clock.Timer // the armed rate-limit timer
+	scheds    map[workflow.ScheduleID]*schedule
+	schedQ    schedQueue    // WithScheduleHeap: live schedules by next tick
+	schedPoke chan struct{} // WithScheduleHeap: buffered 1, wakes the scheduler to re-read the heap
 
 	queueExec      map[string]int                // executing attempts per queue
 	executing      int                           // executing attempts in all
@@ -454,6 +457,11 @@ func (c *Client) Start(ctx context.Context) error {
 	if len(c.observers) > 0 || len(c.tickObserver) > 0 || len(c.lifecycle) > 0 {
 		c.wg.Add(1)
 		go c.notifier()
+	}
+	if c.schedHeap {
+		c.schedPoke = make(chan struct{}, 1)
+		c.wg.Add(1)
+		go c.scheduler()
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.wfs)) {
 		reg := c.wfs[name]
