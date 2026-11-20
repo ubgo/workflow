@@ -217,6 +217,7 @@ func (c *Client) admitLocked() {
 	})
 	now := c.clk.Now()
 	var wake time.Time
+	fairNow := map[string]int64{} // per round-robin workflow, read once per pass; see fairTagLocked
 	kept := c.pending[:0]
 	for _, r := range c.pending {
 		wf := r.reg.wf
@@ -239,7 +240,7 @@ func (c *Client) admitLocked() {
 		if wf.Concurrency != nil {
 			c.buckets[bk] = append(c.buckets[bk], r)
 		}
-		c.fairTagLocked(r, bk)
+		c.fairTagLocked(r, bk, fairNow)
 		r.admitted = true
 		c.armRunTimeoutLocked(r)
 		// Ready Run steps (the roots, or after Retry the steps whose
@@ -855,23 +856,29 @@ func roundRobin(reg *registered) bool {
 // fairTagLocked gives r, admitted into bucket bk, its start tag when its
 // workflow is ConcurrencyRoundRobin (workflow.FairTurn). The workflow's
 // virtual time is the smallest start tag of its tasks waiting for a
-// worker or, when none waits, the largest pass of its keys. Callers hold
-// c.mu.
-func (c *Client) fairTagLocked(r *run, bk bucketKey) {
+// worker or, when none waits, the largest pass of its keys. It is read
+// once per admission pass (pass caches it per workflow): the runs a pass
+// admits start at or after it, so it cannot move within the pass. Callers
+// hold c.mu.
+func (c *Client) fairTagLocked(r *run, bk bucketKey, pass map[string]int64) {
 	if !roundRobin(r.reg) {
 		return
 	}
 	if c.fairPass == nil {
 		c.fairPass, c.fairMax = map[bucketKey]int64{}, map[string]int64{}
 	}
-	now, waiting := int64(0), false
-	for _, t := range c.tasks {
-		if t.r.reg == r.reg && t.r.ctx.Err() == nil && (!waiting || t.r.fair < now) {
-			now, waiting = t.r.fair, true
+	now, ok := pass[bk.workflow]
+	if !ok {
+		waiting := false
+		for _, t := range c.tasks {
+			if t.r.reg == r.reg && t.r.ctx.Err() == nil && (!waiting || t.r.fair < now) {
+				now, waiting = t.r.fair, true
+			}
 		}
-	}
-	if !waiting {
-		now = c.fairMax[bk.workflow]
+		if !waiting {
+			now = c.fairMax[bk.workflow]
+		}
+		pass[bk.workflow] = now
 	}
 	start, next := workflow.FairTurn(c.fairPass[bk], now, workflow.FairWeight(r.reg.wf.Concurrency, r.bucket))
 	r.fair = start
