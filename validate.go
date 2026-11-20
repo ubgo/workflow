@@ -93,6 +93,9 @@ func validateStep(s Step) error {
 		if w.KeyFrom.Func != nil && w.KeyFrom.Expr != "" {
 			return errors.New("Wait.KeyFrom sets both Func and Expr")
 		}
+		if w.OwnRun && (w.Key != "" || !w.KeyFrom.IsZero()) {
+			return errors.New("Wait sets OwnRun with Key or KeyFrom")
+		}
 	}
 	if s.Retry != nil {
 		if err := validateRetry(*s.Retry); err != nil {

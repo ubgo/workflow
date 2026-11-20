@@ -66,6 +66,9 @@ type RunFinishedProvider interface {
 //     only, since Use cannot see plugins applied by an earlier call;
 //   - a RunFinishedProvider when c does not implement RunNotifier (an
 //     UnsupportedError naming CapRunFinished and the plugin).
+//   - a ClientBinder whose BindClient refuses c (its error, naming the
+//     plugin); BindClient runs in plugin order, before any middleware is
+//     collected.
 //
 // An observer registration that fails (ErrAlreadyStarted after Start)
 // returns the error naming the plugin; observers registered before it
@@ -95,6 +98,11 @@ func Use(c Client, plugins ...Plugin) (Client, error) {
 			return nil, fmt.Errorf("%w: %q", ErrDuplicatePlugin, name)
 		}
 		seen[name] = struct{}{}
+		if b, ok := p.(ClientBinder); ok {
+			if err := b.BindClient(c); err != nil {
+				return nil, fmt.Errorf("workflow: plugin %q: %w", name, err)
+			}
+		}
 		if _, ok := p.(RunFinishedProvider); ok && !hasNotifier {
 			return nil, &UnsupportedError{Field: "OnRunFinished", Missing: CapRunFinished, Reason: "plugin " + name + " observes run ends and the client does not implement workflow.RunNotifier"}
 		}

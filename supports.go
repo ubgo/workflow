@@ -14,6 +14,7 @@ const (
 	OpCancelStep    Op = "cancel-step"    // StepCanceller
 	OpNodes         Op = "nodes"          // NodeLister
 	OpLifecycle     Op = "lifecycle"      // LifecycleNotifier
+	OpRunSignals    Op = "run-signals"    // RunSignalReader
 )
 
 // OpProber is implemented by a client wrapper whose optional methods
@@ -51,6 +52,9 @@ func Supports(c Client, op Op) bool {
 		return ok
 	case OpLifecycle:
 		_, ok := c.(LifecycleNotifier)
+		return ok
+	case OpRunSignals:
+		_, ok := c.(RunSignalReader)
 		return ok
 	}
 	return false

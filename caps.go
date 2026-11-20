@@ -214,6 +214,10 @@ var (
 	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
 	// fields of their JSON payload (RS-08).
 	CapPayloadSearch = defineCap(63, "PayloadSearch")
+	// CapWaitOwnRun: WaitSpec.OwnRun is honoured: a wait step takes the
+	// signals addressed to its own run (RunKey, SignalRun, SignalParent),
+	// its key resolved from the run ID when the wait begins (WP-22).
+	CapWaitOwnRun = defineCap(68, "WaitOwnRun")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -277,6 +281,9 @@ func Requires(wf Workflow) Caps {
 			}
 		case StepWait:
 			c = c.With(CapWaitForEvent)
+			if s.Wait.OwnRun {
+				c = c.With(CapWaitOwnRun)
+			}
 		case StepSleep:
 			c = c.With(CapDurableSleep)
 		}

@@ -253,7 +253,7 @@ func (r *inlineRun) step(ctx context.Context, s Step, in []byte) ([]byte, error)
 
 // wait takes the first untaken event matching the wait step.
 func (r *inlineRun) wait(s Step) ([]byte, error) {
-	key, err := s.Wait.ResolveKey(r.job)
+	key, err := s.Wait.ResolveKeyFor(r.job, InlineRunID)
 	if err != nil {
 		return nil, err
 	}

@@ -37,6 +37,7 @@ var caps = workflow.CapsOf(
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime, workflow.CapQueueLimitGlobal,
 	workflow.CapWorkflowVersion,
 	workflow.CapSlotCost,
+	workflow.CapWaitOwnRun,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not

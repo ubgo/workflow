@@ -281,6 +281,14 @@ type WaitSpec struct {
 	// At most one of Key and KeyFrom is set.
 	KeyFrom ConcurrencyKey
 
+	// OwnRun makes the wait take the signals addressed to this run by its
+	// ID (SignalRun, SignalParent): the key is RunKey of the run's own
+	// RunID, which the driver resolves when the wait step begins, so a
+	// child, an operator or another service can signal one run without
+	// the app inventing a key. Key and KeyFrom stay empty. It needs
+	// CapWaitOwnRun (WP-22).
+	OwnRun bool
+
 	// Deadline is the absolute time the wait fails.
 	Deadline time.Time
 
@@ -294,12 +302,28 @@ type WaitSpec struct {
 // driver that evaluates expressions handles that case before calling.
 func (w WaitSpec) ResolveKey(job Job) (string, error) {
 	switch {
+	case w.OwnRun:
+		return "", Unsupported("WaitSpec.OwnRun", "this driver does not resolve a wait key from the run ID")
 	case w.KeyFrom.Func != nil:
 		return w.KeyFrom.Func(job), nil
 	case w.KeyFrom.Expr != "":
 		return "", Unsupported("WaitSpec.KeyFrom.Expr", "this driver evaluates Go key functions only")
 	}
 	return w.Key, nil
+}
+
+// ResolveKeyFor is ResolveKey for the run run: an OwnRun wait resolves to
+// RunKey(run), and every other wait to ResolveKey(job). Drivers with
+// CapWaitOwnRun call it where they would call ResolveKey; a zero run
+// with OwnRun is refused, since the wait would match no run's address.
+func (w WaitSpec) ResolveKeyFor(job Job, run RunID) (string, error) {
+	if !w.OwnRun {
+		return w.ResolveKey(job)
+	}
+	if run.IsZero() {
+		return "", invalidf("WaitSpec.OwnRun: the run has no ID")
+	}
+	return RunKey(run), nil
 }
 
 // Event resumes runs waiting on a matching WaitSpec. Its Payload becomes
