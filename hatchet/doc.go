@@ -273,8 +273,13 @@
 // then fires it at the loaded time whatever a later change says. The
 // ScheduledID still names the first RunAt, and new tokens are UUIDv7, so
 // Status, Cancel and Runs find a run moved earlier by searching from when
-// it was scheduled; for about a second after such a run fires, while the
-// engine's read side has not listed it, Status may report it cancelled.
+// it was scheduled. The engine deletes a scheduled record as it fires it,
+// a moment before its read side lists the run, so a ScheduledID whose
+// record is gone and whose run is not listed reads cancelled only after
+// Config.VisibilityLag (never by comparing with the first RunAt, which a
+// move earlier makes wrong), or at once when this client's Cancel deleted
+// it at least 15 seconds before it was due. Status of a delayed start that
+// another process cancelled therefore takes up to VisibilityLag.
 //
 // Config.NodeID (workflow.DefaultNodeID by default) is StepInfo.Node and
 // is set as a label on every worker the client registers. Nodes
