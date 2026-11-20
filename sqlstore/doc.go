@@ -23,6 +23,8 @@
 // retry, admin, pause, schedule and drain capabilities (CapQueue,
 // CapQueueOverride, CapJobRetry, CapRetryUntil, CapRetryMaxErrors,
 // CapDiscard, CapDiscardExhausted, CapQueueLimitGlobal, CapDrainReport,
+// CapSlotCost (Step.Slots counted against WithWorkers; an attempt waits for
+// its slots after its claim, its lease renewed meanwhile),
 // CapRunQuery, CapRetryRun, CapDeleteRun, CapCancelAll,
 // CapPauseWorkflow, CapPauseQueue, CapSchedulePause, CapScheduleWhen,
 // CapScheduleWindow, CapTickEvents, CapScheduleList, CapDrain), and
@@ -348,6 +350,15 @@
 // sqlstore/pgxtx module: pgxtx.Run hands EnqueueTx (or outbox.Write) a
 // *sql.Tx whose statements run on the app's pgx.Tx.
 //
+// Client.CompleteTx goes the other way: a running step writes its own
+// success inside the app's *sql.Tx, so the app's side effect and the
+// step's completion commit together or not at all. The write is fenced by
+// the attempt's lease token (a step another client took over is refused
+// with ErrLeaseLost) and needs no schema change; once the transaction
+// commits, what the handler returns is ignored. The output is stored as
+// given: step middleware that rewrites outputs (codecs, Encrypt, claim
+// check) does not run on it.
+//
 // # Uniqueness locks
 //
 // UniqueStore is a durable middleware.UniqueStore (ADR-0005): locks are
@@ -374,7 +385,7 @@
 // shared <prefix>migrations ledger. Bursts whose run has started are
 // deleted by the dispatcher's housekeeping, or by PruneExpired.
 //
-// # Journal and bucket state
+// # Journal, bucket and data state
 //
 // JournalStore is a durable workflow.JournalStore (the memo of workflow.Memo
 // and the helpers built on it): a run's memoised results are rows of
@@ -388,9 +399,25 @@
 // created by Client.Migrate) or build it with NewJournalStore or
 // NewBucketStore over any *sql.DB; each has its own migration list (owners
 // ubgo/workflow/sqlstore/journal and ubgo/workflow/sqlstore/bucket, both
-// 001) in the shared ledger. Migration 009 adds schedule_tenant:
+// 001) in the shared ledger. DataStore is a durable workflow.DataStore
+// (folder, workflow and global data shared across runs): one row per
+// scope and name in <prefix>data with a version, a conditional Put being
+// one guarded UPDATE or one INSERT decided by the primary key;
+// Client.DataStore or NewDataStore, owner ubgo/workflow/sqlstore/data.
+// Inbox is a durable workflow.Inbox (idempotent consumption: the message
+// IDs each consumer claimed or processed, one row per consumer and ID in
+// <prefix>inbox); MarkTx records a message inside the app's own
+// transaction, so the record and the app's writes commit together and the
+// message is processed exactly once; expired rows are deleted by the
+// dispatcher's housekeeping or PruneExpired; Client.Inbox or NewInbox,
+// owner ubgo/workflow/sqlstore/inbox.
+// Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
-// triggered to run, reported in ScheduleInfo.Tenant.
+// triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds
+// run_version (CapWorkflowVersion): a versioned run's Workflow.Version,
+// read by admission, claims and failure takeover, and checked before a
+// sleep, signal or run timeout advances a run, so a client takes only the
+// run versions its definition runs.
 //
 // # Database policies
 //

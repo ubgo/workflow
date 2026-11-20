@@ -99,20 +99,25 @@ func TestSmallPoolDoesNotDeadlock(t *testing.T) {
 // pool under load.
 func TestConformanceOnOneConnection(t *testing.T) {
 	e := engines(t)[0]
-	workflowtest.Run(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
+	workflowtest.Run(t, workflowtest.Harness{Wait: conformanceWait, New: func(t *testing.T) workflowtest.Instance {
 		db, prefix := e.open(t)
 		db.SetMaxOpenConns(1)
 		clk := clock.NewFake(start)
-		current := newClient(t, e, db, prefix, sqlstore.WithClock(clk))
+		// One connection queues every statement, renewals included, behind
+		// the poll loop's; the queue-case lease leaves a loaded machine room.
+		mk := func(extra ...sqlstore.Option) *sqlstore.Client {
+			return newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithClock(clk), sqlstore.WithLease(queueCaseLease)}, extra...)...)
+		}
+		current := mk()
 		return workflowtest.Instance{
 			Client: current,
 			Clock:  clk,
 			Restart: func(t *testing.T) workflow.Client {
-				current = newClient(t, e, db, prefix, sqlstore.WithClock(clk))
+				current = mk()
 				return current
 			},
 			EnqueueOnly: func(t *testing.T) workflow.Client {
-				return newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithEnqueueOnly())
+				return mk(sqlstore.WithEnqueueOnly())
 			},
 		}
 	}})

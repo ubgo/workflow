@@ -141,6 +141,7 @@ The full list, from `hatchet/doc.go`:
 | `Job.Queue` other than the workflow's queue | `Enqueue` | Set `Workflow.Queue`; a run goes to whichever worker registered its workflow |
 | `QueueConfig.Priority` | `Start` | Separate workers (or processes) per queue, sized with `Workers` |
 | A non-zero `QueueConfig.Limit` | `Start` | `Workers` per queue worker, or `Workflow.Concurrency` for a limit across workers: the engine has no count for a whole queue (no `CapQueueLimitGlobal`) |
+| `Workflow.Version` or `MinVersion` | `Register` | Keep old and new code on separate workflow names during a rolling deploy: the engine hands a run to any worker that registered the name (no `CapWorkflowVersion`) |
 | `RetryPolicy.DiscardOnExhaust` | `Register` | None: the engine has no discarded status, so a run out of retries is `failed` (no `CapDiscardExhausted`) |
 | `Workflow.ScheduleWhen`, `Workflow.CronWindows`, `Schedule.Windows` | `Register`, `Schedule` | Check the condition inside the step; the engine fires every tick itself |
 | A `RunQuery` or `CancelAll` filter naming `StatusRetrying` or `StatusDiscarded` | `Runs`, `CancelAll` | None: a run in backoff reads `queued` and a discarded run `failed` (no `CapRunStates`); see [Run states](../jobs/run-states.md) |
@@ -464,6 +465,7 @@ Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's worka
 - A run's stored input nests the trigger input under `input`: `Runs` reads the payload from there.
 - The run details' task events come back empty on hatchet-lite v0.110.5, so the worker that ran each attempt is not known.
 - The engine loads a scheduled run into its ticker about five seconds before it is due and fires it at the loaded time: `Reschedule` refuses a start due within 15 seconds.
+- The engine deletes a scheduled run's record as it fires it, a moment before its read side lists the run, so a delayed start with no record and no listed run could be fired or cancelled. `Status` calls it cancelled only after `VisibilityLag`, or at once when this client's `Cancel` deleted it at least 15 seconds before it was due. It never decides by the `ScheduledID`'s first `RunAt`, which `Reschedule` can move earlier. `Status` of a delayed start that another process cancelled takes up to `VisibilityLag`.
 - Workflow pause takes a mandatory queue TTL, after which the engine cancels the held runs, and an empty or unparsable TTL silently becomes five minutes. `Pause` sends a hundred years. Anyone pausing through the dashboard or their own REST calls must set a long TTL too.
 
 ## Record run history

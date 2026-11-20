@@ -106,7 +106,7 @@ func TestHandler_RescheduleAndCancelStep(t *testing.T) {
 // WithPayloads.
 func TestHandler_RunFieldsP5(t *testing.T) {
 	at := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
-	f := &fakeClient{caps: allCaps | workflow.CapTenant, runs: []workflow.RunInfo{{
+	f := &fakeClient{caps: workflow.CapsOf(allCaps, workflow.CapTenant), runs: []workflow.RunInfo{{
 		Ref: workflow.RunRef{RunID: "r1"}, Workflow: "w", Status: workflow.StatusSucceeded, Tenant: "acme", RunAt: at,
 		Output: []byte(`{"rows":3}`), AttemptedBy: []string{"web-1:9"},
 		Progress: &workflow.Progress{Percent: 40, Message: "4 of 10", Data: []byte("cursor-9"), Step: "export", At: at},

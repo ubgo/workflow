@@ -98,6 +98,25 @@ IndexLabels: 4 runs, then 0
 
 It works in chunks under a watermark kept in the locks row `labels:indexed`, rewriting the rows of each run past it, so it is safe to run twice and from several processes at once. The first call above rewrote the rows of the four runs enqueued after `Migrate`'s own pass; the second found nothing new.
 
+## Search inside payloads
+
+A customer writes in about order `o-1`; the runs that handled it carry the order in their payload, not in a label. `RunQuery.Payload` matches runs whose payload is a JSON object holding every field with the given value:
+
+<!-- snippet: examples/run-control/main.go#search -->
+```go
+page, err := c.Runs(ctx, workflow.RunQuery{
+	Workflow: "fulfil",
+	Payload:  map[string]string{"order.id": "o-1", "rush": "true"}, // needs CapPayloadSearch
+})
+if err != nil {
+	return err
+}
+```
+
+A key is a field name or a dot path into nested objects, each segment a plain name. A value matches the field's text: a string unquoted, a number as written in the payload (`12.50` does not match `12.5`), `true`, `false` or `null`. A payload that is not a JSON object, or lacks the field, does not match. It needs `workflow.CapPayloadSearch` (memory, SQL, Redis); Hatchet, which filters metadata only, refuses the query with an `UnsupportedError`. `CancelAll` refuses a payload filter; list the runs and cancel each.
+
+The drivers match payloads after their own filters, reading on until the page is full, so narrow the query by workflow, status or time when the table is large: a payload search scans what the other filters leave. A payload sealed by a codec or `Encrypt` cannot be searched; put what you search on into a label instead.
+
 ## Step 2: re-run a failed run from the step that failed
 
 `Retry(ref)` re-opens a failed run. The steps that succeeded keep their outputs and do not run again; the step that failed, and any branch its failure cancelled, start again with fresh attempt counts. A charge that already went through is not charged twice because shipping failed.
@@ -112,6 +131,16 @@ if err != nil {
 ```
 
 The run keeps its `RunRef` and goes back to `queued`. When it ends again, run-finished observers see a second event for it, which they already tolerate (delivery is at least once). Its idempotency key is taken again; if another unfinished run took it meanwhile, `Retry` returns `workflow.ErrDuplicate`. Only a `failed` run can be retried; any other status returns `workflow.ErrWrongState`.
+
+## Re-run a failed run from an earlier step
+
+`Retry` always resumes at the step that failed. When the cause was upstream (a transform step that succeeded with bad output, fixed and deployed since; a source corrected by hand), re-run from that step instead with `workflow.RunResetter`:
+
+```go
+ref, err := c.(workflow.RunResetter).ResetRun(ctx, failed, "transform")
+```
+
+`ResetRun(ref, step)` drops the outputs of `step` and of every step downstream of it (`workflow.StepsFrom(wf, step)` lists them), keeps the outputs of the other steps that succeeded, and re-opens the run exactly as `Retry` does: the same `RunRef`, back to `queued`, fresh attempt counts for every step that runs again, its idempotency key taken again. A wait step that runs again waits for a new event. Only a `failed` run can be reset (`workflow.ErrWrongState` otherwise), and a step the workflow does not have returns `workflow.ErrInvalid`. The memory, SQL and Redis drivers implement it; the SQL and Redis drivers need the workflow registered on the client that calls it, to know which steps are downstream. `workflow.Use` forwards it, and a wrapper whose inner client lacks it refuses with an `UnsupportedError`.
 
 ## Step 3: forget a finished run
 
@@ -225,6 +254,59 @@ if err := c.Resume(ctx, workflow.PauseWorkflow("fulfil-order")); err != nil {
 
 `Resume` lifts exactly the target given, except `Resume(workflow.PauseAll())`, which lifts every pause. `Paused` lists the pauses in force. On the SQL driver a pause is stored, so every node obeys it and it survives a restart.
 
+## Suspend one run
+
+A pause holds a whole workflow or queue. To hold one run (an import that looks wrong while you check its source), add the `workflow.Suspension` plugin and mark the run:
+
+<!-- snippet: examples/run-control/main.go#suspend -->
+```go
+journal := workflow.NewMemoryJournal() // a durable JournalStore makes the flag fleet-wide
+c, err := workflow.Use(memory.New(), workflow.Journal(journal), workflow.Suspension(journal, time.Millisecond))
+if err != nil {
+	return err
+}
+```
+
+<!-- snippet: examples/run-control/main.go#suspend-call -->
+```go
+if err := workflow.SuspendRun(ctx, journal, ref); err != nil { // holds it at its next step
+	return err
+}
+```
+
+A suspended run parks at the start of its next step: the step snoozes for the plugin's poll (`DefaultSuspendPoll`, 5 seconds, when zero) without running its handler, holding no worker and spending no attempt, and looks again after each snooze; steps already running finish. `ResumeRun` clears the flag and the parked step runs at its next look. `RunSuspended` reads the flag. It needs `CapSnooze` (memory, SQL, Redis). A run that has not started yet has no RunID to key the flag by: move it with `Reschedule` instead.
+
+## Detours: hold, skip, redo
+
+An operator can take one run off its planned path without changing the workflow, by combining the operations on this page:
+
+| Detour | How |
+|---|---|
+| Hold the run between steps, then go on | `SuspendRun`, later `ResumeRun` ([Suspend one run](#suspend-one-run)) |
+| Redo from an earlier step after fixing the cause | `ResetRun(ref, step)` on the failed run ([Re-run a failed run from an earlier step](#re-run-a-failed-run-from-an-earlier-step)) |
+| Redo only the step that failed | `Retry(ref)` |
+| Skip the rest and call the run done, or failed | `ForceComplete`, `ForceFail` ([Force a run to an end](#force-a-run-to-an-end)) |
+| Skip one step that is waiting or running | [Cancel one step](#cancel-one-step) |
+| Change what a scheduled run will do before it starts | `RunEditor` ([Edit a scheduled run](edit-runs.md)) |
+
+For example, hold an import that looks wrong, let it go on, and once its transform fails because of a mapping bug, deploy the fix and redo from the transform; the fetch that succeeded is not repeated:
+
+```go
+if err := workflow.SuspendRun(ctx, journal, ref); err != nil { // hold
+	return err
+}
+// ... the source checks out
+if err := workflow.ResumeRun(ctx, journal, ref); err != nil {
+	return err
+}
+// ... the run fails in transform; the fix is deployed
+if _, err := c.(workflow.RunResetter).ResetRun(ctx, ref, "transform"); err != nil {
+	return err
+}
+```
+
+A detour that jumps ahead to a later step, or back from a succeeded run, is not built: `ResetRun` re-opens failed runs only.
+
 ## List the runs due soon
 
 A run enqueued with `Job.RunAt` waits as `scheduled` until it is due. `RunInfo.RunAt` is the time it is (or was) due, kept after it starts, and `RunQuery.DueFrom` and `RunQuery.DueTo` bound it to `[DueFrom, DueTo)`, which answers "what fires in the next hour?":
@@ -325,6 +407,8 @@ after Resume: succeeded
 ```
 
 ## Pitfalls
+
+- A step that `ResetRun` runs again makes its side effects again, and a chain edit it made (`PrependToChain`, `AppendToChain`) is made again. With `workflow.JournalKeepFailed`, its `Memo` results are kept and returned again; leave that option off when the point of the reset is to recompute.
 
 - **A label search on the SQL driver misses runs that were never indexed.** Runs written before migration 005, or by a client older than it, are found only after `IndexLabels` has run. `Migrate` runs it; a team applying `MigrationScripts` with another tool must call it.
 - **Hatchet supports most of it.** It declares `CapRunQuery`, `CapCancelAll` and `CapRetryRun`. Retry is Hatchet's replay of the failed and cancelled step tasks, which keeps the steps that succeeded (checked live). It does not declare `CapDeleteRun`, because the engine has no run delete. Retry does not take the idempotency key again on the engine: it refuses with `ErrDuplicate` when another unfinished run holds the key, but an `Enqueue` with that key while the retried run is unfinished starts a second run. Pause needs `hatchet.Config.API` (see [the Hatchet driver](../drivers/hatchet.md#step-6-pause-a-workflow-or-a-schedule)): with it the driver declares `CapPauseWorkflow`. `PauseAll()` and `PauseQueue` are refused, and `Resume(PauseAll())` clears every paused workflow of the namespace.

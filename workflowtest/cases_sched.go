@@ -149,7 +149,7 @@ var schedActiveCases = []testCase{
 var schedKeepCases = []testCase{
 	{"KeepRuns keeps only the newest finished runs of the schedule", func(e *env) {
 		needCronFiring(e)
-		e.need(workflow.CapScheduleKeep | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapScheduleKeep, workflow.CapRunQuery))
 		e.needFake("four ticks in a row")
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())

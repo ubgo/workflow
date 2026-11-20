@@ -1,0 +1,6 @@
+[Unit]
+Description=Schedule nightly-report
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/app run-schedule nightly-report

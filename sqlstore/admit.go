@@ -77,8 +77,12 @@ func (c *Client) pendingRuns(ctx context.Context, x interface {
 }, name string) ([]*runRow, error) {
 	var rows []*runRow
 	var r runRow
-	err := c.st.each(ctx, x, "SELECT "+runCols+" FROM {runs} WHERE workflow = ? AND status = ? ORDER BY priority DESC, seq LIMIT ?",
-		[]any{name, runPending, c.fetch}, func() error { cp := r; rows = append(rows, &cp); return nil }, r.targets()...)
+	// Only runs of a version this client's definition runs (LO-11): the
+	// admission writes the run's steps from that definition.
+	vw, vargs := c.versionWhere("r.id", "r.workflow")
+	args := append(append([]any{name, runPending}, vargs...), c.fetch)
+	err := c.st.each(ctx, x, "SELECT "+runCols+" FROM {runs} r WHERE workflow = ? AND status = ? AND "+vw+" ORDER BY priority DESC, seq LIMIT ?",
+		args, func() error { cp := r; rows = append(rows, &cp); return nil }, r.targets()...)
 	if err != nil {
 		return nil, fmt.Errorf("sqlstore: read pending runs: %w", err)
 	}

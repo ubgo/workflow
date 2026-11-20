@@ -43,6 +43,60 @@ The enqueue middleware writes the enqueue span's trace context into a copy of th
 
 `otel.WithPropagator(p)` replaces the propagator. The default is W3C TraceContext, not the OpenTelemetry global propagator, whose default propagates nothing. When a step's labels carry no trace context, its span's parent is whatever span the context already holds.
 
+## Across a broker or HTTP hop
+
+Inside the library the trace context rides in job labels. When a job leaves the library's own store (a message on SQS, SNS or Pub/Sub, a Kafka or NATS record, an HTTP request to another service), its metadata and trace context must travel as that transport's message attributes or headers. `workflow.Attributes` is a codec for that hop: `Encode(job)` returns a flat string map and `Decode(attrs)` reads it back. It writes `ubgo-workflow`, `ubgo-tenant`, `ubgo-queue`, `ubgo-idempotency-key`, `ubgo-priority` and `ubgo-run-at` when set, the trace labels under the W3C names other tracers read (`traceparent`, `tracestate`, `baggage`), and the other labels as one `ubgo-l-<key>` attribute each, or packed into one JSON attribute `ubgo-labels` when a key is not a name the transport accepts, the count would pass its limit, or the transport folds case. `Limits` says what the transport accepts; the library ships `SQSAttributes` (at most 10, AWS name rules), `PubSubAttributes` (at most 100, values up to 1024 bytes, no `goog` keys), `KafkaHeaders`, `NATSHeaders` and `HTTPHeaders` (case-insensitive, no control characters in values). A job that does not fit is refused with `ErrInvalid`, never cut. `Prefix`, `Trace` (label key to attribute name) and `PackLabels` change the names; an app whose consumers expect other names implements `workflow.AttributeCodec` itself.
+
+On the producer side, run the otel enqueue middleware in front of the function that sends, so the trace labels are on the job when it is encoded:
+
+<!-- snippet: examples/message-attributes/main.go#produce -->
+```go
+codec := workflow.Attributes{Limits: workflow.HTTPHeaders}
+send := func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	attrs, err := codec.Encode(job) // refuses what the transport cannot carry
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL, bytes.NewReader(job.Payload))
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	workflow.SetHeader(req.Header, attrs)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	resp.Body.Close()
+	return workflow.RunRef{}, nil
+}
+producer := inst.Enqueue()(send)
+```
+
+On the consumer side, decode, put the trace back as labels with `TraceLabels`, and enqueue on the local client. The trace labels are reserved, so enqueue under `AllowReservedPrefix(ctx, workflow.LabelPrefixOTel)` and not through the otel enqueue middleware, which writes its own; the step span then continues the producer's trace. `Decoded.Trace` also works directly with a propagator's map carrier, for consumer code that is not a step:
+
+<!-- snippet: examples/message-attributes/main.go#consume -->
+```go
+codec := workflow.Attributes{Limits: workflow.HTTPHeaders}
+d, err := codec.Decode(workflow.HeaderAttributes(r.Header))
+if err != nil {
+	http.Error(w, "bad attributes", http.StatusBadRequest)
+	return
+}
+job := d.Job
+job.Payload = body
+job.Labels = map[string]string{}
+maps.Copy(job.Labels, d.Job.Labels)
+maps.Copy(job.Labels, codec.TraceLabels(d)) // the steps continue the sender's trace
+ref, err := consumer.Enqueue(workflow.AllowReservedPrefix(r.Context(), workflow.LabelPrefixOTel), job)
+```
+
+`workflow.SetHeader` and `workflow.HeaderAttributes` move attributes in and out of an `http.Header`. For a broker, pass the map to its client's message attributes:
+
+<!-- snippet: examples/message-attributes/main.go#sqs -->
+```go
+attrs, err := workflow.Attributes{Limits: workflow.SQSAttributes}.Encode(traced)
+```
+
 ## Parent or link
 
 `otel.WithParenting` decides how a step span relates to the enqueue span it reads from the labels; `New` refuses any other value with `workflow.ErrInvalid`:
@@ -179,6 +233,7 @@ The example prints span attributes sorted and without the run ID, which changes 
 - **`Step` must be outermost.** Put inside `Recover`, the step span ends by the panic unwinding past it and never records the recovered error.
 - **A label filter sees every key.** `WithAllLabels` records whatever the app put on the job, including tenant or user IDs; prefer `WithLabelFilter` with an explicit list.
 - **The error text is recorded on failed spans.** Steps that put secrets in error strings leak them to the trace backend, as they already do to logs and run status.
+- **Message attributes have small limits.** SQS takes 10 attributes per message, so a job with many labels has them packed into one; a consumer that reads attributes by name should decode with the same codec. Over a limit, `Encode` refuses the job rather than dropping a label.
 - **Parenting depends on the context the driver passes.** `ParentLink` keeps the span the driver's context already holds; on a driver that starts no span of its own, the step span has no parent and only the link.
 
 ## Related
@@ -187,4 +242,4 @@ The example prints span attributes sorted and without the run ID, which changes 
 - [Logging](logging.md): log lines per attempt.
 - [Admin operations](../admin/operations.md) and [queue alerts](../admin/alerts.md): the depth source and threshold alerts.
 - [Reserved names](../reference/names.md#metrics): metric names and reserved labels.
-- Example: [examples/opentelemetry](../../examples/opentelemetry/).
+- Examples: [examples/opentelemetry](../../examples/opentelemetry/), [examples/message-attributes](../../examples/message-attributes/).

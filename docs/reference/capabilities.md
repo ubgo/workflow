@@ -32,7 +32,7 @@ Y means the driver declares the capability. The Fake column is `workflowtest.New
 | `CapRetryMaxErrors` | `RetryPolicy.MaxErrors` counts errors apart from releases | A policy with `MaxErrors` | Y | Y | — | Y | Y | both |
 | `CapDiscard` | `workflow.Discard(err)` ends the run without failing it: `discarded` with `CapRunStates`, else `cancelled` | Nothing: without it `Discard` acts as `Permanent` | Y | Y | — | Y | Y | both |
 | `CapDiscardExhausted` | `RetryPolicy.DiscardOnExhaust` ends a run whose retries ran out `discarded` instead of `failed`, with no `OnFailure` | A policy with `DiscardOnExhaust` (also needs `CapRunStates` to report the status) | Y | Y | — (refused by field name) | Y | — (default) | both |
-| `CapRunQuery` | `RunQuerier.Runs` lists runs by filter, with a cursor | `admin` run listing | Y | Y | Y | Y | — (never) | both |
+| `CapRunQuery` | `RunQuerier.Runs` lists runs by filter, with a cursor | `admin` run listing; `workflow.PartitionStatus` and `RetryFailedPartitions` | Y | Y | Y | Y | — (never) | both |
 | `CapRetryRun` | `RunRetrier.Retry` re-runs a failed run | `admin` retry | Y | Y | Y (Hatchet replay; the key is not taken again on the engine) | Y | Y | both |
 | `CapDeleteRun` | `RunDeleter.Delete` forgets a finished run | `admin` delete | Y | Y | — | Y | Y | both |
 | `CapCancelAll` | `BulkCanceller.CancelAll` cancels every run a filter matches | `admin` cancel by filter | Y | Y | Y | Y | — (never) | both |
@@ -69,6 +69,9 @@ Y means the driver declares the capability. The Fake column is `workflowtest.New
 | `CapScheduleActive` | `Schedule.Active` and `Workflow.CronActive` limit a schedule to a start and end instant | A schedule or cron with `Active` | Y | Y | — | Y | Y | the primary's |
 | `CapScheduleKeep` | `Schedule.KeepRuns` and `Workflow.CronKeepRuns` keep only the newest N finished runs of a schedule | A schedule or cron with `KeepRuns` | Y | Y | — | Y | Y | the primary's |
 | `CapTickTime` | Every run a schedule fires carries the tick it stands for in `LabelTickAt` | `StepInfo.TickAt`, `workflow.TickTime` | Y | Y | Y | Y | — | the primary's |
+| `CapWorkflowVersion` | A run records the `Workflow.Version` of the client that enqueued it, and a worker admits, runs and advances only runs whose version its definition runs (`MinVersion` to `Version`) | `Workflow.Version`, `Workflow.MinVersion` (`Requires`) | Y | Y (migration `010_run_version`) | — (refused at `Register`) | Y | Y | both |
+| `CapSlotCost` | `Step.Slots` is honoured: an attempt holds that many of the client's worker slots (`WithWorkers`) while it runs | A step with `Slots` above 1 (`Requires`) | Y | Y | — | — (a worker claims a whole run) | — | both |
+| `CapPayloadSearch` | `RunQuery.Payload` is honoured: runs are matched on fields of their JSON payload | A `RunQuery` with `Payload` (`CheckRunQuery` refuses it without; `CancelAll` refuses a payload filter on every driver) | Y | Y | — (filters metadata only) | Y | — (never: no run query) | both |
 
 Notes on the columns:
 
@@ -80,14 +83,20 @@ Notes on the columns:
 - **redis** keeps runs, schedules, signals, queues and leases in Redis and declares every capability but `CapClosure` (a Go function cannot be stored) and `CapQueueLimitGlobal` (a run is claimed whole, so a queue's in-flight attempts are not counted across clients). Its `CapDurable` is as strong as the Redis deployment's persistence settings ([The Redis driver](../drivers/redis.md)).
 - **Fake** claims the memory driver's set minus the capabilities it cannot serve by itself: `CapRunFinished` (it runs nothing, so no run ever finishes), `CapRunQuery`, `CapLabelPrefix`, `CapCancelAll`, `CapSchedulePause`, `CapScheduleList`, `CapTickEvents`, `CapDrain`, `CapWorkerScale`, and the bookkeeping it cannot do (`CapScheduleHistory`, `CapErrorHistory`, `CapEnqueueOnly`, `CapShutdownRequeue`). `FakeCaps` and `FakeLike` drop the same set. It records `Retry`, `Delete` and `Pause` itself.
 - **failover** treats the schedule family (`CapCron`, `CapScheduleWhen`, `CapScheduleWindow`, `CapSchedulePause`, `CapScheduleList`, `CapTickEvents`) as the primary's alone unless `WithSchedulesOnBoth`.
+- **regional** (`regional.Client`) declares the intersection of every region's capabilities, never `CapClosure` or `CapWorkerScale`, and `CapRunFinished` only when every region implements `workflow.RunNotifier`.
+- `RunEditor` (edit a scheduled run), `RunRescheduler`, `RunResetter` (`ResetRun`) and `TransientSignaller` (`SignalWaiting`) are optional interfaces without a capability bit: a client implements them or not, and each answers for itself (`workflow.Forward` forwards them).
 
 ## Reading and checking a set
 
 | API | What it does |
 |---|---|
 | `caps.Has(want)` | True when `caps` holds every capability in `want` |
-| `caps.Missing(required)` | The capabilities in `required` that `caps` lacks; zero means none |
+| `caps.Missing(required)` | The capabilities in `required` that `caps` lacks; `IsZero()` when none |
 | `caps.String()` | The names joined by `\|`, such as `Durable\|Cron`; the empty set is `none` |
+| `workflow.CapsOf(a, b, ...)`, `caps.With(...)`, `caps.Without(...)` | Build a set, add to one, take from one (a `Caps` is a value: each returns a new set) |
+| `caps.HasAny(o)`, `caps.Intersect(o)`, `caps.IsZero()` | Overlap, intersection, emptiness; two sets compare with `==` |
+| `workflow.AllCaps()` | Every capability the release declares |
+| `workflow.ParseCaps(s)` | Reads the `String()` form back; JSON uses the same form and still reads the v0.1 number |
 | `workflow.Requires(wf)` | What a driver needs to run `wf` as written (the "Needed by" column) |
 | `workflow.RequiresJob(job)` | What a job needs: `CapDelayedStart` for `RunAt`, `CapIdempotencyKey` for a key, even under `IdempotencyOff`, so a key is never dropped without an error; `CapQueue` for a `Queue`, `CapJobRetry` (and the retry capabilities of its policy) for a `Retry` |
 | `workflow.CheckJob(have, job)`, `CheckJobQueue(have, wf, job)` | The `UnsupportedError` a driver returns from `Enqueue`: the job's own needs, then `CapQueueOverride` when the job leaves its workflow's queue |
@@ -95,7 +104,9 @@ Notes on the columns:
 | `workflow.RequiresSchedule(s)` | What a schedule needs: `CapCron`, `CapCronZone` outside UTC, and its misfire policy's capability |
 | `workflow.CheckCaps(have, wf)`, `CheckScheduleCaps(have, s)` | The `UnsupportedError` a driver returns from `Start` and `Schedule`, or nil |
 
-The names in `String()` and in an `UnsupportedError` are the constant names without `Cap`: `Durable`, `DelayedStart`, `WaitForEvent`, `DurableSleep`, `ConcurrencyKey`, `RateLimit`, `IdempotencyKey`, `Cron`, `Cancel`, `RunFinished`, `RetryJitter`, `RetryDelay`, `MisfireSkip`, `MisfireFireOnce`, `MisfireFireAll`, `CronZone`, `Queue`, `QueueOverride`, `QueueLimitGlobal`, `JobRetry`, `RetryUntil`, `RetryMaxErrors`, `Discard`, `DiscardExhausted`, `RunQuery`, `RetryRun`, `DeleteRun`, `CancelAll`, `PauseWorkflow`, `PauseQueue`, `SchedulePause`, `ScheduleWhen`, `ScheduleWindow`, `TickEvents`, `ScheduleList`, `Drain`, `DrainReport`, `RunStates`, `Chain`, `WorkerScale`, `Closure`, `LabelPrefix`, `OverlapSkip`, `ScheduleTrigger`, `ScheduleHistory`, `EnqueueOnly`, `ErrorHistory`, `ShutdownRequeue`, `ForceRun`, `Snooze`, `Heartbeat`, `Tenant`, `RunTimeout`, `NodeIdentity`, `KeyFIFO`, `DueQuery`, `Result`, `CronSeconds`, `ScheduleActive`, `ScheduleKeep`, `TickTime`.
+A Caps holds up to 256 capabilities; a new one takes the next free number, which is never reused. `CapWorkflowVersion` is 61, `CapSlotCost` 62 and `CapPayloadSearch` 63.
+
+The names in `String()` and in an `UnsupportedError` are the constant names without `Cap`: `Durable`, `DelayedStart`, `WaitForEvent`, `DurableSleep`, `ConcurrencyKey`, `RateLimit`, `IdempotencyKey`, `Cron`, `Cancel`, `RunFinished`, `RetryJitter`, `RetryDelay`, `MisfireSkip`, `MisfireFireOnce`, `MisfireFireAll`, `CronZone`, `Queue`, `QueueOverride`, `QueueLimitGlobal`, `JobRetry`, `RetryUntil`, `RetryMaxErrors`, `Discard`, `DiscardExhausted`, `RunQuery`, `RetryRun`, `DeleteRun`, `CancelAll`, `PauseWorkflow`, `PauseQueue`, `SchedulePause`, `ScheduleWhen`, `ScheduleWindow`, `TickEvents`, `ScheduleList`, `Drain`, `DrainReport`, `RunStates`, `Chain`, `WorkerScale`, `Closure`, `LabelPrefix`, `OverlapSkip`, `ScheduleTrigger`, `ScheduleHistory`, `EnqueueOnly`, `ErrorHistory`, `ShutdownRequeue`, `ForceRun`, `Snooze`, `Heartbeat`, `Tenant`, `RunTimeout`, `NodeIdentity`, `KeyFIFO`, `DueQuery`, `Result`, `CronSeconds`, `ScheduleActive`, `ScheduleKeep`, `TickTime`, `WorkflowVersion`, `SlotCost`, `PayloadSearch`.
 
 ## Related
 

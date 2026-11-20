@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -88,6 +89,12 @@ func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 // reported again to run-finished observers when it ends. See
 // workflow.RunRetrier.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	return c.retryFrom(ctx, ref, "")
+}
+
+// retryFrom is Retry, and ResetRun when from names a step: from and every
+// step downstream of it start again too, their outputs dropped.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string) (workflow.RunRef, error) {
 	id, err := runID(ref)
 	if err != nil {
 		return workflow.RunRef{}, err
@@ -99,8 +106,18 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 	if r.status != workflow.StatusFailed {
 		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not failed", workflow.ErrWrongState, ref, r.status)
 	}
+	var rerun []string
+	if from != "" {
+		wf, known := c.registered(r.wf)
+		if !known {
+			return workflow.RunRef{}, fmt.Errorf("%w: ResetRun: workflow %s is not registered on this client, so its steps are unknown", workflow.ErrInvalid, r.wf)
+		}
+		if rerun = workflow.StepsFrom(wf, from); rerun == nil {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, r.wf, from)
+		}
+	}
 	for name, rec := range r.steps {
-		if !rec.Done {
+		if !rec.Done || slices.Contains(rerun, name) {
 			r.steps[name] = &stepRec{}
 		}
 	}

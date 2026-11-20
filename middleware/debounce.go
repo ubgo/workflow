@@ -13,7 +13,7 @@ import (
 
 // debounceNeeds is what Debounce asks of the driver: a delayed start to
 // hold the run for the window, and Cancel to drop the run it replaces.
-const debounceNeeds = workflow.CapDelayedStart | workflow.CapCancel
+var debounceNeeds = workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)
 
 // DebounceBurst is one key's pending run, as a DebounceStore keeps it.
 // Invariant: RunAt is the RunAt the pending run was enqueued with, and
@@ -98,7 +98,7 @@ func WithDebounceStore(s DebounceStore) DebounceOption {
 //	mw, err := middleware.Debounce(c, nil, byUser, 10*time.Second, time.Minute,
 //		middleware.WithDebounceStore(myRedisDebounce))
 func Debounce(c workflow.Client, clk clock.Clock, key func(workflow.Job) string, window, maxWait time.Duration, opts ...DebounceOption) (workflow.EnqueueMiddleware, error) {
-	if missing := c.Capabilities().Missing(debounceNeeds); missing != 0 {
+	if missing := c.Capabilities().Missing(debounceNeeds); !missing.IsZero() {
 		return nil, &workflow.UnsupportedError{Field: "Debounce", Missing: missing}
 	}
 	if key == nil || window <= 0 || (maxWait != 0 && maxWait < window) {

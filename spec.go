@@ -158,7 +158,32 @@ type Workflow struct {
 	// payload for RunTimeout outside any step). Nil means OnFailure runs
 	// for timeouts too. Needs CapRunTimeout.
 	OnTimeout Handler
+
+	// Version is the version of this definition of the workflow (LO-11,
+	// rolling deploys): every run records the Version of the client that
+	// enqueued it, and a worker admits, runs and advances only runs whose
+	// version lies in [MinVersion, Version], so while old and new workers
+	// run side by side a run started by new code never reaches a worker
+	// running old code; it waits until a worker that knows its version
+	// takes it. Bump it when a change would break runs in flight on the
+	// old code (steps added, removed, renamed or reordered, a payload
+	// shape changed). Zero is unversioned: such a worker runs only runs
+	// of version zero. StepInfo.Version and RunInfo.Version report a
+	// run's version, so a handler can keep an old path for old runs.
+	// Needs CapWorkflowVersion when Version or MinVersion is set.
+	Version int
+
+	// MinVersion is the oldest run version this definition still runs;
+	// runs of a lower version wait for a worker that runs them. Zero
+	// means every version up to Version, unversioned runs included, so a
+	// new definition drains the runs its predecessors started. Set it to
+	// Version to pin each run to the code that started it.
+	MinVersion int
 }
+
+// RunsVersion reports whether a worker with this definition runs a run
+// of version v: MinVersion <= v <= Version.
+func (w Workflow) RunsVersion(v int) bool { return v >= w.MinVersion && v <= w.Version }
 
 // StepKind is what a step does. Exactly one kind is set per step.
 type StepKind string
@@ -204,6 +229,14 @@ type Step struct {
 	// handler that hangs well before a long Timeout would. Zero means
 	// none. Run steps only. Needs CapHeartbeat.
 	HeartbeatTimeout time.Duration
+
+	// Slots is how many of the client's worker slots one attempt of the
+	// step holds while it runs (FC-11): a step that needs four times the
+	// memory or CPU of an ordinary one sets 4, so a pool of eight runs it
+	// beside at most four others. Zero and one mean one slot. Above one it
+	// needs CapSlotCost, and a client refuses a workflow whose step needs
+	// more slots than its whole pool. Run steps only.
+	Slots int
 }
 
 // Kind reports which kind the step is, or "" when none or several are

@@ -832,7 +832,10 @@ func (c *Client) pushTaskLocked(r *run, s workflow.Step, in []byte, attempt int)
 }
 
 // before reports whether task a goes before b: the higher queue priority
-// (QueueConfig.Priority), then the higher Job.Priority, then arrival.
+// (QueueConfig.Priority), then the higher Job.Priority, then, for two
+// runs of one ConcurrencyRoundRobin workflow under different keys, the
+// key served longer ago (FC-05: keys take turns, so a key with a backlog
+// cannot starve the others), then arrival.
 func (c *Client) before(a, b *task) bool {
 	if qa, qb := c.queues[a.r.queue].Priority, c.queues[b.r.queue].Priority; qa != qb {
 		return qa > qb
@@ -840,7 +843,36 @@ func (c *Client) before(a, b *task) bool {
 	if a.priority != b.priority {
 		return a.priority > b.priority
 	}
+	if ka, kb, ok := rrKeys(a, b); ok {
+		if ta, tb := c.rrTurn[ka], c.rrTurn[kb]; ta != tb {
+			return ta < tb
+		}
+	}
 	return a.seq < b.seq
+}
+
+// rrKeys returns the buckets of a and b when both are runs of one
+// ConcurrencyRoundRobin workflow under different keys.
+func rrKeys(a, b *task) (bucketKey, bucketKey, bool) {
+	conc := a.r.reg.wf.Concurrency
+	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin || a.r.reg != b.r.reg || a.r.bucket == b.r.bucket {
+		return bucketKey{}, bucketKey{}, false
+	}
+	wf := a.r.reg.wf.Name
+	return bucketKey{workflow: wf, key: a.r.bucket}, bucketKey{workflow: wf, key: b.r.bucket}, true
+}
+
+// servedLocked records that t's round-robin bucket just had a turn.
+func (c *Client) servedLocked(t *task) {
+	conc := t.r.reg.wf.Concurrency
+	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin {
+		return
+	}
+	if c.rrTurn == nil {
+		c.rrTurn = map[bucketKey]uint64{}
+	}
+	c.rrClock++
+	c.rrTurn[bucketKey{workflow: t.r.reg.wf.Name, key: t.r.bucket}] = c.rrClock
 }
 
 // pickLocked removes and returns the first task a worker may claim now,
@@ -879,6 +911,7 @@ func (c *Client) pickLocked() *task {
 	}
 	t := c.tasks[best]
 	c.tasks = slices.Delete(c.tasks, best, best+1)
+	c.servedLocked(t)
 	return t
 }
 
@@ -945,6 +978,21 @@ func (c *Client) worker() {
 			c.mu.Unlock()
 			return
 		}
+		// Hold the attempt's worker slots (Step.Slots) before it counts as
+		// started; the pool serves waiters in order, so a heavy step is
+		// not starved by light ones.
+		// The queue's count is taken at the pick, so no other worker passes
+		// the queue's cap while this one waits for slots.
+		slots := workflow.StepSlots(t.step)
+		c.queueExec[t.r.queue]++
+		c.mu.Unlock()
+		if err := c.slots.Acquire(c.ctx, slots); err != nil {
+			c.mu.Lock()
+			c.queueExec[t.r.queue]--
+			c.mu.Unlock()
+			return // the client stopped; shutdown cancelled the runs
+		}
+		c.mu.Lock()
 		t.r.queued--
 		t.r.executing++
 		t.r.attempts++
@@ -956,7 +1004,6 @@ func (c *Client) worker() {
 			t.r.attemptedBy = append(t.r.attemptedBy, node)
 		}
 		c.executing++
-		c.queueExec[t.r.queue]++
 		c.emitLocked(t.r, workflow.LifecycleStarted, t.step.Name, t.attempt, nil)
 		c.mu.Unlock()
 		endTrack := c.drainTrack.Begin(workflow.DrainCut{RunID: t.r.id, Workflow: t.r.job.Workflow, Step: t.step.Name, Attempt: t.attempt})
@@ -964,6 +1011,7 @@ func (c *Client) worker() {
 		out, edits, err := c.exec(t)
 
 		endTrack()
+		c.slots.Release(slots)
 		c.mu.Lock()
 		t.r.executing--
 		c.executing--
@@ -1013,6 +1061,9 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 		ReadyAt:  t.readyAt,
 		Tenant:   t.r.job.Tenant,
 		Node:     c.nodeID(),
+		// One process holds one definition of each workflow, so every
+		// run's version is the registered one (LO-11).
+		Version: t.r.reg.wf.Version,
 	})
 	actx, cancel := context.WithCancelCause(rctx)
 	defer cancel(nil)

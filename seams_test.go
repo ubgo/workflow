@@ -136,11 +136,11 @@ func TestRequiresNewCaps(t *testing.T) {
 		wf   workflow.Workflow
 		want workflow.Caps
 	}{
-		{"plain retry needs nothing", step(&workflow.RetryPolicy{Max: 2, Backoff: workflow.Backoff{Initial: time.Second}}), 0},
+		{"plain retry needs nothing", step(&workflow.RetryPolicy{Max: 2, Backoff: workflow.Backoff{Initial: time.Second}}), workflow.Caps{}},
 		{"step jitter", step(&jitter), workflow.CapRetryJitter},
 		{"step DelayFor", step(&delay), workflow.CapRetryDelay},
 		{"workflow default inherited", func() workflow.Workflow { w := step(nil); w.Retry = jitter; return w }(), workflow.CapRetryJitter},
-		{"workflow default every step overrides", func() workflow.Workflow { w := step(workflow.RetriesNone()); w.Retry = delay; return w }(), 0},
+		{"workflow default every step overrides", func() workflow.Workflow { w := step(workflow.RetriesNone()); w.Retry = delay; return w }(), workflow.Caps{}},
 		{"UTC cron", func() workflow.Workflow { w := step(nil); w.Cron = []string{"* * * * *"}; return w }(), workflow.CapCron},
 		{"explicit UTC CronLocation", func() workflow.Workflow {
 			w := step(nil)
@@ -151,12 +151,12 @@ func TestRequiresNewCaps(t *testing.T) {
 			w := step(nil)
 			w.Cron, w.CronLocation = []string{"* * * * *"}, time.FixedZone("X", 3600)
 			return w
-		}(), workflow.CapCron | workflow.CapCronZone},
+		}(), workflow.CapsOf(workflow.CapCron, workflow.CapCronZone)},
 		{"misfire fire all", func() workflow.Workflow {
 			w := step(nil)
 			w.Cron, w.Misfire = []string{"* * * * *"}, workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 2}
 			return w
-		}(), workflow.CapCron | workflow.CapMisfireFireAll},
+		}(), workflow.CapsOf(workflow.CapCron, workflow.CapMisfireFireAll)},
 	} {
 		if got := workflow.Requires(tc.wf); got != tc.want {
 			t.Errorf("%s: Requires = %s, want %s", tc.name, got, tc.want)
@@ -175,11 +175,11 @@ func TestCheckScheduleCaps(t *testing.T) {
 		field string // "" means allowed
 	}{
 		{"plain UTC on a cron driver", workflow.CapCron, plain, ""},
-		{"no cron at all", 0, plain, "Schedule"},
+		{"no cron at all", workflow.Caps{}, plain, "Schedule"},
 		{"zone without CapCronZone", workflow.CapCron, zoned, "Schedule.Location"},
-		{"zone with CapCronZone", workflow.CapCron | workflow.CapCronZone, zoned, ""},
-		{"misfire without its cap", workflow.CapCron | workflow.CapMisfireFireOnce, skip, "Schedule.Misfire"},
-		{"misfire with its cap", workflow.CapCron | workflow.CapMisfireSkip, skip, ""},
+		{"zone with CapCronZone", workflow.CapsOf(workflow.CapCron, workflow.CapCronZone), zoned, ""},
+		{"misfire without its cap", workflow.CapsOf(workflow.CapCron, workflow.CapMisfireFireOnce), skip, "Schedule.Misfire"},
+		{"misfire with its cap", workflow.CapsOf(workflow.CapCron, workflow.CapMisfireSkip), skip, ""},
 	} {
 		err := workflow.CheckScheduleCaps(tc.have, tc.s)
 		if tc.field == "" {
@@ -196,13 +196,15 @@ func TestCheckScheduleCaps(t *testing.T) {
 }
 
 func TestNewCapNames(t *testing.T) {
-	all := workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapMisfireSkip |
-		workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll | workflow.CapCronZone
+	all := workflow.CapsOf(
+		workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapMisfireSkip,
+		workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll, workflow.CapCronZone,
+	)
 	want := "RetryJitter|RetryDelay|MisfireSkip|MisfireFireOnce|MisfireFireAll|CronZone"
 	if got := all.String(); got != want {
 		t.Fatalf("String = %q, want %q", got, want)
 	}
-	if workflow.CapRetryJitter <= workflow.CapRunFinished {
+	if got := workflow.CapsOf(workflow.CapRetryJitter, workflow.CapRunFinished).String(); got != "RunFinished|RetryJitter" { // String is in number order
 		t.Fatal("a new capability moved an existing bit")
 	}
 }

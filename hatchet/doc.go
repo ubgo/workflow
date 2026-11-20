@@ -139,7 +139,9 @@
 // RunQuery.Statuses) rather than answered with a page that says "none".
 // A RunQuery.LabelPrefixes filter is refused the same way by Runs and
 // CancelAll (field RunQuery.LabelPrefixes, no CapLabelPrefix): the
-// engine filters metadata by exact value only.
+// engine filters metadata by exact value only. A RunQuery.Payload filter
+// is refused by Runs (field RunQuery.Payload, no CapPayloadSearch) for
+// the same reason.
 // A Job.Chain is refused at Enqueue, RunGroup and SpawnGroup (field
 // Job.Chain, no CapChain), and no chain editor is put on a step's ctx,
 // so PrependToChain and AppendToChain return an UnsupportedError: a
@@ -149,7 +151,11 @@
 // a worker's slots once, when the worker is created, and has no call to
 // change them. It does not implement workflow.ClosureEnqueuer (no
 // CapClosure), so workflow.EnqueueClosure refuses: a Go closure cannot be
-// sent to the engine. A durable closure by name (workflow.NewFunc,
+// sent to the engine. It declares no CapWorkflowVersion and Register
+// refuses Workflow.Version and MinVersion: the engine hands a run to any
+// worker that registered the workflow's name, so it cannot keep a run
+// started by new code away from an old worker during a rolling deploy.
+// A durable closure by name (workflow.NewFunc,
 // RegisterFunc, FuncJob) needs nothing of the driver: it is a one-step
 // workflow, registered and declared like any other, so a process that
 // registered the name runs it and an unregistered name is refused at
@@ -273,8 +279,13 @@
 // then fires it at the loaded time whatever a later change says. The
 // ScheduledID still names the first RunAt, and new tokens are UUIDv7, so
 // Status, Cancel and Runs find a run moved earlier by searching from when
-// it was scheduled; for about a second after such a run fires, while the
-// engine's read side has not listed it, Status may report it cancelled.
+// it was scheduled. The engine deletes a scheduled record as it fires it,
+// a moment before its read side lists the run, so a ScheduledID whose
+// record is gone and whose run is not listed reads cancelled only after
+// Config.VisibilityLag (never by comparing with the first RunAt, which a
+// move earlier makes wrong), or at once when this client's Cancel deleted
+// it at least 15 seconds before it was due. Status of a delayed start that
+// another process cancelled therefore takes up to VisibilityLag.
 //
 // Config.NodeID (workflow.DefaultNodeID by default) is StepInfo.Node and
 // is set as a label on every worker the client registers. Nodes

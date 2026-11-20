@@ -184,14 +184,14 @@ func TestCancelAllAndPause_ReachBothBackends(t *testing.T) {
 // primary, and that a secondary without them is not asked.
 func TestScheduleFamily_IsThePrimarys(t *testing.T) {
 	fx := newFixture(t)
-	sched := workflow.CapScheduleList | workflow.CapSchedulePause | workflow.CapTickEvents | workflow.CapScheduleWhen | workflow.CapScheduleWindow
+	sched := workflow.CapsOf(workflow.CapScheduleList, workflow.CapSchedulePause, workflow.CapTickEvents, workflow.CapScheduleWhen, workflow.CapScheduleWindow)
 	sec := noCaps{Client: fx.s.Client, hidden: sched}
 	fx.c = failover.New(fx.p, sec)
 	if !fx.c.Capabilities().Has(sched) {
 		t.Fatalf("capabilities %s lack the primary's schedule family", fx.c.Capabilities())
 	}
-	if both := failover.New(fx.p, sec, failover.WithSchedulesOnBoth()); both.Capabilities()&sched != 0 {
-		t.Fatalf("WithSchedulesOnBoth over a secondary without them claims %s", both.Capabilities()&sched)
+	if both := failover.New(fx.p, sec, failover.WithSchedulesOnBoth()); both.Capabilities().HasAny(sched) {
+		t.Fatalf("WithSchedulesOnBoth over a secondary without them claims %s", both.Capabilities().Intersect(sched))
 	}
 
 	ticks := make(chan workflow.Tick, 4)
@@ -264,7 +264,7 @@ func TestRefusesWhatOneBackendLacks(t *testing.T) {
 		fx := newFixture(t)
 		c := failover.New(fx.p, noCaps{Client: fx.s.Client, hidden: tc.hide})
 		var ue *workflow.UnsupportedError
-		if err := tc.call(c); !errors.As(err, &ue) || ue.Missing&tc.hide == 0 {
+		if err := tc.call(c); !errors.As(err, &ue) || !ue.Missing.HasAny(tc.hide) {
 			t.Errorf("hiding %s: err = %v, want an UnsupportedError naming it", tc.hide, err)
 		}
 		if c.Capabilities().Has(tc.hide) {

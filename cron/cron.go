@@ -148,7 +148,8 @@ const allHours = uint64(1)<<24 - 1
 // driver uses, which is what makes one expression mean the same on every
 // driver. A driver that accepts a custom Parser (memory.WithCronParser)
 // lets an app bring another dialect (the extended "L", "W" and "#"
-// fields, a seconds field, "H" hashing): the app gives up that promise for the
+// fields, a seconds field, "H" hashing, a year field as ParseYear reads
+// it): the app gives up that promise for the
 // expressions only its parser understands, since an engine with its own
 // cron dialect still refuses them. A Parser must return a Schedule that
 // keeps the interface's contract (Next never returns a time at or before

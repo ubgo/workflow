@@ -91,9 +91,9 @@ func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	mem := memory.New(memory.WithClock(clk))
 	var c workflow.Client = mem // the optional interfaces are found by type assertion, as through any wrapper
-	need := workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapTickEvents | workflow.CapScheduleList | workflow.CapSchedulePause
+	need := workflow.CapsOf(workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents, workflow.CapScheduleList, workflow.CapSchedulePause)
 	if !c.Capabilities().Has(need) {
-		return fmt.Errorf("the driver lacks %s", need&^c.Capabilities())
+		return fmt.Errorf("the driver lacks %s", need.Without(c.Capabilities()))
 	}
 
 	// snippet:when

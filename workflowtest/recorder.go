@@ -16,11 +16,13 @@ import (
 // core defines except CapRunFinished. It refuses nothing because it runs
 // nothing, but it implements no RunNotifier, and no run of it ever ends,
 // so claiming guaranteed run-finished delivery would be false.
-const allCaps = workflow.CapDurable | workflow.CapDelayedStart | workflow.CapWaitForEvent |
-	workflow.CapDurableSleep | workflow.CapConcurrencyKey | workflow.CapRateLimit |
-	workflow.CapIdempotencyKey | workflow.CapCron | workflow.CapCancel |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapCronZone |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll
+var allCaps = workflow.CapsOf(
+	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
+	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
+	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+)
 
 // Recorder is a workflow.Client that records every successful Enqueue so
 // an app test can assert what its code enqueued.

@@ -29,7 +29,9 @@
 //     worker, the higher QueueConfig.Priority of their queue goes first,
 //     then the higher Job.Priority, then first come first served. An
 //     attempt held by a pause (Pause) or by its queue's Workers cap waits
-//     without blocking the others.
+//     without blocking the others. A step with Step.Slots above one holds
+//     that many of the pool's slots while it runs (CapSlotCost); attempts
+//     wait for their slots first come, first served.
 //   - A failed attempt is retried per workflow.EffectiveRetriesFor
 //     (Job.Retry, else the step's, else the workflow's) as decided by
 //     RetryPolicy.Next on the injected clock: Max, MaxErrors (releases
@@ -61,7 +63,10 @@
 //     key (concurrency, rate limit or WaitSpec.KeyFrom) is refused at Start
 //     with an UnsupportedError. QueueNewest and
 //     RoundRobin hold the new run until its bucket has room (each bucket is
-//     capped at MaxRuns, so no key can starve another); DropNewest and
+//     capped at MaxRuns, so no key can starve another); with RoundRobin the
+//     workers also take the waiting steps of different keys in turn (the
+//     key served longest ago first), so a key with a backlog does not
+//     delay the others behind it; DropNewest and
 //     CancelNewest record the new run as StatusCancelled; CancelInProgress
 //     cancels the bucket's oldest running run to make room. A cancelled
 //     run releases its slot at once, even if a handler that ignores its
@@ -208,7 +213,9 @@
 // it live until stopped and ready while started and not draining.
 // WithPayloadLimit refuses oversized payloads at Enqueue. Schedules honour
 // Seconds (cron.ParseSeconds), Active, KeepRuns and stamp
-// workflow.LabelTickAt on every fired run.
+// workflow.LabelTickAt on every fired run. CapWorkflowVersion: one
+// process holds one definition of each workflow, so every run carries
+// the registered Workflow.Version (StepInfo.Version, RunInfo.Version).
 //
 // RunAll, for tests, runs everything now: delayed starts, retry backoffs,
 // snoozes and sleeps end at once, and it returns once no run can move

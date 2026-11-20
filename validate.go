@@ -23,6 +23,9 @@ func Validate(wf Workflow) error {
 	if len(wf.Steps) == 0 {
 		return invalidf("workflow %q has no steps", wf.Name)
 	}
+	if wf.Version < 0 || wf.MinVersion < 0 || wf.MinVersion > wf.Version {
+		return invalidf("workflow %q: Version %d and MinVersion %d: both must be zero or more and MinVersion at most Version", wf.Name, wf.Version, wf.MinVersion)
+	}
 	index := make(map[string]int, len(wf.Steps))
 	for i, s := range wf.Steps {
 		if s.Name == "" {
@@ -67,6 +70,12 @@ func validateStep(s Step) error {
 	}
 	if s.HeartbeatTimeout > 0 && s.Kind() != StepRun {
 		return errors.New("HeartbeatTimeout is only for Run steps")
+	}
+	if s.Slots < 0 {
+		return errors.New("negative Slots")
+	}
+	if s.Slots > 1 && s.Kind() != StepRun {
+		return errors.New("Slots is only for Run steps")
 	}
 	if w := s.Wait; w != nil {
 		if w.Event == "" {

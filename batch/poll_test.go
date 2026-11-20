@@ -127,7 +127,7 @@ func TestHookAndPollReportTheSameJobs(t *testing.T) {
 type lossyHook struct{ *counting }
 
 func (l lossyHook) Capabilities() workflow.Caps {
-	return l.counting.Capabilities() &^ workflow.CapRunFinished
+	return l.counting.Capabilities().Without(workflow.CapRunFinished)
 }
 
 func (lossyHook) OnRunFinished(workflow.RunFinishedFunc) error { return nil }

@@ -80,7 +80,7 @@ func run(ctx context.Context) (err error) {
 	need := workflow.Requires(digest)
 	fmt.Println("digest needs:", need)
 	for _, d := range drivers {
-		if missing := d.c.Capabilities().Missing(need); missing != 0 {
+		if missing := d.c.Capabilities().Missing(need); !missing.IsZero() {
 			fmt.Printf("  %s lacks %s\n", d.name, missing)
 		}
 	}

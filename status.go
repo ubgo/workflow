@@ -159,20 +159,20 @@ func buildTransitions() []Transition {
 	var t []Transition
 	t = append(t,
 		Transition{StatusScheduled, StatusQueued, "the start time arrives", CapDelayedStart},
-		Transition{StatusQueued, StatusRunning, "a worker claims a ready step", 0},
-		Transition{StatusRunning, StatusQueued, "an attempt is handed back or the next step is ready", 0},
+		Transition{StatusQueued, StatusRunning, "a worker claims a ready step", Caps{}},
+		Transition{StatusRunning, StatusQueued, "an attempt is handed back or the next step is ready", Caps{}},
 		Transition{StatusRunning, StatusWaiting, "a Wait step parks", CapWaitForEvent},
 		Transition{StatusRunning, StatusWaiting, "a Sleep step parks", CapDurableSleep},
 		Transition{StatusRunning, StatusWaiting, "a step returned Snooze", CapSnooze},
-		Transition{StatusWaiting, StatusQueued, "the event arrives or the sleep ends", 0},
-		Transition{StatusWaiting, StatusRunning, "the resumed step starts at once", 0},
+		Transition{StatusWaiting, StatusQueued, "the event arrives or the sleep ends", Caps{}},
+		Transition{StatusWaiting, StatusRunning, "the resumed step starts at once", Caps{}},
 		Transition{StatusRunning, StatusRetrying, "an attempt failed and the policy allows another", CapRunStates},
 		Transition{StatusRetrying, StatusRunning, "the backoff elapsed and a worker claimed the step", CapRunStates},
 		Transition{StatusRetrying, StatusQueued, "the backoff elapsed", CapRunStates},
-		Transition{StatusRunning, StatusSucceeded, "every step succeeded", 0},
-		Transition{StatusRunning, StatusFailed, "the policy stopped retrying a failed attempt", 0},
-		Transition{StatusRunning, StatusDiscarded, "a step returned Discard", CapDiscard | CapRunStates},
-		Transition{StatusRunning, StatusDiscarded, "the policy stopped retrying and has DiscardOnExhaust", CapDiscardExhausted | CapRunStates},
+		Transition{StatusRunning, StatusSucceeded, "every step succeeded", Caps{}},
+		Transition{StatusRunning, StatusFailed, "the policy stopped retrying a failed attempt", Caps{}},
+		Transition{StatusRunning, StatusDiscarded, "a step returned Discard", CapsOf(CapDiscard, CapRunStates)},
+		Transition{StatusRunning, StatusDiscarded, "the policy stopped retrying and has DiscardOnExhaust", CapsOf(CapDiscardExhausted, CapRunStates)},
 		Transition{StatusFailed, StatusQueued, "Retry re-opens the run from its failed step", CapRetryRun},
 	)
 	// Parallel steps let the run as a whole move between any two active
@@ -203,7 +203,7 @@ func reportCaps(from, to Status) Caps {
 	if from == StatusRetrying || to == StatusRetrying {
 		return CapRunStates
 	}
-	return 0
+	return Caps{}
 }
 
 func hasTransition(t []Transition, from, to Status) bool {

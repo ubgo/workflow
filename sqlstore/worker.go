@@ -25,6 +25,7 @@ type attempt struct {
 	reclaims int64  // lease expiries of this attempt, this claim included
 	queue    string // the run's queue (counted in Client.running)
 	tenant   string // the run's Job.Tenant
+	version  int    // the run's workflow version (run_version), StepInfo.Version
 	started  int64  // when it was claimed, on the scheduling clock
 	readyAt  int64  // when it became claimable (steps.due), StepInfo.ReadyAt
 	token    string
@@ -34,6 +35,8 @@ type attempt struct {
 	leaseFrom time.Time
 	cancel    context.CancelCauseFunc
 	edits     *chainEditor // PrependToChain and AppendToChain of this attempt
+	// completion is what the handler's CompleteTx staged (completetx.go).
+	completion *completion
 }
 
 // releaseTimeout bounds the write that hands a step back when the client
@@ -86,15 +89,18 @@ func (c *Client) claimWhere(queues []any) string {
 	if len(queues) > 0 {
 		q = " AND " + queueOf + " IN (" + inList(len(queues)) + ")"
 	}
+	vw, _ := c.versionWhere("st.run_id", "st.workflow")
 	return "st.workflow IN (" + inList(len(c.names)) + ") AND ((st.status IN (?, ?) AND st.due <= ?) OR (st.status = ? AND st.lease_until < ?))" +
-		q + c.limitSQL() + " AND " + notPaused + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
+		q + c.limitSQL() + " AND " + notPaused + " AND " + vw + " ORDER BY st.priority DESC, st.run_seq, st.id LIMIT 1"
 }
 
 func (c *Client) claimArgs(queues []any) []any {
 	args := append([]any(nil), c.names...)
 	args = append(args, stepReady, stepSnoozed, c.nowNanos(), stepRunning, c.expiredBefore())
 	args = append(args, queues...)
-	return append(args, c.limitArgs()...)
+	args = append(args, c.limitArgs()...)
+	_, vargs := c.versionWhere("st.run_id", "st.workflow")
+	return append(args, vargs...)
 }
 
 // claim takes one step and leases it to this client, or returns nil when
@@ -212,14 +218,15 @@ func (c *Client) claimFrom(ctx context.Context, queues []any) (*attempt, error) 
 		}
 		cand := &attempt{token: token, started: c.nowNanos(), leaseFrom: leaseFrom}
 		var tenant, nodes sql.NullString
+		var version sql.NullInt64
 		err := c.st.one(ctx, tx, "SELECT st.id, st.run_id, st.workflow, st.name, st.in_data, st.attempts, st.failures, st.reclaims, st.due, "+queueOf+
-			", i.tenant, i.nodes FROM {steps} st LEFT JOIN {run_info} i ON i.run_id = st.run_id WHERE st.lease_token = ?",
+			", i.tenant, i.nodes, (SELECT rv.version FROM {run_version} rv WHERE rv.run_id = st.run_id) FROM {steps} st LEFT JOIN {run_info} i ON i.run_id = st.run_id WHERE st.lease_token = ?",
 			[]any{token}, &cand.stepID, &cand.runID, &cand.workflow, &cand.name, &cand.in, &cand.attempts, &cand.failures, &cand.reclaims, &cand.readyAt, &cand.queue,
-			&tenant, &nodes)
+			&tenant, &nodes, &version)
 		if err != nil {
 			return fmt.Errorf("sqlstore: read claimed step: %w", err)
 		}
-		cand.tenant = tenant.String
+		cand.tenant, cand.version = tenant.String, int(version.Int64)
 		if nodes.Valid {
 			if err := c.addRunNode(ctx, tx, cand.runID, nodes.String); err != nil {
 				return err
@@ -289,7 +296,14 @@ func (c *Client) execute(a *attempt) {
 		herr = fmt.Errorf("sqlstore: step %q abandoned by %d workers (its lease expired %d times, over WithMaxReclaims %d): %w",
 			a.name, a.reclaims, a.reclaims, c.maxReclaims, ErrAbandoned)
 	} else {
-		out, herr = c.call(actx, reg, step, a, labels)
+		slots := workflow.StepSlots(step)
+		// Hold the attempt's worker slots (Step.Slots) while it runs. The
+		// lease is renewed meanwhile; a stop, a lost lease or a cancelled
+		// step ends the wait like it ends a running handler.
+		if herr = c.slots.Acquire(actx, slots); herr == nil {
+			out, herr = c.call(actx, reg, step, a, labels)
+			c.slots.Release(slots)
+		}
 	}
 	c.removeLocal(a)
 	c.countRunning(a.queue, -1)
@@ -302,7 +316,10 @@ func (c *Client) execute(a *attempt) {
 	}
 	if errors.Is(context.Cause(actx), ErrLeaseLost) {
 		// Another client may hold the step now; writing an outcome could
-		// overwrite its. The step is retaken once its lease expires.
+		// overwrite its. The step is retaken once its lease expires. A
+		// CompleteTx that committed before the lease was lost still gets
+		// its after-commit work.
+		c.recordCompleted(a)
 		return
 	}
 	if errors.Is(context.Cause(actx), workflow.ErrStepCancelled) {
@@ -329,7 +346,9 @@ func (c *Client) call(ctx context.Context, reg *registered, step workflow.Step, 
 		Labels:   labels,
 		Tenant:   a.tenant,
 		Node:     c.nodeID,
+		Version:  a.version,
 	})
+	ctx = c.withAttempt(ctx, a) // for CompleteTx
 	ctx = workflow.WithProgressReporter(ctx, c.progressReporter(a))
 	a.edits = c.newChainEditor(a.runID)
 	ctx = workflow.WithChainEditor(ctx, a.edits)
@@ -586,7 +605,9 @@ func (c *Client) release(a *attempt) {
 // record writes an attempt's outcome, if the step is still this attempt's
 // and the run still active: success completes the step, a Discard ends the
 // run cancelled, a retryable error requeues the step after the policy's
-// backoff (recordFailure), anything else fails the run.
+// backoff (recordFailure), anything else fails the run. A step its handler
+// completed with CompleteTx in a transaction that committed is left as
+// written, and only that completion's after-commit work runs.
 func (c *Client) record(a *attempt, reg *registered, step workflow.Step, out []byte, herr error) {
 	ctx := c.ctx
 	var o txOut
@@ -597,6 +618,14 @@ func (c *Client) record(a *attempt, reg *registered, step workflow.Step, out []b
 			return nil
 		}
 		if err != nil {
+			return err
+		}
+		// A CompleteTx that committed already wrote the outcome: carry out
+		// its after-commit work, write nothing.
+		if staged, err := c.stagedCompletion(ctx, tx, a); err != nil || staged != nil {
+			if staged != nil {
+				o = *staged
+			}
 			return err
 		}
 		if row.status != runActive {

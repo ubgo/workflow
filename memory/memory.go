@@ -17,23 +17,27 @@ import (
 // caps is everything except durability (CapRunFinished holds because every
 // terminal transition goes through finishLocked, which queues the event): the driver keeps state in memory,
 // so a restart loses it, and claiming CapDurable would be a lie.
-const caps = workflow.CapDelayedStart | workflow.CapWaitForEvent | workflow.CapDurableSleep |
-	workflow.CapConcurrencyKey | workflow.CapRateLimit | workflow.CapIdempotencyKey |
-	workflow.CapCron | workflow.CapCancel | workflow.CapRunFinished |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapCronZone |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll |
-	workflow.CapQueue | workflow.CapQueueOverride | workflow.CapJobRetry |
-	workflow.CapRetryUntil | workflow.CapRetryMaxErrors | workflow.CapDiscard | workflow.CapDiscardExhausted |
-	workflow.CapRunQuery | workflow.CapRetryRun | workflow.CapDeleteRun | workflow.CapCancelAll |
-	workflow.CapPauseWorkflow | workflow.CapPauseQueue | workflow.CapSchedulePause |
-	workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapTickEvents |
-	workflow.CapScheduleList | workflow.CapDrain | workflow.CapDrainReport |
-	workflow.CapRunStates | workflow.CapChain | workflow.CapWorkerScale | workflow.CapClosure | workflow.CapLabelPrefix |
-	workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory |
-	workflow.CapErrorHistory | workflow.CapForceRun |
-	workflow.CapSnooze | workflow.CapHeartbeat | workflow.CapTenant | workflow.CapRunTimeout |
-	workflow.CapNodeIdentity | workflow.CapKeyFIFO | workflow.CapDueQuery | workflow.CapResult |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep | workflow.CapTickTime | workflow.CapQueueLimitGlobal
+var caps = workflow.CapsOf(
+	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
+	workflow.CapCron, workflow.CapCancel, workflow.CapRunFinished,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard, workflow.CapDiscardExhausted,
+	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
+	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch,
+	workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, workflow.CapClosure, workflow.CapLabelPrefix,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapErrorHistory, workflow.CapForceRun,
+	workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapTenant, workflow.CapRunTimeout,
+	workflow.CapNodeIdentity, workflow.CapKeyFIFO, workflow.CapDueQuery, workflow.CapResult,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime, workflow.CapQueueLimitGlobal,
+	workflow.CapWorkflowVersion,
+	workflow.CapSlotCost,
+)
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
 // given: enough for tests that run steps in parallel, small enough that a
@@ -163,6 +167,9 @@ func WithErrorHistory(n int) Option { return func(m *Client) { m.errHist = n } }
 type Client struct {
 	clk     clock.Clock
 	workers int
+	// slots shares the pool among attempts by Step.Slots (CapSlotCost),
+	// made at Start from workers.
+	slots   *workflow.SlotPool
 	log     *slog.Logger
 	mw      []workflow.Middleware
 	parse   cron.Parser
@@ -196,6 +203,8 @@ type Client struct {
 	tasks   []*task               // step attempts waiting for a worker; see pickLocked
 	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
 	buckets map[bucketKey][]*run
+	rrTurn  map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
+	rrClock uint64               // counts those picks
 	rates   map[rateKey][]time.Time
 	rateAt  time.Time   // when the armed rate-limit timer fires; zero if none
 	rateTm  clock.Timer // the armed rate-limit timer
@@ -309,6 +318,9 @@ func (c *Client) Capabilities() workflow.Caps { return caps }
 // a typo fails now, not at the first fire.
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	if err := workflow.CheckSlots(wf, c.workers); err != nil {
 		return err
 	}
 	reg := &registered{
@@ -434,6 +446,7 @@ func (c *Client) Start(ctx context.Context) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	context.AfterFunc(c.ctx, c.shutdown)
 	c.startRecycleLocked()
+	c.slots = workflow.NewSlotPool(c.workers)
 	for range c.workers {
 		c.wg.Add(1)
 		go c.worker()

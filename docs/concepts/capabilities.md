@@ -8,7 +8,7 @@ A driver declares what it can really do, as a set of capabilities, and the libra
 
 ## What a driver declares
 
-`Client.Capabilities()` returns a `workflow.Caps`, a bit set that never changes over the life of a client. `Has(want)` reports whether it holds every capability in `want`; `Missing(required)` returns the ones it lacks (zero means none); `String()` joins the names with `|`.
+`Client.Capabilities()` returns a `workflow.Caps`, a set of capabilities that never changes over the life of a client. `Has(want)` reports whether it holds every capability in `want`; `Missing(required)` returns the ones it lacks (`IsZero()` when none); `String()` joins the names with `|`. A `Caps` is a value with room for 256 capabilities: build one with `workflow.CapsOf(workflow.CapCron, workflow.CapCronZone)` or `caps.With(...)`, drop some with `caps.Without(...)`, test overlap with `HasAny` and intersect with `Intersect`; two sets compare with `==`. `workflow.AllCaps()` is every capability the release declares, and `workflow.ParseCaps` reads the `String()` form back. In JSON a `Caps` is that string, such as `"Durable|Cron"`; the numeric form of v0.1.x (when `Caps` was a `uint64`) is still read.
 
 | Capability | What it promises |
 |---|---|
@@ -28,6 +28,7 @@ A driver declares what it can really do, as a set of capabilities, and the libra
 | `CapCronZone` | Crons may run in a zone other than UTC, evaluated in that zone across DST |
 | `CapQueue`, `CapQueueOverride` | `Workflow.Queue` and `Job.Queue` route runs to named queues with per-queue worker limits; with the override a run may leave its workflow's queue ([named queues](../jobs/queues.md)) |
 | `CapQueueLimitGlobal` | `QueueConfig.Limit` caps a queue's in-flight step attempts across every client sharing the store ([named queues](../jobs/queues.md#cap-a-queue-across-every-worker)) |
+| `CapWorkflowVersion` | A run records the `Workflow.Version` of the client that enqueued it, and a worker takes only the run versions its definition runs ([rolling deploys](../operations/deploy.md#deploy-a-new-version-while-old-workers-run)) |
 | `CapJobRetry`, `CapRetryUntil`, `CapRetryMaxErrors` | `Job.Retry`, `RetryPolicy.Until` and `RetryPolicy.MaxErrors` are honoured ([retries](../jobs/retries.md#limits-beyond-max)) |
 | `CapDiscard` | A step returning `Discard(err)` ends its run without failing it (`discarded` with `CapRunStates`, else `cancelled`); without it `Discard` acts as `Permanent` |
 | `CapDiscardExhausted` | `RetryPolicy.DiscardOnExhaust` ends a run whose retries ran out `discarded` instead of `failed` ([retries](../jobs/retries.md#quiet-giving-up-discardonexhaust)) |
@@ -66,8 +67,8 @@ for _, d := range drivers {
 ```
 
 ```text
-memory   durable=false DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|RunFinished|RetryJitter|RetryDelay|MisfireSkip|MisfireFireOnce|MisfireFireAll|CronZone|Queue|QueueOverride|JobRetry|RetryUntil|RetryMaxErrors|Discard|RunQuery|RetryRun|DeleteRun|CancelAll|PauseWorkflow|PauseQueue|SchedulePause|ScheduleWhen|ScheduleWindow|TickEvents|ScheduleList|Drain|RunStates|Chain|WorkerScale|Closure|LabelPrefix|OverlapSkip|ScheduleTrigger|ScheduleHistory|ErrorHistory|ForceRun|Snooze|Heartbeat|Tenant|RunTimeout|NodeIdentity|KeyFIFO|DueQuery|Result|CronSeconds|ScheduleActive|ScheduleKeep|TickTime|QueueLimitGlobal|DiscardExhausted|DrainReport
-sqlstore durable=true  Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|RunFinished|RetryJitter|RetryDelay|MisfireSkip|MisfireFireOnce|MisfireFireAll|CronZone|Queue|QueueOverride|JobRetry|RetryUntil|RetryMaxErrors|Discard|RunQuery|RetryRun|DeleteRun|CancelAll|PauseWorkflow|PauseQueue|SchedulePause|ScheduleWhen|ScheduleWindow|TickEvents|ScheduleList|Drain|RunStates|Chain|WorkerScale|LabelPrefix|OverlapSkip|ScheduleTrigger|ScheduleHistory|EnqueueOnly|ErrorHistory|ShutdownRequeue|ForceRun|Snooze|Heartbeat|Tenant|RunTimeout|NodeIdentity|KeyFIFO|DueQuery|Result|CronSeconds|ScheduleActive|ScheduleKeep|TickTime|QueueLimitGlobal|DiscardExhausted|DrainReport
+memory   durable=false DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|RunFinished|RetryJitter|RetryDelay|MisfireSkip|MisfireFireOnce|MisfireFireAll|CronZone|Queue|QueueOverride|JobRetry|RetryUntil|RetryMaxErrors|Discard|RunQuery|RetryRun|DeleteRun|CancelAll|PauseWorkflow|PauseQueue|SchedulePause|ScheduleWhen|ScheduleWindow|TickEvents|ScheduleList|Drain|RunStates|Chain|WorkerScale|Closure|LabelPrefix|OverlapSkip|ScheduleTrigger|ScheduleHistory|ErrorHistory|ForceRun|Snooze|Heartbeat|Tenant|RunTimeout|NodeIdentity|KeyFIFO|DueQuery|Result|CronSeconds|ScheduleActive|ScheduleKeep|TickTime|QueueLimitGlobal|DiscardExhausted|DrainReport|WorkflowVersion|SlotCost|PayloadSearch
+sqlstore durable=true  Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|RunFinished|RetryJitter|RetryDelay|MisfireSkip|MisfireFireOnce|MisfireFireAll|CronZone|Queue|QueueOverride|JobRetry|RetryUntil|RetryMaxErrors|Discard|RunQuery|RetryRun|DeleteRun|CancelAll|PauseWorkflow|PauseQueue|SchedulePause|ScheduleWhen|ScheduleWindow|TickEvents|ScheduleList|Drain|RunStates|Chain|WorkerScale|LabelPrefix|OverlapSkip|ScheduleTrigger|ScheduleHistory|EnqueueOnly|ErrorHistory|ShutdownRequeue|ForceRun|Snooze|Heartbeat|Tenant|RunTimeout|NodeIdentity|KeyFIFO|DueQuery|Result|CronSeconds|ScheduleActive|ScheduleKeep|TickTime|QueueLimitGlobal|DiscardExhausted|DrainReport|WorkflowVersion|SlotCost|PayloadSearch
 hatchet  durable=true  Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|Queue|RunQuery|RetryRun|CancelAll|ScheduleList|Drain|ScheduleTrigger|ScheduleHistory|EnqueueOnly|Tenant|KeyFIFO|DueQuery|Result|CronSeconds|TickTime|DrainReport
 ```
 
@@ -92,7 +93,7 @@ digest := workflow.Workflow{
 need := workflow.Requires(digest)
 fmt.Println("digest needs:", need)
 for _, d := range drivers {
-	if missing := d.c.Capabilities().Missing(need); missing != 0 {
+	if missing := d.c.Capabilities().Missing(need); !missing.IsZero() {
 		fmt.Printf("  %s lacks %s\n", d.name, missing)
 	}
 }

@@ -527,6 +527,7 @@
       kv('Duration', took === undefined ? (r.started_at ? 'running' : '—') : fmtDur(took)),
       r.labels && r.labels[LABEL_SCHEDULE] ? kv('Schedule', el('a', { href: scheduleHref(r.labels[LABEL_SCHEDULE]), class: 'mono' }, r.labels[LABEL_SCHEDULE])) : null,
       r.failed_step ? kv('Failed step', el('span', { class: 'mono' }, r.failed_step)) : null,
+      traceHref(r.trace_url) ? kv('Trace', el('a', { href: traceHref(r.trace_url), target: '_blank', rel: 'noopener noreferrer', class: 'mono' }, 'Open trace')) : null,
       kv('Labels', r.labels && Object.keys(r.labels).length ? labelChips(r.labels) : '—'),
     );
     const output = hasOutput && r.ref.run_id ? await api('GET', withSuffix(path, '/output')).catch((e) => ({ error: e.message })) : null;
@@ -537,6 +538,17 @@
       outputNode(output),
       r.payload ? [el('h2', null, 'Payload'), el('pre', { class: 'box' }, payloadText(r.payload))]
         : el('p', { class: 'muted small pad' }, 'Payload hidden (the handler was built without WithPayloads).'));
+  }
+
+  // traceHref is the run's trace link (WithTraceLink) when it is an
+  // absolute http or https URL, else null. The server checks it too; the
+  // UI checks again so a link can never run script.
+  function traceHref(u) {
+    if (!u) return null;
+    try {
+      const p = new URL(u);
+      return p.protocol === 'http:' || p.protocol === 'https:' ? p.href : null;
+    } catch (_) { return null; }
   }
 
   // progressNode is the latest progress a step reported.
@@ -916,7 +928,10 @@
       hasMetrics = c.metrics === true;
       capNames = new Set(c.capabilities.split('|'));
       const off = c.operations.filter((o) => !o.supported).map((o) => o.operation);
-      document.getElementById('caps').textContent = off.length ? 'not supported here: ' + off.join(', ') : '';
+      // A tenant-scoped caller (WithTenantScope) sees one tenant's runs
+      // and schedules; the system-wide pages come back unsupported.
+      const scope = c.tenant ? 'tenant ' + c.tenant + (off.length ? ' · ' : '') : '';
+      document.getElementById('caps').textContent = scope + (off.length ? 'not supported here: ' + off.join(', ') : '');
       for (const a of document.querySelectorAll('#nav a')) {
         const op = { queues: 'queues', runs: 'runs', failures: 'failures', discarded: 'discarded', schedules: 'schedules', system: 'health' }[a.dataset.view];
         if (caps[op] === false || (a.dataset.view === 'charts' && !hasMetrics)) a.hidden = true;
@@ -924,7 +939,7 @@
     } catch (_) {
       caps = null; // not allowed to read capabilities: show everything and let the API refuse
     }
-    if (!location.hash) location.hash = '#/queues';
+    if (!location.hash) location.hash = caps && caps.queues === false ? '#/runs' : '#/queues';
     else render();
   })();
 })();

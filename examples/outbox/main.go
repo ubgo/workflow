@@ -215,7 +215,7 @@ func deadEntries(ctx context.Context, db *sql.DB, ob *outbox.Outbox, target work
 func withoutKeys(ctx context.Context, db *sql.DB, ob *outbox.Outbox) error {
 	// A Fake claiming every capability of the memory driver except
 	// CapIdempotencyKey stands in for such a target.
-	noKeys := workflowtest.NewFake(workflowtest.FakeCaps(memory.New().Capabilities() &^ workflow.CapIdempotencyKey))
+	noKeys := workflowtest.NewFake(workflowtest.FakeCaps(memory.New().Capabilities().Without(workflow.CapIdempotencyKey)))
 	if err := noKeys.Register(ship); err != nil {
 		return err
 	}

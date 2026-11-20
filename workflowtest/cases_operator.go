@@ -80,7 +80,7 @@ func (e *env) waitWorkflowIdle(wf string) {
 			page, err := q.Runs(ctx, workflow.RunQuery{Workflow: wf, Statuses: open})
 			return err == nil && len(page.Runs) == 0
 		})
-	case caps.Has(workflow.CapScheduleList | workflow.CapScheduleHistory):
+	case caps.Has(workflow.CapsOf(workflow.CapScheduleList, workflow.CapScheduleHistory)):
 		e.eventually("the last runs of "+wf+" to finish", 0, func() bool {
 			ctx, cancel := e.callCtx()
 			defer cancel()
@@ -123,7 +123,7 @@ func (e *env) mustTrigger(id workflow.ScheduleID) workflow.RunRef {
 
 var overlapCases = []testCase{
 	{"OverlapSkip skips a tick while the previous run is unfinished", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapOverlapSkip)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapOverlapSkip))
 		e.needFake("placing ticks while a run is held")
 		var c counter
 		g := newGate(e.t)
@@ -160,7 +160,7 @@ var overlapCases = []testCase{
 		tick(e, &c, 1, 2)
 	}},
 	{"Workflow.CronOverlap skips a declared cron's tick", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapOverlapSkip)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapOverlapSkip))
 		e.needFake("placing ticks while a run is held")
 		var c counter
 		g := newGate(e.t)
@@ -202,7 +202,7 @@ var overlapCases = []testCase{
 
 var triggerCases = []testCase{
 	{"TriggerSchedule runs the schedule now with its input and labels", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleTrigger)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleTrigger))
 		var s stepInfos
 		var c counter
 		wf := oneStep(e.name("w"), func(ctx context.Context, in []byte) ([]byte, error) {
@@ -226,7 +226,7 @@ var triggerCases = []testCase{
 		}
 	}},
 	{"TriggerSchedule obeys OverlapSkip", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleTrigger | workflow.CapOverlapSkip)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleTrigger, workflow.CapOverlapSkip))
 		var c counter
 		g := newGate(e.t)
 		wf := oneStep(e.name("w"), blockFirst(&c, g))
@@ -243,7 +243,7 @@ var triggerCases = []testCase{
 		e.waitStatus(second, workflow.StatusSucceeded, 0)
 	}},
 	{"TriggerSchedule fires a paused schedule", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleTrigger | workflow.CapSchedulePause)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleTrigger, workflow.CapSchedulePause))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)
@@ -256,7 +256,7 @@ var triggerCases = []testCase{
 		e.waitStatus(e.mustTrigger(id), workflow.StatusSucceeded, 0)
 	}},
 	{"TriggerSchedule of an unknown schedule is ErrNotFound", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleTrigger)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleTrigger))
 		e.up(oneStep(e.name("w"), (&counter{}).echo()))
 		if _, err := e.trigger(workflow.ScheduleID(e.name("missing"))); !errors.Is(err, workflow.ErrNotFound) {
 			e.t.Fatalf("TriggerSchedule of an unknown id: %v, want ErrNotFound", err)
@@ -266,7 +266,7 @@ var triggerCases = []testCase{
 
 var scheduleHistoryCases = []testCase{
 	{"Schedules reports the last trigger, its run and outcome", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleList | workflow.CapScheduleHistory | workflow.CapScheduleTrigger)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleList, workflow.CapScheduleHistory, workflow.CapScheduleTrigger))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)
@@ -290,7 +290,7 @@ var scheduleHistoryCases = []testCase{
 	}},
 	{"Schedules reports the last cron fire", func(e *env) {
 		needCronFiring(e)
-		e.need(workflow.CapScheduleList | workflow.CapScheduleHistory)
+		e.need(workflow.CapsOf(workflow.CapScheduleList, workflow.CapScheduleHistory))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)
@@ -347,7 +347,7 @@ var enqueueOnlyCases = []testCase{
 
 var errorHistoryCases = []testCase{
 	{"RunInfo.Errors records each failed attempt, oldest first", func(e *env) {
-		e.need(workflow.CapErrorHistory | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapErrorHistory, workflow.CapRunQuery))
 		var c counter
 		wf := oneStep(e.name("w"), func(_ context.Context, in []byte) ([]byte, error) {
 			c.hit(in)
@@ -374,7 +374,7 @@ var errorHistoryCases = []testCase{
 		}
 	}},
 	{"a failed run's history ends with its final error", func(e *env) {
-		e.need(workflow.CapErrorHistory | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapErrorHistory, workflow.CapRunQuery))
 		var c counter
 		wf := oneStep(e.name("w"), c.fail(errBoom))
 		e.up(wf)
@@ -389,7 +389,7 @@ var errorHistoryCases = []testCase{
 
 var shutdownRequeueCases = []testCase{
 	{"a step cut short by a clean stop runs again without spending an attempt", func(e *env) {
-		e.need(workflow.CapDurable | workflow.CapShutdownRequeue)
+		e.need(workflow.CapsOf(workflow.CapDurable, workflow.CapShutdownRequeue))
 		if e.restart == nil {
 			e.t.Skip("Instance.Restart is nil")
 		}

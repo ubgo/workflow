@@ -51,13 +51,16 @@ const (
 	OpHealth Operation = "health"
 	// OpReschedule moves a delayed run to a new time (RunRescheduler).
 	OpReschedule Operation = "reschedule"
+	// OpEditRun changes a scheduled run's payload, priority or start
+	// (RunEditor).
+	OpEditRun Operation = "edit_run"
 	// OpCancelStep withdraws one step of a run (StepCanceller).
 	OpCancelStep Operation = "cancel_step"
 )
 
 // Operations lists every operation in a fixed order, the order Support
 // reports them in.
-var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep}
+var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun}
 
 // requirements is the capability each operation needs. OpPause needs
 // either pause capability; which one a call needs depends on its target
@@ -66,32 +69,33 @@ var requirements = map[Operation]workflow.Caps{
 	OpRuns:      workflow.CapRunQuery,
 	OpRun:       workflow.CapRunQuery,
 	OpFailures:  workflow.CapRunQuery,
-	OpDiscarded: workflow.CapRunQuery | workflow.CapRunStates,
+	OpDiscarded: workflow.CapsOf(workflow.CapRunQuery, workflow.CapRunStates),
 	OpQueues:    workflow.CapRunQuery,
 	OpRetry:     workflow.CapRetryRun,
 	OpDelete:    workflow.CapDeleteRun,
 	OpCancel:    workflow.CapCancel,
 	OpCancelAll: workflow.CapCancelAll,
-	OpPause:     workflow.CapPauseWorkflow | workflow.CapPauseQueue,
+	OpPause:     workflow.CapsOf(workflow.CapPauseWorkflow, workflow.CapPauseQueue),
 	OpSchedules: workflow.CapScheduleList,
 	// Pausing one schedule from a list needs the list too, since the ID
 	// a screen sends comes from it.
-	OpSchedulePause: workflow.CapScheduleList | workflow.CapSchedulePause,
+	OpSchedulePause: workflow.CapsOf(workflow.CapScheduleList, workflow.CapSchedulePause),
 	// Triggering one schedule from a list needs the list for the same
 	// reason.
-	OpScheduleTrigger: workflow.CapScheduleList | workflow.CapScheduleTrigger,
+	OpScheduleTrigger: workflow.CapsOf(workflow.CapScheduleList, workflow.CapScheduleTrigger),
 	OpForce:           workflow.CapForceRun,
 	// The bulk operations list the matches first, so they need the query
 	// as well as the per-run action.
-	OpRetryAll:  workflow.CapRunQuery | workflow.CapRetryRun,
-	OpDeleteAll: workflow.CapRunQuery | workflow.CapDeleteRun,
+	OpRetryAll:  workflow.CapsOf(workflow.CapRunQuery, workflow.CapRetryRun),
+	OpDeleteAll: workflow.CapsOf(workflow.CapRunQuery, workflow.CapDeleteRun),
 	// OpNodes, OpHealth, OpReschedule and OpCancelStep have no capability: their
 	// interfaces answer for themselves and refuse at the call (a wrapper
 	// returns an UnsupportedError), so only the interface is checked.
-	OpNodes:      0,
-	OpHealth:     0,
-	OpReschedule: 0,
-	OpCancelStep: 0,
+	OpNodes:      workflow.Caps{},
+	OpHealth:     workflow.Caps{},
+	OpReschedule: workflow.Caps{},
+	OpEditRun:    workflow.Caps{},
+	OpCancelStep: workflow.Caps{},
 }
 
 // Requirements returns the capabilities op needs. OpPause reports both
@@ -227,13 +231,13 @@ func (a *Admin) Support() []OperationSupport {
 		err := a.check(op)
 		s := OperationSupport{Operation: op, Supported: err == nil}
 		var ue *workflow.UnsupportedError
-		if errors.As(err, &ue) && requirements[op] == 0 {
+		if errors.As(err, &ue) && requirements[op].IsZero() {
 			// Only an interface is missing: say so, since Missing is zero.
 			s.Reason = ue.Reason
 		}
 		if err != nil {
 			s.Missing = a.c.Capabilities().Missing(requirements[op])
-			if s.Missing == 0 {
+			if s.Missing.IsZero() {
 				// The capability is declared but the interface is absent:
 				// report the capability anyway, so Missing is zero on an
 				// unsupported operation only when it needs no capability.
@@ -256,11 +260,11 @@ func (a *Admin) check(op Operation) error {
 	if a.rq != nil && readOp(op) {
 		// The querier answers the run query; the client still says what
 		// statuses its runs can reach (CapRunStates for discarded).
-		have |= a.rqCaps
+		have = have.With(a.rqCaps)
 	}
 	ok := have.Has(need)
 	if op == OpPause {
-		ok = have&need != 0
+		ok = have.HasAny(need)
 	}
 	if ok {
 		switch op {
@@ -304,17 +308,19 @@ func (a *Admin) check(op Operation) error {
 			ok = workflow.Supports(a.c, workflow.OpReschedule)
 		case OpCancelStep:
 			ok = workflow.Supports(a.c, workflow.OpCancelStep)
+		case OpEditRun:
+			ok = workflow.Supports(a.c, workflow.OpEditRun)
 		}
 	}
 	if ok {
 		return nil
 	}
 	missing := have.Missing(need)
-	if op == OpPause && have&need != 0 {
-		missing = 0
+	if op == OpPause && have.HasAny(need) {
+		missing = workflow.Caps{}
 	}
 	reason := "the client does not support this operation"
-	if missing == 0 {
+	if missing.IsZero() {
 		reason = "the client does not implement the interface this operation needs"
 	}
 	return &workflow.UnsupportedError{Field: "admin." + string(op), Missing: missing, Reason: reason}

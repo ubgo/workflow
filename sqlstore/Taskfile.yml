@@ -6,6 +6,8 @@ version: '3'
 # against a throwaway Postgres from compose.yml (test:pg) or the host's
 # Postgres.app (test:pg:host, the Mac), in a dedicated database,
 # ubgo_workflow_test, each test in its own table prefix. Heavy runs take the machine-wide testlock.
+# Runs with a second engine get -timeout 60m: the SQLite half alone takes up to
+# 23 minutes under -race on a loaded machine, so 20 minutes cut a healthy run.
 
 set: [pipefail]
 
@@ -36,7 +38,7 @@ tasks:
       - defer: {task: pg:down}
       - task: up
         vars: {PROFILE: postgres}
-      - 'WFTEST_PG_DSN="{{.PG_COMPOSE_DSN}}" go test -race -timeout 20m {{.PKGS}}'
+      - 'WFTEST_PG_DSN="{{.PG_COMPOSE_DSN}}" go test -race -timeout 60m {{.PKGS}}'
 
   pg:down:
     desc: Remove the throwaway Postgres and its data (test:pg already does this after every run)
@@ -45,7 +47,7 @@ tasks:
   test:pg:host:
     desc: Race tests on SQLite and the host's Postgres.app (the Mac shared stack; creates the ubgo_workflow_test database when missing)
     deps: [db:create]
-    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 20m {{.PKGS}}"']
+    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 60m {{.PKGS}}"']
 
   test:mysql:
     desc: Race tests on SQLite and MySQL 8 (compose.yml's throwaway mysql profile, removed after the run pass or fail)
@@ -59,7 +61,7 @@ tasks:
       - defer: {task: mysql:down}
       - task: up
         vars: {PROFILE: mysql}
-      - 'WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -timeout 20m {{.PKGS}}'
+      - 'WFTEST_MYSQL_DSN="{{.MYSQL_DSN}}" go test -race -timeout 60m {{.PKGS}}'
 
   # `up --wait` is retried: on rootless Docker a port released by the previous
   # run's container can still read as in use for a moment ("address already

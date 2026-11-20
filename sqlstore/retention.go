@@ -488,6 +488,7 @@ func (c *Client) deleteOrphans(ctx context.Context, tx *sql.Tx, ids []any) error
 		"DELETE FROM {attempt_errors} WHERE run_id IN " + in + gone,
 		"DELETE FROM {attempt_err_node} WHERE run_id IN " + in + gone,
 		"DELETE FROM {run_info} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_version} WHERE run_id IN " + in + gone,
 		"DELETE FROM {outputs} WHERE run_id IN " + in + gone,
 		"DELETE FROM {run_forced} WHERE run_id IN " + in + gone,
 		// A chain waiting for a handoff (next_wf set) outlives its run: the

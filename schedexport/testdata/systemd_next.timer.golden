@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule nightly-report
+
+[Timer]
+OnCalendar=2026-01-06 02:00:00 UTC
+AccuracySec=1s
+Persistent=true
+Unit=nightly-report.service
+
+[Install]
+WantedBy=timers.target

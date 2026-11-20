@@ -53,6 +53,17 @@
 // which is why this is the way to combine a transactional enqueue with
 // middleware (unique, debounce, tracing).
 //
+// # Change triggers
+//
+// ChangeTrigger renders the SQL of a row trigger on an app table (Postgres
+// 13 or later, MySQL 8, SQLite) that writes an outbox entry for every
+// insert, update or delete it fires on (TriggerSpec: the table, the
+// operations, the workflow, the columns copied into the payload, an
+// optional key column for the idempotency key), so a change made by any
+// program, a migration or a person at a SQL prompt becomes a job once it
+// commits. It returns text only (TriggerSQL.Create and Drop) and touches no
+// database; the relay delivers the entries like any other.
+//
 // # Time
 //
 // Due times, backoff and leases come from WithClock (default clock.Real),

@@ -8,7 +8,7 @@ import (
 
 // primaryOnlyCaps are the capabilities the failover client takes from the
 // primary alone; see Capabilities.
-const primaryOnlyCaps = workflow.CapClosure | workflow.CapWorkerScale
+var primaryOnlyCaps = workflow.CapsOf(workflow.CapClosure, workflow.CapWorkerScale)
 
 var (
 	_ workflow.WorkerScaler    = (*Client)(nil)

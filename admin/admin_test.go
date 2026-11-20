@@ -13,7 +13,7 @@ import (
 )
 
 func TestSupport(t *testing.T) {
-	a := New(&fakeClient{caps: workflow.CapRunQuery | workflow.CapPauseQueue | workflow.CapCancel})
+	a := New(&fakeClient{caps: workflow.CapsOf(workflow.CapRunQuery, workflow.CapPauseQueue, workflow.CapCancel)})
 	got := map[Operation]OperationSupport{}
 	for _, s := range a.Support() {
 		got[s.Operation] = s
@@ -55,7 +55,7 @@ func TestSupport_CapabilityWithoutInterface(t *testing.T) {
 		}
 	}
 	for _, s := range a.Support() {
-		if !s.Supported && s.Missing == 0 && (Requirements(s.Operation) != 0 || s.Reason == "") {
+		if !s.Supported && s.Missing.IsZero() && (!Requirements(s.Operation).IsZero() || s.Reason == "") {
 			t.Errorf("%s unsupported with Missing zero and no reason", s.Operation)
 		}
 	}

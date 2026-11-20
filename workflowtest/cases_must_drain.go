@@ -129,7 +129,7 @@ func (e *env) okDisposition(got workflow.DrainDisposition) bool {
 // needDrain skips unless the driver drains with a report.
 func (e *env) needDrain() workflow.ReportingDrainer {
 	e.t.Helper()
-	e.need(workflow.CapDrain | workflow.CapDrainReport)
+	e.need(workflow.CapsOf(workflow.CapDrain, workflow.CapDrainReport))
 	return as[workflow.ReportingDrainer](e, "workflow.ReportingDrainer")
 }
 

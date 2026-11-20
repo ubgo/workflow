@@ -159,7 +159,7 @@ func TestPublishSameIDDedups(t *testing.T) {
 type noKeys struct{ workflow.Client }
 
 func (n noKeys) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ workflow.CapIdempotencyKey
+	return n.Client.Capabilities().Without(workflow.CapIdempotencyKey)
 }
 
 func TestNewRefusesClientWithoutKeys(t *testing.T) {

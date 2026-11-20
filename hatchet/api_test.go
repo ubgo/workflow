@@ -96,7 +96,7 @@ func TestPauseNeedsAPI(t *testing.T) {
 		t.Fatalf("PauseSchedule without API: %v", err)
 	}
 	withAPI := New(Config{API: &API{}})
-	if !withAPI.Capabilities().Has(workflow.CapPauseWorkflow | workflow.CapSchedulePause) {
+	if !withAPI.Capabilities().Has(workflow.CapsOf(workflow.CapPauseWorkflow, workflow.CapSchedulePause)) {
 		t.Fatal("pause not declared with Config.API")
 	}
 	if withAPI.Capabilities().Has(workflow.CapPauseQueue) {

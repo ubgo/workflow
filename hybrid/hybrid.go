@@ -34,14 +34,18 @@ var forwardRetry = workflow.RetryPolicy{Max: 5, Backoff: workflow.Backoff{Initia
 // scheduleCaps are the capabilities the scheduler client answers for. Run
 // history, triggers, tick events, overlap and KeepRuns are left out: on
 // the scheduler they would describe the forwarder runs, not the jobs.
-const scheduleCaps = workflow.CapCron | workflow.CapCronZone | workflow.CapMisfireSkip | workflow.CapMisfireFireOnce |
-	workflow.CapMisfireFireAll | workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapSchedulePause |
-	workflow.CapScheduleList | workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapTickTime
+var scheduleCaps = workflow.CapsOf(
+	workflow.CapCron, workflow.CapCronZone, workflow.CapMisfireSkip, workflow.CapMisfireFireOnce,
+	workflow.CapMisfireFireAll, workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapSchedulePause,
+	workflow.CapScheduleList, workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapTickTime,
+)
 
 // notForwarded are the schedule capabilities neither backend answers for
 // here, for the reason above.
-const notForwarded = workflow.CapOverlapSkip | workflow.CapScheduleKeep | workflow.CapScheduleHistory |
-	workflow.CapScheduleTrigger | workflow.CapTickEvents
+var notForwarded = workflow.CapsOf(
+	workflow.CapOverlapSkip, workflow.CapScheduleKeep, workflow.CapScheduleHistory,
+	workflow.CapScheduleTrigger, workflow.CapTickEvents,
+)
 
 // Client is a workflow.Client whose schedules fire on one backend and whose
 // runs live on another. Build it with New.
@@ -55,6 +59,15 @@ var (
 	_ workflow.ScheduleLister = (*Client)(nil)
 	_ workflow.SchedulePauser = (*Client)(nil)
 	_ workflow.RunNotifier    = (*Client)(nil)
+
+	// Run-side optional interfaces come from the embedded Forward, so they
+	// reach the jobs client, where the runs live; Forward refuses with an
+	// UnsupportedError when the jobs client lacks one, and Supports
+	// answers for the jobs client.
+	_ workflow.RunEditor          = (*Client)(nil)
+	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.TransientSignaller = (*Client)(nil)
+	_ workflow.OpProber           = (*Client)(nil)
 )
 
 // New returns a client firing schedules on scheduler and running every
@@ -66,7 +79,7 @@ func New(scheduler, jobs workflow.Client) *Client {
 // Capabilities is the jobs client's, with the schedule family taken from
 // the scheduler client (see scheduleCaps and notForwarded).
 func (c *Client) Capabilities() workflow.Caps {
-	return (c.jobs.Capabilities()&^(scheduleCaps|notForwarded) | c.sched.Capabilities()&scheduleCaps)
+	return workflow.CapsOf(c.jobs.Capabilities().Without(scheduleCaps, notForwarded), c.sched.Capabilities().Intersect(scheduleCaps))
 }
 
 // Register registers wf on the jobs client without its schedule fields and,

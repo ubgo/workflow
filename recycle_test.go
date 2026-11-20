@@ -283,7 +283,7 @@ func TestRunQueryLabelPrefixes(t *testing.T) {
 	if err := workflow.CheckRunQuery(workflow.CapLabelPrefix, q); err != nil {
 		t.Fatal(err)
 	}
-	if err := workflow.CheckRunQuery(0, workflow.RunQuery{}); err != nil {
+	if err := workflow.CheckRunQuery(workflow.Caps{}, workflow.RunQuery{}); err != nil {
 		t.Fatal(err)
 	}
 	if workflow.CapLabelPrefix.String() != "LabelPrefix" {

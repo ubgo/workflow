@@ -3,6 +3,16 @@ version: '3'
 # A test piped into grep or tee still fails the task.
 set: [pipefail]
 
+# Temporary files (go build work dirs, t.TempDir, mktemp) go to disk when
+# /tmp is a tmpfs: a full gate makes hundreds of thousands of files, which
+# can exhaust a tmpfs's inodes or space while other jobs share it ("no space
+# left on device" from t.TempDir). WF_TMPDIR names the directory; else, with
+# a tmpfs /tmp, it is the user cache dir's ubgo-workflow/tmp; else TMPDIR as
+# it is. A TMPDIR set in the caller's environment wins over all of this.
+env:
+  TMPDIR:
+    sh: 'if [ -n "${WF_TMPDIR:-}" ]; then d=$WF_TMPDIR; elif [ "$(findmnt -no FSTYPE /tmp 2>/dev/null)" = tmpfs ]; then d=${XDG_CACHE_HOME:-$HOME/.cache}/ubgo-workflow/tmp; else d=${TMPDIR:-/tmp}; fi; mkdir -p "$d" && echo "$d"'
+
 # The Hatchet driver's own tasks, runnable from the root as hatchet:<task>
 # (hatchet:test:live runs the conformance suite against the shared stack's
 # Hatchet engine).
@@ -38,8 +48,10 @@ tasks:
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # -race because the drivers and the fake clock are concurrent code.
+  # -timeout 30m as sqlstore:test:pg: the SQLite engine suite alone runs
+  # past Go's 10-minute default on a loaded machine without hanging.
   test:run:
-    cmds: ['go test -race $(go list -m | sed "s|$|/...|")']
+    cmds: ['go test -race -timeout 30m $(go list -m | sed "s|$|/...|")']
 
   vet:
     desc: Run go vet over every module in go.work
@@ -62,18 +74,34 @@ tasks:
     cmds: ['testlock task gomin:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
-  # GOWORK=off: go.work declares the highest version (1.26.0), which an older
-  # toolchain refuses, so each module is vetted on its own.
+  # go.work declares the highest version (1.26.0), which an older toolchain
+  # refuses, so each module gets a temporary go.work at its own version
+  # holding the module and every module of this repo it requires: a module
+  # is vetted against the core and siblings in this tree, which are released
+  # with it, not against their last tags (a core API change would otherwise
+  # fail here until the core is tagged). Whether a released go.mod is tidy
+  # without go.work is deps:check's job.
   gomin:run:
-    env:
-      GOWORK: 'off'
     cmds:
       - |
+        root=$(pwd)
         find . -name go.mod -not -path './.cover/*' | sort | while read -r f; do
           d=$(dirname "$f"); v=$(awk '/^go /{print $2}' "$f")
           case $v in *.*.*) ;; *) v=$v.0 ;; esac
           echo "go$v $d"
-          (cd "$d" && GOTOOLCHAIN=go$v go vet ./...) || exit 1
+          self=$(cd "$d" && pwd); uses=$self
+          for p in $(GOWORK=off go mod edit -json "$f" | awk -F'"' '/"Path": "github.com\/ubgo\/workflow/{print $4}' | sort -u); do
+            rel=${p#github.com/ubgo/workflow}; rel=${rel#/}
+            dir=$(cd "$root/$rel" 2>/dev/null && pwd) || continue
+            if [ "$dir" != "$self" ] && [ -f "$dir/go.mod" ] && [ "$(awk '/^module /{print $2}' "$dir/go.mod")" = "$p" ]; then
+              uses="$uses $dir"
+            fi
+          done
+          w=$(mktemp -d)
+          { printf 'go %s\n\nuse (\n' "$v"; for u in $uses; do printf '\t%s\n' "$u"; done; printf ')\n'; } > "$w/go.work"
+          (cd "$d" && GOWORK="$w/go.work" GOTOOLCHAIN=go$v go vet ./...); rc=$?
+          rm -rf "$w"
+          [ $rc -eq 0 ] || exit 1
         done
 
   check:

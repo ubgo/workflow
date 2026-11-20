@@ -21,3 +21,6 @@
 
 # lore
 .lore/data/**/.tmp-*
+
+# compiled benchmark binary (go build in bench/)
+/bench/bench

@@ -128,7 +128,7 @@ var retryPrecedenceCases = []testCase{
 		}
 	}},
 	{"a higher level's policy replaces the lower one whole: MaxErrors of the step is not inherited by the job", func(e *env) {
-		e.need(workflow.CapJobRetry | workflow.CapRetryMaxErrors)
+		e.need(workflow.CapsOf(workflow.CapJobRetry, workflow.CapRetryMaxErrors))
 		var stepWins, jobWins counter
 		// step: Max 5 but MaxErrors 1 stops after one error; the job's
 		// plain Max 2 must replace it (3 attempts), not inherit MaxErrors.
@@ -356,7 +356,7 @@ var discardExhaustCases = func() []testCase {
 		}},
 		testCase{"observed statuses of an exhausting run follow the transition table", func(e *env) { e.runExhaustTransitions() }},
 		testCase{"a run discarded by exhaustion is not re-opened by Retry", func(e *env) {
-			e.need(workflow.CapDiscardExhausted | workflow.CapRunStates | workflow.CapRetryRun)
+			e.need(workflow.CapsOf(workflow.CapDiscardExhausted, workflow.CapRunStates, workflow.CapRetryRun))
 			var n atomic.Int64
 			wf := oneStep(e.name("w"), exhaustKinds[0].handler(&n, e.tm.unit))
 			wf.Retry = workflow.RetryPolicy{Max: 1, DiscardOnExhaust: true}
@@ -401,7 +401,7 @@ func (e *env) buildExhaust(kind exhaustKind, level declLevel, discard bool) *exh
 
 func (e *env) runExhaustKind(kind exhaustKind) {
 	e.t.Helper()
-	e.need(workflow.CapDiscardExhausted | workflow.CapRunStates | kind.needs)
+	e.need(workflow.CapsOf(workflow.CapDiscardExhausted, workflow.CapRunStates, kind.needs))
 	var events eventLog
 	haveEvents := e.c.Capabilities().Has(workflow.CapRunFinished)
 	if haveEvents {
@@ -485,7 +485,7 @@ func (e *env) runExhaustKind(kind exhaustKind) {
 // checks every observed move against workflow.Status.CanTransitionTo.
 func (e *env) runExhaustTransitions() {
 	e.t.Helper()
-	e.need(workflow.CapDiscardExhausted | workflow.CapRunStates)
+	e.need(workflow.CapsOf(workflow.CapDiscardExhausted, workflow.CapRunStates))
 	var n atomic.Int64
 	wf := oneStep(e.name("w"), exhaustKinds[0].handler(&n, e.tm.unit))
 	wf.Retry = workflow.RetryPolicy{Max: 2, Backoff: workflow.Backoff{Initial: e.tm.unit / 4}, DiscardOnExhaust: true}

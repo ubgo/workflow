@@ -33,7 +33,7 @@ var cancelCases = []testCase{
 		}
 	}},
 	{"Cancel stops a scheduled run before it starts", func(e *env) {
-		e.need(workflow.CapCancel | workflow.CapDelayedStart)
+		e.need(workflow.CapsOf(workflow.CapCancel, workflow.CapDelayedStart))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)
@@ -262,7 +262,7 @@ var sleepCases = []testCase{
 
 var durableCases = []testCase{
 	{"a waiting run survives a restart", func(e *env) {
-		e.need(workflow.CapDurable | workflow.CapWaitForEvent)
+		e.need(workflow.CapsOf(workflow.CapDurable, workflow.CapWaitForEvent))
 		if e.restart == nil {
 			e.t.Skip("Instance.Restart is nil")
 		}
@@ -344,7 +344,7 @@ var durableCases = []testCase{
 		}
 	}},
 	{"a scheduled run survives a restart", func(e *env) {
-		e.need(workflow.CapDurable | workflow.CapDelayedStart)
+		e.need(workflow.CapsOf(workflow.CapDurable, workflow.CapDelayedStart))
 		if e.restart == nil {
 			e.t.Skip("Instance.Restart is nil")
 		}
@@ -429,7 +429,7 @@ var capsCases = []testCase{
 	}},
 	{"Enqueue refuses Job fields it cannot honour", func(e *env) {
 		have := e.c.Capabilities()
-		if have.Has(workflow.CapDelayedStart | workflow.CapIdempotencyKey) {
+		if have.Has(workflow.CapsOf(workflow.CapDelayedStart, workflow.CapIdempotencyKey)) {
 			e.t.Skip("driver has CapDelayedStart and CapIdempotencyKey")
 		}
 		var c counter
@@ -439,11 +439,11 @@ var capsCases = []testCase{
 		defer cancel()
 		if !have.Has(workflow.CapDelayedStart) {
 			_, err := e.c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, RunAt: e.now().Add(time.Hour)})
-			assertUnsupported(e.t, err, "RunAt", 0)
+			assertUnsupported(e.t, err, "RunAt", workflow.Caps{})
 		}
 		if !have.Has(workflow.CapIdempotencyKey) {
 			_, err := e.c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, IdempotencyKey: e.name("key")})
-			assertUnsupported(e.t, err, "IdempotencyKey", 0)
+			assertUnsupported(e.t, err, "IdempotencyKey", workflow.Caps{})
 		}
 		e.quiet()
 		if got := c.count(); got != 0 {
@@ -452,7 +452,7 @@ var capsCases = []testCase{
 	}},
 	{"Schedule and Cancel refuse without their capability", func(e *env) {
 		have := e.c.Capabilities()
-		if have.Has(workflow.CapCron | workflow.CapCancel) {
+		if have.Has(workflow.CapsOf(workflow.CapCron, workflow.CapCancel)) {
 			e.t.Skip("driver has CapCron and CapCancel")
 		}
 		var c counter
@@ -462,12 +462,12 @@ var capsCases = []testCase{
 		defer cancel()
 		if !have.Has(workflow.CapCron) {
 			_, err := e.c.Schedule(ctx, workflow.Schedule{Name: e.name("s"), Workflow: wf.Name, Cron: "* * * * *", Location: time.UTC})
-			assertUnsupported(e.t, err, "", 0)
+			assertUnsupported(e.t, err, "", workflow.Caps{})
 		}
 		if !have.Has(workflow.CapCancel) {
 			ref := e.enqueue(workflow.Job{Workflow: wf.Name})
 			err := e.c.Cancel(ctx, ref)
-			assertUnsupported(e.t, err, "", 0)
+			assertUnsupported(e.t, err, "", workflow.Caps{})
 		}
 	}},
 }

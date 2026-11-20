@@ -243,13 +243,13 @@ func (f *Client) backend(s side) workflow.Client {
 // workflow.RunNotifier, which OnRunFinished requires.
 func (f *Client) Capabilities() workflow.Caps {
 	p, s := f.primary.Capabilities(), f.secondary.Capabilities()
-	caps := p & s
+	caps := p.Intersect(s)
 	if !f.schedBoth {
-		caps = caps&^scheduleCaps | p&scheduleCaps
+		caps = workflow.CapsOf(caps.Without(scheduleCaps), p.Intersect(scheduleCaps))
 	}
-	caps = caps&^primaryOnlyCaps | p&primaryOnlyCaps
+	caps = workflow.CapsOf(caps.Without(primaryOnlyCaps), p.Intersect(primaryOnlyCaps))
 	if _, _, ok := f.notifiers(); !ok {
-		caps &^= workflow.CapRunFinished
+		caps = caps.Without(workflow.CapRunFinished)
 	}
 	return caps
 }
@@ -373,7 +373,7 @@ func (f *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 	if job.IdempotencyKey == "" && !f.allowNoKey {
 		return workflow.RunRef{}, fmt.Errorf("%w (%w)", ErrKeyRequired, workflow.ErrInvalid)
 	}
-	if missing := f.Capabilities().Missing(workflow.RequiresJob(job)); missing != 0 {
+	if missing := f.Capabilities().Missing(workflow.RequiresJob(job)); !missing.IsZero() {
 		return workflow.RunRef{}, &workflow.UnsupportedError{Field: "Job", Missing: missing, Reason: "one of the failover backends cannot honour it"}
 	}
 	var perr error

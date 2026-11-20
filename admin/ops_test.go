@@ -124,7 +124,7 @@ func TestAdmin_NewOpsRefusedWithoutInterface(t *testing.T) {
 		t.Errorf("fail = %v", err)
 	}
 	for _, s := range a.Support() {
-		if (s.Operation == OpScheduleTrigger || s.Operation == OpForce) && (s.Supported || s.Missing == 0) {
+		if (s.Operation == OpScheduleTrigger || s.Operation == OpForce) && (s.Supported || s.Missing.IsZero()) {
 			t.Errorf("support %+v", s)
 		}
 	}
@@ -140,7 +140,7 @@ func TestAdmin_NewOpsRefusedWithoutInterface(t *testing.T) {
 
 	// And a client with the interfaces but not the capabilities.
 	f := seeded()
-	f.caps = allCaps &^ (workflow.CapScheduleTrigger | workflow.CapForceRun)
+	f.caps = allCaps.Without(workflow.CapScheduleTrigger, workflow.CapForceRun)
 	h := NewHandler(New(f), bearerAuth())
 	for _, p := range []string{"/schedules/s1/trigger", "/runs/r1/complete"} {
 		if rec := do(t, h, "POST", p, ""); rec.Code != http.StatusNotImplemented {

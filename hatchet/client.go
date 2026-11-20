@@ -21,31 +21,33 @@ import (
 
 // caps is what this driver proves against a real Hatchet engine; see
 // live_test.go for the test behind each one.
-const caps = workflow.CapDurable |
-	workflow.CapDelayedStart |
-	workflow.CapWaitForEvent |
-	workflow.CapDurableSleep |
-	workflow.CapConcurrencyKey |
-	workflow.CapRateLimit |
-	workflow.CapIdempotencyKey |
-	workflow.CapCron |
-	workflow.CapCancel |
-	workflow.CapQueue |
-	workflow.CapRunQuery |
-	workflow.CapCancelAll |
-	workflow.CapRetryRun |
-	workflow.CapScheduleList |
-	workflow.CapDrain |
-	workflow.CapDrainReport |
-	workflow.CapScheduleTrigger |
-	workflow.CapScheduleHistory |
-	workflow.CapEnqueueOnly |
-	workflow.CapTenant |
-	workflow.CapTickTime |
-	workflow.CapDueQuery |
-	workflow.CapResult |
-	workflow.CapCronSeconds |
-	workflow.CapKeyFIFO
+var caps = workflow.CapsOf(
+	workflow.CapDurable,
+	workflow.CapDelayedStart,
+	workflow.CapWaitForEvent,
+	workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey,
+	workflow.CapRateLimit,
+	workflow.CapIdempotencyKey,
+	workflow.CapCron,
+	workflow.CapCancel,
+	workflow.CapQueue,
+	workflow.CapRunQuery,
+	workflow.CapCancelAll,
+	workflow.CapRetryRun,
+	workflow.CapScheduleList,
+	workflow.CapDrain,
+	workflow.CapDrainReport,
+	workflow.CapScheduleTrigger,
+	workflow.CapScheduleHistory,
+	workflow.CapEnqueueOnly,
+	workflow.CapTenant,
+	workflow.CapTickTime,
+	workflow.CapDueQuery,
+	workflow.CapResult,
+	workflow.CapCronSeconds,
+	workflow.CapKeyFIFO,
+)
 
 // Defaults for Config fields left zero.
 const (
@@ -330,6 +332,8 @@ type Client struct {
 	runCtx    context.Context        // set by Start: ends when the workers are told to stop
 	watch     *workflow.RecycleWatch // set by Start when Config.Recycle is enabled; read by handlers
 	stopCause *workflow.RecycleError // set once by recycle; nil for every requested stop
+
+	deleted deletedStarts // delayed starts Cancel deleted before the engine could fire them
 }
 
 var _ workflow.Client = (*Client)(nil)
@@ -818,7 +822,8 @@ func enqueueTime(job workflow.Job) time.Time {
 // is looked up as a Hatchet scheduled run; once that fires the engine
 // deletes it, so the fired run is then found by the token the driver
 // stamped on it (see scheduledID). A scheduled run that neither exists nor
-// fired was deleted, which only Cancel (or the dashboard) does.
+// fired was deleted, which only Cancel (or the dashboard) does; see
+// resolveScheduled for how the two are told apart.
 func (c *Client) resolve(ctx context.Context, sdk *hatchetsdk.Client, ref workflow.RunRef) (string, runState, error) {
 	if !ref.RunID.IsZero() {
 		if _, perr := uuid.Parse(ref.RunID.String()); perr != nil {
@@ -833,7 +838,46 @@ func (c *Client) resolve(ctx context.Context, sdk *hatchetsdk.Client, ref workfl
 	if !ok {
 		return "", 0, fmt.Errorf("%w: scheduled run %q", workflow.ErrNotFound, ref.ScheduledID)
 	}
-	sched, err := findSchedule(ctx, sdk, sid.token)
+	return resolveScheduled(ctx, sdkLookup{sdk}, sid, c.cfg.VisibilityLag, c.deleted.has)
+}
+
+// scheduleLookup is what resolving a ScheduledID asks the engine: the
+// scheduled run stamped with a token, and the run it fired. sdkLookup
+// answers it from the engine; tests replay the engine's read lag with a
+// fake.
+type scheduleLookup interface {
+	schedule(ctx context.Context, token string) (*rest.ScheduledWorkflows, error)
+	firedRun(ctx context.Context, sid scheduledRef) (string, error)
+}
+
+// sdkLookup is the scheduleLookup of a connected client.
+type sdkLookup struct{ sdk *hatchetsdk.Client }
+
+func (l sdkLookup) schedule(ctx context.Context, token string) (*rest.ScheduledWorkflows, error) {
+	return findSchedule(ctx, l.sdk, token)
+}
+
+func (l sdkLookup) firedRun(ctx context.Context, sid scheduledRef) (string, error) {
+	return findRunByToken(ctx, l.sdk, sid)
+}
+
+// resolveScheduled is resolve for a ScheduledID. While the scheduled
+// record exists the start is pending (or names the run it fired). Once
+// the record is gone, either the engine fired it (it deletes the record
+// as it creates the run) or it was deleted, and the run list tells them
+// apart only after its read side caught up: the fired run may be missing
+// for up to lag. So the start reads gone only when no run is listed for
+// it after lag, or at once when deletedHere says this client deleted it
+// before the engine could fire it (deletedStarts).
+//
+// The ScheduledID's RunAt is no bound here: Reschedule moves a start
+// earlier without changing its ScheduledID, so a start can fire long
+// before that RunAt. Treating "before RunAt" as "nothing fired" read a
+// moved start cancelled in the moment between its record's delete and
+// its run's listing (seen under load by the conformance case "Reschedule
+// moves a delayed run earlier").
+func resolveScheduled(ctx context.Context, look scheduleLookup, sid scheduledRef, lag time.Duration, deletedHere func(token string) bool) (string, runState, error) {
+	sched, err := look.schedule(ctx, sid.token)
 	switch {
 	case err != nil:
 		return "", 0, err
@@ -842,16 +886,13 @@ func (c *Client) resolve(ctx context.Context, sdk *hatchetsdk.Client, ref workfl
 	case sched != nil:
 		return "", statePending, nil
 	}
-	deadline := time.Now().Add(c.cfg.VisibilityLag)
+	deadline := time.Now().Add(lag)
 	for {
-		runID, err := findRunByToken(ctx, sdk, sid)
+		runID, err := look.firedRun(ctx, sid)
 		if err != nil || runID != "" {
 			return runID, stateRun, err
 		}
-		// Before RunAt nothing can have fired (unless Reschedule moved
-		// it earlier, which findRunByToken searched for); after it, allow
-		// the read side to catch up before calling the schedule deleted.
-		if time.Now().Before(sid.runAt) || time.Now().After(deadline) {
+		if deletedHere(sid.token) || time.Now().After(deadline) {
 			return "", stateGone, nil
 		}
 		select {
@@ -1049,6 +1090,12 @@ func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 		err = sdk.Schedules().Delete(ctx, sched.Metadata.Id)
 		if err != nil && !isNotFound(err) && !isNoContent(err) {
 			return engineErr(err, "delete scheduled run")
+		}
+		// Deleted by this call (not already gone: a 404 may mean it just
+		// fired) and far enough from due that the engine had not loaded it
+		// to fire (rescheduleGuard): Status may call it cancelled at once.
+		if !isNotFound(err) && sched.TriggerAt.Sub(time.Now()) >= rescheduleGuard {
+			c.deleted.add(sid.token)
 		}
 		c.cancelledBeforeFire(ref, sched)
 		return nil

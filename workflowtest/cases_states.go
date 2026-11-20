@@ -65,7 +65,7 @@ var runStateCases = []testCase{
 		e.waitStatus(e.enqueue(workflow.Job{Workflow: wf.Name}), workflow.StatusFailed, e.tm.unit/4)
 	}},
 	{"Runs filters on Retrying and Discarded", func(e *env) {
-		e.need(workflow.CapRunStates | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapRunStates, workflow.CapRunQuery))
 		var c counter
 		wf := oneStep(e.name("d"), c.fail(workflow.Discard(errBoom)))
 		e.up(wf)

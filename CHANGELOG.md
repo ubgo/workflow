@@ -4,6 +4,104 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
+The core `v0.2.0` and every separate module at `v0.2.0`: `admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify` and `sqlstore/pgxtx`. Each separate module requires the core `v0.2.0` (and `recorder/sqlrecorder` requires `recorder/v0.2.0`). `cli`, `recorder/sqlrecorder`, `sentry`, `sqlstore/pgnotify` and `sqlstore/pgxtx` have no code change since their last tag; they move to v0.2.0 so the set moves together. This is a minor release because `workflow.Caps` changed shape, which breaks code that combined capabilities with operators.
+
+### Upgrading from 0.1
+
+Only code that builds or compares `workflow.Caps` values changes; code that calls `Has`, `Missing`, `String` or compares two sets with `==` builds as before. Every capability keeps its name, number and meaning.
+
+| 0.1 | 0.2 |
+|---|---|
+| `workflow.CapDurable \| workflow.CapCron` | `workflow.CapsOf(workflow.CapDurable, workflow.CapCron)` or `workflow.CapDurable.With(workflow.CapCron)` |
+| `caps \|= workflow.CapCron` | `caps = caps.With(workflow.CapCron)` |
+| `caps &^ workflow.CapCron` | `caps.Without(workflow.CapCron)` |
+| `a & b` | `a.Intersect(b)` |
+| `a&b != 0` | `a.HasAny(b)` |
+| `caps == 0` | `caps.IsZero()` |
+| `var caps workflow.Caps = 0` | `var caps workflow.Caps` or `workflow.Caps{}` |
+| `const myCaps = workflow.CapDurable \| ...` | `var myCaps = workflow.CapsOf(workflow.CapDurable, ...)` |
+
+`workflow.CapX` and `recorder.QueryCaps` are variables now, since Go has no constants of a struct type, so a `const` that used them becomes a `var`. A `Caps` stored as JSON by v0.1.x (a number) still decodes to the same set; v0.2.0 writes its `String()` form, such as `"Durable|Cron"`, which v0.1.x cannot read, so upgrade every reader before a writer when caps travel between processes.
+
+### Changed
+
+- **Breaking (source):** `workflow.Caps` is a set with room for 256 capabilities instead of a `uint64` with 64 bits, of which 61 were taken. Every capability keeps its name, number and meaning, and `Has`, `Missing`, `String`, `==` and every function signature are unchanged. Code that combined capabilities with operators or declared them as constants changes: `a|b` becomes `workflow.CapsOf(a, b)` or `a.With(b)`, `a&^b` becomes `a.Without(b)`, `a&b` becomes `a.Intersect(b)`, `a&b != 0` becomes `a.HasAny(b)`, `c == 0` becomes `c.IsZero()`, `const` becomes `var`, and `0` becomes `workflow.Caps{}`. `workflow.CapX` and `recorder.QueryCaps` are variables, since Go has no constants of a struct type.
+- A `Caps` encodes to JSON as its `String()` form, such as `"Durable|Cron"`; the numeric form of v0.1.x still decodes to the same set. A capability number no declared capability has prints as `#N` instead of `unknown`, so the form round-trips.
+- memory: with `ConcurrencyRoundRobin`, workers take the waiting steps of different keys in turn instead of in arrival order.
+
+### Added
+
+- `workflow.CapsOf`, `Caps.With`, `Caps.Without`, `Caps.Intersect`, `Caps.HasAny`, `Caps.IsZero`, `workflow.AllCaps` and `workflow.ParseCaps`, and a guard test that fails when two capabilities share a number.
+- Scoped data shared across runs (WX-01): `workflow.DataStore` with folder, workflow and global scopes (`Folder`, `WorkflowScope`, `GlobalScope`), versioned compare-and-set writes, the `Data` plugin, `WithData`, `ContextWithData`, and `GetData`, `SetData`, `UpdateData`, `DeleteData`; `MemoryData`, `sqlstore.DataStore` (its own migration list, `<prefix>data`) and `redis.DataStore`; `workflowtest.DataStoreContract`.
+- Idempotent consumption with a consumer inbox (MQ-15, TX-07): `workflow.Inbox` (claim with a lease and fencing token, complete with a keep window, release), `InboxConsumer.Once`, `ErrInboxBusy`, `ErrInboxLost`, `MemoryInbox`; `sqlstore.Inbox` (its own migration list, `<prefix>inbox`) whose `MarkTx` records a message inside the app's transaction for exactly-once writes, pruned by the dispatcher; `redis.Inbox`; `events.WebhookConfig.Inbox` drops redelivered delivery IDs for as long as the inbox keeps them; `workflowtest.InboxContract`.
+- Message attributes (MQ-16): `workflow.AttributeCodec` and the `Attributes` codec carry a job's workflow, tenant, queue, idempotency key, priority, start time, labels and W3C trace context (`traceparent`, `tracestate`, `baggage`) as broker attributes or headers, with limit profiles `SQSAttributes`, `PubSubAttributes`, `KafkaHeaders`, `NATSHeaders` and `HTTPHeaders`, label packing, refusal instead of truncation, `TraceLabels`, `SetHeader` and `HeaderAttributes`.
+- Workflow versions for rolling deploys (LO-11): `Workflow.Version` and `MinVersion`, `Workflow.RunsVersion`, `StepInfo.Version`, `RunInfo.Version` and `CapWorkflowVersion` (61). A run records the version of the client that enqueued it and a worker takes only the versions it runs, so a run started by new code never runs on old code. memory, sqlstore (migration `010_run_version`) and redis declare it; Hatchet refuses a versioned workflow.
+- Step layout: `workflow.Stages` (groups of parallel steps, one after another), `workflow.When` (a conditional step that passes its input on), `workflow.Milestone` (a step enabled only while run data holds a value), `middleware.SoftTimeout` with `SoftDone` and `SoftExpired` (a warning before the hard timeout), `middleware.LatestOnly` (skip the work of a scheduled run that is no longer the newest) and `workflow.StartWhen` with `ClockAfter` (hold Start until the clock or another dependency is ready).
+- Joins over child runs: `workflow.JoinChildren` with `JoinSpec{Need, Rest, More}` for discriminators, partial joins and dynamic joins, the rest kept, cancelled (`JoinCancelRest`) or forced complete (`JoinCompleteRest`), `JoinFailedError`; `workflow.CancelChildren` and `ChildLabels`; `workflow.MapRuns` runs a child per item of a paged source with a bound in flight and a failure budget (`MapPage`, `MapRunsOptions`, `MapRunsResult`, `MapRunsError`).
+- Promises and updates: `workflow.PromiseStore` with `MemoryPromises`, `sqlstore.PromiseStore` (rows in the journal table, no new migration) and `redis.PromiseStore` (SET NX, Redis 7+); `ResolvePromise`, `RejectPromise`, `AwaitPromise`, `WaitPromise`, `PromiseResult`, `NewPromiseID`, `PromiseEvent`, `ErrPromiseSettled`, `PromiseRejectedError`; `workflow.Update` with `UpdateHandler`, `ReplyUpdate` and `DecodeUpdate`; `workflow.SignalWithStart`; `workflow.ContinueAsNew` with `ContinuedFrom` and `LabelContinuedFrom`; `workflow.CancelSteps`.
+- Virtual objects: `workflow.DefineObject`, `ObjectSpec`, `ObjectMethod`, `CallObject`, `ObjectState` and `LabelObjectKey`: per-key serial calls with state in any JournalStore, each call applied once.
+- `workflow.RunResetter` (`ResetRun`) re-runs a failed run from a chosen step on the memory, SQL and Redis drivers, with `workflow.StepsFrom`.
+- `workflow.TransientSignaller` (`SignalWaiting`) delivers an event only to the runs waiting now, on the memory, SQL and Redis drivers.
+- `Step.Slots` and `workflow.CapSlotCost` (62): a heavy step holds several of the client's worker slots on the memory and SQL drivers, with `workflow.SlotPool`, `StepSlots` and `CheckSlots`.
+- Partitioned runs: `workflow.EnqueuePartitions` starts one run per partition key (`PartitionSet`, `PartitionKey`, reserved labels `LabelPartitionSet` and `LabelPartitionKey`), `PartitionStatus` lists the latest run of every partition through `RunQuerier` (needs `CapRunQuery`), `RetryFailedPartitions` starts again only the failed ones, and `PartitionOf` gives a step its set and key.
+- Data-aware scheduling and asset lineage in `events`: `NewDatasets` on a `Bus`, `Datasets.Updated` announcing dataset versions (`EventDatasetUpdated`, `DatasetEventID`, `DatasetUpdate`), any-of and all-of `DatasetTrigger`s that never start twice for one version (`LabelDatasetTrigger`, `TriggerRun`, `UpdateResult`), and a pluggable `LineageStore` (`Lineage`, `LineageQuery`, `LineageProduced`, `LineageConsumed`, `MemoryLineage`, `WithLineage`, `WithDatasetClock`) queried by `Producers`, `Consumers`, `Outputs` and `Inputs`.
+- A year field: `cron.ParseYear` reads seven fields (second minute hour day-of-month month day-of-week year, years 1970-2199) and stops after the last matching year; use it through any driver's `WithCronParser`. `cron.Fields` and `cron.FieldsOf` give a parsed schedule's values per field.
+- Package `schedexport` writes a Schedule as a Kubernetes batch/v1 CronJob (`CronJob`), a systemd timer and service (`SystemdTimer`), a launchd plist (`Launchd`) and a Windows Task Scheduler task (`TaskScheduler`), plus one-shot NextFire forms for a desktop app's OS handoff; anything a format cannot express is refused with a `NotExpressibleError` matching `ErrNotExpressible`.
+- `regional`: `regional.New(regions, router, opts...)` joins one client per region into one `workflow.Client` that sends each job to the region a pluggable `Router` picks (`ByLabel(key, fallback)`, `RouterFunc`); refs, schedule IDs, run events, ticks and `StepInfo` carry a `<region>:` prefix so every call reaches the region holding the run; an unknown region is refused with `ErrUnknownRegion` (matches `workflow.ErrInvalid`), never sent to a default; `Signal` goes to every region unless `WithSignalRouter` narrows it; `Schedule` is placed by the router and declared `Cron` fires in `WithScheduleRegion` only; capabilities are the intersection (no `CapClosure` or `CapWorkerScale`); the optional run and schedule interfaces are forwarded by prefix or to every region.
+- `admin`: `WithTenantScope(func(r, who) (tenant, error))` confines each caller to one `Job.Tenant`: lists, counts and bulk bodies are pinned to the tenant, a run or schedule of another tenant answers 404, system-wide routes (queues, pauses, metrics, nodes, health) and unknown routes answer 403, `AllTenants` serves a caller unscoped, and a client without `CapTenant` is refused with 501; `TenantFrom(ctx)`; `GET /capabilities` names the tenant and the UI hides the system pages for a scoped caller.
+- Trigger rules over tolerated steps: `workflow.WithRules` with `RulesSpec` (`Tolerate`, `Catch`, `Rules`, `Finally`), `TriggerRule` (`RuleAllSucceeded`, `RuleNoneFailed`, `RuleAllDone`, `RuleOneFailed`, `RuleAllFailed`, `RuleOneSucceeded`, `RuleOneFailedOf`), `CatchRoute`, `StepFailure`, `ParentFailures` and `ErrStepsFailed`; `workflow.Boundary` for a timer that does not stop the step.
+- `workflow.Saga` (`NewSaga`, `Do`, `Abort`, `Done`, `ErrSagaAborted`, `ErrCompensated`): memoised actions and compensations inside one step.
+- `workflow.MultiChoice` and `workflow.Race` with `SignalChoice`: a multi-choice with a synchronizing join, and a deferred choice decided by the first signal.
+- `workflow.Poll` (`PollSpec`, `ErrPollTimeout`) and `workflow.SleepUntil`: monitor loops, sensors and sleeps to a time that hold no worker (CapSnooze).
+- Human approvals: `workflow.ApprovalStep`, `Approve`, `Reject`, `Decision`, `DecisionOf`, `NewApprovalToken` and `ApprovalSigner` for signed, expiring links.
+- `workflow.Group` (step groups), `workflow.RecursionLimit` (`LabelDepth`, `ErrDepth`), `workflow.EndRun` with the `EndRuns` plugin, `workflow.ShapeGuard` (`Shape`, `LabelShape`, `ErrShapeChanged`), typed `workflow.EnqueueOf` and `AwaitResultOf`.
+- `workflow.RunEditor` and `JobEdit`: edit a scheduled run's payload, priority and start (memory, sqlstore, Redis); conformance group `edit`; admin `POST /runs/{id}/edit`.
+- `clock.WakeChecked` and `clock.DefaultWakeCheck`: timers that fire by the wall clock after a laptop sleep.
+- `middleware.UniqueConfig.Replace`: a duplicate replaces the scheduled holder's payload, priority and start.
+- `events.CloudEvent` with JSON format and HTTP binary/structured mode, plus `ToMessage`/`FromMessage` (MQ-09).
+- `events.WithUpcasters` and `Message.Version` upcast payloads before subscribers see them (MQ-10).
+- `events.WithLog`, `MemoryLog` and `Bus.Replay` (EV-04).
+- `Bus.SubscribeCancel` cancels runs by label on an event, and `Divert` starts another workflow after the cancel (EV-05, WX-14).
+- `workflow.Then` starts the next workflow when a run ends (EV-08).
+- `workflow.Emit` and the `Stream` plugin stream partial step output; `MemoryStream` keeps it in one process.
+- New package `httprun`: start a run over HTTP (202 + Location), read its status and result, and follow it with Server-Sent Events, closed by default.
+- New package `push`: deliver a job to an HTTP endpoint signed with Standard Webhooks, and `push.Handler` to run it on the receiving side.
+- admin: `WithAudit` records every write action; `WithTraceLink` links a run to its trace; otel: `TraceIDOf`.
+- Schedule tools: the extended cron dialect (`cron.ParseExtended`/`cron.Extended`: L, W, #), `cron.Hash` for H spread, `cron.Describe`; exclusion calendars with `SkipExcluded`; `Backfill`/`BackfillPlan`; `LimitRuns`, `OneShot`, `PruneEndedSchedules`; `FireAtStartup` with `StartupOncePer`; `middleware.FireJitter`.
+- `workflow.GuardOverlap` with `OverlapReplace` and `OverlapBufferOne`: replace the running run of a schedule, or keep at most one waiting behind it.
+- `sqlstore.Client.CompleteTx` completes a running step inside the app's transaction, fenced by its lease (`ErrLeaseLost`).
+- `outbox.ChangeTrigger` generates row triggers that write outbox entries (Postgres, MySQL, SQLite).
+- Documented insert contract for enqueuing sqlstore runs from other languages; proven: concurrent `EnqueueTx` with one key yields one run.
+- Job guards: `middleware.ExpireAt`/`ExpireAfter`/`Expire` (expiry, `ExpireMaxWait`), `workflow.ExpireWaiting` sweep, `middleware.Bounded`/`Quota` with `DepthFromRuns`/`TenantCount`, `QuietHours`, `ValidatePayload`/`ValidateJSON[T]`, `workflow.RetryLadder`/`LadderPolicy`, `workflow.Invariant`/`ErrConstraint` and `middleware.Check`.
+- Pools: `middleware.Pool`, `CriticalSection` and `AutoDisable` over `UniqueStore` and `DisableStore`.
+- `RunQuery.Payload` and `CapPayloadSearch` (63): find runs by fields of their JSON payload (memory, sqlstore, Redis); conformance group `payloadsearch`.
+- `workflow.Suspension`, `SuspendRun`, `ResumeRun`, `RunSuspended`: hold one run at its next step and resume it.
+- Aggregation: `middleware.Aggregate` and `AggregatePlugin` merge the jobs of a group and window into one flush run, with memory, SQL and Redis stores.
+- `batch.EnqueueChunked`: resumable chunked fan-out with idempotency keys and an optional upstream limit.
+- Package `cutover`: move to a new backend without stopping; `Remaining` and `MoveSchedules`.
+- `failover`, `regional` and `cutover` forward `EditRun`, `ResetRun` and `SignalWaiting` (and `cutover` also `Reschedule` and `CancelStep`): a call by ref goes to the backend or region the ref names and keeps its prefix; `SignalWaiting` reaches every backend, or the regions `Signal` would reach, and returns the total resumed, refused with `ErrUnsupported` before any delivery when one of them lacks it. `hybrid` forwards them to its jobs client. `cutover.Client` implements `workflow.OpProber`.
+- `workflow.OpResetRun` and `workflow.OpSignalWaiting` for `workflow.Supports`.
+- `workflowtest.Fake` records `ResetRun` (`Resets`, `AssertReset`) and `SignalWaiting` (`SignalsWaiting`, `AssertSignalledWaiting`), keeps a promise store (`Promises`, `AssertPromiseResolved`, `AssertPromiseRejected`, `AssertPromisePending`) and reads back virtual object calls (`ObjectCalls`, `AssertObjectCalled`, `AssertObjectNotCalled`); `FakeLike(c)` also copies whether `c` does `ResetRun` and `SignalWaiting`.
+- Recipes on the new flow blocks, each with a test on the memory driver: a local synchronizing merge over `MultiChoice` branches, a default branch at a deadline for `Race`, all-of, any-of and mixed wait conditions, setup and teardown with `RulesSpec.Finally`, operator detours (hold, skip, redo) over `SuspendRun` and `ResetRun`, a step on an accelerator through a child run on its own queue, a bounded memory queue with `middleware.Bounded`, and a schedule cursor in a `DataStore` folder.
+
+### Fixed
+
+- `hatchet`: a delayed start moved earlier by `Reschedule` no longer reads `cancelled` for a moment as it fires. Status decided a ScheduledID whose scheduled record was gone and whose run was not listed yet by comparing with the ScheduledID's first RunAt, which a move earlier makes wrong; it now reads such a start cancelled only after `Config.VisibilityLag` with no run listed, or at once when the same client's `Cancel` deleted it at least 15 seconds before it was due. Status of a delayed start cancelled by another process now takes up to `VisibilityLag`.
+- middleware: `Unique`, `UniqueWith` and `ClaimCheck` no longer refuse a library label that its owner allowed on the ctx (Spawn's parent labels and the other helpers' labels).
+- sqlstore: a delayed run that fell due could wait for the workers' next poll, because the dispatcher woke a worker before admitting the run; it now wakes them after. With the default one-second poll this was a short delay, with a long `WithPollInterval` up to the whole interval.
+
+### Tests
+
+- `task gomin` vets each module under its declared Go version against this tree's core and sibling modules, through a temporary go.work per module, so the Go minimum is proven before the core is tagged.
+
+### Examples
+
+- `scoped-data`, `consumer-inbox`, `message-attributes`, `rolling-deploy`.
+- `flow-stages`, `flow-joins`, `flow-promises`, `virtual-objects`, `partitioned-runs`, `datasets`, `schedule-export`, `regional-routing`, `admin-tenants`.
+- `flow-patterns`, `edit-run`, `schedule-tools`, `job-guards`, `run-control`, `events-more`, `http-status`, `push-delivery`, `admin-audit`, `complete-in-transaction`, `change-triggers`, `aggregate-digest`, `backend-cutover`.
+
 ## [sqlstore 0.1.1, otel 0.1.1] - 2026-11-10
 
 `sqlstore/v0.1.1`, `otel/v0.1.1`, and two new modules split out of sqlstore, `sqlstore/pgnotify/v0.1.0` and `sqlstore/pgxtx/v0.1.0`. A released module now requires only what its library code imports, so an app never downloads a package it does not use. No change to any library's behaviour; the other modules keep their tags.

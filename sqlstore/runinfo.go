@@ -91,11 +91,13 @@ type infoExtra struct {
 	hasOutput sql.NullInt64
 	progress  sql.NullString
 	nodes     sql.NullString
+	version   sql.NullInt64 // run_version (LO-11); NULL for version zero
 }
 
 // fill copies the run_info facts into info.
 func (x infoExtra) fill(c *Client, info *workflow.RunInfo) {
 	info.Tenant = x.tenant.String
+	info.Version = int(x.version.Int64)
 	if x.hasOutput.Int64 == 1 {
 		info.Output = append([]byte{}, x.output...)
 	}

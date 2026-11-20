@@ -1,136 +1,133 @@
 package workflow
 
-import "strings"
-
-// Caps is a set of capabilities a driver really has. Drivers declare it
-// through Client.Capabilities; Start compares it with Requires for every
-// registered workflow and refuses what cannot be honoured, so a missing
-// feature is an error at start-up rather than a silent no-op at run time.
+// The capabilities. Each is a one-capability Caps (see capset.go for the
+// set itself). A new capability takes the next free number, which is never
+// reused or renumbered: the number is the capability's identity in the
+// legacy numeric JSON form (Caps.UnmarshalJSON), and TestCapsDistinct
+// fails when two capabilities share one. A new bit is kept for a spec
+// field that Requires, RequiresJob or RequiresSchedule must check, or for
+// data a driver would otherwise leave silently empty. An optional
+// interface whose call can answer for itself (RunRescheduler,
+// StepCanceller, HealthChecker, LifecycleNotifier, ReportProgress) gets
+// no bit: it returns an UnsupportedError when the driver cannot do it.
 //
-// Caps is 64 bits and 58 are used, so a new bit is kept for a spec field
-// that Requires, RequiresJob or RequiresSchedule must check, or for data a
-// driver would otherwise leave silently empty. An optional interface whose
-// call can answer for itself (RunRescheduler, StepCanceller,
-// HealthChecker, LifecycleNotifier, ReportProgress) gets no bit: it
-// returns an UnsupportedError when the driver cannot do it.
-type Caps uint64
-
-// The capabilities.
-const (
+// They are variables only because Go has no constants of a struct type;
+// never assign to one.
+var (
 	// CapDurable: runs, waits and sleeps survive a process restart.
-	CapDurable Caps = 1 << iota
+	CapDurable = defineCap(0, "Durable")
 	// CapDelayedStart: Job.RunAt is honoured.
-	CapDelayedStart
+	CapDelayedStart = defineCap(1, "DelayedStart")
 	// CapWaitForEvent: wait steps suspend without holding a worker until
 	// a Signal or their deadline. Whether the wait survives a restart is
 	// CapDurable's claim.
-	CapWaitForEvent
+	CapWaitForEvent = defineCap(2, "WaitForEvent")
 	// CapDurableSleep: sleep steps suspend without holding a worker.
 	// Whether the sleep survives a restart is CapDurable's claim.
-	CapDurableSleep
+	CapDurableSleep = defineCap(3, "DurableSleep")
 	// CapConcurrencyKey: Workflow.Concurrency is enforced per key.
-	CapConcurrencyKey
+	CapConcurrencyKey = defineCap(4, "ConcurrencyKey")
 	// CapRateLimit: Workflow.RateLimits are enforced.
-	CapRateLimit
+	CapRateLimit = defineCap(5, "RateLimit")
 	// CapIdempotencyKey: Job.IdempotencyKey dedups enqueues.
-	CapIdempotencyKey
+	CapIdempotencyKey = defineCap(6, "IdempotencyKey")
 	// CapCron: Workflow.Cron and Client.Schedule fire.
-	CapCron
+	CapCron = defineCap(7, "Cron")
 	// CapCancel: Client.Cancel stops a run.
-	CapCancel
+	CapCancel = defineCap(8, "Cancel")
 	// CapRunFinished: the driver implements RunNotifier with the
 	// guaranteed delivery described there (every terminal run, at least
 	// once). A driver that implements RunNotifier without this capability
 	// delivers best-effort only.
-	CapRunFinished
+	CapRunFinished = defineCap(9, "RunFinished")
 	// CapRetryJitter: Backoff.Jitter spreads retry delays.
-	CapRetryJitter
+	CapRetryJitter = defineCap(10, "RetryJitter")
 	// CapRetryDelay: RetryPolicy.DelayFor sets a retry's delay from the
 	// error (RetryAfter).
-	CapRetryDelay
+	CapRetryDelay = defineCap(11, "RetryDelay")
 	// CapMisfireSkip: Misfire{Policy: MisfireSkip} is honoured.
-	CapMisfireSkip
+	CapMisfireSkip = defineCap(12, "MisfireSkip")
 	// CapMisfireFireOnce: Misfire{Policy: MisfireFireOnce}, with Within,
 	// is honoured.
-	CapMisfireFireOnce
+	CapMisfireFireOnce = defineCap(13, "MisfireFireOnce")
 	// CapMisfireFireAll: Misfire{Policy: MisfireFireAll}, with Within and
 	// Max, is honoured.
-	CapMisfireFireAll
+	CapMisfireFireAll = defineCap(14, "MisfireFireAll")
 	// CapCronZone: Workflow.CronLocation and Schedule.Location may be a
 	// zone other than UTC, evaluated in that zone across DST.
-	CapCronZone
+	CapCronZone = defineCap(15, "CronZone")
 	// CapQueue: Workflow.Queue and Job.Queue route runs to named queues,
 	// and the driver's per-queue worker limits (QueueConfig) are honoured.
-	CapQueue
+	CapQueue = defineCap(16, "Queue")
 	// CapQueueOverride: Job.Queue may differ from the workflow's queue.
-	CapQueueOverride
+	CapQueueOverride = defineCap(17, "QueueOverride")
 	// CapJobRetry: Job.Retry replaces the step policies for one run.
-	CapJobRetry
+	CapJobRetry = defineCap(18, "JobRetry")
 	// CapRetryUntil: RetryPolicy.Until is honoured.
-	CapRetryUntil
+	CapRetryUntil = defineCap(19, "RetryUntil")
 	// CapRetryMaxErrors: RetryPolicy.MaxErrors is honoured.
-	CapRetryMaxErrors
+	CapRetryMaxErrors = defineCap(20, "RetryMaxErrors")
 	// CapDiscard: a step returning Discard(err) ends its run cancelled,
 	// not failed. Without it Discard behaves as Permanent.
-	CapDiscard
+	CapDiscard = defineCap(21, "Discard")
 	// CapRunQuery: the client implements RunQuerier.
-	CapRunQuery
+	CapRunQuery = defineCap(22, "RunQuery")
 	// CapRetryRun: the client implements RunRetrier, re-running a failed
 	// run from the step that failed.
-	CapRetryRun
+	CapRetryRun = defineCap(23, "RetryRun")
 	// CapDeleteRun: the client implements RunDeleter.
-	CapDeleteRun
+	CapDeleteRun = defineCap(24, "DeleteRun")
 	// CapCancelAll: the client implements BulkCanceller.
-	CapCancelAll
+	CapCancelAll = defineCap(25, "CancelAll")
 	// CapPauseWorkflow: the client implements Pauser for PauseTarget.Workflow
 	// and PauseTarget.All.
-	CapPauseWorkflow
+	CapPauseWorkflow = defineCap(26, "PauseWorkflow")
 	// CapPauseQueue: the client implements Pauser for PauseTarget.Queue.
-	CapPauseQueue
+	CapPauseQueue = defineCap(27, "PauseQueue")
 	// CapSchedulePause: the client implements SchedulePauser.
-	CapSchedulePause
+	CapSchedulePause = defineCap(28, "SchedulePause")
 	// CapScheduleWhen: Workflow.ScheduleWhen is asked before every tick.
-	CapScheduleWhen
+	CapScheduleWhen = defineCap(29, "ScheduleWhen")
 	// CapScheduleWindow: Schedule.Windows and Workflow.CronWindows are
 	// honoured.
-	CapScheduleWindow
+	CapScheduleWindow = defineCap(30, "ScheduleWindow")
 	// CapTickEvents: the client implements TickNotifier.
-	CapTickEvents
+	CapTickEvents = defineCap(31, "TickEvents")
 	// CapScheduleList: the client implements ScheduleLister.
-	CapScheduleList
+	CapScheduleList = defineCap(32, "ScheduleList")
 	// CapDrain: the client implements Drainer.
-	CapDrain
+	CapDrain = defineCap(33, "Drain")
 	// CapRunStates: the driver reports StatusRetrying while a step waits
 	// on its retry backoff and StatusDiscarded for a run a step ended with
 	// Discard, and fills RunInfo.NextAttempt and NextAttemptAt (with
 	// CapRunQuery). Without it those moments read StatusQueued or
 	// StatusRunning, and a discarded run StatusCancelled (CapDiscard) or
 	// StatusFailed; see EndStatus.
-	CapRunStates
+	CapRunStates = defineCap(34, "RunStates")
 	// CapChain: Job.Chain is honoured (each job enqueued when the one
 	// before it succeeds) and a running step may edit its run's chain with
 	// PrependToChain and AppendToChain. The rest of a chain is data stored
 	// with the run, so on a durable driver it survives a crash.
-	CapChain
+	CapChain = defineCap(35, "Chain")
 	// CapWorkerScale: the client implements WorkerScaler, so a Balancer
 	// can change its per-queue worker counts while it runs.
-	CapWorkerScale
+	CapWorkerScale = defineCap(36, "WorkerScale")
 	// CapClosure: the client implements ClosureEnqueuer, running a Go
 	// function as a job in this process. A closure cannot be stored or
 	// sent, so only an in-process driver declares it.
-	CapClosure
+	CapClosure = defineCap(37, "Closure")
 	// CapLabelPrefix: RunQuery.LabelPrefixes is honoured by Runs and
 	// CancelAll (a label value matched by prefix).
-	CapLabelPrefix
+	CapLabelPrefix = defineCap(38, "LabelPrefix")
 	// CapOverlapSkip: OverlapSkip on Workflow.CronOverlap and
 	// Schedule.Overlap is honoured, decided from the previous run's
 	// stored status (OverlapPolicy.Blocks).
-	CapOverlapSkip
+	CapOverlapSkip = defineCap(39, "OverlapSkip")
 	// CapScheduleTrigger: the client implements ScheduleTriggerer.
-	CapScheduleTrigger
+	CapScheduleTrigger = defineCap(40, "ScheduleTrigger")
 	// CapScheduleHistory: ScheduleInfo.Last (last fire, last run and its
 	// status) is filled, and stored with the schedule on a durable driver.
-	CapScheduleHistory
+	CapScheduleHistory = defineCap(41, "ScheduleHistory")
 	// CapEnqueueOnly: the driver has an enqueue-only mode (an option of
 	// the driver's constructor) whose client enqueues, and answers
 	// Status, Cancel and Signal, without Start and without running any
@@ -140,115 +137,84 @@ const (
 	// checks only) and Start returns nil without starting anything. An
 	// in-process driver cannot declare it: nothing else would ever run
 	// what it enqueued.
-	CapEnqueueOnly
+	CapEnqueueOnly = defineCap(42, "EnqueueOnly")
 	// CapErrorHistory: RunInfo.Errors holds the run's failed attempts
 	// (AttemptError), oldest first, bounded by the driver's
 	// error-history option (DefaultErrorHistory when unset).
-	CapErrorHistory
+	CapErrorHistory = defineCap(43, "ErrorHistory")
 	// CapShutdownRequeue: a step attempt cut short by a clean stop (the
 	// Start context cancelled) is put back without spending an attempt,
 	// so the next worker runs it with the same attempt number and it
 	// does not count toward the retry limit or appear in the error
 	// history. Only a durable driver can declare it.
-	CapShutdownRequeue
+	CapShutdownRequeue = defineCap(44, "ShutdownRequeue")
 	// CapForceRun: the client implements RunForcer.
-	CapForceRun
+	CapForceRun = defineCap(45, "ForceRun")
 	// CapSnooze: a step returning Snooze(d) is put back for d without
 	// spending an attempt (see Snooze).
-	CapSnooze
+	CapSnooze = defineCap(46, "Snooze")
 	// CapHeartbeat: Step.HeartbeatTimeout is honoured (an attempt that
 	// goes that long without Heartbeat fails with ErrHeartbeatTimeout),
 	// and Heartbeat from a step reaches the driver (a durable driver
 	// extends the attempt's lease).
-	CapHeartbeat
+	CapHeartbeat = defineCap(47, "Heartbeat")
 	// CapTenant: Job.Tenant is stored with the run and reported on
 	// StepInfo.Tenant, RunInfo.Tenant and LifecycleEvent.Tenant, and
 	// RunQuery.Tenant filters by it.
-	CapTenant
+	CapTenant = defineCap(48, "Tenant")
 	// CapRunTimeout: Workflow.RunTimeout ends a run that runs too long,
 	// Workflow.OnTimeout runs when a run fails because of a timeout, and
 	// every timeout error matches ErrTimeout.
-	CapRunTimeout
+	CapRunTimeout = defineCap(49, "RunTimeout")
 	// CapNodeIdentity: StepInfo.Node, AttemptError.Node and
 	// RunInfo.AttemptedBy name the node that ran each attempt, and the
 	// client implements NodeLister.
-	CapNodeIdentity
+	CapNodeIdentity = defineCap(50, "NodeIdentity")
 	// CapKeyFIFO: Concurrency.FIFO is honoured: the queued runs of one
 	// concurrency key start in enqueue order (Job.Priority aside).
-	CapKeyFIFO
+	CapKeyFIFO = defineCap(51, "KeyFIFO")
 	// CapDueQuery: RunQuery.DueFrom and DueTo are honoured and
 	// RunInfo.RunAt is filled.
-	CapDueQuery
+	CapDueQuery = defineCap(52, "DueQuery")
 	// CapResult: the client implements ResultReader and fills
 	// RunInfo.Output for a succeeded run.
-	CapResult
+	CapResult = defineCap(53, "Result")
 	// CapCronSeconds: Schedule.Seconds and Workflow.CronSeconds (a
 	// six-field expression, seconds first) are honoured.
-	CapCronSeconds
+	CapCronSeconds = defineCap(54, "CronSeconds")
 	// CapScheduleActive: Schedule.Active and Workflow.CronActive (a start
 	// and end instant) are honoured.
-	CapScheduleActive
+	CapScheduleActive = defineCap(55, "ScheduleActive")
 	// CapScheduleKeep: Schedule.KeepRuns and Workflow.CronKeepRuns (keep
 	// only the newest N finished runs of a schedule) are honoured.
-	CapScheduleKeep
+	CapScheduleKeep = defineCap(56, "ScheduleKeep")
 	// CapTickTime: every run a schedule fires carries the tick it stands
 	// for in LabelTickAt (TickTimeOf reads it), not only the wall time it
 	// started.
-	CapTickTime
+	CapTickTime = defineCap(57, "TickTime")
 	// CapQueueLimitGlobal: QueueConfig.Limit caps the in-flight step
 	// attempts of a queue across every client sharing the store, not only
 	// this client's workers (QueueConfig.Workers stays per client).
-	CapQueueLimitGlobal
+	CapQueueLimitGlobal = defineCap(58, "QueueLimitGlobal")
 	// CapDiscardExhausted: RetryPolicy.DiscardOnExhaust ends a run whose
 	// retries ran out StatusDiscarded instead of StatusFailed.
-	CapDiscardExhausted
+	CapDiscardExhausted = defineCap(59, "DiscardExhausted")
 	// CapDrainReport: Drain reports the runs it cut off (DrainReport).
-	CapDrainReport
-
-	capEnd // one past the last capability; keep last
+	CapDrainReport = defineCap(60, "DrainReport")
+	// CapWorkflowVersion: every run records the Workflow.Version of the
+	// client that enqueued it, and a worker admits, runs and advances
+	// only runs whose version its definition runs (MinVersion to
+	// Version), so during a rolling deploy a run started by new code
+	// never runs on old code (LO-11).
+	CapWorkflowVersion = defineCap(61, "WorkflowVersion")
+	// CapSlotCost: Step.Slots is honoured: one attempt of the step holds
+	// that many of the client's worker slots (WithWorkers) while it runs,
+	// so a heavy step leaves room for fewer others.
+	CapSlotCost = defineCap(62, "SlotCost")
+	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
+	// fields of their JSON payload (RS-08).
+	CapPayloadSearch = defineCap(63, "PayloadSearch")
 )
-
-var capNames = []string{
-	"Durable", "DelayedStart", "WaitForEvent", "DurableSleep",
-	"ConcurrencyKey", "RateLimit", "IdempotencyKey", "Cron", "Cancel",
-	"RunFinished", "RetryJitter", "RetryDelay", "MisfireSkip",
-	"MisfireFireOnce", "MisfireFireAll", "CronZone",
-	"Queue", "QueueOverride", "JobRetry", "RetryUntil", "RetryMaxErrors",
-	"Discard", "RunQuery", "RetryRun", "DeleteRun", "CancelAll",
-	"PauseWorkflow", "PauseQueue", "SchedulePause", "ScheduleWhen",
-	"ScheduleWindow", "TickEvents", "ScheduleList", "Drain",
-	"RunStates", "Chain", "WorkerScale", "Closure", "LabelPrefix",
-	"OverlapSkip", "ScheduleTrigger", "ScheduleHistory", "EnqueueOnly",
-	"ErrorHistory", "ShutdownRequeue", "ForceRun",
-	"Snooze", "Heartbeat", "Tenant", "RunTimeout", "NodeIdentity", "KeyFIFO",
-	"DueQuery", "Result", "CronSeconds", "ScheduleActive", "ScheduleKeep",
-	"TickTime", "QueueLimitGlobal", "DiscardExhausted", "DrainReport",
-}
-
-// Has reports whether c holds every capability in want.
-func (c Caps) Has(want Caps) bool { return c&want == want }
-
-// Missing returns the capabilities in required that c lacks; zero means
-// c covers them all.
-func (c Caps) Missing(required Caps) Caps { return required &^ c }
-
-// String lists the capabilities joined by "|", such as
-// "Durable|Cron"; the empty set is "none".
-func (c Caps) String() string {
-	if c == 0 {
-		return "none"
-	}
-	var names []string
-	for i, bit := 0, Caps(1); bit < capEnd; i, bit = i+1, bit<<1 {
-		if c&bit != 0 {
-			names = append(names, capNames[i])
-		}
-	}
-	if rest := c &^ (capEnd - 1); rest != 0 {
-		names = append(names, "unknown")
-	}
-	return strings.Join(names, "|")
-}
 
 // Requires computes the capabilities a driver needs to run wf as written.
 // Retry needs come from each Run step's effective policy, so a workflow
@@ -258,55 +224,61 @@ func (c Caps) String() string {
 func Requires(wf Workflow) Caps {
 	var c Caps
 	if len(wf.Cron) > 0 {
-		c |= CapCron | misfireCaps(wf.Misfire) | overlapCaps(wf.CronOverlap)
+		c = c.With(CapCron, misfireCaps(wf.Misfire), overlapCaps(wf.CronOverlap))
 		if !IsUTC(wf.CronLocation) {
-			c |= CapCronZone
+			c = c.With(CapCronZone)
 		}
 		if wf.CronSeconds {
-			c |= CapCronSeconds
+			c = c.With(CapCronSeconds)
 		}
 		if !wf.CronActive.IsZero() {
-			c |= CapScheduleActive
+			c = c.With(CapScheduleActive)
 		}
 		if wf.CronKeepRuns > 0 {
-			c |= CapScheduleKeep
+			c = c.With(CapScheduleKeep)
 		}
 	}
 	if wf.Concurrency != nil {
-		c |= CapConcurrencyKey
+		c = c.With(CapConcurrencyKey)
 		if wf.Concurrency.FIFO {
-			c |= CapKeyFIFO
+			c = c.With(CapKeyFIFO)
 		}
 	}
 	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
-		c |= CapRunTimeout
+		c = c.With(CapRunTimeout)
+	}
+	if wf.Version != 0 || wf.MinVersion != 0 {
+		c = c.With(CapWorkflowVersion)
 	}
 	if len(wf.RateLimits) > 0 {
-		c |= CapRateLimit
+		c = c.With(CapRateLimit)
 	}
 	if wf.Idempotency == IdempotencyRequired {
-		c |= CapIdempotencyKey
+		c = c.With(CapIdempotencyKey)
 	}
 	if wf.Queue != "" && wf.Queue != DefaultQueue {
-		c |= CapQueue
+		c = c.With(CapQueue)
 	}
 	if wf.ScheduleWhen != nil {
-		c |= CapScheduleWhen
+		c = c.With(CapScheduleWhen)
 	}
 	if !wf.CronWindows.IsZero() {
-		c |= CapScheduleWindow
+		c = c.With(CapScheduleWindow)
 	}
 	for _, s := range wf.Steps {
 		switch s.Kind() {
 		case StepRun:
-			c |= retryCaps(EffectiveRetries(s, wf))
+			c = c.With(retryCaps(EffectiveRetries(s, wf)))
 			if s.HeartbeatTimeout > 0 {
-				c |= CapHeartbeat
+				c = c.With(CapHeartbeat)
+			}
+			if s.Slots > 1 {
+				c = c.With(CapSlotCost)
 			}
 		case StepWait:
-			c |= CapWaitForEvent
+			c = c.With(CapWaitForEvent)
 		case StepSleep:
-			c |= CapDurableSleep
+			c = c.With(CapDurableSleep)
 		}
 	}
 	return c
@@ -316,19 +288,19 @@ func Requires(wf Workflow) Caps {
 func retryCaps(p RetryPolicy) Caps {
 	var c Caps
 	if p.Backoff.Jitter > 0 {
-		c |= CapRetryJitter
+		c = c.With(CapRetryJitter)
 	}
 	if p.DelayFor != nil {
-		c |= CapRetryDelay
+		c = c.With(CapRetryDelay)
 	}
 	if p.Until > 0 {
-		c |= CapRetryUntil
+		c = c.With(CapRetryUntil)
 	}
 	if p.MaxErrors > 0 {
-		c |= CapRetryMaxErrors
+		c = c.With(CapRetryMaxErrors)
 	}
 	if p.DiscardOnExhaust {
-		c |= CapDiscardExhausted | CapRunStates
+		c = c.With(CapDiscardExhausted, CapRunStates)
 	}
 	return c
 }
@@ -344,7 +316,7 @@ func misfireCaps(m Misfire) Caps {
 	case MisfireFireAll:
 		return CapMisfireFireAll
 	}
-	return 0
+	return Caps{}
 }
 
 // RequiresSchedule computes the capabilities a driver needs to honour s as
@@ -353,24 +325,24 @@ func misfireCaps(m Misfire) Caps {
 // for OverlapSkip, CapCronSeconds for Seconds, CapScheduleActive for an
 // Active period, CapScheduleKeep for KeepRuns and CapTenant for Tenant.
 func RequiresSchedule(s Schedule) Caps {
-	c := CapCron | misfireCaps(s.Misfire) | overlapCaps(s.Overlap)
+	c := CapsOf(CapCron, misfireCaps(s.Misfire), overlapCaps(s.Overlap))
 	if !IsUTC(s.Location) {
-		c |= CapCronZone
+		c = c.With(CapCronZone)
 	}
 	if !s.Windows.IsZero() {
-		c |= CapScheduleWindow
+		c = c.With(CapScheduleWindow)
 	}
 	if s.Seconds {
-		c |= CapCronSeconds
+		c = c.With(CapCronSeconds)
 	}
 	if !s.Active.IsZero() {
-		c |= CapScheduleActive
+		c = c.With(CapScheduleActive)
 	}
 	if s.KeepRuns > 0 {
-		c |= CapScheduleKeep
+		c = c.With(CapScheduleKeep)
 	}
 	if s.Tenant != "" {
-		c |= CapTenant
+		c = c.With(CapTenant)
 	}
 	return c
 }
@@ -383,25 +355,25 @@ func RequiresSchedule(s Schedule) Caps {
 // Drivers call it from Schedule, after ValidateSchedule.
 func CheckScheduleCaps(have Caps, s Schedule) error {
 	missing := have.Missing(RequiresSchedule(s))
-	if missing == 0 {
+	if missing.IsZero() {
 		return nil
 	}
 	field := "Schedule"
 	switch {
 	case missing.Has(CapCron):
-	case missing&CapCronZone != 0:
+	case missing.HasAny(CapCronZone):
 		field = "Schedule.Location"
-	case missing&CapScheduleWindow != 0:
+	case missing.HasAny(CapScheduleWindow):
 		field = "Schedule.Windows"
-	case missing&CapOverlapSkip != 0:
+	case missing.HasAny(CapOverlapSkip):
 		field = "Schedule.Overlap"
-	case missing&CapCronSeconds != 0:
+	case missing.HasAny(CapCronSeconds):
 		field = "Schedule.Seconds"
-	case missing&CapScheduleActive != 0:
+	case missing.HasAny(CapScheduleActive):
 		field = "Schedule.Active"
-	case missing&CapScheduleKeep != 0:
+	case missing.HasAny(CapScheduleKeep):
 		field = "Schedule.KeepRuns"
-	case missing&CapTenant != 0:
+	case missing.HasAny(CapTenant):
 		field = "Schedule.Tenant"
 	default:
 		field = "Schedule.Misfire"
@@ -425,24 +397,24 @@ func CheckScheduleCaps(have Caps, s Schedule) error {
 func RequiresJob(job Job) Caps {
 	var c Caps
 	if !job.RunAt.IsZero() {
-		c |= CapDelayedStart
+		c = c.With(CapDelayedStart)
 	}
 	if job.IdempotencyKey != "" {
-		c |= CapIdempotencyKey
+		c = c.With(CapIdempotencyKey)
 	}
 	if job.Queue != "" {
-		c |= CapQueue
+		c = c.With(CapQueue)
 	}
 	if job.Retry != nil {
-		c |= CapJobRetry | retryCaps(*job.Retry)
+		c = c.With(CapJobRetry, retryCaps(*job.Retry))
 	}
 	if job.Tenant != "" {
-		c |= CapTenant
+		c = c.With(CapTenant)
 	}
 	if len(job.Chain) > 0 {
-		c |= CapChain
+		c = c.With(CapChain)
 		for _, next := range job.Chain {
-			c |= RequiresJob(next)
+			c = c.With(RequiresJob(next))
 		}
 	}
 	return c
@@ -453,22 +425,22 @@ func RequiresJob(job Job) Caps {
 // Drivers call it from Enqueue after ValidateJob.
 func CheckJob(have Caps, job Job) error {
 	missing := have.Missing(RequiresJob(job))
-	if missing == 0 {
+	if missing.IsZero() {
 		return nil
 	}
 	field := "Job"
 	switch {
-	case missing&CapDelayedStart != 0:
+	case missing.HasAny(CapDelayedStart):
 		field = "Job.RunAt"
-	case missing&CapIdempotencyKey != 0:
+	case missing.HasAny(CapIdempotencyKey):
 		field = "Job.IdempotencyKey"
-	case missing&CapQueue != 0:
+	case missing.HasAny(CapQueue):
 		field = "Job.Queue"
-	case missing&CapTenant != 0:
+	case missing.HasAny(CapTenant):
 		field = "Job.Tenant"
-	case missing&CapChain != 0:
+	case missing.HasAny(CapChain):
 		field = "Job.Chain"
-	case missing&(CapJobRetry|CapRetryJitter|CapRetryUntil|CapRetryMaxErrors|CapDiscardExhausted) != 0:
+	case missing.HasAny(CapsOf(CapJobRetry, CapRetryJitter, CapRetryUntil, CapRetryMaxErrors, CapDiscardExhausted)):
 		field = "Job.Retry"
 	}
 	return &UnsupportedError{Field: field, Missing: missing, Reason: "job for workflow " + job.Workflow}
@@ -489,7 +461,7 @@ func CheckJobQueue(have Caps, wf Workflow, job Job) error {
 // CheckCaps returns an UnsupportedError naming wf when have lacks what wf
 // needs, and nil otherwise. Drivers call it from Start.
 func CheckCaps(have Caps, wf Workflow) error {
-	if missing := have.Missing(Requires(wf)); missing != 0 {
+	if missing := have.Missing(Requires(wf)); !missing.IsZero() {
 		return &UnsupportedError{Field: "Workflow", Missing: missing, Reason: "workflow " + wf.Name}
 	}
 	return nil

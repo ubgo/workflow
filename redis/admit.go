@@ -34,10 +34,33 @@ func (c *Client) admitAll(ctx context.Context) time.Time {
 		}
 	}
 	c.mu.Unlock()
-	pipe := c.rdb.Pipeline()
-	cmds := make([]*goredis.StringSliceCmd, len(regs))
+	// Each workflow's pending runs wait under one key per version
+	// (routeNames, LO-11): only the versions this client runs are read,
+	// so it never writes a newer version's run with its own definition.
+	names := make([]string, len(regs))
 	for i, r := range regs {
-		cmds[i] = pipe.ZRange(ctx, c.base+":pending:"+r.wf.Name, 0, admitBatch-1)
+		names[i] = r.wf.Name
+	}
+	routes, err := c.routeNames(ctx, names)
+	if err != nil {
+		if ctx.Err() == nil {
+			c.log.Error("redis: read run versions", "error", err)
+		}
+		return time.Time{}
+	}
+	type pendingSet struct {
+		reg *registered
+		ids *goredis.StringSliceCmd
+	}
+	var sets []pendingSet
+	pipe := c.rdb.Pipeline()
+	for _, r := range regs {
+		for _, rn := range routes[r.wf.Name] {
+			sets = append(sets, pendingSet{reg: r, ids: pipe.ZRange(ctx, c.base+":pending:"+rn, 0, admitBatch-1)})
+		}
+	}
+	if len(sets) == 0 {
+		return time.Time{}
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		if ctx.Err() == nil {
@@ -46,8 +69,8 @@ func (c *Client) admitAll(ctx context.Context) time.Time {
 		return time.Time{}
 	}
 	var wake time.Time
-	for i, r := range regs {
-		ids := cmds[i].Val()
+	for _, set := range sets {
+		r, ids := set.reg, set.ids.Val()
 		if len(ids) == 0 {
 			continue
 		}

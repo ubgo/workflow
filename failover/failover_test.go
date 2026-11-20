@@ -49,7 +49,7 @@ type noCaps struct {
 	hidden workflow.Caps
 }
 
-func (n noCaps) Capabilities() workflow.Caps { return n.Client.Capabilities() &^ n.hidden }
+func (n noCaps) Capabilities() workflow.Caps { return n.Client.Capabilities().Without(n.hidden) }
 
 // bare is a client that does not implement RunNotifier.
 type bare struct{ workflow.Client }
@@ -300,7 +300,7 @@ func TestDelayedRefRoutes(t *testing.T) {
 func TestCapabilitiesAreTheIntersection(t *testing.T) {
 	clk := clock.NewFake(start)
 	p := memory.New(memory.WithClock(clk))
-	s := noCaps{Client: memory.New(memory.WithClock(clk)), hidden: workflow.CapWaitForEvent | workflow.CapCron}
+	s := noCaps{Client: memory.New(memory.WithClock(clk)), hidden: workflow.CapsOf(workflow.CapWaitForEvent, workflow.CapCron)}
 	c := failover.New(p, s)
 	caps := c.Capabilities()
 	if caps.Has(workflow.CapWaitForEvent) {

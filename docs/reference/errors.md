@@ -32,10 +32,24 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrScheduleJSON` | A schedule's JSON form could not be written or read: another version, an unknown field, a zone that does not load | `json.Marshal`/`Unmarshal` of a `Schedule`, `UnmarshalSchedule` |
 | `ErrLocalCronStarted` | A `LocalCron` entry was added after `Start`, or `Start` was called twice | `LocalCron.Add`, `LocalCron.Start` |
 | `ErrNoJournal` | A memoised call ran without the `Journal` plugin or `WithJournal`; permanent | `Memo`, `MapEach`, `Loop`, `ProcessChunks`, `Spawn`, `AwaitChild`, `SetRunData`, `RunData` ([Memoisation](../workflows/memoisation.md)) |
+| `ErrNoDataStore` | A scoped data helper ran without the `Data` plugin, `WithData` or `ContextWithData`; permanent | `GetData`, `SetData`, `UpdateData`, `DeleteData` ([Share data across runs](../workflows/memoisation.md#share-data-across-runs)) |
+| `ErrDataConflict` | A conditional `DataStore.Put` found another version (another writer got there first), or `UpdateData` lost that race `UpdateDataAttempts` times; not permanent | `DataStore.Put`, `UpdateData` |
+| `ErrInboxBusy` | Another worker holds the message's inbox claim; not permanent, the message comes back | `InboxConsumer.Once`; an inbound webhook with `Inbox` answers 503 ([inbox](../jobs/idempotency.md#drop-redelivered-messages-with-an-inbox)) |
+| `ErrInboxLost` | The claim's token no longer holds the message (its lease expired and another worker took it over) | `Inbox.Complete`, `InboxConsumer.Once` |
 | `ErrLoopLimit` | A `Loop` or `ProcessChunks` reached its limit; permanent | `Loop`, `ProcessChunks` with `MaxChunks` |
 | `ErrSecretInPayload` | `SecretGuard` found what looks like a credential in a job; also matches `ErrInvalid`, and the error never prints the value | The `SecretGuard` enqueue middleware ([Secrets in payloads](../reliability/secrets.md)) |
 | `ErrNoSecretRef` | A `SecretRef` has no name; permanent | `ResolveSecret` |
 | `ErrThrottled` | An `UpstreamLimit` bucket has no room; marked with `RetryAfter` for the wait | `UpstreamLimit.Take` ([Upstream rate limits](../jobs/upstream-limits.md)); not the same variable as `middleware.ErrThrottled` |
+| `ErrPromiseSettled` | A promise was settled already with a different outcome: the first settlement wins | `ResolvePromise`, `RejectPromise` |
+| `ErrStepsFailed` | A step before a `Finally` exit handler failed; the run ends with it after the handler ran | A `WithRules` workflow with `Finally` |
+| `ErrSagaAborted` | The saga started compensating, so no new action runs | `Saga.Do` after `Abort` (in this attempt or an earlier one) |
+| `ErrCompensated` | Every compensation of an aborted saga ran; permanent | `Saga.Abort` |
+| `ErrPollTimeout` | A `Poll` condition did not hold before `PollSpec.Timeout`; also matches `ErrTimeout` | `Poll` |
+| `ErrApprovalToken` | A signed approval token is malformed, forged or expired | `ApprovalSigner`, `Approve`, `Reject` |
+| `ErrDepth` | A job would nest deeper than the recursion limit | `RecursionLimit` |
+| `ErrShapeChanged` | A run was enqueued under another set of steps than the one now registered | `ShapeGuard` |
+| `ErrConstraint` | An invariant or a pre- or post-condition failed; permanent | `Invariant`, `middleware.Check` |
+| `ErrStreamFull` | A `MemoryStream` holds its limit of open runs and none can be evicted | `Emit` through a `MemoryStream` |
 
 ## Error types and markers (`workflow`)
 
@@ -52,6 +66,9 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `Snooze(d)`, `SnoozeDelay(err)` | Puts a step back for d without spending an attempt (clamped to `MaxSnooze`, 30 days) and reads the delay back |
 | `PayloadTooLargeError{Workflow, Size, Limit, Source}` | A payload over a limit; matches `ErrPayloadTooLarge` and `ErrInvalid`, and `Source` names who set the limit |
 | `RunFailedError{Ref, Status, Err}` | What `Await`, `AwaitResult` and `AwaitChild` return for a run that did not succeed; matches `ErrCancelled` for a cancelled or discarded run |
+| `*PromiseRejectedError` | What `AwaitPromise`, `WaitPromise` and `Update` return for a rejected promise |
+| `*JoinFailedError` | `JoinChildren` can no longer reach `Need` |
+| `*MapRunsError` | `MapRuns` passed `MaxFailures` |
 
 ## Package sentinels
 
@@ -72,6 +89,15 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrBatchPending` | `batch` | An `AwaitStep` whose batch has not finished; its retry policy polls again. It appears as a failed attempt in run history |
 | `ErrBatchFailed` | `batch` | An `AwaitStep` whose batch finished with a failed or cancelled job, unless `AwaitAllowFailures`. Permanent |
 | `ErrThrottled` | `middleware` | `ThrottleErrors` returned without calling the step while the key's circuit is open. Retryable on purpose: the retry backoff brings the step back after the cooldown |
+| `ErrExpired` | `middleware` | `Expire` ended a run that started after its expiry (`LabelExpiresAt`), or a step that waited longer than `ExpireMaxWait` for a worker |
+| `ErrQueueFull` | `middleware` | `Bounded` refused an enqueue: the job's queue holds its limit of waiting runs. Backpressure, not an outage: it does not match `workflow.ErrUnavailable`, so failover never sends the job to its secondary |
+| `ErrQuotaExceeded` | `middleware` | `Quota` refused an enqueue: the job's tenant holds its limit of unfinished runs; not an outage either |
+| `ErrPoolBusy` | `middleware` | Every slot of a `Pool` is taken under `PoolRetryAfter`; retryable, marked with `workflow.RetryAfter` (the default snoozes instead) |
+| `ErrEndpointDisabled` | `middleware` | `AutoDisable` discarded an attempt while its key is disabled |
+| `ErrFlushNotEnqueued` | `middleware` | `Aggregate` stored an item but could not enqueue the flush; the item is not lost, the group's next trigger enqueues the flush |
+| `ErrUnknownRegion` | `regional` | A `Router` named a region the client does not have; matches `workflow.ErrInvalid` too, and the job is never sent to a default region |
+| `ErrNotExpressible` | `schedexport` | A format cannot express a part of the schedule; the error is a `*NotExpressibleError` naming `Format` and `Field` |
+| `ErrNoNextFire` | `schedexport` | A NextFire form found no next fire (`Active` over, last year passed, no tick inside the windows) |
 | `ErrSchemaTooNew` | `sqlstore` | The database records a sqlstore migration this code does not know: a newer release migrated it. `Migrate` and `Start` refuse it. Returned as a `*SchemaTooNewError` whose `Unknown` lists the migrations |
 | `ErrAbandoned` | `sqlstore` | A step attempt failed because its lease expired more than `WithMaxReclaims` times: every worker that took it died. The retry policy treats it like any failure |
 | `ErrDriver` | `sqlstore/pgnotify` | `Listen` on a pool whose driver is not the pgx stdlib driver, which alone exposes notifications; the client keeps polling |

@@ -20,7 +20,7 @@ A capability is a promise the conformance suite will test against your real back
 // Status need no capability; delayed starts, idempotency keys, cron,
 // cancel, waits and sleeps do, and tiny has none of them, so it refuses
 // each one instead of ignoring it.
-const tinyCaps workflow.Caps = 0
+var tinyCaps workflow.Caps
 ```
 
 ### Step 2 — Hold state in the value, take a clock

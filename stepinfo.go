@@ -46,6 +46,11 @@ type StepInfo struct {
 	// driver's node-ID option, DefaultNodeID when unset); empty on a
 	// driver without CapNodeIdentity.
 	Node string
+
+	// Version is the run's workflow version (Workflow.Version of the
+	// client that enqueued it); zero for an unversioned run or on a
+	// driver without CapWorkflowVersion.
+	Version int
 }
 
 // stepInfoKey is the unexported context key for StepInfo, so no other

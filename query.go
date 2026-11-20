@@ -61,6 +61,19 @@ type RunQuery struct {
 	// They need CapDueQuery (CheckRunQuery).
 	DueFrom, DueTo time.Time
 
+	// Payload matches runs whose payload is a JSON object holding every
+	// field with the given value (RS-08, search inside args). A key is a
+	// field name or a dot path into nested objects ("customer.id"), each
+	// segment a plain name (letters, digits, underscore, not starting
+	// with a digit). A value matches the field's text: a JSON string
+	// unquoted ("acme"), a number as written in the payload ("42",
+	// "1.5"), true, false or null. A payload that is not a JSON object, or
+	// lacks the field, does not match. It needs CapPayloadSearch
+	// (CheckRunQuery). CancelAll refuses it. The payload is the one the
+	// driver stores, so a payload sealed by a codec or Encrypt cannot be
+	// searched.
+	Payload map[string]string
+
 	// Limit is the page size: zero means DefaultRunsLimit, more than
 	// MaxRunsLimit is invalid. CancelAll refuses it.
 	Limit int
@@ -125,6 +138,9 @@ func (q RunQuery) Match(info RunInfo) bool {
 	if q.Tenant != "" && info.Tenant != q.Tenant {
 		return false
 	}
+	if len(q.Payload) > 0 && !payloadMatches(info.Payload, q.Payload) {
+		return false
+	}
 	if !q.DueFrom.IsZero() || !q.DueTo.IsZero() {
 		if info.RunAt.IsZero() {
 			return false
@@ -167,6 +183,11 @@ func ValidateRunQuery(q RunQuery) error {
 	if q.Limit < 0 || q.Limit > MaxRunsLimit {
 		return invalidf("run query: Limit %d is outside [0, %d]", q.Limit, MaxRunsLimit)
 	}
+	for path := range q.Payload {
+		if !validPayloadPath(path) {
+			return invalidf("run query: payload path %q is not a dot path of plain names", path)
+		}
+	}
 	return nil
 }
 
@@ -185,6 +206,9 @@ func CheckRunQuery(have Caps, q RunQuery) error {
 	if (!q.DueFrom.IsZero() || !q.DueTo.IsZero()) && !have.Has(CapDueQuery) {
 		return &UnsupportedError{Field: "RunQuery.DueFrom", Missing: CapDueQuery}
 	}
+	if len(q.Payload) > 0 && !have.Has(CapPayloadSearch) {
+		return &UnsupportedError{Field: "RunQuery.Payload", Missing: CapPayloadSearch}
+	}
 	return nil
 }
 
@@ -202,6 +226,11 @@ func ValidateCancelQuery(q RunQuery) error {
 	}
 	if q.Limit != 0 || q.Cursor != "" {
 		return invalidf("cancel query: Limit and Cursor are not used by CancelAll")
+	}
+	if len(q.Payload) > 0 {
+		// CancelAll runs in the driver's store; a payload filter there is
+		// not portable, and ignoring it would cancel too much.
+		return invalidf("cancel query: Payload is not used by CancelAll; list the runs and cancel each")
 	}
 	return nil
 }
@@ -276,6 +305,10 @@ type RunInfo struct {
 
 	// Tenant is Job.Tenant (CapTenant).
 	Tenant string
+
+	// Version is the run's workflow version (Workflow.Version of the
+	// client that enqueued it, CapWorkflowVersion); zero when unversioned.
+	Version int
 
 	// RunAt is the time a delayed run is (or was) due: Job.RunAt, or the
 	// time Reschedule moved it to. Zero for a run enqueued to start now.

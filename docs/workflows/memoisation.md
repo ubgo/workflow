@@ -157,6 +157,89 @@ A workflow has three places to keep data. A step's own input and output are pass
 
 `RunData` returns false when nothing was stored under the name. A later `SetRunData` of the same name replaces the value; two parallel steps setting one name leave whichever wrote last, so give them their own names. Run data writes through the journal, so it is as durable as the `JournalStore` and is forgotten with the run's journal when the run finishes.
 
+## Share data across runs
+
+Run data ends with its run. Data that many runs share has three wider scopes, after the workflow data patterns: a **folder** is a named group of runs the app defines (a customer, an import batch, a project), `workflow.Folder(name)`; the **workflow** scope is every run of one workflow, `workflow.WorkflowScope(name)`, where an empty name means the workflow of the running step; the **global** scope is every run of every workflow, `workflow.GlobalScope()`. The values live in a `workflow.DataStore` you choose and reach the steps through the `Data` plugin:
+
+<!-- snippet: examples/scoped-data/main.go#client -->
+```go
+store := workflow.NewMemoryData() // sqlstore.DataStore or redis.DataStore for a fleet
+c, err := workflow.Use(memory.New(), workflow.Data(store))
+if err != nil {
+	return err
+}
+```
+
+A step writes with `SetData` and reads with `GetData[T]`. When the new value depends on the old one (a total, a counter, a list), `UpdateData[T]` reads, calls your function and writes back only if nobody wrote in between, and tries again when someone did, so concurrent runs never lose a write:
+
+<!-- snippet: examples/scoped-data/main.go#steps -->
+```go
+signup := workflow.Workflow{Name: "signup", Steps: []workflow.Step{{Name: "create", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+	var o order
+	if err := json.Unmarshal(in, &o); err != nil {
+		return nil, workflow.Permanent(err)
+	}
+	// Every run that names this customer's folder sees the plan.
+	if err := workflow.SetData(ctx, workflow.Folder("customer/"+o.Customer), "plan", "pro"); err != nil {
+		return nil, err
+	}
+	return nil, count(ctx)
+}}}}
+place := workflow.Workflow{Name: "order", Steps: []workflow.Step{{Name: "price", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+	var o order
+	if err := json.Unmarshal(in, &o); err != nil {
+		return nil, workflow.Permanent(err)
+	}
+	folder := workflow.Folder("customer/" + o.Customer)
+	plan, ok, err := workflow.GetData[string](ctx, folder, "plan")
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, workflow.Permanent(errors.New("customer has no plan"))
+	}
+	// UpdateData reads, changes and writes back only if nobody wrote
+	// in between, so concurrent runs never lose a total.
+	total, err := workflow.UpdateData(ctx, folder, "spent", func(sum int, _ bool) (int, error) { return sum + o.Amount, nil })
+	if err != nil {
+		return nil, err
+	}
+	if err := count(ctx); err != nil {
+		return nil, err
+	}
+	return json.Marshal(fmt.Sprintf("%s plan, %d spent so far", plan, total))
+}}}}
+```
+
+<!-- snippet: examples/scoped-data/main.go#count -->
+```go
+inc := func(n int, _ bool) (int, error) { return n + 1, nil }
+if _, err := workflow.UpdateData(ctx, workflow.WorkflowScope(""), "runs", inc); err != nil { // "" = this run's workflow
+	return err
+}
+_, err := workflow.UpdateData(ctx, workflow.GlobalScope(), "runs", inc)
+```
+
+Outside a step (an HTTP handler seeding a folder, a report, a test) put the store on the ctx with `ContextWithData` and name the workflow:
+
+<!-- snippet: examples/scoped-data/main.go#outside -->
+```go
+rc := workflow.ContextWithData(ctx, store) // outside a step: name the workflow
+signups, _, err := workflow.GetData[int](rc, workflow.WorkflowScope("signup"), "runs")
+if err != nil {
+	return err
+}
+```
+
+`workflow.MemoryData` keeps the values in one process. For a fleet, use the store on the database or Redis the workers share: `sqlstore.DataStore` (a row per value in `<prefix>data`, its own migration list that `Client.Migrate` applies; `NewDataStore(db, dialect)` builds one with no running client, for an app on Hatchet) or `redis.DataStore` (`NewDataStore(rdb, prefix)`, a hash per value, each write one script). The store does not depend on the driver that runs the step, so the same handlers run on every driver, Hatchet included:
+
+<!-- snippet: examples/scoped-data/main.go#sql -->
+```go
+c, err := workflow.Use(sc, workflow.Data(sc.DataStore()))
+```
+
+A store of your own implements three methods: `Get(ctx, scope, name)` returns the value and its `DataVersion`; `Put(ctx, scope, name, val, match)` writes only when the entry is at version `match` (0: no entry yet; `AnyVersion`: whatever is there) and returns `ErrDataConflict` otherwise, in one atomic step; `Delete(ctx, scope, name)`. Key entries by `DataScope.Key(name)`, whose form never changes. `workflowtest.DataStoreContract(t, a, b)` checks a store against the contract the shipped ones pass, through two handles on the same data.
+
 ## Write your own journal store
 
 `workflow.JournalStore` has three methods: `Load(ctx, run, key)`, `Save(ctx, run, key, val)` and `Forget(ctx, run)`. Entries are keyed by run and by a key the helpers build from the step name and your name. A store must be safe for concurrent use, return a copy (or a value it never changes again) from `Load`, and replace an existing key on `Save`; forgetting a run with no entries is not an error. A store on the database your workers share makes memoised work survive a crash and a retry on another worker, which `MemoryJournal` cannot. The Redis driver's `redis.JournalStore` is one: a hash per run, so whichever worker resumes the run sees its entries. `redis.NewJournalStore(rdb, prefix, ttl)` takes a Redis client, a key prefix and a TTL that expires a run's hash that long after its last save, a safety net for runs whose `Forget` never comes (zero keeps entries until `Forget`); `Client.JournalStore()` builds one over the driver's own Redis and prefix, with no expiry. `MemoryJournal.Runs()` lists the runs that hold entries, for tests that check finished runs were forgotten.
@@ -201,6 +284,7 @@ Each step ran twice, and in each the work that had already succeeded ran once: t
 - **Change a memoised type with care.** A stored value that no longer decodes fails the step permanently; rename the memo when its result type changes.
 - **Keep names stable and items in order.** A name built from something that changes between attempts (a timestamp, a random ID) never finds its entry, and `MapEach` matches results by index.
 - **A failed run's journal is forgotten by default.** Pass `JournalKeepFailed` to resume a failed run retried by an operator from its memoised work.
+- **Scoped data outlives every run.** Nothing forgets a folder, workflow or global value; delete it with `DeleteData` when it is no longer needed. `UpdateData`'s function may run more than once, so it must only compute the new value, with no side effects; after `UpdateDataAttempts` lost races it returns `ErrDataConflict`, which the step's retry policy retries.
 - **`ProcessChunks` needs a driver that keeps progress**, and `fn` must be idempotent per chunk (an upsert, a file part named by its offset), since a crash after a chunk and before the save runs it again.
 
 ## Related
@@ -208,4 +292,4 @@ Each step ran twice, and in each the work that had already succeeded ran once: t
 - [Workflows and steps](steps.md), [Branching](branching.md), [Child runs](children.md)
 - [Retries](../jobs/retries.md), [Manage runs](../jobs/manage-runs.md) (retrying a failed run)
 - [Plugins](../concepts/plugins.md)
-- Example: [examples/flow-memo](../../examples/flow-memo/)
+- Examples: [examples/flow-memo](../../examples/flow-memo/), [examples/scoped-data](../../examples/scoped-data/)

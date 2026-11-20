@@ -182,7 +182,7 @@ var hookCases = []testCase{
 		}
 	}},
 	{"a scheduled run cancelled before it fires is reported", func(e *env) {
-		e.need(workflow.CapRunFinished | workflow.CapDelayedStart | workflow.CapCancel)
+		e.need(workflow.CapsOf(workflow.CapRunFinished, workflow.CapDelayedStart, workflow.CapCancel))
 		col := observeWith(e, notifierOf(e))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
@@ -197,7 +197,7 @@ var hookCases = []testCase{
 		expectEnd(e, col, ref, wf.Name, workflow.StatusCancelled, labels, cancelledErr)
 	}},
 	{"a run dropped or cancelled by its concurrency strategy is reported", func(e *env) {
-		e.need(workflow.CapRunFinished | workflow.CapConcurrencyKey)
+		e.need(workflow.CapsOf(workflow.CapRunFinished, workflow.CapConcurrencyKey))
 		col := observeWith(e, notifierOf(e))
 		var wfs []workflow.Workflow
 		trackers := map[string]*tracker{}

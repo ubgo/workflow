@@ -1,0 +1,93 @@
+# Audit log and trace links
+
+Two additions to the [admin JSON API](http-api.md) and its [web UI](ui.md) for teams that operate it together. An auditor asks who retried the failed charge last Tuesday, and who tried to delete runs without the right to: `admin.WithAudit` records every write action with who did it, what, to which resource, how it ended and when. An engineer looking at a failed run wants its trace: `admin.WithTraceLink` puts a link to the run's trace in the run detail and on the run page.
+
+## Before you start
+
+- Both are options of `admin.NewHandler` and work over every driver the admin handler serves.
+- The trace link reads the trace ID the [OpenTelemetry middleware](../observability/opentelemetry.md) carried in the run's labels, with `otel.TraceIDOf` from the otel module. Any other source of a URL works too: the option takes a function of the run.
+- The example is [`examples/admin-audit`](../../examples/admin-audit). It runs on the memory driver with a fake clock for the audit times. Run it with `go run ./admin-audit` from `examples/`.
+
+## Audit every write action
+
+`admin.WithAudit(sink)` calls `sink.Record(ctx, entry)` once for every write request that reached `Authorize`, after the action ran or was refused. A write is any action whose `ReadOnly()` is false: retry, delete, cancel, cancel-all, pause and resume, schedule pause, resume and trigger, force complete and fail, the bulk retries and deletes (dry runs included, with `Resource.DryRun` set), reschedule and cancel-step. `admin.MemoryAudit` keeps entries in memory for tests; an app implements `AuditSink` (or wraps a function with `admin.AuditFunc`) to write to its own audit table.
+
+<!-- snippet: examples/admin-audit/main.go#handler -->
+```go
+audit := &admin.MemoryAudit{} // an app writes to its own audit table
+h := admin.NewHandler(admin.New(c, admin.WithClock(clk)), auth,
+	admin.WithAudit(audit),
+	admin.WithTraceLink(func(r workflow.RunInfo) string {
+		id, ok := wfotel.TraceIDOf(r.Labels)
+		if !ok {
+			return ""
+		}
+		return "https://tracing.example.com/trace/" + id
+	}))
+```
+
+Each `admin.AuditEntry` carries:
+
+| Field | What it holds |
+|---|---|
+| `Who` | the principal `Identify` returned, as an `any` (type-assert it to your own type) |
+| `Action`, `Resource` | what `Authorize` was asked about: the run, the filter, the schedule, the pause target, the force-fail reason |
+| `Allowed` | false when `Authorize` refused: the operation never ran, and the attempt is still recorded |
+| `Status` | the HTTP status answered |
+| `Err` | why the action did not succeed, nil on success; the operation's full error (it matches the core sentinels such as `workflow.ErrNotFound`), even when the response only said "internal error" |
+| `At` | when the action ended, on the Admin's clock (`admin.WithClock`) |
+
+<!-- snippet: examples/admin-audit/main.go#entries -->
+```go
+fmt.Println("audit log:")
+for _, e := range audit.Entries() {
+	who := e.Who.(user) // the handler's own principal type
+	outcome := "ok"
+	if errors.Is(e.Err, workflow.ErrNotFound) {
+		outcome = "not found"
+	} else if e.Err != nil {
+		outcome = e.Err.Error()
+	}
+	run := strings.Replace(e.Resource.Run.RunID.String(), ref.RunID.String(), "<run>", 1)
+	fmt.Printf("  %s %s %s %s allowed=%v %d %s\n", e.At.Format(time.TimeOnly), who.Name, e.Action, run, e.Allowed, e.Status, outcome)
+}
+```
+
+## Link each run to its trace
+
+`admin.WithTraceLink(fn)` adds `trace_url` to `GET /runs/{id}` and an "Open trace" link to the run page. `fn` gets the run's `RunInfo`, labels included; `otel.TraceIDOf(labels)` returns the 32-hex-digit trace ID the enqueue middleware carried in them (the W3C `traceparent` under the `otel.` prefix), and `otel.SpanContextOf(labels, propagator)` reads one written by another propagator. The example's handler above builds a link to a tracing UI from it.
+
+Only an absolute `http` or `https` URL with a host is shown. Anything else (a `javascript:` or `data:` URL, a relative path, a control character) is dropped and logged, and the UI checks the scheme again before it builds the link with the DOM. The page keeps its Content-Security-Policy; the link opens in a new tab with `rel="noopener noreferrer"`. Lists do not carry the link, only the run detail.
+
+## Try it
+
+```text
+actions:
+  vic POST /admin/runs/<run>/retry: 403
+  ann POST /admin/runs/<run>/retry: 200
+  ann GET /admin/runs/<run>: 200
+  ann DELETE /admin/runs/no-such-run: 404
+audit log:
+  09:30:00 vic runs.retry <run> allowed=false 403 admin: not allowed: runs.retry
+  09:30:00 ann runs.retry <run> allowed=true 200 ok
+  09:30:00 ann runs.delete no-such-run allowed=true 404 not found
+run detail:
+  status succeeded
+  trace_url https://tracing.example.com/trace/4bf92f3577b34da6a3ce929d0e0e4736
+```
+
+## Pitfalls
+
+- **Requests refused before `Authorize` are not audited.** An anonymous request (401), a write without a JSON content type (415) or a malformed body (400) asked for no action. Log those at the HTTP layer if you need them.
+- **The sink runs on the request.** `Record` runs after the response is written, on the request's goroutine, so a slow sink holds the connection a little longer. A sink error or panic is logged (`admin.WithLogger`) and never changes the response, which has already been sent; buffer and retry in the sink if no entry may be lost.
+- **`Err` holds the full error.** It can name hosts or data the response hid. Keep the audit store as private as your logs.
+- **`MemoryAudit` keeps everything.** It is for tests and short-lived tools, not a long-running server.
+- **No trace label, no link.** Runs enqueued without the otel enqueue middleware, or enqueued by a scheduler before it was added, carry no trace context; `TraceIDOf` returns false and the function should return "".
+- **Only the Go API is not audited.** `WithAudit` belongs to the HTTP handler, which knows who the caller is. Code that calls `Admin.Retry` directly records its own audit entry.
+
+## Related
+
+- [Admin JSON API](http-api.md): the routes and actions being audited.
+- [Admin web UI](ui.md): the run page that shows the trace link.
+- [OpenTelemetry](../observability/opentelemetry.md): the middleware that carries the trace in labels.
+- Example: [examples/admin-audit](../../examples/admin-audit/).

@@ -31,6 +31,7 @@ type Forward struct {
 
 var (
 	_ RunQuerier       = Forward{}
+	_ RunEditor        = Forward{}
 	_ RunRetrier       = Forward{}
 	_ RunDeleter       = Forward{}
 	_ BulkCanceller    = Forward{}
@@ -238,7 +239,15 @@ func (f Forward) Reschedule(ctx context.Context, ref RunRef, at time.Time) (RunR
 	if i, ok := f.Inner.(RunRescheduler); ok {
 		return i.Reschedule(ctx, ref, at)
 	}
-	return RunRef{}, lacks("Reschedule", 0)
+	return RunRef{}, lacks("Reschedule", Caps{})
+}
+
+// EditRun forwards to Inner's RunEditor.
+func (f Forward) EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef, error) {
+	if i, ok := f.Inner.(RunEditor); ok {
+		return i.EditRun(ctx, ref, edit)
+	}
+	return RunRef{}, lacks("EditRun", Caps{})
 }
 
 // CancelStep forwards to Inner's StepCanceller.
@@ -246,7 +255,7 @@ func (f Forward) CancelStep(ctx context.Context, ref RunRef, step string) error 
 	if i, ok := f.Inner.(StepCanceller); ok {
 		return i.CancelStep(ctx, ref, step)
 	}
-	return lacks("CancelStep", 0)
+	return lacks("CancelStep", Caps{})
 }
 
 // Result forwards to Inner's ResultReader.
@@ -262,7 +271,7 @@ func (f Forward) Nodes(ctx context.Context) ([]NodeInfo, error) {
 	if i, ok := f.Inner.(NodeLister); ok {
 		return i.Nodes(ctx)
 	}
-	return nil, lacks("Nodes", 0)
+	return nil, lacks("Nodes", Caps{})
 }
 
 // Health forwards to Inner (CheckHealth, so an inner client without a
@@ -274,7 +283,7 @@ func (f Forward) OnLifecycle(fn LifecycleFunc) error {
 	if i, ok := f.Inner.(LifecycleNotifier); ok {
 		return i.OnLifecycle(fn)
 	}
-	return lacks("OnLifecycle", 0)
+	return lacks("OnLifecycle", Caps{})
 }
 
 // PayloadLimit forwards to Inner's PayloadLimiter; zero (no cap) when

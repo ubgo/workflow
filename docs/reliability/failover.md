@@ -82,6 +82,8 @@ The failover client implements every optional run interface (`workflow.RunQuerie
 | `Pause`, `Resume` | Applied to both backends, primary first, since a paused workflow's runs may sit on either. When the secondary refuses, the primary's pause stands and the error says so. |
 | `Paused(ctx)` | The targets paused on either backend, without repeats, so a pause applied to one backend only can be seen and resumed. |
 | `Drain(ctx)`, `Done()` | Drains both backends at once; `Done` closes once both have stopped. |
+| `Reschedule`, `EditRun`, `ResetRun`, `CancelStep`, `Result` | Go to the backend the ref names and return refs with that backend's prefix. These carry no capability: a backend that does not implement the call refuses it with an `*workflow.UnsupportedError` naming that backend, and `workflow.Supports(c, op)` is true only when both backends do it. |
+| `SignalWaiting(ctx, ev)` | Delivers to the runs waiting now on both backends and returns how many it resumed in all. Both backends must implement `workflow.TransientSignaller`, else nothing is delivered; when one fails, the other's deliveries stand and the error names the failing one. |
 
 <!-- snippet: examples/failover-manage/main.go#retry -->
 ```go
@@ -211,6 +213,7 @@ strict classifier: returned "unexpected reply"
 - [Capabilities](../reference/capabilities.md): what each driver declares.
 - [Idempotency keys](../jobs/idempotency.md): what a key does within one backend.
 - [Outbox](outbox.md): keep accepting jobs while an engine is down by relaying them later instead.
+- [Regional routing](../operations/regional-routing.md): one backend per region, each job sent to its customer's region.
 - Example: [examples/failover](../../examples/failover/).
 - Example: [examples/failover-schedules](../../examples/failover-schedules/) (`WithSchedulesOnBoth`).
 - Example: [examples/failover-manage](../../examples/failover-manage/) (runs on both backends: list, retry, delete, cancel, pause).

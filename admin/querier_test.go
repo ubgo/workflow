@@ -11,7 +11,7 @@ import (
 // history is a RunQuerier standing for a run recorder's store: it holds
 // its own runs, which the client may no longer have.
 func history(runs ...workflow.RunInfo) *fakeClient {
-	return &fakeClient{caps: workflow.CapRunQuery | workflow.CapLabelPrefix, runs: runs}
+	return &fakeClient{caps: workflow.CapsOf(workflow.CapRunQuery, workflow.CapLabelPrefix), runs: runs}
 }
 
 func TestWithRunQuerierReadsTheQuerier(t *testing.T) {

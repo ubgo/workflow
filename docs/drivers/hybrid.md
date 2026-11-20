@@ -36,7 +36,7 @@ if err := c.Start(ctx); err != nil { // starts jobs, then the scheduler
 
 `Register` registers the workflow twice. On the jobs client it goes without its schedule fields (`Cron`, `CronLocation`, `Misfire`, `CronWindows`, `ScheduleWhen`, `CronSeconds`, `CronActive`), so the jobs client never fires it. On the scheduler client it goes as a forwarder of the same name: one step that enqueues the real job onto the jobs client with the fired run's payload, labels (schedule ID, tick time) and tenant. `Start` starts the jobs client first, then the scheduler; cancelling the context stops both.
 
-Everything else goes to the jobs client: `Enqueue`, `Cancel`, `Status`, `Signal`, `OnRunFinished`, and every optional interface (`Runs`, `Retry`, `Delete`, `Pause`, lifecycle events and the rest). `Schedule`, `Unschedule`, `Schedules`, `PauseSchedule` and `ResumeSchedule` go to the scheduler client:
+Everything else goes to the jobs client: `Enqueue`, `Cancel`, `Status`, `Signal`, `OnRunFinished`, and every optional interface (`Runs`, `Retry`, `Delete`, `Pause`, `EditRun`, `ResetRun`, `SignalWaiting`, lifecycle events and the rest; one the jobs client lacks is refused with an `*workflow.UnsupportedError`, and `workflow.Supports` answers for the jobs client). `Schedule`, `Unschedule`, `Schedules`, `PauseSchedule` and `ResumeSchedule` go to the scheduler client:
 
 <!-- snippet: examples/hybrid-placement/main.go#runs -->
 ```go

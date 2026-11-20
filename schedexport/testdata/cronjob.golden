@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: "nightly-report"
+  namespace: "jobs"
+spec:
+  schedule: "0 3 * * 1-5"
+  timeZone: "Europe/Berlin"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: "job"
+              image: "ghcr.io/example/app:1.4.2"
+              command: ["/usr/local/bin/app", "run-schedule"]
+              args: ["nightly-report"]

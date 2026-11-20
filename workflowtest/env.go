@@ -61,7 +61,7 @@ func (e *env) withQueues(qs ...workflow.QueueConfig) {
 // naming what is missing.
 func (e *env) need(want workflow.Caps) {
 	e.t.Helper()
-	if missing := e.c.Capabilities().Missing(want); missing != 0 {
+	if missing := e.c.Capabilities().Missing(want); !missing.IsZero() {
 		e.t.Skipf("driver lacks %s", missing)
 	}
 }
@@ -369,7 +369,7 @@ func assertUnsupported(t *testing.T, err error, field string, missing workflow.C
 	if field != "" && !strings.Contains(ue.Field, field) {
 		t.Errorf("UnsupportedError.Field = %q, want it to name %q", ue.Field, field)
 	}
-	if missing != 0 && !ue.Missing.Has(missing) {
+	if !missing.IsZero() && !ue.Missing.Has(missing) {
 		t.Errorf("UnsupportedError.Missing = %s, want it to hold %s", ue.Missing, missing)
 	}
 }

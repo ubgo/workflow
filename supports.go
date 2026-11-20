@@ -7,10 +7,13 @@ type Op string
 
 // The operations Supports answers for.
 const (
-	OpReschedule Op = "reschedule"  // RunRescheduler
-	OpCancelStep Op = "cancel-step" // StepCanceller
-	OpNodes      Op = "nodes"       // NodeLister
-	OpLifecycle  Op = "lifecycle"   // LifecycleNotifier
+	OpReschedule    Op = "reschedule"     // RunRescheduler
+	OpEditRun       Op = "edit-run"       // RunEditor
+	OpResetRun      Op = "reset-run"      // RunResetter
+	OpSignalWaiting Op = "signal-waiting" // TransientSignaller
+	OpCancelStep    Op = "cancel-step"    // StepCanceller
+	OpNodes         Op = "nodes"          // NodeLister
+	OpLifecycle     Op = "lifecycle"      // LifecycleNotifier
 )
 
 // OpProber is implemented by a client wrapper whose optional methods
@@ -33,6 +36,15 @@ func Supports(c Client, op Op) bool {
 		return ok
 	case OpCancelStep:
 		_, ok := c.(StepCanceller)
+		return ok
+	case OpEditRun:
+		_, ok := c.(RunEditor)
+		return ok
+	case OpResetRun:
+		_, ok := c.(RunResetter)
+		return ok
+	case OpSignalWaiting:
+		_, ok := c.(TransientSignaller)
 		return ok
 	case OpNodes:
 		_, ok := c.(NodeLister)

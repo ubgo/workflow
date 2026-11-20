@@ -136,11 +136,12 @@ type infoRow struct {
 // run_ext x.
 const infoCols = "r.seq, r.id, r.scheduled_id, r.workflow, r.payload, r.labels, r.priority, r.bucket, r.rate_keys, r.status, r.sig_floor, r.finished_at, r.err," +
 	" COALESCE(x.queue, '" + workflow.DefaultQueue + "'), r.created_at, x.started_at, r.fail_step, x.discarded," +
-	" r.run_at, i.tenant, i.output, i.has_output, i.progress, i.nodes"
+	" r.run_at, i.tenant, i.output, i.has_output, i.progress, i.nodes," +
+	" (SELECT rv.version FROM {run_version} rv WHERE rv.run_id = r.id)"
 
 func (r *infoRow) targets() []any {
 	return append(r.run.targets(), &r.queue, &r.created, &r.started, &r.failStep, &r.discarded,
-		&r.runAt, &r.extra.tenant, &r.extra.output, &r.extra.hasOutput, &r.extra.progress, &r.extra.nodes)
+		&r.runAt, &r.extra.tenant, &r.extra.output, &r.extra.hasOutput, &r.extra.progress, &r.extra.nodes, &r.extra.version)
 }
 
 // Runs lists the runs of every workflow in this database (not only those
@@ -414,9 +415,24 @@ func (c *Client) nextAttempts(ctx context.Context, infos []workflow.RunInfo, now
 // holds it), and its end is delivered to run-finished observers again. A
 // run that is not failed returns ErrWrongState.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	return c.retryFrom(ctx, ref, nil)
+}
+
+// retryFrom is Retry, and ResetRun when rerun lists steps: those steps
+// go back to pending with the ones that had not succeeded.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []string) (workflow.RunRef, error) {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {
 		return workflow.RunRef{}, err
+	}
+	// again selects the steps that run again: those that did not succeed,
+	// and the steps listed in rerun.
+	again, againArgs := "status <> ?", []any{stepSucceeded}
+	if len(rerun) > 0 {
+		again = "(status <> ? OR name IN (?" + strings.Repeat(", ?", len(rerun)-1) + "))"
+		for _, name := range rerun {
+			againArgs = append(againArgs, name)
+		}
 	}
 	var out workflow.RunRef
 	err = c.st.tx(ctx, func(tx *sql.Tx) error {
@@ -441,14 +457,14 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 			return err
 		}
 		for _, side := range []string{"step_ext", "step_err"} {
-			if _, err := c.st.exec(ctx, tx, "DELETE FROM {"+side+"} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id = ? AND status <> ?)",
-				row.id, stepSucceeded); err != nil {
+			if _, err := c.st.exec(ctx, tx, "DELETE FROM {"+side+"} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id = ? AND "+again+")",
+				append([]any{row.id}, againArgs...)...); err != nil {
 				return err
 			}
 		}
-		if _, err := c.st.exec(ctx, tx, `UPDATE {steps} SET status = ?, in_data = NULL, attempts = 0, failures = 0, reclaims = 0, due = 0,
-			lease_token = NULL, lease_until = 0, wait_event = '', wait_key = '' WHERE run_id = ? AND status <> ?`,
-			stepPending, row.id, stepSucceeded); err != nil {
+		if _, err := c.st.exec(ctx, tx, `UPDATE {steps} SET status = ?, in_data = NULL, out_data = NULL, attempts = 0, failures = 0, reclaims = 0, due = 0,
+			lease_token = NULL, lease_until = 0, wait_event = '', wait_key = '' WHERE run_id = ? AND `+again,
+			append([]any{stepPending, row.id}, againArgs...)...); err != nil {
 			return err
 		}
 		if _, err := c.st.exec(ctx, tx, "UPDATE {run_ext} SET discarded = 0 WHERE run_id = ?", row.id); err != nil {
