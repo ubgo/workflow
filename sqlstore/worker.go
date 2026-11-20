@@ -34,6 +34,8 @@ type attempt struct {
 	leaseFrom time.Time
 	cancel    context.CancelCauseFunc
 	edits     *chainEditor // PrependToChain and AppendToChain of this attempt
+	// completion is what the handler's CompleteTx staged (completetx.go).
+	completion *completion
 }
 
 // releaseTimeout bounds the write that hands a step back when the client
@@ -302,7 +304,10 @@ func (c *Client) execute(a *attempt) {
 	}
 	if errors.Is(context.Cause(actx), ErrLeaseLost) {
 		// Another client may hold the step now; writing an outcome could
-		// overwrite its. The step is retaken once its lease expires.
+		// overwrite its. The step is retaken once its lease expires. A
+		// CompleteTx that committed before the lease was lost still gets
+		// its after-commit work.
+		c.recordCompleted(a)
 		return
 	}
 	if errors.Is(context.Cause(actx), workflow.ErrStepCancelled) {
@@ -330,6 +335,7 @@ func (c *Client) call(ctx context.Context, reg *registered, step workflow.Step, 
 		Tenant:   a.tenant,
 		Node:     c.nodeID,
 	})
+	ctx = c.withAttempt(ctx, a) // for CompleteTx
 	ctx = workflow.WithProgressReporter(ctx, c.progressReporter(a))
 	a.edits = c.newChainEditor(a.runID)
 	ctx = workflow.WithChainEditor(ctx, a.edits)
@@ -586,7 +592,9 @@ func (c *Client) release(a *attempt) {
 // record writes an attempt's outcome, if the step is still this attempt's
 // and the run still active: success completes the step, a Discard ends the
 // run cancelled, a retryable error requeues the step after the policy's
-// backoff (recordFailure), anything else fails the run.
+// backoff (recordFailure), anything else fails the run. A step its handler
+// completed with CompleteTx in a transaction that committed is left as
+// written, and only that completion's after-commit work runs.
 func (c *Client) record(a *attempt, reg *registered, step workflow.Step, out []byte, herr error) {
 	ctx := c.ctx
 	var o txOut
@@ -597,6 +605,14 @@ func (c *Client) record(a *attempt, reg *registered, step workflow.Step, out []b
 			return nil
 		}
 		if err != nil {
+			return err
+		}
+		// A CompleteTx that committed already wrote the outcome: carry out
+		// its after-commit work, write nothing.
+		if staged, err := c.stagedCompletion(ctx, tx, a); err != nil || staged != nil {
+			if staged != nil {
+				o = *staged
+			}
 			return err
 		}
 		if row.status != runActive {
