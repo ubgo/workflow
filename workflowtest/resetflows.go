@@ -1,0 +1,83 @@
+package workflowtest
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sync/atomic"
+	"testing"
+
+	"github.com/ubgo/workflow"
+)
+
+// RunResetFlows proves workflow.RunResetter on a driver: a failed run
+// reset from an upstream step runs that step and every step after it
+// again, keeps the output of the step before it, and ends succeeded; an
+// unknown step and a run that is not failed are refused. h.Start may
+// return a client with or without plugins (Use forwards ResetRun).
+func RunResetFlows(t *testing.T, h FlowHarness) {
+	var extracted, transformed, loaded atomic.Int32
+	var fixed atomic.Bool
+	wf := workflow.Workflow{Name: "reset-etl", Steps: []workflow.Step{
+		{Name: "extract", Run: func(context.Context, []byte) ([]byte, error) {
+			extracted.Add(1)
+			return json.Marshal("rows")
+		}},
+		{Name: "transform", After: []string{"extract"}, Run: func(_ context.Context, in []byte) ([]byte, error) {
+			transformed.Add(1)
+			var rows string
+			if err := json.Unmarshal(in, &rows); err != nil {
+				return nil, workflow.Permanent(err)
+			}
+			if fixed.Load() {
+				return json.Marshal(rows + " cleaned")
+			}
+			return json.Marshal(rows + " raw") // the bug: succeeds with bad output
+		}},
+		{Name: "load", After: []string{"transform"}, Run: func(_ context.Context, in []byte) ([]byte, error) {
+			loaded.Add(1)
+			var v string
+			if err := json.Unmarshal(in, &v); err != nil {
+				return nil, workflow.Permanent(err)
+			}
+			if v != "rows cleaned" {
+				return nil, workflow.Permanent(errors.New("load refused " + v))
+			}
+			return json.Marshal("loaded " + v)
+		}},
+	}}
+	c := h.Start(t, wf)
+	rs, ok := c.(workflow.RunResetter)
+	if !ok {
+		t.Skip("driver has no RunResetter")
+	}
+	ctx := context.Background()
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "reset-etl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flowAwait(t, c, ref); err == nil {
+		t.Fatal("the first run must fail at load")
+	}
+	if _, err := rs.ResetRun(ctx, ref, "nope"); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("unknown step: %v", err)
+	}
+	fixed.Store(true)
+	again, err := rs.ResetRun(ctx, ref, "transform")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := flowAwait(t, c, again)
+	if err != nil || string(out) != `"loaded rows cleaned"` {
+		t.Fatalf("reset run: %q %v", out, err)
+	}
+	if extracted.Load() != 1 || transformed.Load() != 2 || loaded.Load() != 2 {
+		t.Fatalf("extract %d, transform %d, load %d: want 1, 2, 2", extracted.Load(), transformed.Load(), loaded.Load())
+	}
+	if again.RunID != ref.RunID {
+		t.Fatalf("reset changed the run: %v -> %v", ref, again)
+	}
+	if _, err := rs.ResetRun(ctx, ref, "transform"); !errors.Is(err, workflow.ErrWrongState) {
+		t.Fatalf("reset of a succeeded run: %v", err)
+	}
+}

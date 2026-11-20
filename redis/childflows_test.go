@@ -93,3 +93,22 @@ func TestObjectFlows(t *testing.T) {
 		Store: func(*testing.T) workflow.JournalStore { return rc.JournalStore() },
 	})
 }
+
+// TestResetFlows proves ResetRun against Redis.
+func TestResetFlows(t *testing.T) {
+	rdb := redisClient(t)
+	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+		rc := newClient(t, rdb, testPrefix(t, rdb))
+		for _, wf := range wfs {
+			if err := rc.Register(wf); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		if err := rc.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return rc
+	}})
+}

@@ -77,3 +77,24 @@ func TestObjectFlows(t *testing.T) {
 		Store: func(*testing.T) workflow.JournalStore { return workflow.NewMemoryJournal() },
 	})
 }
+
+// TestResetFlows proves ResetRun on the memory driver, through Use.
+func TestResetFlows(t *testing.T) {
+	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+		c, err := workflow.Use(memory.New(), workflow.Journal(workflow.NewMemoryJournal()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, wf := range wfs {
+			if err := c.Register(wf); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		if err := c.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}})
+}

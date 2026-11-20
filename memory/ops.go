@@ -146,6 +146,13 @@ func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPag
 // workflow.RunRetrier. The run keeps its RunRef. Its concurrency and rate
 // limits apply again, as for a new run.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	return c.retryFrom(ctx, ref, "")
+}
+
+// retryFrom is Retry, and ResetRun when from names a step: the outputs of
+// from and of every step downstream of it are dropped too, so they run
+// again.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
 	}
@@ -166,11 +173,20 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 			return workflow.RunRef{}, fmt.Errorf("%w: run %s holds the key %q", workflow.ErrDuplicate, holder.id, old.idem.key)
 		}
 	}
+	var rerun []string
+	if from != "" {
+		if rerun = workflow.StepsFrom(old.reg.wf, from); rerun == nil {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, old.reg.wf.Name, from)
+		}
+	}
 	c.forgetFinishedLocked(old)
 	r := c.newRunLocked(old.reg, old.job)
 	r.id, r.sid, r.seq = old.id, old.sid, old.seq // the same run, seen by signals as enqueued when it was
 	r.enqueuedAt, r.startedAt, r.attempts = old.enqueuedAt, old.startedAt, old.attempts
 	r.outputs = maps.Clone(old.outputs)
+	for _, name := range rerun {
+		delete(r.outputs, name)
+	}
 	r.consumed = maps.Clone(old.consumed)
 	r.chain = old.chain // edits of the steps that succeeded before the failure
 	r.errs = old.errs

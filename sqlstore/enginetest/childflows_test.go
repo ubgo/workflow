@@ -104,3 +104,17 @@ func TestObjectFlows(t *testing.T) {
 		})
 	}
 }
+
+// TestResetFlows proves ResetRun on every engine.
+func TestResetFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+				db, prefix := e.open(t)
+				sc := newClient(t, e, db, prefix)
+				startWith(t, sc, wfs...)
+				return sc
+			}})
+		})
+	}
+}
