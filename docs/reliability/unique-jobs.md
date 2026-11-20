@@ -191,14 +191,19 @@ Drivers call `workflow.MarkInserted` once a new run is stored and `workflow.Mark
 
 A digest mail is scheduled for tonight; each new comment enqueues it again with the full list so far. The newest arguments should win, not the first. `UniqueConfig.Replace` makes a duplicate update the holder while it is still scheduled: its payload, priority and, when the new job sets one, `RunAt` become the new job's (through `workflow.RunEditor`), and the holder's `RunRef` comes back marked a duplicate. A holder that has started is left alone, and the duplicate is answered as without `Replace` (`ReturnExisting` or `ErrDuplicate`).
 
+<!-- snippet: examples/run-control/main.go#unique-replace -->
 ```go
 mw, err := middleware.UniqueWith(middleware.UniqueConfig{
 	By:      func(j workflow.Job) string { return "digest:" + j.Labels["user"] },
-	Store:   store,
+	Store:   middleware.NewMemoryUnique(clock.Real{}),
 	TTL:     24 * time.Hour,
-	Client:  client, // must implement workflow.RunEditor: memory, sqlstore, Redis
+	Client:  mc, // implements workflow.RunEditor
 	Replace: true,
 })
+if err != nil {
+	return err
+}
+c := middleware.WrapClient(mc, mw)
 ```
 
 `Replace` needs a `Client` implementing `workflow.RunEditor` and a store implementing `UniqueHolders`; `UniqueWith` refuses it otherwise (`ErrInvalid`). To collapse a burst of jobs into one run that sees only the latest, without a schedule, see [debounce](debounce.md).
