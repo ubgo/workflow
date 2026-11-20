@@ -157,10 +157,12 @@ type Auth[P any] struct {
 type HandlerOption func(*handlerConfig)
 
 type handlerConfig struct {
-	payloads bool
-	stacks   bool
-	logger   *slog.Logger
-	maxBody  int64
+	payloads  bool
+	stacks    bool
+	logger    *slog.Logger
+	maxBody   int64
+	audit     AuditSink                     // WithAudit (audit.go)
+	traceLink func(workflow.RunInfo) string // WithTraceLink (tracelink.go)
 }
 
 // WithPayloads includes each run's payload (base64) in run responses. By
@@ -339,7 +341,9 @@ func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, h.cfg.maxBody)
 	}
 	ctx := context.WithValue(r.Context(), principalKey[P]{}, who)
+	w, ctx, aw := h.startAudit(w, ctx)
 	h.mux.ServeHTTP(w, r.WithContext(ctx))
+	h.finishAudit(ctx, who, aw)
 }
 
 // identify calls Identify, turning a panic into an error so it fails
@@ -367,6 +371,7 @@ func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Ac
 		}()
 		return h.auth.Authorize(r.Context(), Request[P]{Who: who, Action: action, Resource: res, HTTP: r})
 	}()
+	noteAuthorize(r.Context(), action, res, err)
 	if err != nil {
 		writeError(w, http.StatusForbidden, CodeForbidden, "not allowed: "+string(action))
 		return false
@@ -379,6 +384,7 @@ func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Ac
 // filter field or the capability; anything else is logged and answered
 // with a bare 500, so a database error never reaches the browser.
 func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
+	noteError(w, err)
 	switch {
 	case errors.Is(err, workflow.ErrInvalid):
 		writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
@@ -516,7 +522,9 @@ func (h *handler[P]) showRun(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, ActionShowRun, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.runJSON(info))
+	out := h.runJSON(info)
+	out.TraceURL = h.traceURL(info)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *handler[P]) retryRun(w http.ResponseWriter, r *http.Request) {
@@ -1257,6 +1265,8 @@ type runJSON struct {
 	HasOutput bool `json:"has_output,omitempty"`
 	// AttemptedBy is the nodes that ran its attempts (CapNodeIdentity).
 	AttemptedBy []string `json:"attempted_by,omitempty"`
+	// TraceURL links the run's trace (WithTraceLink); run detail only.
+	TraceURL string `json:"trace_url,omitempty"`
 }
 
 type progressJSON struct {
@@ -1383,6 +1393,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
+	noteError(w, errors.New(msg)) // the audit entry's Err when no operation error came first
 	writeJSON(w, status, struct {
 		Error struct {
 			Code    string `json:"code"`
