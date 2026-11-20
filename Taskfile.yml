@@ -3,6 +3,16 @@ version: '3'
 # A test piped into grep or tee still fails the task.
 set: [pipefail]
 
+# Temporary files (go build work dirs, t.TempDir, mktemp) go to disk when
+# /tmp is a tmpfs: a full gate makes hundreds of thousands of files, which
+# can exhaust a tmpfs's inodes or space while other jobs share it ("no space
+# left on device" from t.TempDir). WF_TMPDIR names the directory; else, with
+# a tmpfs /tmp, it is the user cache dir's ubgo-workflow/tmp; else TMPDIR as
+# it is. A TMPDIR set in the caller's environment wins over all of this.
+env:
+  TMPDIR:
+    sh: 'if [ -n "${WF_TMPDIR:-}" ]; then d=$WF_TMPDIR; elif [ "$(findmnt -no FSTYPE /tmp 2>/dev/null)" = tmpfs ]; then d=${XDG_CACHE_HOME:-$HOME/.cache}/ubgo-workflow/tmp; else d=${TMPDIR:-/tmp}; fi; mkdir -p "$d" && echo "$d"'
+
 # The Hatchet driver's own tasks, runnable from the root as hatchet:<task>
 # (hatchet:test:live runs the conformance suite against the shared stack's
 # Hatchet engine).
@@ -38,8 +48,10 @@ tasks:
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # -race because the drivers and the fake clock are concurrent code.
+  # -timeout 30m as sqlstore:test:pg: the SQLite engine suite alone runs
+  # past Go's 10-minute default on a loaded machine without hanging.
   test:run:
-    cmds: ['go test -race $(go list -m | sed "s|$|/...|")']
+    cmds: ['go test -race -timeout 30m $(go list -m | sed "s|$|/...|")']
 
   vet:
     desc: Run go vet over every module in go.work
