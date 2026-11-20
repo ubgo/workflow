@@ -16,27 +16,30 @@ import (
 )
 
 var (
-	_ workflow.RunQuerier        = (*Client)(nil)
-	_ workflow.RunRetrier        = (*Client)(nil)
-	_ workflow.RunDeleter        = (*Client)(nil)
-	_ workflow.BulkCanceller     = (*Client)(nil)
-	_ workflow.Pauser            = (*Client)(nil)
-	_ workflow.SchedulePauser    = (*Client)(nil)
-	_ workflow.ScheduleLister    = (*Client)(nil)
-	_ workflow.ScheduleTriggerer = (*Client)(nil)
-	_ workflow.TickNotifier      = (*Client)(nil)
-	_ workflow.Drainer           = (*Client)(nil)
-	_ workflow.ReportingDrainer  = (*Client)(nil)
-	_ workflow.StopCauser        = (*Client)(nil)
-	_ workflow.RunForcer         = (*Client)(nil)
-	_ workflow.RunRescheduler    = (*Client)(nil)
-	_ workflow.StepCanceller     = (*Client)(nil)
-	_ workflow.ResultReader      = (*Client)(nil)
-	_ workflow.NodeLister        = (*Client)(nil)
-	_ workflow.HealthChecker     = (*Client)(nil)
-	_ workflow.LifecycleNotifier = (*Client)(nil)
-	_ workflow.PayloadLimiter    = (*Client)(nil)
-	_ workflow.OpProber          = (*Client)(nil)
+	_ workflow.RunQuerier         = (*Client)(nil)
+	_ workflow.RunRetrier         = (*Client)(nil)
+	_ workflow.RunDeleter         = (*Client)(nil)
+	_ workflow.BulkCanceller      = (*Client)(nil)
+	_ workflow.Pauser             = (*Client)(nil)
+	_ workflow.SchedulePauser     = (*Client)(nil)
+	_ workflow.ScheduleLister     = (*Client)(nil)
+	_ workflow.ScheduleTriggerer  = (*Client)(nil)
+	_ workflow.TickNotifier       = (*Client)(nil)
+	_ workflow.Drainer            = (*Client)(nil)
+	_ workflow.ReportingDrainer   = (*Client)(nil)
+	_ workflow.StopCauser         = (*Client)(nil)
+	_ workflow.RunForcer          = (*Client)(nil)
+	_ workflow.RunRescheduler     = (*Client)(nil)
+	_ workflow.RunEditor          = (*Client)(nil)
+	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.TransientSignaller = (*Client)(nil)
+	_ workflow.StepCanceller      = (*Client)(nil)
+	_ workflow.ResultReader       = (*Client)(nil)
+	_ workflow.NodeLister         = (*Client)(nil)
+	_ workflow.HealthChecker      = (*Client)(nil)
+	_ workflow.LifecycleNotifier  = (*Client)(nil)
+	_ workflow.PayloadLimiter     = (*Client)(nil)
+	_ workflow.OpProber           = (*Client)(nil)
 )
 
 // need refuses a call when Capabilities lacks caps, so a method never
@@ -330,6 +333,67 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		return workflow.RunRef{}, err
 	}
 	return out, nil
+}
+
+// EditRun edits a scheduled run in the region its ref names and returns
+// the ref prefixed the same way.
+func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := onRegion(c, "EditRun", workflow.Caps{}, ref, func(name string, e workflow.RunEditor, inner workflow.RunRef) error {
+		got, err := e.EditRun(ctx, inner, edit)
+		out = encodeRef(name, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}
+
+// ResetRun re-runs a failed run from step in the region its ref names and
+// returns the ref prefixed the same way.
+func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := onRegion(c, "ResetRun", workflow.Caps{}, ref, func(name string, r workflow.RunResetter, inner workflow.RunRef) error {
+		got, err := r.ResetRun(ctx, inner, step)
+		out = encodeRef(name, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}
+
+// SignalWaiting delivers ev to the runs waiting for it now in the regions
+// Signal would send it to (every region, or WithSignalRouter's pick), and
+// returns how many it resumed in all. Every one of those regions must
+// implement workflow.TransientSignaller; when one does not, nothing is
+// delivered. When a region fails, the others' deliveries stand and the
+// error names the failing region.
+func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	targets, err := c.signalTargets(ctx, ev)
+	if err != nil {
+		return 0, err
+	}
+	ts := make(map[string]workflow.TransientSignaller, len(targets))
+	for _, name := range targets {
+		s, ok := c.regions[name].(workflow.TransientSignaller)
+		if !ok {
+			return 0, workflow.Unsupported("SignalWaiting", "region "+name+" does not implement it")
+		}
+		ts[name] = s
+	}
+	total := 0
+	errs := map[string]error{}
+	for _, name := range targets {
+		n, err := ts[name].SignalWaiting(ctx, ev)
+		total += n
+		if err != nil {
+			errs[name] = err
+		}
+	}
+	return total, joinRegions("SignalWaiting", targets, errs)
 }
 
 // CancelStep withdraws a step of the run in the region its ref names.

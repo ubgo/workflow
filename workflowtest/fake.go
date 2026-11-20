@@ -72,9 +72,19 @@ func FakeCaps(c workflow.Caps) FakeOption {
 }
 
 // FakeLike copies the capabilities of c, typically the production client
-// built (but not started) with test configuration. It reads only
-// c.Capabilities.
-func FakeLike(c workflow.Client) FakeOption { return FakeCaps(c.Capabilities()) }
+// built (but not started) with test configuration, and whether c does the
+// optional operations the Fake records without a capability (ResetRun,
+// SignalWaiting: workflow.Supports), so the Fake refuses them where c
+// would. It reads only c.Capabilities and c's method set.
+func FakeLike(c workflow.Client) FakeOption {
+	return func(f *Fake) {
+		FakeCaps(c.Capabilities())(f)
+		f.ops = map[workflow.Op]bool{}
+		for _, op := range fakeOps {
+			f.ops[op] = workflow.Supports(c, op)
+		}
+	}
+}
 
 // FakeKeyExpr makes the Fake accept expression keys (workflow.KeyExpr), as
 // an engine such as Hatchet does. By default it refuses them at Start, as
@@ -186,6 +196,11 @@ type Fake struct {
 	forced   []FakeForce                   // successful ForceComplete and ForceFail calls, in order
 	paused   map[workflow.PauseTarget]bool // pauses in force
 	closures []workflow.ClosureJob         // EnqueueClosure calls, in order
+
+	ops      map[workflow.Op]bool     // fakeOps the Fake does; nil: all (FakeLike narrows it)
+	resets   []FakeReset              // successful ResetRun calls, in order
+	waiting  []workflow.Event         // SignalWaiting calls, in order
+	promises *workflow.MemoryPromises // the store Promises returns; nil until asked
 }
 
 // fakeRun is one recorded, never-executed run.

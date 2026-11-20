@@ -90,7 +90,7 @@ if err := c.Signal(ctx, workflow.Event{Name: "approved", Key: "42"}); err != nil
 }
 ```
 
-Every region is tried; when one fails, the others have already taken the event and the error names the failing region, so a retried `Signal` may reach a region twice. An app whose event payloads must stay in one region too passes `regional.WithSignalRouter(fn)`: `fn` returns the regions an event goes to, at least one, each a region of the client (`ErrUnknownRegion` otherwise). A run waiting in a region it leaves out never sees the event.
+Every region is tried; when one fails, the others have already taken the event and the error names the failing region, so a retried `Signal` may reach a region twice. An app whose event payloads must stay in one region too passes `regional.WithSignalRouter(fn)`: `fn` returns the regions an event goes to, at least one, each a region of the client (`ErrUnknownRegion` otherwise). A run waiting in a region it leaves out never sees the event. [`SignalWaiting`](../workflows/signals.md#deliver-only-to-runs-waiting-now) follows the same router.
 
 ## Schedules
 
@@ -115,7 +115,8 @@ The client implements the optional run interfaces. Each needs its capability, an
 | Call | What the regional client does |
 |---|---|
 | `Runs(ctx, q)` | Asks every region and merges their feeds, newest enqueue first (ties by `RunID` descending), with prefixed refs. The cursor records each region's position; a cursor the client did not make is `workflow.ErrInvalid`. A prefixed `Ref` in `q` asks only its region. |
-| `Retry`, `Delete`, `ForceComplete`, `ForceFail`, `Reschedule`, `CancelStep`, `Result` | Go to the region the ref names; a returned ref keeps that region's prefix. |
+| `Retry`, `Delete`, `ForceComplete`, `ForceFail`, `Reschedule`, `EditRun`, `ResetRun`, `CancelStep`, `Result` | Go to the region the ref names; a returned ref keeps that region's prefix. |
+| `SignalWaiting(ctx, ev)` | Goes to the regions `Signal` would send `ev` to (every region, or the `WithSignalRouter` pick) and returns how many waiting runs it resumed in all. Every one of those regions must implement `workflow.TransientSignaller`, else nothing is delivered. |
 | `CancelAll(ctx, q)` | Runs in every region and returns the total. When a region fails, the others' cancellations stand and the error names the failing region. |
 | `Pause`, `Resume`, `Paused` | Applied to every region; `Paused` lists the union, so a pause applied to some regions only can be seen and resumed. |
 | `Drain`, `DrainWithReport`, `Done` | Drain every region at once; `Done` closes once all have stopped. |

@@ -10,14 +10,17 @@ import (
 )
 
 var (
-	_ workflow.RunRescheduler    = (*Client)(nil)
-	_ workflow.StepCanceller     = (*Client)(nil)
-	_ workflow.ResultReader      = (*Client)(nil)
-	_ workflow.NodeLister        = (*Client)(nil)
-	_ workflow.HealthChecker     = (*Client)(nil)
-	_ workflow.LifecycleNotifier = (*Client)(nil)
-	_ workflow.PayloadLimiter    = (*Client)(nil)
-	_ workflow.OpProber          = (*Client)(nil)
+	_ workflow.RunRescheduler     = (*Client)(nil)
+	_ workflow.RunEditor          = (*Client)(nil)
+	_ workflow.RunResetter        = (*Client)(nil)
+	_ workflow.TransientSignaller = (*Client)(nil)
+	_ workflow.StepCanceller      = (*Client)(nil)
+	_ workflow.ResultReader       = (*Client)(nil)
+	_ workflow.NodeLister         = (*Client)(nil)
+	_ workflow.HealthChecker      = (*Client)(nil)
+	_ workflow.LifecycleNotifier  = (*Client)(nil)
+	_ workflow.PayloadLimiter     = (*Client)(nil)
+	_ workflow.OpProber           = (*Client)(nil)
 )
 
 // Supports reports an operation as done only when both backends do it,
@@ -43,6 +46,61 @@ func (f *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		return workflow.RunRef{}, err
 	}
 	return out, nil
+}
+
+// EditRun edits a scheduled run on the backend its ref names, and
+// prefixes the ref it returns.
+func (f *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		e, ok := c.(workflow.RunEditor)
+		if !ok {
+			return workflow.Unsupported("EditRun", "the "+sd.String()+" backend does not implement it")
+		}
+		got, err := e.EditRun(ctx, inner, edit)
+		out = encodeRef(sd, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}
+
+// ResetRun re-runs a failed run from step on the backend its ref names,
+// and prefixes the ref it returns.
+func (f *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.RunResetter)
+		if !ok {
+			return workflow.Unsupported("ResetRun", "the "+sd.String()+" backend does not implement it")
+		}
+		got, err := r.ResetRun(ctx, inner, step)
+		out = encodeRef(sd, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}
+
+// SignalWaiting delivers ev to the runs waiting for it now on both
+// backends, since a waiting run may sit on either, and returns how many
+// it resumed in all. Both backends must implement
+// workflow.TransientSignaller; when one does not, nothing is delivered.
+// When one backend fails, the other's deliveries stand and the error
+// names the failing one.
+func (f *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	ps, pok := f.primary.(workflow.TransientSignaller)
+	ss, sok := f.secondary.(workflow.TransientSignaller)
+	if !pok || !sok {
+		return 0, workflow.Unsupported("SignalWaiting", "both failover backends must implement workflow.TransientSignaller")
+	}
+	pn, perr := ps.SignalWaiting(ctx, ev)
+	sn, serr := ss.SignalWaiting(ctx, ev)
+	return pn + sn, joinSides("SignalWaiting", perr, serr)
 }
 
 // CancelStep withdraws a step of the run on the backend its ref names.

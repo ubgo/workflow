@@ -60,6 +60,9 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 - Aggregation: `middleware.Aggregate` and `AggregatePlugin` merge the jobs of a group and window into one flush run, with memory, SQL and Redis stores.
 - `batch.EnqueueChunked`: resumable chunked fan-out with idempotency keys and an optional upstream limit.
 - Package `cutover`: move to a new backend without stopping; `Remaining` and `MoveSchedules`.
+- `failover`, `regional` and `cutover` forward `EditRun`, `ResetRun` and `SignalWaiting` (and `cutover` also `Reschedule` and `CancelStep`): a call by ref goes to the backend or region the ref names and keeps its prefix; `SignalWaiting` reaches every backend, or the regions `Signal` would reach, and returns the total resumed, refused with `ErrUnsupported` before any delivery when one of them lacks it. `hybrid` forwards them to its jobs client. `cutover.Client` implements `workflow.OpProber`.
+- `workflow.OpResetRun` and `workflow.OpSignalWaiting` for `workflow.Supports`.
+- `workflowtest.Fake` records `ResetRun` (`Resets`, `AssertReset`) and `SignalWaiting` (`SignalsWaiting`, `AssertSignalledWaiting`), keeps a promise store (`Promises`, `AssertPromiseResolved`, `AssertPromiseRejected`, `AssertPromisePending`) and reads back virtual object calls (`ObjectCalls`, `AssertObjectCalled`, `AssertObjectNotCalled`); `FakeLike(c)` also copies whether `c` does `ResetRun` and `SignalWaiting`.
 
 ### Fixed
 
