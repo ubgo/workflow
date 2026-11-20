@@ -7,14 +7,17 @@
 // hand catches today's mentions; only a check in `task check` keeps them
 // from coming back.
 //
-// The word list is given with -words and is never written in this source,
-// so the checker does not trip over itself; `task docs:words` holds the
-// list and passes the files to check (Markdown under docs/ and examples/,
-// the top-level Markdown files and every Go file, from git ls-files, so
-// ignored private overlays are skipped).
+// The word list is given with -words, or with -words-env NAME read from
+// the environment variable NAME, and is never written in this source, so
+// the checker does not trip over itself. `task docs:words` reads the
+// private list and passes it in an environment variable, so it never shows
+// in the task's command echo or in the process list, and passes the files
+// to check (Markdown under docs/ and examples/, the top-level Markdown
+// files and every Go file, from git ls-files, so ignored private overlays
+// are skipped).
 //
-// Usage: go run ./examples/internal/doccheck/words -words a,b,c FILE...
-// It exits 1 and prints file:line: word for every hit.
+// Usage: go run ./examples/internal/doccheck/words -words-env VAR FILE...
+// (or -words a,b,c). It exits 1 and prints file:line: word for every hit.
 package main
 
 import (
@@ -34,10 +37,19 @@ const maxLine = 1 << 20
 func main() {
 	fs := flag.NewFlagSet("words", flag.ContinueOnError)
 	list := fs.String("words", "", "comma-separated words to refuse (case-insensitive)")
+	env := fs.String("words-env", "", "name of an environment variable holding the comma-separated words, so the list stays out of argv and command echoes")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
-	n, err := run(os.Stdout, parseWords(*list), fs.Args())
+	words := *list
+	if *env != "" {
+		if words != "" {
+			fmt.Fprintln(os.Stderr, "words: give -words or -words-env, not both")
+			os.Exit(2)
+		}
+		words = os.Getenv(*env)
+	}
+	n, err := run(os.Stdout, parseWords(words), fs.Args())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "words:", err)
 		os.Exit(1)
@@ -65,7 +77,7 @@ func parseWords(list string) []string {
 // must not pass quietly.
 func run(w io.Writer, words, files []string) (int, error) {
 	if len(words) == 0 {
-		return 0, errors.New("no words given (-words)")
+		return 0, errors.New("no words given (-words, or -words-env naming an empty or unset variable)")
 	}
 	if len(files) == 0 {
 		return 0, errors.New("no files given")
