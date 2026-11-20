@@ -247,7 +247,7 @@ func (f Forward) EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef,
 	if i, ok := f.Inner.(RunEditor); ok {
 		return i.EditRun(ctx, ref, edit)
 	}
-	return RunRef{}, lacks("EditRun", 0)
+	return RunRef{}, lacks("EditRun", Caps{})
 }
 
 // CancelStep forwards to Inner's StepCanceller.

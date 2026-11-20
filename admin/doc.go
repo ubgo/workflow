@@ -26,6 +26,7 @@
 //	nodes                        none              workflow.NodeLister
 //	health                       none              workflow.CheckHealth (every client)
 //	reschedule                   none              workflow.RunRescheduler
+//	edit_run                     none              workflow.RunEditor
 //	cancel_step                  none              workflow.StepCanceller
 //
 // Support reports which ones the client has and what it lacks, so a

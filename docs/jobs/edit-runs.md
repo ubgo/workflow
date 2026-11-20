@@ -26,6 +26,10 @@ if err != nil {
 
 A `workflow.JobEdit` field left nil is not changed: `Payload` replaces the payload (the driver's payload limit applies), `Priority` replaces `Job.Priority`, `RunAt` moves the start as `Reschedule` does (a past time means now). The run keeps its RunRef, labels, idempotency key and queue. A concurrency or rate key computed from the payload is computed again from the new one.
 
+## From the admin
+
+The admin handler serves `POST /runs/{id}/edit` (add `?scheduled=1` when `{id}` is a ScheduledID, as for every run route) with a body of `{"payload": <JSON>, "priority": n, "run_at": "RFC 3339"}`, each field optional, behind the action `admin.ActionEditRun`; the `Authorizer` sees the edit in `Resource.Edit`, so it can allow a new time and refuse a new payload. `Admin.EditRun` is the same operation in Go (`admin.OpEditRun`).
+
 ## Pitfalls
 
 - Only a run in `StatusScheduled` can be edited: a run that was admitted may already be running on another node, so any other status returns `ErrWrongState`, and so does an edit that races the run's due time and loses. An unknown ref returns `ErrNotFound`, an edit that changes nothing `ErrInvalid`.
