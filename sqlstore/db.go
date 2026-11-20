@@ -77,11 +77,15 @@ const (
 	// (each its own migration list).
 	tblJournal = "journal"
 	tblBuckets = "buckets"
+	// tblData is DataStore's table (its own migration list, data.go).
+	tblData = "data"
+	// tblInbox is Inbox's table (its own migration list, inbox.go).
+	tblInbox = "inbox"
 )
 
 var allTables = []string{tblRuns, tblSteps, tblSignals, tblConsumed, tblSchedules, tblTicks, tblLocks, tblStarts, tblBatches, tblUnique, tblMisfire, tblDebounce,
 	tblRunExt, tblStepExt, tblPauses, tblScheduleExt, tblRunChain, tblStepErr, tblRunLabels, tblScheduleLast, tblAttemptErr, tblRunForced, tblOutputs,
-	tblLeaders, tblRunsArchive, tblStepsArchive, tblRunInfo, tblAttemptNode, tblNodes, tblStepCancel, tblScheduleSpec, tblUniqueHolder, tblScheduleTenant, tblJournal, tblBuckets}
+	tblLeaders, tblRunsArchive, tblStepsArchive, tblRunInfo, tblAttemptNode, tblNodes, tblStepCancel, tblScheduleSpec, tblUniqueHolder, tblScheduleTenant, tblJournal, tblBuckets, tblData, tblInbox, tblRunVersion}
 
 // store is the database half of the client: the handle, the dialect, the
 // statement text rewriting and the database-facing policies (error

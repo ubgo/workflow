@@ -23,6 +23,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [retries](retries) | Backoff with jitter, RetryAfter/DelayFor, Permanent and NoRetryOn, per-step RetriesNone, Hatchet refusing jitter and DelayFor | `workflow`, `memory`, `clock`, `hatchet` |
 | [delayed-jobs](delayed-jobs) | RunAt and ScheduledID, Status, cancel a delayed and a running run | `workflow`, `memory`, `clock` |
 | [idempotency](idempotency) | One run per key, key freed at the end, optional/required/off, refusal without CapIdempotencyKey | `workflow`, `memory`, `workflowtest` |
+| [consumer-inbox](consumer-inbox) | A message delivered three times processed once with InboxConsumer, a failed attempt run again, sqlstore Inbox.MarkTx writing one order from four concurrent deliveries, a webhook with an Inbox | `workflow`, `events`, `memory`, `sqlstore` |
 | [concurrency](concurrency) | Per-key concurrency and strategies, rate limits, priority, KeyFunc vs KeyExpr refusals | `workflow`, `memory`, `clock`, `hatchet` |
 | [cron-schedules](cron-schedules) | Cron syntax, Vixie rule, parse errors, DST, CronLocation, Schedule/Unschedule, upsert by Name on SQLite, misfire policies and Misfire.Due, WithCronParser, Hatchet refusals | `workflow`, `cron`, `memory`, `sqlstore`, `hatchet` |
 | [signals-and-sleep](signals-and-sleep) | Wait steps with KeyFrom and Key, Signal, durable sleep, wait timeout plus OnFailure, fan-in with StepInput, StepInfo, step timeout | `workflow`, `memory`, `clock`, `hatchet` |
@@ -51,6 +52,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [queue-limit](queue-limit) | QueueConfig.Limit capping a queue across clients: peak concurrency within the limit on memory and on two SQL nodes sharing one SQLite file | `workflow`, `memory`, `sqlstore` |
 | [upstream-limits](upstream-limits) | A leaky bucket on a fake clock with Take, Observe, Wait and TakeOrSnooze; PeriodKey in Berlin and OncePerPeriod | `workflow`, `memory`, `clock` |
 | [flow-memo](flow-memo) | Memo around a charge on a retried step, MapEach and Loop rerunning only what failed, ProcessChunks with progress, SetRunData/RunData, a Choice, ErrNoJournal | `workflow`, `memory` |
+| [scoped-data](scoped-data) | Folder, workflow and global data shared across runs with SetData, GetData and UpdateData; the in-memory store, then sqlstore.DataStore on SQLite with two clients adding to one total | `workflow`, `memory`, `sqlstore` |
 | [flow-children](flow-children) | Spawn with parent labels, AwaitChildren joining results in order without spending parent attempts, a failed child failing the parent | `workflow`, `memory` |
 | [events-webhooks](events-webhooks) | A Bus with filtered subscriptions and dedup by event ID, a webhook handler's 405/401/413/200/503 answers with HMAC, Standard Webhooks refusing a changed body and a replay | `events`, `workflow`, `memory`, `clock` |
 
@@ -60,6 +62,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 |---|---|---|
 | [sqlite-worker](sqlite-worker) | One workflow on memory, then on SQLite with production options (workers, polling, leases, classifier, ID generator) | `memory`, `sqlstore` |
 | [postgres-cluster](postgres-cluster) | Three workers on one database (SQLite, or Postgres with PG_DSN): each job once, a cron tick once, clean shutdown | `sqlstore` |
+| [rolling-deploy](rolling-deploy) | Workflow versions while old and new workers share one SQLite file: a v2 run waits for a v2 worker, which also drains a v1 run and branches on StepInfo.Version | `workflow`, `sqlstore` |
 | [hatchet-worker](hatchet-worker) | What the Hatchet driver refuses before it connects, plus a live run when HATCHET_CLIENT_TOKEN is set | `hatchet` |
 | [migrations-export](migrations-export) | Migrate and its ledger, MigrationScripts as .sql files applied by hand, UniqueStore.Migrate alone, ErrSchemaTooNew, WithSchema | `sqlstore` |
 | [retention](retention) | WithRetention (ages, KeepLast, PerWorkflow, Undelivered), WithArchive, Prune, housekeeping options | `sqlstore` |
@@ -91,6 +94,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [middleware-stack](middleware-stack) | Step and enqueue middleware: chain order, Logging levels, Recover, Timeout, Skip, ThrottleErrors with a custom CircuitStore, FailOn, Route, Unique, and the refusal of Unique twice | `middleware`, `memory` |
 | [encrypted-payloads](encrypted-payloads) | AES-GCM payload encryption with WithCodec and DecodeStep, key rotation, and the plaintext and dropped-key refusals | `middleware`, `memory` |
 | [opentelemetry](opentelemetry) | Spans and metrics to an in-memory exporter: span names, parent or new root with a link, labels on spans and metrics, Enqueue twice refused | `otel`, `memory` |
+| [message-attributes](message-attributes) | A traced job crossing an HTTP hop as headers with workflow.Attributes and its step continuing the producer's trace; the same job as SQS attributes, packed labels, a Pub/Sub refusal | `workflow`, `otel`, `memory` |
 | [run-recorder](run-recorder) | A run history the app owns: the recorder on the memory driver writing to SQLite through sqlrecorder, a required trigger source, step events, a partial outcome, a redacted card number, reads by run, by source and outcome, and through the admin API, and a Reconciler pass | `workflow`, `recorder`, `recorder/sqlrecorder`, `middleware`, `admin`, `memory` |
 | [trigger-source](trigger-source) | WithSource on a job, the schedule and schedule-manual sources SourceOf derives from a cron fire and TriggerSchedule, RequireSource refusing a job with no source and a typo outside its allow-list, ValidateSource | `workflow`, `middleware`, `memory`, `clock` |
 | [step-events](step-events) | RecordEvent and RecordEventLevel reaching a sink of the app's own and CaptureOutput, SetOutcome unsupported without a recorder, then the events and a partial outcome stored by a recorder, and the default outcome of a run that set none | `workflow`, `middleware`, `memory`, `recorder` |

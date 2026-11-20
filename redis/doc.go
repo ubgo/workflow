@@ -23,6 +23,8 @@
 // CapDiscard, CapDiscardExhausted (RetryPolicy.DiscardOnExhaust) and
 // CapRunStates (StatusRetrying with the next attempt,
 // StatusDiscarded), CapSnooze, CapHeartbeat, CapRunTimeout, CapTenant,
+// CapWorkflowVersion (a run's version in its hash, its ready and pending
+// sets per version, so a worker claims only the versions it runs),
 // CapNodeIdentity, CapResult, CapDueQuery, CapMisfireSkip,
 // CapMisfireFireOnce, CapMisfireFireAll, CapCronZone, CapCronSeconds,
 // CapScheduleActive, CapScheduleKeep, CapTickTime, CapScheduleWhen,
@@ -191,10 +193,15 @@
 //   - JournalStore (workflow.JournalStore, step memoisation: a hash per
 //     run, optional expiry), BucketStore (workflow.BucketStore, leaky
 //     buckets: the drain and the take are one script, on the caller's
-//     clock) and DebounceStore (middleware.DebounceStore: Swap is one
-//     script) keep state other processes share; each has a constructor
-//     (NewJournalStore, NewBucketStore, NewDebounceStore) and a Client
-//     method over the client's prefix.
+//     clock), DebounceStore (middleware.DebounceStore: Swap is one
+//     script), DataStore (workflow.DataStore, folder, workflow and
+//     global data: a hash per value with its version, a conditional Put
+//     is one script) and Inbox (workflow.Inbox, idempotent consumption:
+//     a hash per consumer and message, claim, complete and release each
+//     one script) keep state other processes share; each has a
+//     constructor (NewJournalStore, NewBucketStore, NewDebounceStore,
+//     NewDataStore, NewInbox) and a Client method over the client's
+//     prefix.
 //   - WithEnqueueOnly makes a client for web nodes that enqueue and never
 //     run work; Register is optional there.
 package redis

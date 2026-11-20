@@ -95,6 +95,22 @@ if err != nil {
 
 Drivers mark their own outages: the SQL driver's connection failures and Hatchet's unreachable engine match `workflow.ErrUnavailable`.
 
+## Drop redeliveries with an inbox
+
+The idempotency key a delivery carries dedups it while its run is unfinished. To drop a redelivered ID for longer, whatever the driver keeps, give the handler an inbox: `WebhookConfig.Inbox` takes a `workflow.InboxConsumer`, records each delivery ID it enqueued, answers a redelivery 200 without enqueueing again, and answers 503 while another request is processing the same ID. A failed enqueue releases the ID, so the sender's retry enqueues it. Use `sqlstore.Inbox` or `redis.Inbox` behind several replicas:
+
+<!-- snippet: examples/consumer-inbox/main.go#webhook -->
+```go
+hook, err := events.NewWebhook(events.WebhookConfig{
+	Unsigned: true, // a real endpoint sets a Verifier
+	Client:   c, Workflow: "ingest",
+	ID:    func(r *http.Request, _ []byte) string { return r.Header.Get("Webhook-Id") },
+	Inbox: &workflow.InboxConsumer{Inbox: workflow.NewMemoryInbox(), Consumer: "shop-webhooks"},
+})
+```
+
+The inbox and its stores are described in [Idempotency keys › Drop redelivered messages with an inbox](../jobs/idempotency.md#drop-redelivered-messages-with-an-inbox).
+
 ## Try it
 
 ```sh
@@ -123,7 +139,7 @@ standard webhooks:
 
 ## Pitfalls
 
-- **Deduplication lasts while the run is unfinished.** A delivery repeated after its run ended starts a new run; make the workflow idempotent, or record the delivery ID it handled.
+- **Deduplication lasts while the run is unfinished.** A delivery repeated after its run ended starts a new run; set `Inbox` to drop it for as long as the inbox keeps the ID, or make the workflow idempotent.
 - **The default ID is the body's hash.** Two different deliveries with identical bodies share an ID; use a scheme or an `ID` function that returns the sender's own delivery ID.
 - **Plain HMAC cannot refuse a replay** of a delivery whose run has ended. Standard Webhooks can, within its tolerance.
 - **Keep the raw body.** Signatures are over the exact bytes; a proxy or middleware that re-encodes JSON before the handler breaks every signature.

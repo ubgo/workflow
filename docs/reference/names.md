@@ -46,10 +46,13 @@ The SQL driver and its stores create these tables in your database. `<prefix>` i
 | `<prefix>step_err` | `Client.Migrate` (`004_run_states_chain`) | Per step in retry backoff: the last failed attempt's error, which `RunInfo.Error` shows while the run is retrying |
 | `<prefix>run_chain` | `Client.Migrate` (`004_run_states_chain`) | Per run with a `Job.Chain`: the rest of the chain as JSON, and the next workflow when the client that finished the run had not registered it. The same migration rewrites runs discarded by earlier releases (stored cancelled) to the `discarded` status |
 | `<prefix>run_labels` | `Client.Migrate` (`005_run_labels`) | The label index: one row per label of a run (key and value cut to 191 characters), indexed on key, value and run, read by `RunQuery.Labels` and `LabelPrefixes`; filled at enqueue and, for older runs, by `Client.IndexLabels`, which keeps its watermark in the `<prefix>locks` row `labels:indexed` |
+| `<prefix>run_version` | `Client.Migrate` (`010_run_version`) | Per versioned run: its `Workflow.Version` (no row for version 0), read by admission and claims so a worker takes only the versions it runs |
 | `<prefix>schedule_last` | `Client.Migrate` (`006_schedule_history`) | Per schedule: its overlap policy, last fire time and last run, backfilled for existing schedules |
 | `<prefix>attempt_errors` | `Client.Migrate` (`006_schedule_history`) | Per-attempt error history (`RunInfo.Errors`), bounded per run by `WithErrorHistory`, deleted with the run |
 | `<prefix>run_forced` | `Client.Migrate` (`006_schedule_history`) | Runs ended by `ForceFail`, so their error matches `workflow.ErrForced` by a flag, not by text; cleared by `Retry` and `ForceComplete` |
 | `<prefix>outputs` | `Client.Migrate`, or `OutputStore.Migrate` alone | Captured step output of `sqlstore.OutputStore`, bounded per run |
+| `<prefix>data` | `Client.Migrate`, or `DataStore.Migrate` alone | Scoped values of `sqlstore.DataStore` (folder, workflow and global data): one row per scope and name, with its version |
+| `<prefix>inbox` | `Client.Migrate`, or `Inbox.Migrate` alone | The consumer inbox of `sqlstore.Inbox`: one row per consumer and message ID, held or done, until its lease or keep ends |
 | `<prefix>outbox` | `outbox.Outbox.Migrate` | Outbox entries |
 | `<prefix>migrations` | Any of the `Migrate` calls above | The migration ledger, shared by all of them for one prefix |
 | `<prefix>migrate_lock` | Any `Migrate` on SQLite | The migration lock (Postgres and MySQL use an advisory or named lock instead) |
@@ -62,6 +65,8 @@ Each list of migrations is recorded in the ledger under its own owner, so a data
 | `ubgo/workflow/sqlstore/unique` | `sqlstore.UniqueMigrationOwner` | `<prefix>unique_locks` |
 | `ubgo/workflow/sqlstore/debounce` | `sqlstore.DebounceMigrationOwner` | `<prefix>debounce` |
 | `ubgo/workflow/sqlstore/output` | `sqlstore.OutputMigrationOwner` | `<prefix>outputs` |
+| `ubgo/workflow/sqlstore/data` | `sqlstore.DataMigrationOwner` | `<prefix>data` |
+| `ubgo/workflow/sqlstore/inbox` | `sqlstore.InboxMigrationOwner` | `<prefix>inbox` |
 | `ubgo/workflow/sqlstore/outbox` | `outbox.MigrationOwner` | `<prefix>outbox` |
 
 Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger table itself is never schema-qualified.
@@ -91,6 +96,7 @@ Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger 
 | Lifecycle event kinds | `inserted`, `started`, `retrying`, `snoozed`, `progress`, `finished` (`workflow.LifecycleInserted` and the rest) | `LifecycleEvent.Kind` |
 | Unique struct tag | `unique` (`middleware.UniqueTag`) | Payload fields `middleware.ArgsTagged` reads |
 | Schedule JSON | `{"v": 1, ...}` (`workflow.ScheduleJSONVersion`), the zone by IANA name | `json.Marshal` of a `Schedule` |
+| Message attributes | `ubgo-workflow`, `ubgo-tenant`, `ubgo-queue`, `ubgo-idempotency-key`, `ubgo-priority`, `ubgo-run-at`, `ubgo-l-<label key>` or `ubgo-labels` (JSON) under `workflow.DefaultAttributePrefix` (`Attributes.Prefix`); trace labels as `traceparent`, `tracestate`, `baggage` (`workflow.DefaultTraceAttributes`, `Attributes.Trace`) | `workflow.Attributes` encoding a job for a broker or HTTP hop |
 | Admin command line environment | `WORKFLOW_ADMIN_URL`, `WORKFLOW_ADMIN_TOKEN`, `WORKFLOW_ADMIN_HEADER` | The `workflow` command (`cli`) |
 
 ## Metrics

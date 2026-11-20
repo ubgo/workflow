@@ -33,6 +33,11 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	names := c.names
 	c.mu.Unlock()
 	sort.Slice(cfgs, func(i, j int) bool { return cfgs[i].Name < cfgs[j].Name })
+	// The ready runs of every version this client runs (routeNames).
+	routes, err := c.routeNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("redis: queue loads: %w", err)
+	}
 	pipe := c.rdb.Pipeline()
 	type pair struct {
 		depth *goredis.IntCmd
@@ -41,10 +46,12 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	cmds := make([][]pair, len(cfgs))
 	for i, q := range cfgs {
 		for _, wf := range names {
-			cmds[i] = append(cmds[i], pair{
-				depth: pipe.ZCard(ctx, c.base+":ready:"+q.Name+"/"+wf),
-				head:  pipe.ZRangeWithScores(ctx, c.base+":since:"+q.Name+"/"+wf, 0, 0),
-			})
+			for _, rn := range routes[wf] {
+				cmds[i] = append(cmds[i], pair{
+					depth: pipe.ZCard(ctx, c.base+":ready:"+q.Name+"/"+rn),
+					head:  pipe.ZRangeWithScores(ctx, c.base+":since:"+q.Name+"/"+rn, 0, 0),
+				})
+			}
 		}
 	}
 	if _, err := pipe.Exec(ctx); err != nil {

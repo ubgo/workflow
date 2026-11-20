@@ -12,6 +12,7 @@ import (
 	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/middleware"
 	wfredis "github.com/ubgo/workflow/redis"
+	"github.com/ubgo/workflow/workflowtest"
 )
 
 // TestJournalStore checks the JournalStore contract: Load of nothing,
@@ -221,4 +222,36 @@ func TestQueueLoads(t *testing.T) {
 		l, err := c.QueueLoads(ctx)
 		return err == nil && l[0].Depth == 0 && l[0].OldestWait == 0 && l[0].Workers == 4
 	})
+}
+
+// TestDataStore is the workflow.DataStore contract (WX-01) through two
+// stores on one prefix, as two processes would hold.
+func TestDataStore(t *testing.T) {
+	rdb := redisClient(t)
+	prefix := testPrefix(t, rdb)
+	a, err := wfredis.NewDataStore(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := wfredis.NewDataStore(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowtest.DataStoreContract(t, a, b)
+}
+
+// TestInbox is the workflow.Inbox contract (MQ-15) through two inboxes on
+// one prefix, as two processes would hold.
+func TestInbox(t *testing.T) {
+	rdb := redisClient(t)
+	prefix := testPrefix(t, rdb)
+	a, err := wfredis.NewInbox(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := wfredis.NewInbox(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowtest.InboxContract(t, a, b)
 }

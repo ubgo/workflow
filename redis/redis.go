@@ -38,7 +38,7 @@ var caps = workflow.CapsOf(
 	workflow.CapTenant, workflow.CapDueQuery, workflow.CapResult, workflow.CapNodeIdentity,
 	workflow.CapSnooze, workflow.CapHeartbeat,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
-	workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapRunTimeout, workflow.CapKeyFIFO, workflow.CapWorkflowVersion,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents, workflow.CapSchedulePause,
 	workflow.CapWorkerScale,
 )

@@ -56,6 +56,16 @@ type WebhookConfig struct {
 	// Logger gets enqueue failures, which the response does not detail.
 	// Nil discards them.
 	Logger *slog.Logger
+
+	// Inbox, when set, records each delivery's ID per consumer
+	// (workflow.InboxConsumer.Once): a redelivery of an ID already
+	// processed is answered 200 with nothing enqueued, for as long as the
+	// inbox keeps it (DefaultInboxKeep, seven days), however long the
+	// driver keeps the run its idempotency key points at; a delivery
+	// another request is processing gets 503, so the sender retries. A
+	// durable inbox (sqlstore.Inbox, redis.Inbox) drops duplicates that
+	// reach any replica. Inbox.Inbox and Inbox.Consumer are required.
+	Inbox *workflow.InboxConsumer
 }
 
 // webhook is the http.Handler NewWebhook returns.
@@ -85,6 +95,8 @@ func NewWebhook(cfg WebhookConfig) (http.Handler, error) {
 		return nil, fmt.Errorf("%w: webhook needs both Client and Workflow", workflow.ErrInvalid)
 	case cfg.Verifier == nil && !cfg.Unsigned:
 		return nil, fmt.Errorf("%w: webhook has no Verifier; set Unsigned to accept unverified requests", workflow.ErrInvalid)
+	case cfg.Inbox != nil && (cfg.Inbox.Inbox == nil || cfg.Inbox.Consumer == ""):
+		return nil, fmt.Errorf("%w: webhook Inbox needs an Inbox and a Consumer", workflow.ErrInvalid)
 	}
 	if cfg.MaxBody <= 0 {
 		cfg.MaxBody = DefaultWebhookMaxBody
@@ -134,7 +146,7 @@ func (h *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.enqueue(r.Context(), id, body, labels); err != nil {
+	if err := h.deliver(r.Context(), id, body, labels); err != nil {
 		h.fail(r.Context(), w, err)
 		return
 	}
@@ -152,6 +164,15 @@ func (h *webhook) deliveryID(r *http.Request, body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// deliver enqueues the delivery, once per ID when an Inbox is set.
+func (h *webhook) deliver(ctx context.Context, id string, body []byte, labels map[string]string) error {
+	if h.cfg.Inbox == nil {
+		return h.enqueue(ctx, id, body, labels)
+	}
+	_, err := h.cfg.Inbox.Once(ctx, id, func(ctx context.Context) error { return h.enqueue(ctx, id, body, labels) })
+	return err
+}
+
 func (h *webhook) enqueue(ctx context.Context, id string, body []byte, labels map[string]string) error {
 	if h.cfg.Bus != nil {
 		_, err := h.cfg.Bus.Publish(ctx, Message{ID: id, Name: h.cfg.Event, Payload: body, Labels: labels})
@@ -164,11 +185,11 @@ func (h *webhook) enqueue(ctx context.Context, id string, body []byte, labels ma
 	return err
 }
 
-// fail logs err and answers 503 for an outage, 500 otherwise; the body
-// never carries the error.
+// fail logs err and answers 503 for an outage or a delivery another
+// request is processing, 500 otherwise; the body never carries the error.
 func (h *webhook) fail(ctx context.Context, w http.ResponseWriter, err error) {
 	h.cfg.Logger.ErrorContext(ctx, "webhook: enqueue failed", slog.Any("err", err))
-	if errors.Is(err, workflow.ErrUnavailable) {
+	if errors.Is(err, workflow.ErrUnavailable) || errors.Is(err, workflow.ErrInboxBusy) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}

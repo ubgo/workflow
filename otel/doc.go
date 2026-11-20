@@ -45,6 +45,11 @@
 // it before adding keys. When a step's labels carry no trace context, the
 // step span's parent is whatever span ctx already holds.
 //
+// Across a hop that is not a driver's store (a broker message, an HTTP
+// request), workflow.Attributes carries these labels as the standard
+// traceparent, tracestate and baggage attributes; on the consumer side
+// Attributes.TraceLabels turns them back into these labels.
+//
 // # Metrics
 //
 //   - workflow.step.duration (histogram, seconds): one per step attempt,

@@ -220,7 +220,8 @@ func (c *Client) claimOnce() (*held, error) {
 	}
 	args = append(args, qa...)
 	for _, n := range c.names {
-		args = append(args, n)
+		lo, hi := c.versionRange(n)
+		args = append(args, n, lo, hi)
 	}
 	res, err := claimScript.Run(c.ctx, c.rdb, c.keys(), args...).Slice()
 	if errors.Is(err, goredis.Nil) {
@@ -737,7 +738,7 @@ func (c *Client) current(h *held, job workflow.Job) (string, []byte) {
 func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []byte, attempt int, readyAt time.Time, edits *workflow.ChainEdits) (out []byte, err error, withdrawn bool) {
 	ctx := workflow.WithStepInfo(parent, workflow.StepInfo{
 		Workflow: h.wf, Step: s.Name, RunID: workflow.RunID(h.id), Attempt: attempt,
-		Labels: h.labels, Queue: h.queue, ReadyAt: readyAt, Tenant: h.tenant, Node: c.node,
+		Labels: h.labels, Queue: h.queue, ReadyAt: readyAt, Tenant: h.tenant, Node: c.node, Version: h.version,
 	})
 	ctx = workflow.WithChainEditor(ctx, edits)
 	ctx = workflow.WithProgressReporter(ctx, progressReporter{c: c, h: h, step: s.Name, attempt: attempt})

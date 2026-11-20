@@ -30,6 +30,7 @@ func (r *run) infoLocked() workflow.RunInfo {
 		Errors:     slices.Clone(r.errs),
 
 		Tenant:      r.job.Tenant,
+		Version:     r.reg.wf.Version,
 		RunAt:       r.runAt,
 		Output:      r.output,
 		Progress:    r.progress,

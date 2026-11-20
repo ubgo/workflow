@@ -374,7 +374,7 @@
 // shared <prefix>migrations ledger. Bursts whose run has started are
 // deleted by the dispatcher's housekeeping, or by PruneExpired.
 //
-// # Journal and bucket state
+// # Journal, bucket and data state
 //
 // JournalStore is a durable workflow.JournalStore (the memo of workflow.Memo
 // and the helpers built on it): a run's memoised results are rows of
@@ -388,9 +388,25 @@
 // created by Client.Migrate) or build it with NewJournalStore or
 // NewBucketStore over any *sql.DB; each has its own migration list (owners
 // ubgo/workflow/sqlstore/journal and ubgo/workflow/sqlstore/bucket, both
-// 001) in the shared ledger. Migration 009 adds schedule_tenant:
+// 001) in the shared ledger. DataStore is a durable workflow.DataStore
+// (folder, workflow and global data shared across runs): one row per
+// scope and name in <prefix>data with a version, a conditional Put being
+// one guarded UPDATE or one INSERT decided by the primary key;
+// Client.DataStore or NewDataStore, owner ubgo/workflow/sqlstore/data.
+// Inbox is a durable workflow.Inbox (idempotent consumption: the message
+// IDs each consumer claimed or processed, one row per consumer and ID in
+// <prefix>inbox); MarkTx records a message inside the app's own
+// transaction, so the record and the app's writes commit together and the
+// message is processed exactly once; expired rows are deleted by the
+// dispatcher's housekeeping or PruneExpired; Client.Inbox or NewInbox,
+// owner ubgo/workflow/sqlstore/inbox.
+// Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
-// triggered to run, reported in ScheduleInfo.Tenant.
+// triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds
+// run_version (CapWorkflowVersion): a versioned run's Workflow.Version,
+// read by admission, claims and failure takeover, and checked before a
+// sleep, signal or run timeout advances a run, so a client takes only the
+// run versions its definition runs.
 //
 // # Database policies
 //

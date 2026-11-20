@@ -783,6 +783,7 @@ var p5Groups = []struct {
 	{"snooze", snoozeCases},
 	{"heartbeat", heartbeatCases},
 	{"tenant", tenantCases},
+	{"workflowversion", workflowVersionCases},
 	{"runtimeout", runTimeoutCases},
 	{"nodes", nodeCases},
 	{"keyfifo", keyFIFOCases},

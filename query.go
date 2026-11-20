@@ -277,6 +277,10 @@ type RunInfo struct {
 	// Tenant is Job.Tenant (CapTenant).
 	Tenant string
 
+	// Version is the run's workflow version (Workflow.Version of the
+	// client that enqueued it, CapWorkflowVersion); zero when unversioned.
+	Version int
+
 	// RunAt is the time a delayed run is (or was) due: Job.RunAt, or the
 	// time Reschedule moved it to. Zero for a run enqueued to start now.
 	// Filled by drivers with CapDueQuery.

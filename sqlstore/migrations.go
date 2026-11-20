@@ -68,6 +68,7 @@ func (s *store) migrations() []migrate.Migration {
 		{Owner: s.owner(MigrationOwner), Name: "007_leader_archive", Script: s.script(s.render(append(leaderDefs(typesFor(s.engine)), archiveDefs(typesFor(s.engine))...)))},
 		{Owner: s.owner(MigrationOwner), Name: "008_run_info_nodes", Script: s.script(append(s.render(runInfoDefs(typesFor(s.engine))), backfillRunInfo))},
 		{Owner: s.owner(MigrationOwner), Name: "009_schedule_tenant", Script: s.script(s.render(scheduleTenantDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "010_run_version", Script: s.script(s.render(runVersionDefs(typesFor(s.engine))))},
 	}
 }
 
@@ -92,7 +93,9 @@ func (s *store) allMigrations() []migrate.Migration {
 	all := append(append(s.migrations(), s.uniqueMigrations()...), s.debounceMigrations()...)
 	all = append(all, s.outputMigrations()...)
 	all = append(all, s.journalMigrations()...)
-	return append(all, s.bucketMigrations()...)
+	all = append(all, s.bucketMigrations()...)
+	all = append(all, s.dataMigrations()...)
+	return append(all, s.inboxMigrations()...)
 }
 
 // script turns statement texts into a transactional ddl.Script, table names

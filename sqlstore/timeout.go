@@ -112,7 +112,10 @@ func (c *Client) expireRuns(ctx context.Context) error {
 			if err != nil || row.status != runActive {
 				return err
 			}
-			reg := c.reg(row.workflow)
+			reg, err := c.runsRun(ctx, tx, row) // nil: another version's definition times it out
+			if err != nil || reg == nil {
+				return err
+			}
 			msg := workflow.TimeoutError(workflow.ErrRunTimeout, fmt.Sprintf("run %s of workflow %q passed its RunTimeout of %s", row.id, row.workflow, reg.wf.RunTimeout)).Error()
 			if err := c.markFailing(ctx, tx, row, "", nil, msg, &o); err != nil {
 				return err

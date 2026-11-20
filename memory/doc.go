@@ -208,7 +208,9 @@
 // it live until stopped and ready while started and not draining.
 // WithPayloadLimit refuses oversized payloads at Enqueue. Schedules honour
 // Seconds (cron.ParseSeconds), Active, KeepRuns and stamp
-// workflow.LabelTickAt on every fired run.
+// workflow.LabelTickAt on every fired run. CapWorkflowVersion: one
+// process holds one definition of each workflow, so every run carries
+// the registered Workflow.Version (StepInfo.Version, RunInfo.Version).
 //
 // RunAll, for tests, runs everything now: delayed starts, retry backoffs,
 // snoozes and sleeps end at once, and it returns once no run can move
