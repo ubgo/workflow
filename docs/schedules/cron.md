@@ -238,6 +238,24 @@ A schedule opts in with `Schedule.Seconds` (or `Workflow.CronSeconds` for a decl
 
 The dialect is opt-in and never guessed from the number of fields: six fields could also mean a year last, which is what some other crontabs use. Windows stay minute-resolution: a `09:00`-`17:00` window lets through every second of 09:00 to 16:59.
 
+## A year field
+
+A campaign, a migration window or a one-off event is a cron that should stop. `cron.ParseYear` reads seven fields, seconds first and a year last: `second minute hour day-of-month month day-of-week year`. The year field takes the same items as the others (`*`, `2027`, `2027,2029`, `2027-2028`, `2026/2`) over `cron.MinYear` to `cron.MaxYear` (1970 to 2199), and after the last matching year `Next` returns the zero time:
+
+<!-- snippet: examples/schedule-export/main.go#year -->
+```go
+s, err := cron.ParseYear("0 0 9 1 JAN,JUL * 2027-2028") // second minute hour day month weekday year
+if err != nil {
+	return err
+}
+for t := s.Next(monday, time.UTC); !t.IsZero(); t = s.Next(t, time.UTC) {
+	fmt.Println(" ", t.Format("Mon 2 Jan 2006 15:04"))
+}
+fmt.Println("  then never") // Next returns the zero time after the last year
+```
+
+It is a `cron.Parser`, so a schedule opts in through the driver's `WithCronParser` (`memory.WithCronParser(cron.ParseYear)`, and the same option on the SQL and Redis drivers), with `Schedule.Seconds` left unset: the seconds flag selects the six-field parser and would refuse seven fields. Once the last year has passed the schedule has no next fire, and the memory driver stops it as it stops `0 0 30 2 *`. The other six fields mean exactly what they mean to `cron.ParseSeconds`, including day-of-week numbers (Sunday is 0 or 7); a `?` in a day field is refused, so an expression copied from a scheduler that counts weekdays 1-7 fails at parse time instead of firing a day off. Hatchet parses crons on its engine and refuses the form; [export](export.md) writes it to systemd and Task Scheduler.
+
 ## Calendar specs
 
 A `cron.Calendar` writes the fire times as lists of field values instead of a cron string: "hour 9, minutes 0 and 30, Monday to Friday". It compiles to the five-field expression a person would write, never a new format, so every driver takes it and a stored schedule stays plain text:
