@@ -41,8 +41,16 @@ const (
 	testPoll  = 10 * time.Millisecond
 	testLease = 2 * time.Second
 
-	// queueCaseLease is the lease of the clients the queue-limit cases build.
+	// queueCaseLease is the lease of the shared suite's clients and of the
+	// live-lease test.
 	queueCaseLease = 5 * time.Second
+
+	// queueLimitLease is the lease of the clients the queue-limit cases
+	// build. Two clients share a global slot count kept by leases, so a
+	// renewal stalled past 2/3 of the lease frees a held slot early and the
+	// case sees one attempt too many; at load 235 under -race a 5s lease
+	// still lost renewals. Only the crash case waits one out.
+	queueLimitLease = 10 * time.Second
 
 	// crashLease is the lease of the tests that crash a worker on purpose
 	// and wait for a takeover. A live worker fences itself (ErrLeaseLost)
@@ -52,6 +60,16 @@ const (
 	// tests use a lease whose fence needs a full second of it. Each takeover
 	// waits out about one lease.
 	crashLease = 1500 * time.Millisecond
+
+	// conformanceWait is the shared suite's wait (Harness.Wait) on these
+	// engines, and statusWait the ceiling of waitStatus. Both only bound a
+	// wait for something that must happen, so a passing run is no slower;
+	// the suite's 5s fake-clock default assumes an idle machine, and SQLite
+	// under -race beside other suites misses it without anything being
+	// wrong. Windows in which nothing may happen (Harness.Quiet) keep their
+	// defaults.
+	conformanceWait = 30 * time.Second
+	statusWait      = 30 * time.Second
 )
 
 // engine is one database the suite runs on.
@@ -156,24 +174,30 @@ func newClient(t *testing.T, e engine, db *sql.DB, prefix string, opts ...sqlsto
 func TestConformance(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
-			workflowtest.Run(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
+			workflowtest.Run(t, workflowtest.Harness{Wait: conformanceWait, New: func(t *testing.T) workflowtest.Instance {
 				db, prefix := e.open(t)
 				clk := clock.NewFake(start)
-				current := newClient(t, e, db, prefix, sqlstore.WithClock(clk))
+				// The queue-case lease for the same reason as below: a renewal
+				// a loaded machine stalls for 2/3 of testLease fences a live
+				// attempt and the step runs once more than the case counts.
+				mk := func(extra ...sqlstore.Option) *sqlstore.Client {
+					return newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithClock(clk), sqlstore.WithLease(queueCaseLease)}, extra...)...)
+				}
+				current := mk()
 				return workflowtest.Instance{
 					Client: current,
 					Clock:  clk,
 					Restart: func(t *testing.T) workflow.Client {
-						current = newClient(t, e, db, prefix, sqlstore.WithClock(clk))
+						current = mk()
 						return current
 					},
 					Crash: func(t *testing.T) workflow.Client {
 						crash(current)
-						current = newClient(t, e, db, prefix, sqlstore.WithClock(clk))
+						current = mk()
 						return current
 					},
 					EnqueueOnly: func(t *testing.T) workflow.Client {
-						return newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithEnqueueOnly())
+						return mk(sqlstore.WithEnqueueOnly())
 					},
 				}
 			}, NewWithQueues: func(t *testing.T, qs []workflow.QueueConfig) workflowtest.Instance {
@@ -184,7 +208,7 @@ func TestConformance(t *testing.T) {
 				// queue-limit cases hold on purpose; a longer lease leaves headroom,
 				// and the crash case waits for it to expire with a matching limit.
 				mk := func(extra ...sqlstore.Option) *sqlstore.Client {
-					return newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithClock(clk), sqlstore.WithQueues(qs...), sqlstore.WithLease(queueCaseLease)}, extra...)...)
+					return newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithClock(clk), sqlstore.WithQueues(qs...), sqlstore.WithLease(queueLimitLease)}, extra...)...)
 				}
 				current := mk()
 				return workflowtest.Instance{

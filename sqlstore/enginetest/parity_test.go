@@ -59,7 +59,7 @@ func (tg *tagger) get(tag string) []string {
 
 func waitStatus(t *testing.T, c workflow.Client, ref workflow.RunRef, want workflow.Status) {
 	t.Helper()
-	waitFor(t, 5*time.Second, "status "+string(want), func() bool {
+	waitFor(t, statusWait, "status "+string(want), func() bool {
 		st, err := c.Status(context.Background(), ref)
 		return err == nil && st == want
 	})
