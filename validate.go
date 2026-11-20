@@ -68,6 +68,12 @@ func validateStep(s Step) error {
 	if s.HeartbeatTimeout > 0 && s.Kind() != StepRun {
 		return errors.New("HeartbeatTimeout is only for Run steps")
 	}
+	if s.Slots < 0 {
+		return errors.New("negative Slots")
+	}
+	if s.Slots > 1 && s.Kind() != StepRun {
+		return errors.New("Slots is only for Run steps")
+	}
 	if w := s.Wait; w != nil {
 		if w.Event == "" {
 			return errors.New("Wait.Event is empty")

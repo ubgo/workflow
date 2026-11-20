@@ -201,6 +201,12 @@ var (
 	CapDiscardExhausted = defineCap(59, "DiscardExhausted")
 	// CapDrainReport: Drain reports the runs it cut off (DrainReport).
 	CapDrainReport = defineCap(60, "DrainReport")
+	// CapSlotCost: Step.Slots is honoured: one attempt of the step holds
+	// that many of the client's worker slots (WithWorkers) while it runs,
+	// so a heavy step leaves room for fewer others. Numbered 80, away from
+	// the numbers after 60 that other work in flight takes; see
+	// docs/reference/capabilities.md.
+	CapSlotCost = defineCap(80, "SlotCost")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -255,6 +261,9 @@ func Requires(wf Workflow) Caps {
 			c = c.With(retryCaps(EffectiveRetries(s, wf)))
 			if s.HeartbeatTimeout > 0 {
 				c = c.With(CapHeartbeat)
+			}
+			if s.Slots > 1 {
+				c = c.With(CapSlotCost)
 			}
 		case StepWait:
 			c = c.With(CapWaitForEvent)

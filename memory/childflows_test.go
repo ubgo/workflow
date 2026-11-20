@@ -98,3 +98,18 @@ func TestResetFlows(t *testing.T) {
 		return c
 	}})
 }
+
+// TestSlotFlows proves Step.Slots on the memory driver.
+func TestSlotFlows(t *testing.T) {
+	workflowtest.RunSlotFlows(t, workflowtest.SlotHarness{Start: func(t *testing.T, workers int, wfs ...workflow.Workflow) (workflow.Client, error) {
+		c := memory.New(memory.WithWorkers(workers))
+		for _, wf := range wfs {
+			if err := c.Register(wf); err != nil {
+				return nil, err
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		return c, c.Start(ctx)
+	}})
+}

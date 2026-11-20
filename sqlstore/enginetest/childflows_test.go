@@ -118,3 +118,23 @@ func TestResetFlows(t *testing.T) {
 		})
 	}
 }
+
+// TestSlotFlows proves Step.Slots on every engine.
+func TestSlotFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			workflowtest.RunSlotFlows(t, workflowtest.SlotHarness{Start: func(t *testing.T, workers int, wfs ...workflow.Workflow) (workflow.Client, error) {
+				db, prefix := e.open(t)
+				sc := newClient(t, e, db, prefix, sqlstore.WithWorkers(workers))
+				for _, wf := range wfs {
+					if err := sc.Register(wf); err != nil {
+						return nil, err
+					}
+				}
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
+				return sc, sc.Start(ctx)
+			}})
+		})
+	}
+}

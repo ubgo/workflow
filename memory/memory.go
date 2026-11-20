@@ -35,6 +35,7 @@ var caps = workflow.CapsOf(
 	workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapTenant, workflow.CapRunTimeout,
 	workflow.CapNodeIdentity, workflow.CapKeyFIFO, workflow.CapDueQuery, workflow.CapResult,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime, workflow.CapQueueLimitGlobal,
+	workflow.CapSlotCost,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
@@ -165,6 +166,9 @@ func WithErrorHistory(n int) Option { return func(m *Client) { m.errHist = n } }
 type Client struct {
 	clk     clock.Clock
 	workers int
+	// slots shares the pool among attempts by Step.Slots (CapSlotCost),
+	// made at Start from workers.
+	slots   *workflow.SlotPool
 	log     *slog.Logger
 	mw      []workflow.Middleware
 	parse   cron.Parser
@@ -313,6 +317,9 @@ func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
 	}
+	if err := workflow.CheckSlots(wf, c.workers); err != nil {
+		return err
+	}
 	reg := &registered{
 		wf:       wf,
 		handlers: map[string]workflow.Handler{},
@@ -436,6 +443,7 @@ func (c *Client) Start(ctx context.Context) error {
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	context.AfterFunc(c.ctx, c.shutdown)
 	c.startRecycleLocked()
+	c.slots = workflow.NewSlotPool(c.workers)
 	for range c.workers {
 		c.wg.Add(1)
 		go c.worker()
