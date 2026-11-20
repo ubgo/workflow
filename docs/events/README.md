@@ -6,8 +6,11 @@ The `events` package (`github.com/ubgo/workflow/events`, in the core module) sta
 |---|---|
 | [Publish and subscribe](publish-subscribe.md) | A `Bus` with subscriptions, publishing, deduplication by event ID, filters, building the job, delivering to waiting runs |
 | [Inbound webhooks](webhooks.md) | `NewWebhook`, a closed-by-default handler with its status codes, HMAC signatures (GitHub, Shopify), Standard Webhooks, your own verifier |
+| [Datasets and lineage](datasets.md) | `Datasets.Updated`, any-of and all-of dataset triggers, the lineage store and its queries |
+| [CloudEvents and payload versions](cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, upcasting old payload versions |
+| [Event log, replay and cancel on event](replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID, cancel subscriptions, divert |
 
-Both are shown by one runnable program, [examples/events-webhooks](../../examples/events-webhooks/), on the in-memory driver.
+The first two are shown by one runnable program, [examples/events-webhooks](../../examples/events-webhooks/), on the in-memory driver; datasets by [examples/datasets](../../examples/datasets/), and CloudEvents, versions, replay and cancel by [examples/events-more](../../examples/events-more/).
 
 ## Quick answers
 

@@ -6,7 +6,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 
 ## Recipes
 
-90 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
+116 programs, grouped in the order the [learning path](../docs/README.md#learning-path) reaches them.
 
 ### Start here
 
@@ -44,6 +44,8 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [schedule-overlap](schedule-overlap) | A tick skipped while the previous run is unfinished, Run now refused then accepted with the manual label, the last fire with its run and status, and the same on the Fake | `workflow`, `memory`, `clock`, `workflowtest` |
 | [output-store](output-store) | Captured output kept per attempt in the database with OutputStore, read back, and served to the admin through OutputSourceFunc | `sqlstore`, `middleware`, `admin` |
 | [schedule-specs](schedule-specs) | Calendar specs, the seconds dialect, LoadZone, NextRuns in two zones across DST, an active period, environment gating, a schedule as JSON, a per-node LocalCron | `workflow`, `cron`, `clock` |
+| [schedule-tools](schedule-tools) | Extended L/W/# cron, H hashing, Describe, exclusion calendars, backfill, limited and one-shot schedules with pruning, startup runs, fire jitter | `workflow`, `cron`, `memory`, `middleware`, `clock` |
+| [schedule-export](schedule-export) | One schedule written as a Kubernetes CronJob, a systemd timer, a Task Scheduler task and a one-shot launchd handoff on a fixed clock, the typed refusals, and a seven-field cron with a year that stops | `schedexport`, `cron`, `clock` |
 | [snooze-heartbeat](snooze-heartbeat) | Snooze without spending an attempt, a hung attempt failed by HeartbeatTimeout, RunTimeout running OnTimeout | `workflow`, `memory`, `clock` |
 | [results-progress](results-progress) | ReportProgress and progress events, AwaitResult and DecodePayload, a two-sink result, RunFailedError, runs by tenant | `workflow`, `memory`, `clock` |
 | [typed-payloads](typed-payloads) | JobOf, DecodePayload, MaxPayload and WithPayloadLimit, PayloadVersion with DefineVersioned and an upcaster | `workflow`, `memory`, `middleware` |
@@ -54,7 +56,20 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [flow-memo](flow-memo) | Memo around a charge on a retried step, MapEach and Loop rerunning only what failed, ProcessChunks with progress, SetRunData/RunData, a Choice, ErrNoJournal | `workflow`, `memory` |
 | [scoped-data](scoped-data) | Folder, workflow and global data shared across runs with SetData, GetData and UpdateData; the in-memory store, then sqlstore.DataStore on SQLite with two clients adding to one total | `workflow`, `memory`, `sqlstore` |
 | [flow-children](flow-children) | Spawn with parent labels, AwaitChildren joining results in order without spending parent attempts, a failed child failing the parent | `workflow`, `memory` |
+| [flow-stages](flow-stages) | Stages of parallel steps, a conditional step passing its input on, a milestone holding a step until the run is paid, a soft deadline before the hard timeout | `workflow`, `memory`, `middleware` |
+| [flow-joins](flow-joins) | The first mirror to answer wins and the rest are cancelled, two of four make a quorum, a paged map of ten products with a failure budget | `workflow`, `memory` |
+| [flow-promises](flow-promises) | A run waiting on a promise an API call resolves, SignalWithStart, an update answered by the run, a loop continued as new runs | `workflow`, `memory` |
+| [virtual-objects](virtual-objects) | A cart per customer: serial calls per key, durable state, ObjectState | `workflow`, `memory` |
+| [partitioned-runs](partitioned-runs) | A backfill run per day with a status per partition, a retry of only the failed day, a set enqueued twice while running starting each tenant once | `workflow`, `memory` |
+| [flow-patterns](flow-patterns) | Trigger rules over a tolerated step with an exit handler, a saga with compensation, a multi-choice, a race decided by the first signal, a polling sensor, an approval with a signed link, a step group, an early end, a recursion limit | `workflow`, `memory` |
+| [edit-run](edit-run) | RunEditor: a scheduled run gets a new payload, a higher priority and an earlier start before it runs; an edit after it ran is refused | `workflow`, `memory` |
+| [run-control](run-control) | Runs found by a field of their JSON payload, one run suspended between steps and resumed, a schedule tick replacing the running run (GuardOverlap), a duplicate replacing a scheduled job's arguments (UniqueConfig.Replace) | `workflow`, `memory`, `middleware`, `clock` |
+| [job-guards](job-guards) | Expiry, a sweep of waiting runs, a bounded queue and a tenant quota, quiet hours, payload validation, a retry ladder, an invariant and a precondition, a pool, a critical section, auto-disable | `workflow`, `middleware`, `memory`, `clock` |
+| [http-status](http-status) | httprun: start a run over HTTP (202 and Location), its status and result, a Server-Sent Events stream with output streamed by Emit | `httprun`, `workflow`, `memory` |
+| [push-delivery](push-delivery) | A step pushing each job to an HTTP endpoint signed with Standard Webhooks, push.Handler running it on the receiving side, a 500 retried, a 422 failing for good | `push`, `workflow`, `events`, `memory` |
 | [events-webhooks](events-webhooks) | A Bus with filtered subscriptions and dedup by event ID, a webhook handler's 405/401/413/200/503 answers with HMAC, Standard Webhooks refusing a changed body and a replay | `events`, `workflow`, `memory`, `clock` |
+| [events-more](events-more) | CloudEvents over HTTP, payload versions upcast, an event log and Replay, cancel on event and divert, workflow.Then starting the next workflow | `events`, `workflow`, `memory`, `clock` |
+| [datasets](datasets) | Steps announcing dataset versions, an any-of audit and an all-of report trigger, a retried step starting nothing, lineage of producers and inputs | `events`, `workflow`, `memory` |
 
 ### Drivers and operations
 
@@ -84,8 +99,12 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [run-repair](run-repair) | Each failed attempt's error with a stack for a panic, a failed run force-completed, a stuck run force-failed with a reason and no OnFailure | `workflow`, `memory`, `middleware` |
 | [node-health](node-health) | Node identity, the node list and probe routes on memory; scheduler-only and worker-only nodes on Redis (REDIS_URL) | `workflow`, `memory`, `redis` |
 | [hybrid-placement](hybrid-placement) | Crons on a scheduler client, runs on a jobs client, and what the split refuses | `hybrid`, `memory` |
+| [regional-routing](regional-routing) | One client per region, ByLabel and RouterFunc routing, region-prefixed refs, unknown region refused, Signal across regions, schedules placed by the router, Runs merged | `regional`, `memory` |
+| [backend-cutover](backend-cutover) | Move to a new backend while running: new jobs on the new backend, old refs still answering, Runs over both, schedules moved, Remaining | `cutover`, `workflow`, `memory` |
 | [admin-bulk](admin-bulk) | RetryAll and DeleteAll with dry run and Max, run-end charts from MemoryMetrics | `admin`, `memory` |
 | [admin-cli](admin-cli) | The workflow CLI embedded with cli.Run against admin.NewHandler: bulk retry, health, nodes, drain, exit codes | `cli`, `admin`, `memory` |
+| [admin-tenants](admin-tenants) | Admin API scoped per tenant with WithTenantScope: own runs only, 404 across tenants, 403 for system routes, AllTenants operator | `admin`, `memory` |
+| [admin-audit](admin-audit) | Admin audit log of every write action (a refused one included) and a trace link per run from otel.TraceIDOf | `admin`, `otel`, `memory`, `clock` |
 
 ### Middleware and observability
 
@@ -117,9 +136,12 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 |---|---|---|
 | [unique-jobs](unique-jobs) | Unique for a time, until finished, by workflow and arguments, across processes on SQLite | `middleware`, `sqlstore` |
 | [debounce](debounce) | One run per burst, in-process and across two sqlstore clients | `middleware`, `sqlstore` |
+| [aggregate-digest](aggregate-digest) | Seven comments become three digest mails with AggregatePlugin, and a chunked fan-out to 25 recipients that resumes | `middleware`, `batch`, `workflow`, `memory` |
 | [claim-check](claim-check) | Big payloads and outputs via MemoryBlobStore, cleanup on finish | `middleware` |
 | [transactional-enqueue](transactional-enqueue) | EnqueueTx commit, rollback and same key; Wake | `sqlstore` |
+| [complete-in-transaction](complete-in-transaction) | A step completed inside the app's transaction with sqlstore CompleteTx: the payment row and the step's success commit together, a declined card rolls both back | `sqlstore`, `workflow` |
 | [outbox](outbox) | Write in a tx, Relay, dead entries, ListDead, Requeue, AllowDuplicates | `sqlstore/outbox` |
+| [change-triggers](change-triggers) | Row changes made by plain SQL become jobs through a trigger generated by outbox.ChangeTrigger, carrying only the chosen columns | `sqlstore/outbox`, `workflow`, `memory` |
 | [failover](failover) | ErrKeyRequired, failover, cool-off, observer, Default vs Strict classifier | `failover` |
 | [failover-schedules](failover-schedules) | Schedules on the primary only, or on both with WithSchedulesOnBoth: listing, ticks and pause per copy | `failover`, `memory`, `clock` |
 | [failover-manage](failover-manage) | Runs merged across both backends with prefixed refs, RunQuery.Ref, Retry and Delete on the right backend, CancelAll and Pause on both | `failover`, `memory`, `clock` |
