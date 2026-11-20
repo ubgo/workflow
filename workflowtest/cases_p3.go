@@ -100,10 +100,7 @@ var payloadSearchCases = []testCase{
 }
 
 // p3Groups are the conformance groups of the P3 contracts, in Run order.
-var p3Groups = []struct {
-	name  string
-	cases []testCase
-}{
+var p3Groups = []suiteGroup{
 	{"edit", editCases},
 	{"payloadsearch", payloadSearchCases},
 }

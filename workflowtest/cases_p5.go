@@ -776,10 +776,7 @@ var reservedLabelCases = []testCase{
 }
 
 // p5Groups are the conformance groups of the p5 contracts, in Run order.
-var p5Groups = []struct {
-	name  string
-	cases []testCase
-}{
+var p5Groups = []suiteGroup{
 	{"snooze", snoozeCases},
 	{"heartbeat", heartbeatCases},
 	{"tenant", tenantCases},
