@@ -142,6 +142,50 @@ ref, err := c.(workflow.RunResetter).ResetRun(ctx, failed, "transform")
 
 `ResetRun(ref, step)` drops the outputs of `step` and of every step downstream of it (`workflow.StepsFrom(wf, step)` lists them), keeps the outputs of the other steps that succeeded, and re-opens the run exactly as `Retry` does: the same `RunRef`, back to `queued`, fresh attempt counts for every step that runs again, its idempotency key taken again. A wait step that runs again waits for a new event. Only a `failed` run can be reset (`workflow.ErrWrongState` otherwise), and a step the workflow does not have returns `workflow.ErrInvalid`. The memory, SQL and Redis drivers implement it; the SQL and Redis drivers need the workflow registered on the client that calls it, to know which steps are downstream. `workflow.Use` forwards it, and a wrapper whose inner client lacks it refuses with an `UnsupportedError`.
 
+## Reset a run that succeeded
+
+A run can succeed with a wrong result: a transform with a bug that did not fail. Once the fix is deployed, `ResetRun` refuses the run (only a failed run can be reset), so ask for it explicitly with `workflow.RunResetterWith` and `ResetOptions.Succeeded`. The program is [`examples/reset-fork`](../../examples/reset-fork):
+
+<!-- snippet: examples/reset-fork/main.go#reset-succeeded -->
+```go
+fixed.Store(true)
+rs := c.(workflow.RunResetterWith)
+again, err := rs.ResetRunWith(ctx, ref, "transform", workflow.ResetOptions{Succeeded: true})
+if err != nil {
+	return err
+}
+```
+
+The run is reset in place, exactly as `ResetRun` resets a failed one: the same `RunRef`, `step` and every step downstream of it run again, the steps before keep their outputs, the stored result is cleared and replaced by the next end. Without `Succeeded`, `ResetRunWith` is `ResetRun`. What happens around the run, so nothing runs twice by accident:
+
+- The run gets the label `workflow.LabelRedo` (`ubgo.workflow/redo`), so observers and operators can tell a redo from a first run, and a label query finds it.
+- Its chain (`Job.Chain`) was handed on when it succeeded and is not handed on again; the jobs it started are runs of their own, reset those if they must run again. On the SQL driver, a run whose chain still waits for a client that registers the next workflow is refused with `workflow.ErrWrongState`.
+- A step that runs again does all its work again: a child it spawns is a new run (`Spawn` gets back a child that is still unfinished, since that child holds its key). Children of the steps that are kept are untouched.
+- Run-finished observers see the new end, as after `Retry`. The batch package ignores a repeated end of a job; the `Then` plugin skips runs carrying `LabelRedo` unless `workflow.ThenAfterRedo()` is passed ([then](../workflows/then.md)).
+
+## Fork a run into a new run
+
+`workflow.RunForker` leaves the original as it is and starts a new run from a step, with the original's journal up to there: the outputs of every step the original succeeded in except `step` and the steps downstream of it.
+
+<!-- snippet: examples/reset-fork/main.go#fork -->
+```go
+fk := c.(workflow.RunForker)
+fork, err := fk.ForkRun(ctx, ref, "publish", workflow.ForkOptions{Labels: map[string]string{"ticket": "OPS-7"}})
+if err != nil {
+	return err
+}
+```
+
+The fork has a new RunID and the original's workflow, payload, tenant, queue, priority, job retry policy and workflow version. Only a finished run (succeeded, failed, cancelled or discarded) can be forked: a step still running in the original could otherwise run in both (`workflow.ErrWrongState`). The fork:
+
+- never carries the original's chain (it would run once for the fork and again when the original is retried) or its idempotency key; `ForkOptions.IdempotencyKey` gives it one of its own, and a key held by an unfinished run returns that run, as `Enqueue` does;
+- keeps the original's labels except the membership labels that would make it count as something it is not (batch membership, parent run and step, schedule and tick, trigger, partition, object key, `Then` and continue-as-new lineage, backfill key; `workflow.ForkLabels` is the list), adds `ForkOptions.Labels` (app labels only), `workflow.LabelForkOf` (the original's RunID), `workflow.LabelForkStep` and, when the original had succeeded or was itself a redo, `LabelRedo`;
+- spawns new children from the steps it runs (its RunID is new), and its wait steps wait for events sent after the fork.
+
+There is no payload override: the kept outputs were made from the original payload, and a payload set by an operator would bypass the enqueue middleware (codec, encryption). A new input is a new `Enqueue`.
+
+The memory, SQL and Redis drivers implement both; the SQL and Redis drivers need the workflow registered on the calling client (the SQL driver at the original's workflow version). `workflow.Use`, `failover`, `regional`, `cutover` and `hybrid` forward them (a fork lives beside its original, on the backend or region its ref names), and `workflow.Supports(c, workflow.OpResetSucceeded)` and `workflow.OpForkRun` say whether a client really does them. The admin JSON API ([HTTP API](../admin/http-api.md)) and the `workflow` command ([CLI](../admin/cli.md)) expose both.
+
 ## Step 3: forget a finished run
 
 `Delete(ref)` forgets a terminal run: afterwards `Status` returns `workflow.ErrNotFound` and `Runs` no longer lists it. An unfinished run returns `ErrWrongState`; cancel it first.
@@ -285,6 +329,8 @@ An operator can take one run off its planned path without changing the workflow,
 | Hold the run between steps, then go on | `SuspendRun`, later `ResumeRun` ([Suspend one run](#suspend-one-run)) |
 | Redo from an earlier step after fixing the cause | `ResetRun(ref, step)` on the failed run ([Re-run a failed run from an earlier step](#re-run-a-failed-run-from-an-earlier-step)) |
 | Redo only the step that failed | `Retry(ref)` |
+| Redo from a step a run that succeeded with a wrong result | `ResetRunWith(ref, step, ResetOptions{Succeeded: true})` ([Reset a run that succeeded](#reset-a-run-that-succeeded)) |
+| Try again from a step without touching the original | `ForkRun(ref, step, opts)` ([Fork a run into a new run](#fork-a-run-into-a-new-run)) |
 | Skip the rest and call the run done, or failed | `ForceComplete`, `ForceFail` ([Force a run to an end](#force-a-run-to-an-end)) |
 | Skip one step that is waiting or running | [Cancel one step](#cancel-one-step) |
 | Change what a scheduled run will do before it starts | `RunEditor` ([Edit a scheduled run](edit-runs.md)) |
