@@ -92,7 +92,8 @@ func (s *store) allMigrations() []migrate.Migration {
 	all := append(append(s.migrations(), s.uniqueMigrations()...), s.debounceMigrations()...)
 	all = append(all, s.outputMigrations()...)
 	all = append(all, s.journalMigrations()...)
-	return append(all, s.bucketMigrations()...)
+	all = append(all, s.bucketMigrations()...)
+	return append(all, s.dataMigrations()...)
 }
 
 // script turns statement texts into a transactional ddl.Script, table names

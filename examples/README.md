@@ -51,6 +51,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [queue-limit](queue-limit) | QueueConfig.Limit capping a queue across clients: peak concurrency within the limit on memory and on two SQL nodes sharing one SQLite file | `workflow`, `memory`, `sqlstore` |
 | [upstream-limits](upstream-limits) | A leaky bucket on a fake clock with Take, Observe, Wait and TakeOrSnooze; PeriodKey in Berlin and OncePerPeriod | `workflow`, `memory`, `clock` |
 | [flow-memo](flow-memo) | Memo around a charge on a retried step, MapEach and Loop rerunning only what failed, ProcessChunks with progress, SetRunData/RunData, a Choice, ErrNoJournal | `workflow`, `memory` |
+| [scoped-data](scoped-data) | Folder, workflow and global data shared across runs with SetData, GetData and UpdateData; the in-memory store, then sqlstore.DataStore on SQLite with two clients adding to one total | `workflow`, `memory`, `sqlstore` |
 | [flow-children](flow-children) | Spawn with parent labels, AwaitChildren joining results in order without spending parent attempts, a failed child failing the parent | `workflow`, `memory` |
 | [events-webhooks](events-webhooks) | A Bus with filtered subscriptions and dedup by event ID, a webhook handler's 405/401/413/200/503 answers with HMAC, Standard Webhooks refusing a changed body and a replay | `events`, `workflow`, `memory`, `clock` |
 

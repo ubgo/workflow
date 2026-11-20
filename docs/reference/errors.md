@@ -32,6 +32,8 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrScheduleJSON` | A schedule's JSON form could not be written or read: another version, an unknown field, a zone that does not load | `json.Marshal`/`Unmarshal` of a `Schedule`, `UnmarshalSchedule` |
 | `ErrLocalCronStarted` | A `LocalCron` entry was added after `Start`, or `Start` was called twice | `LocalCron.Add`, `LocalCron.Start` |
 | `ErrNoJournal` | A memoised call ran without the `Journal` plugin or `WithJournal`; permanent | `Memo`, `MapEach`, `Loop`, `ProcessChunks`, `Spawn`, `AwaitChild`, `SetRunData`, `RunData` ([Memoisation](../workflows/memoisation.md)) |
+| `ErrNoDataStore` | A scoped data helper ran without the `Data` plugin, `WithData` or `ContextWithData`; permanent | `GetData`, `SetData`, `UpdateData`, `DeleteData` ([Share data across runs](../workflows/memoisation.md#share-data-across-runs)) |
+| `ErrDataConflict` | A conditional `DataStore.Put` found another version (another writer got there first), or `UpdateData` lost that race `UpdateDataAttempts` times; not permanent | `DataStore.Put`, `UpdateData` |
 | `ErrLoopLimit` | A `Loop` or `ProcessChunks` reached its limit; permanent | `Loop`, `ProcessChunks` with `MaxChunks` |
 | `ErrSecretInPayload` | `SecretGuard` found what looks like a credential in a job; also matches `ErrInvalid`, and the error never prints the value | The `SecretGuard` enqueue middleware ([Secrets in payloads](../reliability/secrets.md)) |
 | `ErrNoSecretRef` | A `SecretRef` has no name; permanent | `ResolveSecret` |

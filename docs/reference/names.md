@@ -50,6 +50,7 @@ The SQL driver and its stores create these tables in your database. `<prefix>` i
 | `<prefix>attempt_errors` | `Client.Migrate` (`006_schedule_history`) | Per-attempt error history (`RunInfo.Errors`), bounded per run by `WithErrorHistory`, deleted with the run |
 | `<prefix>run_forced` | `Client.Migrate` (`006_schedule_history`) | Runs ended by `ForceFail`, so their error matches `workflow.ErrForced` by a flag, not by text; cleared by `Retry` and `ForceComplete` |
 | `<prefix>outputs` | `Client.Migrate`, or `OutputStore.Migrate` alone | Captured step output of `sqlstore.OutputStore`, bounded per run |
+| `<prefix>data` | `Client.Migrate`, or `DataStore.Migrate` alone | Scoped values of `sqlstore.DataStore` (folder, workflow and global data): one row per scope and name, with its version |
 | `<prefix>outbox` | `outbox.Outbox.Migrate` | Outbox entries |
 | `<prefix>migrations` | Any of the `Migrate` calls above | The migration ledger, shared by all of them for one prefix |
 | `<prefix>migrate_lock` | Any `Migrate` on SQLite | The migration lock (Postgres and MySQL use an advisory or named lock instead) |
@@ -62,6 +63,7 @@ Each list of migrations is recorded in the ledger under its own owner, so a data
 | `ubgo/workflow/sqlstore/unique` | `sqlstore.UniqueMigrationOwner` | `<prefix>unique_locks` |
 | `ubgo/workflow/sqlstore/debounce` | `sqlstore.DebounceMigrationOwner` | `<prefix>debounce` |
 | `ubgo/workflow/sqlstore/output` | `sqlstore.OutputMigrationOwner` | `<prefix>outputs` |
+| `ubgo/workflow/sqlstore/data` | `sqlstore.DataMigrationOwner` | `<prefix>data` |
 | `ubgo/workflow/sqlstore/outbox` | `outbox.MigrationOwner` | `<prefix>outbox` |
 
 Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger table itself is never schema-qualified.

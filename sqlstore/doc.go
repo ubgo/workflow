@@ -374,7 +374,7 @@
 // shared <prefix>migrations ledger. Bursts whose run has started are
 // deleted by the dispatcher's housekeeping, or by PruneExpired.
 //
-// # Journal and bucket state
+// # Journal, bucket and data state
 //
 // JournalStore is a durable workflow.JournalStore (the memo of workflow.Memo
 // and the helpers built on it): a run's memoised results are rows of
@@ -388,7 +388,12 @@
 // created by Client.Migrate) or build it with NewJournalStore or
 // NewBucketStore over any *sql.DB; each has its own migration list (owners
 // ubgo/workflow/sqlstore/journal and ubgo/workflow/sqlstore/bucket, both
-// 001) in the shared ledger. Migration 009 adds schedule_tenant:
+// 001) in the shared ledger. DataStore is a durable workflow.DataStore
+// (folder, workflow and global data shared across runs): one row per
+// scope and name in <prefix>data with a version, a conditional Put being
+// one guarded UPDATE or one INSERT decided by the primary key;
+// Client.DataStore or NewDataStore, owner ubgo/workflow/sqlstore/data.
+// Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
 // triggered to run, reported in ScheduleInfo.Tenant.
 //

@@ -250,8 +250,88 @@ func (c *Client) BucketStore() *BucketStore { return &BucketStore{rdb: c.rdb, ba
 // prefix.
 func (c *Client) DebounceStore() *DebounceStore { return &DebounceStore{rdb: c.rdb, base: c.base} }
 
+// DataStore returns a DataStore over this client's Redis and prefix.
+func (c *Client) DataStore() *DataStore { return &DataStore{rdb: c.rdb, base: c.base} }
+
 var (
 	_ workflow.JournalStore    = (*JournalStore)(nil)
 	_ workflow.BucketStore     = (*BucketStore)(nil)
 	_ middleware.DebounceStore = (*DebounceStore)(nil)
 )
+
+// DataStore is a workflow.DataStore in Redis (WX-01): one hash per scoped
+// value ({prefix}:data:<workflow.DataScope.Key>: its value and version),
+// so every process reads and writes one value. Put is one script, so the
+// version check and the write are atomic. Entries never expire; Delete
+// removes them.
+type DataStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}
+
+var _ workflow.DataStore = (*DataStore)(nil)
+
+// NewDataStore returns a DataStore over rdb under prefix.
+func NewDataStore(rdb goredis.UniversalClient, prefix string) (*DataStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &DataStore{rdb: rdb, base: base}, nil
+}
+
+func (d *DataStore) key(scope workflow.DataScope, name string) string {
+	return d.base + ":data:" + scope.Key(name)
+}
+
+// Get returns the value under (scope, name) and its version.
+func (d *DataStore) Get(ctx context.Context, scope workflow.DataScope, name string) ([]byte, workflow.DataVersion, bool, error) {
+	vals, err := d.rdb.HMGet(ctx, d.key(scope, name), "val", "ver").Result()
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("redis: data get: %w", classify(err))
+	}
+	if vals[0] == nil || vals[1] == nil {
+		return nil, 0, false, nil
+	}
+	ver, err := strconv.ParseInt(fmt.Sprint(vals[1]), 10, 64)
+	if err != nil {
+		return nil, 0, false, fmt.Errorf("redis: data get: bad version %v", vals[1])
+	}
+	return []byte(fmt.Sprint(vals[0])), workflow.DataVersion(ver), true, nil
+}
+
+// dataPutScript writes a value when its version matches. KEYS entry; ARGV
+// value, match (-1: any). Returns the new version, or -1 on a mismatch.
+var dataPutScript = goredis.NewScript(`
+local cur = tonumber(redis.call('HGET', KEYS[1], 'ver') or '0')
+local match = tonumber(ARGV[2])
+if match ~= -1 and match ~= cur then return -1 end
+redis.call('HSET', KEYS[1], 'val', ARGV[1], 'ver', cur + 1)
+return cur + 1
+`)
+
+// Put stores val under (scope, name) when the version matches.
+func (d *DataStore) Put(ctx context.Context, scope workflow.DataScope, name string, val []byte, match workflow.DataVersion) (workflow.DataVersion, error) {
+	if err := scope.Validate(); err != nil {
+		return 0, err
+	}
+	if match < workflow.AnyVersion {
+		return 0, fmt.Errorf("%w: redis: data version %d", workflow.ErrInvalid, match)
+	}
+	ver, err := dataPutScript.Run(ctx, d.rdb, []string{d.key(scope, name)}, val, int64(match)).Int64()
+	if err != nil {
+		return 0, fmt.Errorf("redis: data put: %w", classify(err))
+	}
+	if ver < 0 {
+		return 0, fmt.Errorf("%w: %s %q is not at version %d", workflow.ErrDataConflict, scope, name, match)
+	}
+	return workflow.DataVersion(ver), nil
+}
+
+// Delete removes the entry under (scope, name).
+func (d *DataStore) Delete(ctx context.Context, scope workflow.DataScope, name string) error {
+	if err := d.rdb.Del(ctx, d.key(scope, name)).Err(); err != nil {
+		return fmt.Errorf("redis: data delete: %w", classify(err))
+	}
+	return nil
+}
