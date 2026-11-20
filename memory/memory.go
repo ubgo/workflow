@@ -28,7 +28,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
 	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
-	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch,
 	workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, workflow.CapClosure, workflow.CapLabelPrefix,
 	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
 	workflow.CapErrorHistory, workflow.CapForceRun,

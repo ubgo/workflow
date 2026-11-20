@@ -43,7 +43,7 @@ var parityCaps = workflow.CapsOf(
 	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
 	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
-	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, batch2Caps,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch, batch2Caps,
 )
 
 // batch2Caps are the run-state, chain and worker-scale capabilities.

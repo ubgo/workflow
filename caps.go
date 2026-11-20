@@ -201,6 +201,10 @@ var (
 	CapDiscardExhausted = defineCap(59, "DiscardExhausted")
 	// CapDrainReport: Drain reports the runs it cut off (DrainReport).
 	CapDrainReport = defineCap(60, "DrainReport")
+	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
+	// fields of their JSON payload (RS-08). Numbers 70 to 79 are the P3
+	// batch's.
+	CapPayloadSearch = defineCap(70, "PayloadSearch")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.

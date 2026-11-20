@@ -52,10 +52,58 @@ var editCases = []testCase{
 	}},
 }
 
+// payloadSearchCases prove RunQuery.Payload (RS-08): runs are found by
+// fields of their JSON payload, nested paths included, and a payload that
+// is not JSON never matches.
+var payloadSearchCases = []testCase{
+	{"Runs filters on payload fields", func(e *env) {
+		e.need(workflow.CapsOf(workflow.CapRunQuery, workflow.CapPayloadSearch))
+		q := as[workflow.RunQuerier](e, "workflow.RunQuerier")
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		payloads := []string{
+			`{"customer":{"id":"c-1","plan":"pro"},"amount":42}`,
+			`{"customer":{"id":"c-2","plan":"pro"},"amount":42.5}`,
+			`{"customer":{"id":"c-1","plan":"free"},"amount":7,"vip":true}`,
+			`not json`,
+		}
+		for _, p := range payloads {
+			e.waitStatus(e.enqueue(workflow.Job{Workflow: wf.Name, Payload: []byte(p)}), workflow.StatusSucceeded, e.tm.unit)
+		}
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		for _, tc := range []struct {
+			filter map[string]string
+			want   int
+		}{
+			{map[string]string{"customer.id": "c-1"}, 2},
+			{map[string]string{"customer.id": "c-1", "customer.plan": "pro"}, 1},
+			{map[string]string{"amount": "42"}, 1},
+			{map[string]string{"amount": "42.5"}, 1},
+			{map[string]string{"vip": "true"}, 1},
+			{map[string]string{"customer": "c-1"}, 0}, // an object is not a value
+			{map[string]string{"missing": ""}, 0},
+		} {
+			page, err := q.Runs(ctx, workflow.RunQuery{Workflow: wf.Name, Payload: tc.filter})
+			if err != nil {
+				e.t.Fatalf("Runs(%v): %v", tc.filter, err)
+			}
+			if len(page.Runs) != tc.want {
+				e.t.Errorf("Runs(%v) = %d runs, want %d", tc.filter, len(page.Runs), tc.want)
+			}
+		}
+		if _, err := q.Runs(ctx, workflow.RunQuery{Workflow: wf.Name, Payload: map[string]string{"a..b": "x"}}); !errors.Is(err, workflow.ErrInvalid) {
+			e.t.Errorf("a bad path = %v, want ErrInvalid", err)
+		}
+	}},
+}
+
 // p3Groups are the conformance groups of the P3 contracts, in Run order.
 var p3Groups = []struct {
 	name  string
 	cases []testCase
 }{
 	{"edit", editCases},
+	{"payloadsearch", payloadSearchCases},
 }

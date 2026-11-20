@@ -98,6 +98,21 @@ IndexLabels: 4 runs, then 0
 
 It works in chunks under a watermark kept in the locks row `labels:indexed`, rewriting the rows of each run past it, so it is safe to run twice and from several processes at once. The first call above rewrote the rows of the four runs enqueued after `Migrate`'s own pass; the second found nothing new.
 
+## Search inside payloads
+
+A customer writes in about order `o-1`; the runs that handled it carry the order in their payload, not in a label. `RunQuery.Payload` matches runs whose payload is a JSON object holding every field with the given value:
+
+```go
+page, err := runs.Runs(ctx, workflow.RunQuery{
+	Workflow: "fulfil",
+	Payload:  map[string]string{"order.id": "o-1", "rush": "true"},
+})
+```
+
+A key is a field name or a dot path into nested objects, each segment a plain name. A value matches the field's text: a string unquoted, a number as written in the payload (`12.50` does not match `12.5`), `true`, `false` or `null`. A payload that is not a JSON object, or lacks the field, does not match. It needs `workflow.CapPayloadSearch` (memory, SQL, Redis); Hatchet, which filters metadata only, refuses the query with an `UnsupportedError`. `CancelAll` refuses a payload filter; list the runs and cancel each.
+
+The drivers match payloads after their own filters, reading on until the page is full, so narrow the query by workflow, status or time when the table is large: a payload search scans what the other filters leave. A payload sealed by a codec or `Encrypt` cannot be searched; put what you search on into a label instead.
+
 ## Step 2: re-run a failed run from the step that failed
 
 `Retry(ref)` re-opens a failed run. The steps that succeeded keep their outputs and do not run again; the step that failed, and any branch its failure cancelled, start again with fresh attempt counts. A charge that already went through is not charged twice because shipping failed.
