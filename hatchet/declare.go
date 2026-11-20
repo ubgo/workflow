@@ -155,7 +155,8 @@ func (c *Client) waitFunc(s workflow.Step, wf workflow.Workflow) func(hatchetsdk
 			if err != nil {
 				return "", err
 			}
-			return wait.ResolveKey(workflow.Job{Workflow: wf.Name, Payload: payload, Labels: jobLabels(dctx.AdditionalMetadata())})
+			job := workflow.Job{Workflow: wf.Name, Payload: payload, Labels: jobLabels(dctx.AdditionalMetadata())}
+			return wait.ResolveKeyFor(job, workflow.RunID(dctx.WorkflowRunId())) // OwnRun: the engine's run ID, the RunID refs and StepInfo carry
 		})
 		if err != nil {
 			return nil, finalErr(err)

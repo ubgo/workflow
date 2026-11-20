@@ -365,6 +365,13 @@
 //     204 is treated as success.
 //   - A DAG wait condition exposes neither the event payload nor which
 //     condition fired: wait steps run as durable tasks (WaitFor).
+//   - A wait with WaitSpec.OwnRun resolves its key inside that durable
+//     task from the engine's workflow run ID (the RunID refs and StepInfo
+//     carry), so SignalRun and SignalParent reach one run
+//     (CapWaitOwnRun, TestOwnRunWaitLive). The driver has no
+//     workflow.RunSignalReader: the engine keeps no record of which
+//     events a run took that a step could read, so workflow.OnSignals is
+//     refused at Use.
 //   - A durable wait filtered by a CEL expression never resumed once a
 //     non-matching event of the same name arrived in its look-back window:
 //     the correlation key is part of the event key and scope instead, and

@@ -25,6 +25,7 @@ var caps = workflow.CapsOf(
 	workflow.CapDurable,
 	workflow.CapDelayedStart,
 	workflow.CapWaitForEvent,
+	workflow.CapWaitOwnRun, // TestOwnRunWaitLive
 	workflow.CapDurableSleep,
 	workflow.CapConcurrencyKey,
 	workflow.CapRateLimit,
