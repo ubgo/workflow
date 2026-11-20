@@ -68,7 +68,7 @@ type UniqueStore interface {
 func Unique(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-			if err := refuseInternalLabels("Unique", job.Labels, ClaimCheckLabel); err != nil {
+			if err := refuseInternalLabels(ctx, "Unique", job.Labels, ClaimCheckLabel); err != nil {
 				return workflow.RunRef{}, err
 			}
 			key := by(job)
@@ -192,11 +192,15 @@ func stampUnique(labels map[string]string, key, owner string) map[string]string 
 // workflow.LabelPrefixInternal, the prefix this package owns, with an
 // error wrapping workflow.ErrInvalid, rather than dropping or overwriting
 // it. allow names the keys a sibling middleware of this package stamps
-// and that may already be on the job when owner sees it. Keys are checked
-// in sorted order, so the error is the same on every call.
-func refuseInternalLabels(owner string, labels map[string]string, allow ...string) error {
+// and that may already be on the job when owner sees it; a key the
+// library let through on ctx (workflow.AllowReservedLabels, as Spawn,
+// RecursionLimit, ShapeGuard and ExpireAt do for the labels they own) is
+// not an app's label and passes too. Keys are checked in sorted order, so
+// the error is the same on every call.
+func refuseInternalLabels(ctx context.Context, owner string, labels map[string]string, allow ...string) error {
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
-		if strings.HasPrefix(k, workflow.LabelPrefixInternal) && !slices.Contains(allow, k) {
+		if strings.HasPrefix(k, workflow.LabelPrefixInternal) && !slices.Contains(allow, k) &&
+			workflow.CheckJobLabels(ctx, workflow.Job{Labels: map[string]string{k: labels[k]}}) != nil {
 			return fmt.Errorf("%w: %s: label %q uses the reserved prefix %q", workflow.ErrInvalid, owner, k, workflow.LabelPrefixInternal)
 		}
 	}
