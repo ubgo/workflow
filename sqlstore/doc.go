@@ -69,7 +69,12 @@
 //     are rows; a run takes only signals stored after its enqueue (its
 //     signal floor), and the consumed table's primary key means one run
 //     never takes one signal twice. Signals no unfinished run can take are
-//     pruned.
+//     pruned. A wait with WaitSpec.OwnRun stores the run's address
+//     (workflow.RunKey) as its key (CapWaitOwnRun). PendingSignals and
+//     TakeSignal (workflow.RunSignalReader, for workflow.OnSignals) read
+//     the same rows: the run's addressed signals above its floor without a
+//     consumed row, and a take inserts that row under the run's row lock,
+//     so a take and a wait's delivery never both win.
 //   - Cron schedules (declared and Client.Schedule) are rows with their
 //     next fire time, parsed with cron.Parse or WithCronParser (every
 //     client of one database must use the same parser). A tick is fired

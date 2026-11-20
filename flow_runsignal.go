@@ -209,8 +209,8 @@ type signalsPlugin struct {
 
 // OnSignals returns the plugin that runs handlers for the signals
 // addressed to a run (SignalRun, SignalParent) between its steps: a BPMN
-// non-interrupting event sub-process, or a Temporal signal handler, in a
-// journal model (WP-23). Before each step attempt of a run of
+// non-interrupting event sub-process, or a signal handler inside a run,
+// in a journal model (WP-23). Before each step attempt of a run of
 // h.Workflow, it lists the run's pending signals whose name has a
 // handler, calls each handler in the order the signals were sent, and
 // takes each signal after its handler returns nil. The step then runs as

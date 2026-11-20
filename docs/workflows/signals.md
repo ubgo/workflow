@@ -76,6 +76,7 @@ The contract every driver keeps, checked by the shared conformance suite:
 Many runs of one workflow wait on the same event name for different things: "payment succeeded" for *this* order. The key says which. A run's wait matches an event with the same name and the same key, and there are two ways to give the key:
 
 - `WaitSpec.Key` is a fixed key, the same for every run of the workflow (the approval example waits for `expense.approved` with key `finance`). Empty matches an event with an empty key.
+- `WaitSpec.OwnRun` waits on the run's own ID instead, so a sender that knows the run's ref reaches it with `workflow.SignalRun` and no key is invented: [escalation and signal handlers](escalation.md#signal-one-run-by-its-id).
 - `WaitSpec.KeyFrom` derives the key per run from the run's job. The driver evaluates it once, when the wait step begins, against the run's original `Payload` and `Labels` (not the step's input). The order workflow takes it from the `order` label:
 
 <!-- snippet: examples/signals-and-sleep/main.go#enqueue-orders -->
@@ -190,5 +191,6 @@ fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
 ## Related
 
 - [Sleep inside a workflow](sleep.md), [steps](steps.md)
+- [Escalation and signal handlers](escalation.md): signal one run by its ID, a child signalling its parent, handlers between steps
 - [Concurrency keys](../jobs/concurrency.md#limit-runs-per-key), the same key type
 - Example: [`examples/signals-and-sleep`](../../examples/signals-and-sleep)

@@ -103,7 +103,11 @@
 //     and resolves every registered wait on its name and key, one per run,
 //     in one script, and makes those runs ready. A wait past its deadline
 //     fails its step (OnFailure runs). Kept signals are dropped once no
-//     unfinished run may take them.
+//     unfinished run may take them. A wait with WaitSpec.OwnRun waits on
+//     the run's address (workflow.RunKey; CapWaitOwnRun). PendingSignals
+//     and TakeSignal (workflow.RunSignalReader, for workflow.OnSignals)
+//     list a run's addressed signals above its floor without its consumed
+//     marker, and set that marker with HSETNX, in one script each.
 //   - A step that fails for good runs OnFailure once with its input (under
 //     the lease, so a crash reruns it: at least once), then the run is
 //     failed. A step returning workflow.Discard ends the run
