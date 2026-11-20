@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -100,7 +99,9 @@ func machineLifecycle(t *testing.T, h MachineHarness) {
 	fullyPaid := func(m workflow.MachineCtx[orderData]) bool {
 		var amount int
 		_ = json.Unmarshal(m.Event.Payload, &amount)
-		return m.Data.Paid+amount >= m.Data.Total
+		ok := m.Data.Paid+amount >= m.Data.Total
+		m.Data.Total = -1 // a guard's change is dropped (it reads a copy)
+		return ok
 	}
 	wf, err := workflow.DefineMachine(workflow.MachineSpec[orderData]{
 		Name:    "sm-order",
@@ -175,6 +176,15 @@ func machineLifecycle(t *testing.T, h MachineHarness) {
 	}
 	if res := send(t, c, "sm-order", "o2", "pay", 0); !res.Started || !slices.Equal(res.States, []string{"paid"}) {
 		t.Fatalf("auto start then a zero payment of a zero total: %+v", res)
+	}
+	if err := workflow.ForgetMachine(ctx, store, "sm-order", "o1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := workflow.MachineStatus[orderData](ctx, store, "sm-order", "o1"); ok || err != nil {
+		t.Fatalf("a forgotten instance: %v %v", ok, err)
+	}
+	if res := send(t, c, "sm-order", "o1", "ship", nil); !res.Started || res.Handled || !slices.Equal(res.States, []string{"new"}) {
+		t.Fatalf("an event after ForgetMachine starts a new instance: %+v", res)
 	}
 	if _, err := workflow.SendEvent(ctx, c, "sm-order", "", "pay", nil, workflow.Job{}); !errors.Is(err, workflow.ErrInvalid) {
 		t.Fatalf("empty key: %v", err)
@@ -467,7 +477,7 @@ func machineReject(t *testing.T, h MachineHarness) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := flowAwait(t, c, ref); err == nil || !strings.Contains(err.Error(), "not handled") {
+	if _, err := flowAwait(t, c, ref); !workflow.IsUnhandledEvent(err) {
 		t.Fatalf("an unhandled event under MachineReject: %v", err)
 	}
 	snap, _, _ := workflow.MachineStatus[flowData](context.Background(), store, "sm-strict", "s")

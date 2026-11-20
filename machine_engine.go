@@ -412,8 +412,11 @@ func (r *machineRun[D]) selectTransitions(ev MachineEvent) []*mtrans {
 					continue
 				}
 				if g := r.m.spec.Transitions[t.spec].Guard; g != nil {
+					mc := r.mctx(n.name, ev)
+					data := r.data // a guard reads a copy: a change it makes is not kept
+					mc.Data = &data
 					r.inGuard = true
-					ok := g(*r.mctx(n.name, ev))
+					ok := g(*mc)
 					r.inGuard = false
 					if !ok {
 						continue

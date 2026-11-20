@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ubgo/workflow/clock"
@@ -113,7 +114,7 @@ type MachineCtx[D any] struct {
 
 	// Data is the instance's extended state. Actions may change it;
 	// changes are saved with the new configuration when the event's
-	// handling ends. Guards must only read it.
+	// handling ends. A guard gets a shallow copy and must only read it.
 	Data *D
 
 	// Seq is the microstep sequence number (it grows by one per
@@ -156,9 +157,11 @@ func (m MachineCtx[D]) IdempotencyKey(name string) string {
 	return "machine/" + hex.EncodeToString(sum[:16])
 }
 
-// MachineGuard decides whether a transition is taken. It must not change
-// m.Data and should be a pure function of the data, the event and the
-// configuration: it may be called more than once per event.
+// MachineGuard decides whether a transition is taken. It should be a pure
+// function of the data, the event and the configuration: it may be called
+// more than once per event. m.Data points to a shallow copy of the data,
+// so a change to a top-level field is dropped; maps and slices are shared,
+// so never change those from a guard.
 type MachineGuard[D any] func(m MachineCtx[D]) bool
 
 // MachineAction runs on entry to a state, on exit from it, or when a transition
@@ -480,6 +483,34 @@ func MachineStatus[D any](ctx context.Context, store JournalStore, machine, key 
 	}
 	snap.Done, snap.States, snap.Active, snap.Seq, snap.Log = rec.Done, rec.Leaves, rec.Active, rec.Seq, rec.Log
 	return snap, true, nil
+}
+
+// ForgetMachine deletes instance key of machine from store: its state,
+// data, history and log. An event sent to the key later starts a new
+// instance, and a timer of the old one finds nothing to act on. Call it
+// for instances that reached a final state (MachineSnapshot.Done) and are
+// no longer needed: records are never removed otherwise. It does not wait
+// for an event being handled now, which may write the record again.
+func ForgetMachine(ctx context.Context, store JournalStore, machine, key string) error {
+	if store == nil || machine == "" || key == "" {
+		return invalidf("ForgetMachine needs a store, a machine and a key")
+	}
+	if err := store.Forget(ctx, objectRun(machine, key)); err != nil {
+		return fmt.Errorf("workflow: machine %q key %q: forget: %w", machine, key, err)
+	}
+	return nil
+}
+
+// IsUnhandledEvent reports whether err is an event refused under
+// MachineReject: ErrUnhandledEvent itself, or the *RunFailedError that
+// AwaitResult returns for the event's run, which carries the step's error
+// as text only.
+func IsUnhandledEvent(err error) bool {
+	if errors.Is(err, ErrUnhandledEvent) {
+		return true
+	}
+	var failed *RunFailedError
+	return errors.As(err, &failed) && strings.Contains(failed.Err, ErrUnhandledEvent.Error())
 }
 
 func loadMachine(ctx context.Context, store JournalStore, run RunID) (machineRecord, error) {
