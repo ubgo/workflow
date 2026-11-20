@@ -3,9 +3,11 @@
 // runs no worker takes, a bounded queue and a per-tenant quota, quiet
 // hours in the recipient's zone, payload validation at enqueue, an
 // explicit retry ladder, invariants and step conditions, a resource pool,
-// a critical section and an endpoint switch that turns itself off.
-// Everything runs on the in-memory driver, most of it on a fake clock, so
-// nothing needs to be installed and the output is the same on every run.
+// a critical section and an endpoint switch that turns itself off, alone
+// and shared by two workers through sqlstore.DisableStore. Everything runs
+// on the in-memory driver (the shared switch on a SQLite file in a temp
+// directory), most of it on a fake clock, so nothing needs to be installed
+// and the output is the same on every run.
 //
 // It is the program behind docs/jobs/guards.md and
 // docs/reliability/pools.md: the guides copy its regions (marked
@@ -18,15 +20,19 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
 	_ "time/tzdata" // the zones the quiet-hours part uses, whatever the host has
 
+	"github.com/ubgo/sqlb"
+	driversqlite "github.com/ubgo/sqlb/contrib/driver-sqlite"
 	"github.com/ubgo/workflow"
 	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/memory"
 	"github.com/ubgo/workflow/middleware"
+	"github.com/ubgo/workflow/sqlstore"
 )
 
 func main() {
@@ -52,6 +58,7 @@ func run(ctx context.Context) error {
 		{"expiry", expiry}, {"sweep", sweep}, {"bounds", bounds}, {"quiet hours", quiet},
 		{"validation", validation}, {"ladder", ladder}, {"conditions", conditions},
 		{"pool", pool}, {"critical section", section}, {"auto-disable", autoDisable},
+		{"auto-disable across workers", fleetDisable},
 	} {
 		fmt.Println(part.name + ":")
 		if err := part.fn(ctx); err != nil {
@@ -433,5 +440,66 @@ func autoDisable(ctx context.Context) error {
 	// snippet:end
 	on, _ := switches.Disabled(ctx, "https://hooks.example.com/a")
 	fmt.Println("  disabled after Enable:", on)
+	return nil
+}
+
+// fleetDisable is AutoDisable on two workers (two memory clients here, as
+// two processes would run) sharing their switches through
+// sqlstore.DisableStore on one SQLite file: the failures of both count
+// together, the switch trips once, and the other worker stops calling the
+// endpoint too.
+func fleetDisable(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	dir, err := os.MkdirTemp("", "job-guards-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	db, err := driversqlite.Open(filepath.Join(dir, "wf.db"))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+	var calls atomic.Int32
+	deliver := func(_ context.Context, in []byte) ([]byte, error) {
+		calls.Add(1)
+		return nil, errors.New("endpoint returned 500")
+	}
+	endpoint := func(_ workflow.StepInfo, in []byte) string { return string(in) }
+	// snippet:fleet
+	// One table every worker shares (Postgres or MySQL the same way; or
+	// redis.NewDisableStore). Its own Migrate creates it.
+	switches, err := sqlstore.NewDisableStore(db, sqlb.SQLiteDialect{})
+	if err != nil {
+		return err
+	}
+	if err := switches.Migrate(ctx); err != nil {
+		return err
+	}
+	// snippet:end
+	workers := make([]*memory.Client, 2)
+	for i := range workers {
+		off := middleware.AutoDisable(switches, endpoint, 3, func(_ context.Context, key string) {
+			fmt.Printf("  worker %d disabled %s\n", i+1, key)
+		})
+		workers[i] = memory.New(memory.WithMiddleware(off))
+		if err := started(ctx, workers[i], workflow.Workflow{Name: "webhook", Steps: []workflow.Step{{Name: "post", Run: deliver}}}); err != nil {
+			return err
+		}
+	}
+	for i := range 5 {
+		w := workers[i%2]
+		ref, err := w.Enqueue(ctx, workflow.Job{Workflow: "webhook", Payload: []byte("https://hooks.example.com/b")})
+		if err != nil {
+			return err
+		}
+		st, err := workflow.Await(ctx, w, ref, await)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("  delivery %d on worker %d: %s\n", i+1, i%2+1, st)
+	}
+	fmt.Printf("  endpoint called %d time(s)\n", calls.Load())
 	return nil
 }

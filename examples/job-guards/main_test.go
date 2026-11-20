@@ -10,8 +10,9 @@ import (
 // TestRun runs the program and checks every line the guides show: a late
 // run discarded, waiting runs swept, the queue bound and tenant quota,
 // quiet hours per zone, a refused payload, the retry ladder, constraint
-// breaches failing at once, a pool of two, a critical section and an
-// endpoint switch that trips after three failures.
+// breaches failing at once, a pool of two, a critical section, an
+// endpoint switch that trips after three failures, and the same switch
+// shared by two workers through sqlstore.DisableStore.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -52,6 +53,14 @@ auto-disable:
   delivery 5: discarded
   endpoint called 3 time(s)
   disabled after Enable: false
+auto-disable across workers:
+  delivery 1 on worker 1: failed
+  delivery 2 on worker 2: failed
+  worker 1 disabled https://hooks.example.com/b
+  delivery 3 on worker 1: failed
+  delivery 4 on worker 2: discarded
+  delivery 5 on worker 1: discarded
+  endpoint called 3 time(s)
 `
 	if out != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out, want)

@@ -411,6 +411,23 @@
 // message is processed exactly once; expired rows are deleted by the
 // dispatcher's housekeeping or PruneExpired; Client.Inbox or NewInbox,
 // owner ubgo/workflow/sqlstore/inbox.
+//
+// # Endpoint switches
+//
+// DisableStore is a durable middleware.DisableStore, the switches of
+// middleware.AutoDisable: one row per key in <prefix>disabled_endpoints
+// with its count of consecutive failures and whether it is disabled, so
+// the failures of every worker sharing the database count together and an
+// endpoint switched off by one is off for all of them until Enable. Fail
+// is atomic across processes (one upsert computes the new count, the
+// switch and whether this call flipped it from the old row, read back in
+// the same transaction), so of any number of concurrent Fails exactly
+// one reports the crossing and onDisable runs once. Take it from a Client
+// (Client.DisableStore) or build it with NewDisableStore over any *sql.DB;
+// its table has its own migration list (owner
+// ubgo/workflow/sqlstore/disable, 001_disable) in the shared ledger,
+// applied by DisableStore.Migrate and not by Client.Migrate, so an app
+// that never switches endpoints gets no table for it.
 // Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
 // triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds
