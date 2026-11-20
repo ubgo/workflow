@@ -28,7 +28,7 @@ var caps = workflow.CapsOf(
 	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel, workflow.CapRunFinished,
 	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
 	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
-	workflow.CapLabelPrefix, workflow.CapQueueLimitGlobal, parityCaps,
+	workflow.CapLabelPrefix, workflow.CapQueueLimitGlobal, workflow.CapWaitOwnRun, parityCaps,
 )
 
 // parityCaps are the queue, retry, admin, pause, schedule and drain

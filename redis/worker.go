@@ -430,7 +430,7 @@ func (c *Client) plan(h *held, job workflow.Job, now time.Time) (planned, error)
 				return c.plan(h, job, now)
 			}
 			if deadline != 0 && deadline <= now.UnixNano() {
-				key, _ := s.Wait.ResolveKey(job)
+				key, _ := s.Wait.ResolveKeyFor(job, workflow.RunID(h.id))
 				p.timedOut = &waitTimeout{step: s.Name, in: h.input(s, job),
 					err: fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrWaitTimeout,
 						fmt.Sprintf("redis: wait step %q for event %q key %q", s.Name, s.Wait.Event, key)), context.DeadlineExceeded)}
@@ -463,7 +463,7 @@ func (c *Client) beginWait(h *held, s workflow.Step, job workflow.Job, now time.
 	if v, ok := h.waitVals[s.Name]; ok {
 		return v, true, 0, nil
 	}
-	key, err := s.Wait.ResolveKey(job) // Start refused Expr keys, so this is Func or the fixed Key
+	key, err := s.Wait.ResolveKeyFor(job, workflow.RunID(h.id)) // Start refused Expr keys, so this is Func, the fixed Key or the run address
 	if err != nil {
 		return nil, false, 0, err
 	}
