@@ -117,7 +117,20 @@ Read in this order to go from a first job to a production setup. Each step build
 | Retry every failed run of a workflow from a terminal | [The workflow command](admin/cli.md) | [admin-cli](../examples/admin-cli/) |
 | Run a schedule only in production, or only during a campaign week | [Schedule conditions](schedules/conditions.md) | [schedule-specs](../examples/schedule-specs/) |
 | Warm a cache on every node every minute | [Local cron](schedules/local-cron.md) | [schedule-specs](../examples/schedule-specs/) |
+| Share a counter or a cursor between runs of a workflow | [Memoise work inside a step › Share data across runs](workflows/memoisation.md#share-data-across-runs) | [scoped-data](../examples/scoped-data/) |
+| Process a message delivered twice only once, even across a crash | [Idempotency keys › Drop redelivered messages with an inbox](jobs/idempotency.md#drop-redelivered-messages-with-an-inbox) | [consumer-inbox](../examples/consumer-inbox/) |
+| Deploy a new version while old workers still run | [Deploy workers › Deploy a new version while old workers run](operations/deploy.md#deploy-a-new-version-while-old-workers-run) | [rolling-deploy](../examples/rolling-deploy/) |
+| Keep each customer's jobs in their own region | [Regional routing](operations/regional-routing.md) | [regional-routing](../examples/regional-routing/) |
+| Show customers a dashboard of their own tenant's runs | [Per-tenant dashboard](admin/tenants.md) | [admin-tenants](../examples/admin-tenants/) |
+| Wait for the first of several mirrors, or two of four, and cancel the rest | [Joins and distributed maps](workflows/joins.md) | [flow-joins](../examples/flow-joins/) |
+| Ask a human to approve a step with a signed link | [Polling, sleeping until, and approvals](workflows/polling-and-approval.md#human-approval) | [flow-patterns](../examples/flow-patterns/) |
+| Start a job from an HTTP call and stream its progress to the browser | [Start a run over HTTP and follow it live](jobs/http-start.md) | [http-status](../examples/http-status/) |
+| Turn many small notifications into one digest mail | [Aggregation and chunked fan-out](reliability/aggregate.md) | [aggregate-digest](../examples/aggregate-digest/) |
+| Change a scheduled job before it runs | [Edit a scheduled run](jobs/edit-runs.md) | [edit-run](../examples/edit-run/) |
 | Check whether the library has a feature | [Feature index](reference/features.md) | |
+| [Datasets and lineage](events/datasets.md) | `Datasets.Updated` and any-of or all-of triggers that start workflows when their input data changes, never twice for one version; who produced a version and what a run read |
+| [CloudEvents and payload versions](events/cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, upcasting old payload versions |
+| [Event log, replay and cancel on event](events/replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID, cancel subscriptions, divert |
 
 ## All pages
 
@@ -170,6 +183,11 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Deferred dispatch](jobs/deferred.md) | Jobs enqueued during a request, sent only when it succeeds: `DeferHTTP`, `Deferred` by hand, and when a transaction is better |
 | [Closures](jobs/closures.md) | A Go function run as an in-process job on the memory driver, and why durable drivers refuse it |
 | [Functions by name](jobs/functions.md) | A Go function registered under a name and enqueued with a JSON argument: durable closures on every driver |
+| [Heavy steps and worker slots](jobs/slots.md) | `Step.Slots`, `CapSlotCost` and the `SlotPool` rule |
+| [Edit a scheduled run](jobs/edit-runs.md) | `RunEditor`: a scheduled run's payload, priority and start changed before it runs, from Go or the admin |
+| [Job guards](jobs/guards.md) | Expiry, the waiting-run sweep, bounded queues and tenant quotas, quiet hours, payload validation, retry ladders, invariants |
+| [Start a run over HTTP and follow it live](jobs/http-start.md) | `httprun`: 202 and `Location`, status and result, Server-Sent Events, streamed step output |
+| [Push delivery to an HTTP endpoint](jobs/push-delivery.md) | `push.Deliver` signed with Standard Webhooks, and `push.Handler` on the receiving side |
 
 ### Schedules
 
@@ -183,6 +201,10 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Manage schedules](schedules/manage.md) | List schedules with their next fire, pause and resume, group schedules, keep the newest runs, store a schedule as JSON |
 | [Task output](schedules/output.md) | Capture what a task logs, the events it records and what it returns, and send it to a file, a writer, a mail function or the database |
 | [Overlap, trigger now and last fire](schedules/overlap.md) | Skip a tick while the previous run is unfinished, run a schedule now, read its last fire and run |
+| [Latest-only runs](schedules/latest-only.md) | `middleware.LatestOnly`: skip the work of a scheduled run that is no longer the newest |
+| [Export a schedule](schedules/export.md) | Kubernetes CronJob, systemd timer, launchd, Task Scheduler, and the next-fire handoff for a closed desktop app |
+| [Cron expression tools](schedules/expressions.md) | The extended `L`, `W` and `#` fields, H spread, English descriptions |
+| [Backfill and schedule lifetimes](schedules/backfill.md) | `Backfill`, runs limited to n or one, startup runs, exclusion calendars, fire jitter |
 
 ### Workflows
 
@@ -192,6 +214,17 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Wait for an event](workflows/signals.md) | Wait steps, matching events to runs, deadlines |
 | [Sleep inside a workflow](workflows/sleep.md) | Durable sleep steps |
 | [Chains of jobs](workflows/chains.md) | `Job.Chain`, editing the rest of a chain from a running step, failure, and child runs on Hatchet |
+| [Stages, conditions and milestones](workflows/stages.md) | `Stages`, `When`, `Milestone`, one-at-a-time routing, `Memo` as the local activity, `middleware.SoftTimeout` |
+| [Joins and distributed maps](workflows/joins.md) | `JoinChildren` (first of, N of M, cancel or complete the rest, dynamic), `CancelChildren`, `MapRuns`, the multi-merge recipe |
+| [Promises, updates and signal helpers](workflows/promises.md) | `PromiseStore`, `ResolvePromise`, `AwaitPromise`, `Update`, `SignalWithStart`, `ContinueAsNew`, `CancelSteps` |
+| [Virtual objects](workflows/objects.md) | `DefineObject` and `CallObject`: one serial lane and durable state per key |
+| [Partitioned runs](workflows/partitions.md) | `EnqueuePartitions`, `PartitionStatus` and `RetryFailedPartitions`: one run per day or tenant, a status per partition, re-running only the failed ones |
+| [Trigger rules and exit handlers](workflows/trigger-rules.md) | `WithRules`: tolerated steps, trigger rules, error routes, `Finally`, `Boundary` |
+| [Sagas](workflows/sagas.md) | `Saga`: actions with memoised compensations inside one step |
+| [Multi-choice and races](workflows/multi-choice-and-race.md) | `MultiChoice` with a synchronizing join, `Race` decided by the first signal |
+| [Polling, sleeping until, and approvals](workflows/polling-and-approval.md) | `Poll`, `SleepUntil`, `ApprovalStep` with signed links |
+| [Groups, early ends and guards](workflows/groups-and-guards.md) | `Group`, `EndRun`, `RecursionLimit`, `ShapeGuard`, typed `EnqueueOf` and `AwaitResultOf` |
+| [Completion triggers](workflows/then.md) | `Then`: start the next workflow when a run ends |
 
 ### Drivers
 
@@ -201,6 +234,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [The SQL driver (sqlstore)](drivers/sqlstore.md) | SQLite, Postgres and MySQL 8: workers, polling, wake-ups with LISTEN/NOTIFY, leases, database errors, run IDs, a run recorder in the same database |
 | [The Redis driver](drivers/redis.md) | Durable runs and cron on Redis: whole-run leases, fenced writes, what it still refuses, shared stores, deployment, upgrading, a run recorder next to it |
 | [The Hatchet driver](drivers/hatchet.md) | Configuration, what it refuses, engine quirks, the native SDK, a run recorder with the Reconciler and on web nodes |
+| [Enqueue from other languages](drivers/sqlstore-insert-contract.md) | The rows another language writes to enqueue a sqlstore run, idempotency keys, waking the workers |
 
 ### Middleware
 
@@ -241,6 +275,10 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Transactional enqueue](reliability/transactional-enqueue.md) | `EnqueueTx` inside your own SQL transaction |
 | [Outbox](reliability/outbox.md) | Jobs written in your transaction and relayed to any client |
 | [Failover](reliability/failover.md) | A second backend for enqueues, outage classification, cool-off |
+| [Pools, critical sections and auto-disable](reliability/pools.md) | `middleware.Pool` across processes, `CriticalSection`, `AutoDisable` for a failing endpoint |
+| [Complete inside your transaction](reliability/complete-in-transaction.md) | `CompleteTx`: a step's success written in the app's transaction, fenced by its lease |
+| [Change triggers](reliability/change-triggers.md) | `outbox.ChangeTrigger`: row changes become outbox entries through generated triggers |
+| [Aggregation and chunked fan-out](reliability/aggregate.md) | `Aggregate`: many jobs become one run per group and window; `EnqueueChunked` fan-out that resumes |
 
 ### Testing
 
@@ -264,6 +302,11 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Tuning](operations/tuning.md) | Housekeeping and Hatchet limits |
 | [Worker balancing](operations/balancing.md) | Moving workers between queues by depth or wait, bounds, the balance loop, your own strategy |
 | [Worker recycling](operations/recycling.md) | Stop a worker after a number of jobs, a time or a memory size so its supervisor starts a fresh one |
+| [Start when ready](operations/start-gate.md) | `StartWhen` and `ClockAfter`: hold Start until the clock is synchronised |
+| [Regional routing](operations/regional-routing.md) | One backend per region, each job routed by a pluggable `Router`, region-prefixed refs |
+| [Laptops that sleep](operations/sleep-and-wake.md) | `clock.WakeChecked`: timers that fire by the wall clock after a suspend |
+| [Namespaces](operations/namespaces.md) | One client per namespace on every driver, and how a namespace differs from a tenant |
+| [Backend cutover](operations/cutover.md) | `cutover`: move to a new backend while running, old refs answering, schedules moved |
 
 ### Admin
 
@@ -274,6 +317,8 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Admin web UI](admin/ui.md) | The dashboard the admin handler serves: screens (a run's attempts, output, progress and result, a schedule with Run now, charts, system health), cookie login, CSP, keys |
 | [Queue alerts](admin/alerts.md) | `admin.Monitor` thresholds on queue depth and wait, and the OpenTelemetry depth gauge |
 | [The workflow command](admin/cli.md) | The CLI over the admin API: auth flags and env vars, every command, --json, --dry-run, exit codes, embedding |
+| [Per-tenant dashboard](admin/tenants.md) | `WithTenantScope`: one tenant per admin caller, 404 across tenants, 403 for system routes |
+| [Audit log and trace links](admin/audit-and-traces.md) | `WithAudit` records every write action, `WithTraceLink` links a run to its trace |
 
 ### Extending
 

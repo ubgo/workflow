@@ -350,6 +350,15 @@
 // sqlstore/pgxtx module: pgxtx.Run hands EnqueueTx (or outbox.Write) a
 // *sql.Tx whose statements run on the app's pgx.Tx.
 //
+// Client.CompleteTx goes the other way: a running step writes its own
+// success inside the app's *sql.Tx, so the app's side effect and the
+// step's completion commit together or not at all. The write is fenced by
+// the attempt's lease token (a step another client took over is refused
+// with ErrLeaseLost) and needs no schema change; once the transaction
+// commits, what the handler returns is ignored. The output is stored as
+// given: step middleware that rewrites outputs (codecs, Encrypt, claim
+// check) does not run on it.
+//
 // # Uniqueness locks
 //
 // UniqueStore is a durable middleware.UniqueStore (ADR-0005): locks are
