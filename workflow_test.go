@@ -81,20 +81,20 @@ func TestRequiresAndMissing(t *testing.T) {
 			{Name: "c", Sleep: time.Second},
 		},
 	}
-	want := workflow.CapCron | workflow.CapConcurrencyKey | workflow.CapRateLimit | workflow.CapIdempotencyKey | workflow.CapWaitForEvent | workflow.CapDurableSleep
+	want := workflow.CapsOf(workflow.CapCron, workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey, workflow.CapWaitForEvent, workflow.CapDurableSleep)
 	if got := workflow.Requires(wf); got != want {
 		t.Fatalf("Requires = %s, want %s", got, want)
 	}
-	if got := workflow.Requires(workflow.Workflow{Steps: []workflow.Step{{Name: "a", Run: noop}}}); got != 0 {
+	if got := workflow.Requires(workflow.Workflow{Steps: []workflow.Step{{Name: "a", Run: noop}}}); !got.IsZero() {
 		t.Fatalf("plain job requires %s", got)
 	}
 
-	have := workflow.CapCron | workflow.CapRateLimit | workflow.CapCancel
+	have := workflow.CapsOf(workflow.CapCron, workflow.CapRateLimit, workflow.CapCancel)
 	missing := have.Missing(want)
-	if missing != workflow.CapConcurrencyKey|workflow.CapIdempotencyKey|workflow.CapWaitForEvent|workflow.CapDurableSleep {
+	if missing != workflow.CapsOf(workflow.CapConcurrencyKey, workflow.CapIdempotencyKey, workflow.CapWaitForEvent, workflow.CapDurableSleep) {
 		t.Fatalf("Missing = %s", missing)
 	}
-	if !have.Has(workflow.CapCron|workflow.CapCancel) || have.Has(workflow.CapDurable) {
+	if !have.Has(workflow.CapsOf(workflow.CapCron, workflow.CapCancel)) || have.Has(workflow.CapDurable) {
 		t.Fatal("Has is wrong")
 	}
 	if s := missing.String(); s != "WaitForEvent|DurableSleep|ConcurrencyKey|IdempotencyKey" {
@@ -106,12 +106,12 @@ func TestRequiresAndMissing(t *testing.T) {
 	if !errors.Is(err, workflow.ErrUnsupported) || !errors.As(err, &ue) || ue.Missing != missing {
 		t.Fatalf("CheckCaps = %v", err)
 	}
-	if err := workflow.CheckCaps(have|missing, wf); err != nil {
+	if err := workflow.CheckCaps(workflow.CapsOf(have, missing), wf); err != nil {
 		t.Fatalf("CheckCaps with every cap = %v", err)
 	}
 
 	job := workflow.Job{RunAt: time.Unix(1, 0), IdempotencyKey: "k"}
-	if got := workflow.RequiresJob(job); got != workflow.CapDelayedStart|workflow.CapIdempotencyKey {
+	if got := workflow.RequiresJob(job); got != workflow.CapsOf(workflow.CapDelayedStart, workflow.CapIdempotencyKey) {
 		t.Fatalf("RequiresJob = %s", got)
 	}
 }
@@ -247,7 +247,7 @@ func TestStepInfo(t *testing.T) {
 }
 
 func TestCapRunFinishedName(t *testing.T) {
-	if s := (workflow.CapCancel | workflow.CapRunFinished).String(); s != "Cancel|RunFinished" {
+	if s := workflow.CapsOf(workflow.CapCancel, workflow.CapRunFinished).String(); s != "Cancel|RunFinished" {
 		t.Fatalf("String = %q", s)
 	}
 }

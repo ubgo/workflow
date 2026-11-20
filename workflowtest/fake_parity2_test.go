@@ -46,7 +46,7 @@ func TestFakeRecordsChainsAndClosures(t *testing.T) {
 
 func TestFakeRefusesWhatADurableDriverRefuses(t *testing.T) {
 	ctx := context.Background()
-	durable := workflow.CapDelayedStart | workflow.CapDiscard
+	durable := workflow.CapsOf(workflow.CapDelayedStart, workflow.CapDiscard)
 	f := startedFake(t, []FakeOption{FakeCaps(durable)}, oneStep("a", noopHandler))
 	_, err := f.Enqueue(ctx, workflow.Job{Workflow: "a", Chain: []workflow.Job{{Workflow: "a"}}})
 	var ue *workflow.UnsupportedError
@@ -66,7 +66,7 @@ func TestFakeRefusesWhatADurableDriverRefuses(t *testing.T) {
 	if err := f.Finish(ref, workflow.StatusDiscarded); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Fatalf("Finish(discarded) without CapRunStates = %v", err)
 	}
-	if f.Capabilities().Has(workflow.CapWorkerScale) || NewFake(FakeCaps(^workflow.Caps(0))).Capabilities().Has(workflow.CapWorkerScale) {
+	if f.Capabilities().Has(workflow.CapWorkerScale) || NewFake(FakeCaps(workflow.AllCaps())).Capabilities().Has(workflow.CapWorkerScale) {
 		t.Fatal("the Fake claims CapWorkerScale, which it does not serve")
 	}
 }
@@ -92,14 +92,14 @@ func TestRunStepChainEdits(t *testing.T) {
 	if o.Succeeded() || !slices.Equal(o.ChainNames(), []string{"middle"}) {
 		t.Fatalf("a failed attempt kept its edits: %v", o.ChainNames())
 	}
-	o = RunStep(h, nil, StepCaps(0))
+	o = RunStep(h, nil, StepCaps(workflow.Caps{}))
 	if !errors.Is(o.Err, workflow.ErrUnsupported) {
 		t.Fatalf("chain edit without CapChain = %v", o.Err)
 	}
 }
 
 func TestFakeNeverClaimsLabelPrefix(t *testing.T) {
-	f := NewFake(FakeCaps(workflow.CapLabelPrefix | workflow.CapRunQuery))
+	f := NewFake(FakeCaps(workflow.CapsOf(workflow.CapLabelPrefix, workflow.CapRunQuery)))
 	if f.Capabilities().Has(workflow.CapLabelPrefix) {
 		t.Fatal("the Fake claims CapLabelPrefix but serves no run query")
 	}

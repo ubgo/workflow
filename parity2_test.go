@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,12 +17,15 @@ import (
 )
 
 func TestParity2CapNames(t *testing.T) {
-	got := (workflow.CapRunStates | workflow.CapChain | workflow.CapWorkerScale | workflow.CapClosure).String()
+	got := workflow.CapsOf(workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, workflow.CapClosure).String()
 	if got != "RunStates|Chain|WorkerScale|Closure" {
 		t.Fatalf("String = %q", got)
 	}
-	if workflow.CapRunStates <= workflow.CapDrain {
-		t.Fatal("a new capability moved an existing bit")
+	// CapRunStates is number 34 (1<<34 in the v0.1 numeric form); a new
+	// capability must never move an existing one.
+	var c workflow.Caps
+	if err := json.Unmarshal([]byte("17179869184"), &c); err != nil || c != workflow.CapRunStates {
+		t.Fatalf("1<<34 reads as %s, %v; want RunStates", c, err)
 	}
 }
 
@@ -55,12 +59,12 @@ func TestEndStatus(t *testing.T) {
 		err  error
 		want workflow.Status
 	}{
-		{"plain error", workflow.CapRunStates | workflow.CapDiscard, boom, workflow.StatusFailed},
+		{"plain error", workflow.CapsOf(workflow.CapRunStates, workflow.CapDiscard), boom, workflow.StatusFailed},
 		{"permanent", workflow.CapRunStates, workflow.Permanent(boom), workflow.StatusFailed},
-		{"discard with run states", workflow.CapRunStates | workflow.CapDiscard, workflow.Discard(boom), workflow.StatusDiscarded},
+		{"discard with run states", workflow.CapsOf(workflow.CapRunStates, workflow.CapDiscard), workflow.Discard(boom), workflow.StatusDiscarded},
 		{"discard with run states only", workflow.CapRunStates, workflow.Discard(boom), workflow.StatusDiscarded},
 		{"discard with discard only", workflow.CapDiscard, workflow.Discard(boom), workflow.StatusCancelled},
-		{"discard on a driver with neither", 0, workflow.Discard(boom), workflow.StatusFailed},
+		{"discard on a driver with neither", workflow.Caps{}, workflow.Discard(boom), workflow.StatusFailed},
 		{"wrapped discard", workflow.CapRunStates, errors.Join(boom, workflow.Discard(boom)), workflow.StatusDiscarded},
 	} {
 		if got := workflow.EndStatus(tc.have, tc.err); got != tc.want {
@@ -74,7 +78,7 @@ func TestChainValidationAndCaps(t *testing.T) {
 	if err := workflow.ValidateJob(job); err != nil {
 		t.Fatal(err)
 	}
-	if got := workflow.RequiresJob(job); !got.Has(workflow.CapChain | workflow.CapDelayedStart) {
+	if got := workflow.RequiresJob(job); !got.Has(workflow.CapsOf(workflow.CapChain, workflow.CapDelayedStart)) {
 		t.Fatalf("RequiresJob = %s, want Chain and DelayedStart", got)
 	}
 	var ue *workflow.UnsupportedError
@@ -469,7 +473,7 @@ func TestClosureValidationAndRefusal(t *testing.T) {
 // ever called.
 type noClosureClient struct{ workflow.Client }
 
-func (noClosureClient) Capabilities() workflow.Caps { return 0 }
+func (noClosureClient) Capabilities() workflow.Caps { return workflow.Caps{} }
 
 func TestForwardNewInterfaces(t *testing.T) {
 	f := workflow.Forward{Inner: noClosureClient{}}

@@ -18,7 +18,7 @@ import (
 // view, can read it.
 //
 //ds:def id=rec-querycaps-x2zk9xju owner=@khanakia stability=stable
-const QueryCaps = workflow.CapRunQuery | workflow.CapLabelPrefix | workflow.CapTenant | workflow.CapDueQuery
+var QueryCaps = workflow.CapsOf(workflow.CapRunQuery, workflow.CapLabelPrefix, workflow.CapTenant, workflow.CapDueQuery)
 
 // MaxSearchLen is the longest Query.Search, in bytes.
 //

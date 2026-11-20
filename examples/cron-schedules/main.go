@@ -431,6 +431,6 @@ func refusals(ctx context.Context) error {
 	}
 	// snippet:end
 	fmt.Println("  memory needs for a zoned cron:", workflow.Requires(workflow.Workflow{Cron: []string{"0 9 * * *"}, CronLocation: kolkata}),
-		"| has them:", c.Capabilities().Has(workflow.CapCron|workflow.CapCronZone))
+		"| has them:", c.Capabilities().Has(workflow.CapsOf(workflow.CapCron, workflow.CapCronZone)))
 	return nil
 }

@@ -98,7 +98,7 @@ func TestQueryShapeRefusedBeforeTheReader(t *testing.T) {
 }
 
 func TestCancelAllRefusesFilterTheClientLacks(t *testing.T) {
-	c := &fakeClient{caps: allCaps &^ workflow.CapLabelPrefix}
+	c := &fakeClient{caps: allCaps.Without(workflow.CapLabelPrefix)}
 	_, err := New(c).CancelAll(context.Background(), workflow.RunQuery{Workflow: "w", LabelPrefixes: map[string]string{"k": "v"}})
 	if !errors.Is(err, workflow.ErrUnsupported) {
 		t.Fatalf("CancelAll with a label prefix = %v, want ErrUnsupported", err)

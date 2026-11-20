@@ -179,7 +179,7 @@ func TestRoute(t *testing.T) {
 func TestDebounce(t *testing.T) {
 	start := time.Unix(1000, 0)
 	clk := clock.NewFake(start)
-	stub := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	key := func(j workflow.Job) string { return j.Labels["user"] }
 	mw, err := middleware.Debounce(stub, clk, key, 10*time.Second, 25*time.Second)
 	if err != nil {
@@ -241,7 +241,7 @@ func TestDebounce_RefusesWithoutCapabilities(t *testing.T) {
 	if !errors.Is(err, workflow.ErrUnsupported) || !errors.As(err, &ue) || ue.Missing != workflow.CapCancel {
 		t.Fatalf("err = %v", err)
 	}
-	full := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	full := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	if _, err := middleware.Debounce(full, nil, key, time.Second, time.Millisecond); !errors.Is(err, workflow.ErrInvalid) {
 		t.Fatalf("maxWait below window accepted: %v", err)
 	}

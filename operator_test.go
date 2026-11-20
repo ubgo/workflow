@@ -84,8 +84,10 @@ func TestOverlapRefusalAndTriggeredLabels(t *testing.T) {
 }
 
 func TestNewCapabilityNames(t *testing.T) {
-	got := (workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory | workflow.CapEnqueueOnly |
-		workflow.CapErrorHistory | workflow.CapShutdownRequeue | workflow.CapForceRun).String()
+	got := workflow.CapsOf(
+		workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory, workflow.CapEnqueueOnly,
+		workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapForceRun,
+	).String()
 	want := "OverlapSkip|ScheduleTrigger|ScheduleHistory|EnqueueOnly|ErrorHistory|ShutdownRequeue|ForceRun"
 	if got != want {
 		t.Errorf("String = %q, want %q", got, want)

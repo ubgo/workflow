@@ -38,9 +38,9 @@ func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
 	mem := memory.New(memory.WithClock(clk))
 	var c workflow.Client = mem
-	need := workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory | workflow.CapTickEvents | workflow.CapScheduleList
+	need := workflow.CapsOf(workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory, workflow.CapTickEvents, workflow.CapScheduleList)
 	if !c.Capabilities().Has(need) {
-		return fmt.Errorf("the driver lacks %s", need&^c.Capabilities())
+		return fmt.Errorf("the driver lacks %s", need.Without(c.Capabilities()))
 	}
 
 	// The first run blocks until release is closed, standing in for a sync

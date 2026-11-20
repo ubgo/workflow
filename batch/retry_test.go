@@ -38,7 +38,7 @@ func (s *retryStub) Schedule(context.Context, workflow.Schedule) (workflow.Sched
 }
 func (s *retryStub) Unschedule(context.Context, workflow.ScheduleID) error { return nil }
 func (s *retryStub) Capabilities() workflow.Caps {
-	return workflow.CapIdempotencyKey | workflow.CapCancel
+	return workflow.CapsOf(workflow.CapIdempotencyKey, workflow.CapCancel)
 }
 
 func (s *retryStub) Status(context.Context, workflow.RunRef) (workflow.Status, error) {
@@ -227,7 +227,7 @@ func TestCallbackRetry_PollTickRetries(t *testing.T) {
 type hookOnly struct{ *retryStub }
 
 func (h hookOnly) Capabilities() workflow.Caps {
-	return h.retryStub.Capabilities() | workflow.CapRunFinished
+	return workflow.CapsOf(h.retryStub.Capabilities(), workflow.CapRunFinished)
 }
 
 func (hookOnly) OnRunFinished(workflow.RunFinishedFunc) error { return nil }

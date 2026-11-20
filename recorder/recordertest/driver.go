@@ -377,7 +377,7 @@ func driverCaseRedaction(e *driverEnv) {
 
 func driverCaseDelayedCancel(e *driverEnv) {
 	t := e.t
-	if !e.base.Capabilities().Has(workflow.CapDelayedStart | workflow.CapCancel) {
+	if !e.base.Capabilities().Has(workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)) {
 		t.Skip("needs CapDelayedStart and CapCancel")
 	}
 	e.wrap()

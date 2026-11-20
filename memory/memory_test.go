@@ -101,7 +101,7 @@ func TestLifecycle(t *testing.T) {
 	if c.Capabilities().Has(workflow.CapDurable) {
 		t.Fatal("memory driver must not claim CapDurable")
 	}
-	if !c.Capabilities().Has(workflow.CapCron | workflow.CapWaitForEvent | workflow.CapDelayedStart) {
+	if !c.Capabilities().Has(workflow.CapsOf(workflow.CapCron, workflow.CapWaitForEvent, workflow.CapDelayedStart)) {
 		t.Fatalf("missing caps: %s", c.Capabilities())
 	}
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w"}); !errors.Is(err, workflow.ErrNotStarted) {
@@ -150,7 +150,7 @@ func TestStartRefusesMissingCaps(t *testing.T) {
 	if err := workflow.CheckCaps(memory.New().Capabilities(), wf); err != nil {
 		t.Fatalf("memory caps refuse a cron workflow: %v", err)
 	}
-	if err := workflow.CheckCaps(memory.New().Capabilities()&^workflow.CapCron, wf); !errors.Is(err, workflow.ErrUnsupported) {
+	if err := workflow.CheckCaps(memory.New().Capabilities().Without(workflow.CapCron), wf); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Fatalf("CheckCaps without Cron: %v", err)
 	}
 }

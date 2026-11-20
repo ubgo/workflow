@@ -78,7 +78,7 @@ func TestConcurrentEndsDecideOnce(t *testing.T) {
 	const size, rounds = 20, 50
 	ctx := context.Background()
 	for round := range rounds {
-		s := newStub(0)
+		s := newStub(workflow.Caps{})
 		m := batch.New(s, batch.NewMemoryStore())
 		id, err := m.Dispatch(ctx, batch.Batch{Jobs: jobs(size), Then: "then", Catch: "catch", Finally: "finally"})
 		if err != nil {
@@ -106,7 +106,7 @@ func TestConcurrentEndsDecideOnce(t *testing.T) {
 func TestConcurrentFailuresCatchOnce(t *testing.T) {
 	const size = 10
 	ctx := context.Background()
-	s := newStub(0)
+	s := newStub(workflow.Caps{})
 	m := batch.New(s, batch.NewMemoryStore())
 	id, err := m.Dispatch(ctx, batch.Batch{Jobs: jobs(size), Then: "then", Catch: "catch", Finally: "finally"})
 	if err != nil {
@@ -139,7 +139,7 @@ func TestConcurrentFailuresCatchOnce(t *testing.T) {
 // Catch, but the batch does not count as a success either.
 func TestCancelledJobIsNotAFailure(t *testing.T) {
 	ctx := context.Background()
-	s := newStub(0)
+	s := newStub(workflow.Caps{})
 	m := batch.New(s, batch.NewMemoryStore())
 	id, _ := m.Dispatch(ctx, batch.Batch{Jobs: jobs(2), Then: "then", Catch: "catch", Finally: "finally"})
 	_ = m.RunFinished(ctx, finished(id, 0), workflow.StatusCancelled)
@@ -151,7 +151,7 @@ func TestCancelledJobIsNotAFailure(t *testing.T) {
 
 func TestIgnoredEnds(t *testing.T) {
 	ctx := context.Background()
-	s := newStub(0)
+	s := newStub(workflow.Caps{})
 	m := batch.New(s, batch.NewMemoryStore())
 	id, _ := m.Dispatch(ctx, batch.Batch{Jobs: jobs(1), Finally: "finally"})
 	for _, labels := range []map[string]string{
@@ -178,7 +178,7 @@ func TestIgnoredEnds(t *testing.T) {
 // the first is cancelled, and Finally runs once the first reports back.
 func TestEnqueueFailureAborts(t *testing.T) {
 	ctx := context.Background()
-	s := newStub(0)
+	s := newStub(workflow.Caps{})
 	s.failAt = 2
 	m := batch.New(s, batch.NewMemoryStore())
 	id, err := m.Dispatch(ctx, batch.Batch{Jobs: jobs(3), Then: "then", Finally: "finally"})
@@ -204,14 +204,14 @@ func TestEnqueueFailureAborts(t *testing.T) {
 func TestAttachRefusesOnlyImpossibleSources(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := batch.New(newStub(0), batch.NewMemoryStore()).Attach(ctx); err != nil {
+	if err := batch.New(newStub(workflow.Caps{}), batch.NewMemoryStore()).Attach(ctx); err != nil {
 		t.Errorf("default sources on a plain client: %v", err)
 	}
 	hook := batch.New(newStub(workflow.CapRunFinished), batch.NewMemoryStore(), batch.WithCompletionSource(batch.HookSource()))
 	if err := hook.Attach(ctx); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("HookSource on a client without RunNotifier = %v, want ErrUnsupported", err)
 	}
-	poll := batch.New(newStub(0), batch.NewMemoryStore(), batch.WithStatusPoll(0))
+	poll := batch.New(newStub(workflow.Caps{}), batch.NewMemoryStore(), batch.WithStatusPoll(0))
 	if err := poll.Attach(ctx); !errors.Is(err, workflow.ErrInvalid) {
 		t.Errorf("zero poll interval = %v, want ErrInvalid", err)
 	}
@@ -251,7 +251,7 @@ func (k *keyStub) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRe
 // finished before the cancel reached them) still do not run Then.
 func TestCancelledBatchSkipsThen(t *testing.T) {
 	ctx := context.Background()
-	s := newStub(0)
+	s := newStub(workflow.Caps{})
 	m := batch.New(s, batch.NewMemoryStore())
 	id, _ := m.Dispatch(ctx, batch.Batch{Jobs: jobs(2), Then: "then", Catch: "catch", Finally: "finally"})
 	if err := m.Cancel(ctx, id); err != nil {

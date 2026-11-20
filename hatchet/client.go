@@ -21,31 +21,33 @@ import (
 
 // caps is what this driver proves against a real Hatchet engine; see
 // live_test.go for the test behind each one.
-const caps = workflow.CapDurable |
-	workflow.CapDelayedStart |
-	workflow.CapWaitForEvent |
-	workflow.CapDurableSleep |
-	workflow.CapConcurrencyKey |
-	workflow.CapRateLimit |
-	workflow.CapIdempotencyKey |
-	workflow.CapCron |
-	workflow.CapCancel |
-	workflow.CapQueue |
-	workflow.CapRunQuery |
-	workflow.CapCancelAll |
-	workflow.CapRetryRun |
-	workflow.CapScheduleList |
-	workflow.CapDrain |
-	workflow.CapDrainReport |
-	workflow.CapScheduleTrigger |
-	workflow.CapScheduleHistory |
-	workflow.CapEnqueueOnly |
-	workflow.CapTenant |
-	workflow.CapTickTime |
-	workflow.CapDueQuery |
-	workflow.CapResult |
-	workflow.CapCronSeconds |
-	workflow.CapKeyFIFO
+var caps = workflow.CapsOf(
+	workflow.CapDurable,
+	workflow.CapDelayedStart,
+	workflow.CapWaitForEvent,
+	workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey,
+	workflow.CapRateLimit,
+	workflow.CapIdempotencyKey,
+	workflow.CapCron,
+	workflow.CapCancel,
+	workflow.CapQueue,
+	workflow.CapRunQuery,
+	workflow.CapCancelAll,
+	workflow.CapRetryRun,
+	workflow.CapScheduleList,
+	workflow.CapDrain,
+	workflow.CapDrainReport,
+	workflow.CapScheduleTrigger,
+	workflow.CapScheduleHistory,
+	workflow.CapEnqueueOnly,
+	workflow.CapTenant,
+	workflow.CapTickTime,
+	workflow.CapDueQuery,
+	workflow.CapResult,
+	workflow.CapCronSeconds,
+	workflow.CapKeyFIFO,
+)
 
 // Defaults for Config fields left zero.
 const (

@@ -143,7 +143,7 @@ func TestValidateJob(t *testing.T) {
 
 func TestRequiresAndCheckJob(t *testing.T) {
 	job := workflow.Job{Workflow: "w", Queue: "q", Retry: &workflow.RetryPolicy{Max: 1, Until: time.Hour}}
-	want := workflow.CapQueue | workflow.CapJobRetry | workflow.CapRetryUntil
+	want := workflow.CapsOf(workflow.CapQueue, workflow.CapJobRetry, workflow.CapRetryUntil)
 	if got := workflow.RequiresJob(job); got != want {
 		t.Fatalf("RequiresJob = %s, want %s", got, want)
 	}
@@ -154,7 +154,7 @@ func TestRequiresAndCheckJob(t *testing.T) {
 	if err := workflow.CheckJob(workflow.CapQueue, job); !errors.As(err, &ue) || ue.Field != "Job.Retry" {
 		t.Fatalf("CheckJob without JobRetry = %v, want an UnsupportedError on Job.Retry", err)
 	}
-	if err := workflow.CheckJob(workflow.CapJobRetry|workflow.CapRetryUntil, job); !errors.As(err, &ue) || ue.Field != "Job.Queue" {
+	if err := workflow.CheckJob(workflow.CapsOf(workflow.CapJobRetry, workflow.CapRetryUntil), job); !errors.As(err, &ue) || ue.Field != "Job.Queue" {
 		t.Fatalf("CheckJob without Queue = %v, want an UnsupportedError on Job.Queue", err)
 	}
 	wf := workflow.Workflow{Name: "w", Queue: "a", Steps: []workflow.Step{{Name: "s", Run: noop}}}
@@ -164,7 +164,7 @@ func TestRequiresAndCheckJob(t *testing.T) {
 	if err := workflow.CheckJobQueue(workflow.CapQueue, wf, workflow.Job{Queue: "b"}); !errors.As(err, &ue) || !ue.Missing.Has(workflow.CapQueueOverride) {
 		t.Errorf("another queue without override: %v, want an UnsupportedError for QueueOverride", err)
 	}
-	if err := workflow.CheckJobQueue(workflow.CapQueue|workflow.CapQueueOverride, wf, workflow.Job{Queue: "b"}); err != nil {
+	if err := workflow.CheckJobQueue(workflow.CapsOf(workflow.CapQueue, workflow.CapQueueOverride), wf, workflow.Job{Queue: "b"}); err != nil {
 		t.Errorf("another queue with override: %v", err)
 	}
 	if got := workflow.Requires(wf); !got.Has(workflow.CapQueue) {
@@ -180,10 +180,10 @@ func TestParityCapNames(t *testing.T) {
 	if got := workflow.CapDrain.String(); got != "Drain" {
 		t.Fatalf("CapDrain = %q", got)
 	}
-	if got := (workflow.CapQueue | workflow.CapScheduleList).String(); got != "Queue|ScheduleList" {
+	if got := workflow.CapsOf(workflow.CapQueue, workflow.CapScheduleList).String(); got != "Queue|ScheduleList" {
 		t.Fatalf("String = %q", got)
 	}
-	if workflow.CapQueue <= workflow.CapCronZone {
+	if got := workflow.CapsOf(workflow.CapQueue, workflow.CapCronZone).String(); got != "CronZone|Queue" { // String is in number order
 		t.Fatal("a new capability moved an existing bit")
 	}
 }

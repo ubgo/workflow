@@ -96,7 +96,7 @@ func TestAwaitChildFailsWhenTheChildFails(t *testing.T) {
 type noSnooze struct{ *memory.Client }
 
 func (n noSnooze) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ workflow.CapSnooze
+	return n.Client.Capabilities().Without(workflow.CapSnooze)
 }
 
 func TestAwaitChildRefusesAParentWithoutSnooze(t *testing.T) {

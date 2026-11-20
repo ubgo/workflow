@@ -44,7 +44,7 @@ func (s *sharedDebounce) Swap(ctx context.Context, key string, b middleware.Debo
 // the first process's run. With the default store each keeps its own.
 func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
-	stub := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	key := func(j workflow.Job) string { return j.Labels["user"] }
 	job := workflow.Job{Workflow: "sync", Labels: map[string]string{"user": "u1"}}
 	ctx := context.Background()
@@ -67,7 +67,7 @@ func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
 	}
 
 	// Default: two debouncers keep separate tables and cancel nothing.
-	stub2 := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	stub2 := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	mwC, _ := middleware.Debounce(stub2, clk, key, 10*time.Second, 0)
 	mwD, _ := middleware.Debounce(stub2, clk, key, 10*time.Second, 0)
 	_, _ = middleware.WrapClient(stub2, mwC).Enqueue(ctx, job)
@@ -82,7 +82,7 @@ func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
 // beside the pending one.
 func TestDebounce_StoreErrorFailsClosed(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
-	stub := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	key := func(workflow.Job) string { return "k" }
 	ctx := context.Background()
 
@@ -269,7 +269,7 @@ func (r racedStore) Swap(context.Context, string, middleware.DebounceBurst) (mid
 // never leaves both runs pending.
 func TestDebounce_SwapDecidesWhatIsCancelled(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
-	stub := &stubClient{caps: workflow.CapDelayedStart | workflow.CapCancel}
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
 	other := workflow.RunRef{ScheduledID: "other-process"}
 	store := racedStore{other: middleware.DebounceBurst{First: clk.Now(), RunAt: clk.Now().Add(5 * time.Second), Ref: other}}
 	mw, _ := middleware.Debounce(stub, clk, func(workflow.Job) string { return "k" }, 10*time.Second, 0, middleware.WithDebounceStore(store))

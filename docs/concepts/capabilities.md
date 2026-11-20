@@ -8,7 +8,7 @@ A driver declares what it can really do, as a set of capabilities, and the libra
 
 ## What a driver declares
 
-`Client.Capabilities()` returns a `workflow.Caps`, a bit set that never changes over the life of a client. `Has(want)` reports whether it holds every capability in `want`; `Missing(required)` returns the ones it lacks (zero means none); `String()` joins the names with `|`.
+`Client.Capabilities()` returns a `workflow.Caps`, a set of capabilities that never changes over the life of a client. `Has(want)` reports whether it holds every capability in `want`; `Missing(required)` returns the ones it lacks (`IsZero()` when none); `String()` joins the names with `|`. A `Caps` is a value with room for 256 capabilities: build one with `workflow.CapsOf(workflow.CapCron, workflow.CapCronZone)` or `caps.With(...)`, drop some with `caps.Without(...)`, test overlap with `HasAny` and intersect with `Intersect`; two sets compare with `==`. `workflow.AllCaps()` is every capability the release declares, and `workflow.ParseCaps` reads the `String()` form back. In JSON a `Caps` is that string, such as `"Durable|Cron"`; the numeric form of v0.1.x (when `Caps` was a `uint64`) is still read.
 
 | Capability | What it promises |
 |---|---|
@@ -92,7 +92,7 @@ digest := workflow.Workflow{
 need := workflow.Requires(digest)
 fmt.Println("digest needs:", need)
 for _, d := range drivers {
-	if missing := d.c.Capabilities().Missing(need); missing != 0 {
+	if missing := d.c.Capabilities().Missing(need); !missing.IsZero() {
 		fmt.Printf("  %s lacks %s\n", d.name, missing)
 	}
 }

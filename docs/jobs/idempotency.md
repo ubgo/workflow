@@ -99,7 +99,7 @@ A key is never dropped silently. A driver without `CapIdempotencyKey` refuses a 
 <!-- snippet: examples/idempotency/main.go#refusal -->
 ```go
 all := memory.New().Capabilities()
-f := workflowtest.NewFake(workflowtest.FakeCaps(all &^ workflow.CapIdempotencyKey))
+f := workflowtest.NewFake(workflowtest.FakeCaps(all.Without(workflow.CapIdempotencyKey)))
 noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 if err := f.Register(workflow.Workflow{Name: "invoice", Steps: []workflow.Step{{Name: "send", Run: noop}}}); err != nil {
 	return err

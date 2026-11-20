@@ -23,19 +23,21 @@ import (
 // the memory driver accepts. It includes the declarative fields the Fake
 // only validates (queues, per-job retry, Discard, schedule conditions)
 // and the calls it records (RunRetrier, RunDeleter, Pauser).
-const fakeDefaultCaps = workflow.CapDelayedStart | workflow.CapWaitForEvent | workflow.CapDurableSleep |
-	workflow.CapConcurrencyKey | workflow.CapRateLimit | workflow.CapIdempotencyKey |
-	workflow.CapCron | workflow.CapCancel |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapCronZone |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll |
-	workflow.CapQueue | workflow.CapQueueOverride | workflow.CapJobRetry |
-	workflow.CapRetryUntil | workflow.CapRetryMaxErrors | workflow.CapDiscard |
-	workflow.CapRetryRun | workflow.CapDeleteRun | workflow.CapPauseWorkflow | workflow.CapPauseQueue |
-	workflow.CapScheduleWhen | workflow.CapScheduleWindow |
-	workflow.CapRunStates | workflow.CapChain | workflow.CapClosure |
-	workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapForceRun |
-	workflow.CapTenant | workflow.CapHeartbeat | workflow.CapRunTimeout | workflow.CapKeyFIFO |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep
+var fakeDefaultCaps = workflow.CapsOf(
+	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
+	workflow.CapCron, workflow.CapCancel,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard,
+	workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow,
+	workflow.CapRunStates, workflow.CapChain, workflow.CapClosure,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapForceRun,
+	workflow.CapTenant, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
+)
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
 // FakeCaps says: it reports no run ends (no RunNotifier), and it answers
@@ -46,12 +48,14 @@ const fakeDefaultCaps = workflow.CapDelayedStart | workflow.CapWaitForEvent | wo
 // fails), cannot be stopped mid-step, and has no enqueue-only mode. Nor
 // does it run steps, so it cannot snooze one, name a node, keep a result,
 // list due runs or stamp a tick time.
-const fakeUnserved = workflow.CapRunFinished | workflow.CapRunQuery | workflow.CapCancelAll |
-	workflow.CapSchedulePause | workflow.CapScheduleList | workflow.CapTickEvents | workflow.CapDrain |
-	workflow.CapWorkerScale | workflow.CapLabelPrefix |
-	workflow.CapScheduleHistory | workflow.CapErrorHistory | workflow.CapShutdownRequeue | workflow.CapEnqueueOnly |
-	workflow.CapSnooze | workflow.CapNodeIdentity | workflow.CapDueQuery | workflow.CapResult | workflow.CapTickTime |
-	workflow.CapQueueLimitGlobal | workflow.CapDrainReport
+var fakeUnserved = workflow.CapsOf(
+	workflow.CapRunFinished, workflow.CapRunQuery, workflow.CapCancelAll,
+	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents, workflow.CapDrain,
+	workflow.CapWorkerScale, workflow.CapLabelPrefix,
+	workflow.CapScheduleHistory, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapEnqueueOnly,
+	workflow.CapSnooze, workflow.CapNodeIdentity, workflow.CapDueQuery, workflow.CapResult, workflow.CapTickTime,
+	workflow.CapQueueLimitGlobal, workflow.CapDrainReport,
+)
 
 // FakeOption configures a Fake.
 type FakeOption func(*Fake)
@@ -63,7 +67,7 @@ type FakeOption func(*Fake)
 // label prefix filter), bulk cancel, schedule pause, schedule listing,
 // tick and drain capabilities, which the Fake does not serve itself.
 func FakeCaps(c workflow.Caps) FakeOption {
-	return func(f *Fake) { f.caps = c &^ fakeUnserved }
+	return func(f *Fake) { f.caps = c.Without(fakeUnserved) }
 }
 
 // FakeLike copies the capabilities of c, typically the production client

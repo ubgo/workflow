@@ -179,7 +179,7 @@ var misfireCases = []testCase{
 			s := workflow.Schedule{Name: e.name("s"), Workflow: wf.Name, Cron: misfireHourly, Location: time.UTC}
 			cand.edit(&s)
 			_, err := e.c.Schedule(ctx, s)
-			assertUnsupported(e.t, err, cand.field, 0)
+			assertUnsupported(e.t, err, cand.field, workflow.Caps{})
 		}
 		if tested == 0 {
 			e.t.Skip("driver has CapCronZone and every misfire capability")

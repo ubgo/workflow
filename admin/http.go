@@ -419,7 +419,7 @@ func (h *handler[P]) capabilities(w http.ResponseWriter, r *http.Request) {
 	}{Capabilities: h.a.c.Capabilities().String(), Operations: make([]op, 0, len(sup)), Output: h.a.HasOutputs(), Metrics: h.a.HasMetrics()}
 	for _, s := range sup {
 		o := op{Operation: s.Operation, Supported: s.Supported, Reason: s.Reason}
-		if s.Missing != 0 {
+		if !s.Missing.IsZero() {
 			o.Missing = s.Missing.String()
 		}
 		out.Operations = append(out.Operations, o)

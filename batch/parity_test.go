@@ -25,7 +25,7 @@ type recStub struct {
 }
 
 func newRecStub() *recStub {
-	return &recStub{caps: workflow.CapIdempotencyKey | workflow.CapCancel, fail: map[string]bool{}}
+	return &recStub{caps: workflow.CapsOf(workflow.CapIdempotencyKey, workflow.CapCancel), fail: map[string]bool{}}
 }
 
 func (s *recStub) Register(workflow.Workflow) error { return nil }

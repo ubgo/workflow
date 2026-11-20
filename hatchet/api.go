@@ -119,7 +119,7 @@ func unpauseRequest() (rest.WorkflowUpdateRequest, error) {
 // when Config.API is set.
 func (c *Client) capabilities() workflow.Caps {
 	if c.cfg.API != nil {
-		return caps | workflow.CapPauseWorkflow | workflow.CapSchedulePause
+		return workflow.CapsOf(caps, workflow.CapPauseWorkflow, workflow.CapSchedulePause)
 	}
 	return caps
 }
@@ -144,7 +144,7 @@ func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 		return err
 	}
 	if t.All {
-		return unsupported("PauseTarget.All", 0, errPauseAll)
+		return unsupported("PauseTarget.All", workflow.Caps{}, errPauseAll)
 	}
 	req, err := pauseRequest(pauseQueueTTL)
 	if err != nil {
@@ -283,7 +283,7 @@ func (c *Client) PauseSchedule(ctx context.Context, t workflow.ScheduleTarget) e
 		return err
 	}
 	if t.All {
-		return unsupported("ScheduleTarget.All", 0, errPauseAll)
+		return unsupported("ScheduleTarget.All", workflow.Caps{}, errPauseAll)
 	}
 	return c.setCronEnabled(ctx, t.ID, false)
 }
@@ -375,7 +375,7 @@ func (c *Client) updateCronEnabled(ctx context.Context, api *API, cronID string,
 // not set.
 func (c *Client) api() (*API, error) {
 	if c.cfg.API == nil {
-		return nil, unsupported("Config.API", workflow.CapPauseWorkflow|workflow.CapSchedulePause, "pause needs the engine's REST API, which SDK v0.107.1 does not expose")
+		return nil, unsupported("Config.API", workflow.CapsOf(workflow.CapPauseWorkflow, workflow.CapSchedulePause), "pause needs the engine's REST API, which SDK v0.107.1 does not expose")
 	}
 	if _, err := c.ready(); err != nil {
 		return nil, err

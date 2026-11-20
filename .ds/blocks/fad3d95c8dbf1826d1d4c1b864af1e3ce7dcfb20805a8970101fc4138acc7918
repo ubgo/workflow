@@ -1,0 +1,1 @@
+var QueryCaps = workflow.CapsOf(workflow.CapRunQuery, workflow.CapLabelPrefix, workflow.CapTenant, workflow.CapDueQuery)

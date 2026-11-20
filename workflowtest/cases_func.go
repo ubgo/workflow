@@ -109,7 +109,7 @@ var funcCases = []testCase{
 
 var retryingErrorCases = []testCase{
 	{"a Retrying run reports the failed attempt's error and no FailedStep", func(e *env) {
-		e.need(workflow.CapRunStates | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapRunStates, workflow.CapRunQuery))
 		var c counter
 		wf := oneStep(e.name("w"), c.fail(errBoom))
 		// A backoff as long as the whole wait keeps the run Retrying while
@@ -145,7 +145,7 @@ var retryingErrorCases = []testCase{
 
 var labelPrefixCases = []testCase{
 	{"Runs matches a label value by prefix", func(e *env) {
-		e.need(workflow.CapRunQuery | workflow.CapLabelPrefix)
+		e.need(workflow.CapsOf(workflow.CapRunQuery, workflow.CapLabelPrefix))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)

@@ -10,10 +10,12 @@ import (
 )
 
 // allCaps is every capability an Admin operation can need.
-const allCaps = workflow.CapRunQuery | workflow.CapRetryRun | workflow.CapDeleteRun | workflow.CapCancel |
-	workflow.CapCancelAll | workflow.CapPauseWorkflow | workflow.CapPauseQueue | workflow.CapScheduleList |
-	workflow.CapRunStates | workflow.CapSchedulePause | workflow.CapLabelPrefix | workflow.CapScheduleTrigger |
-	workflow.CapForceRun | workflow.CapNodeIdentity
+var allCaps = workflow.CapsOf(
+	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancel,
+	workflow.CapCancelAll, workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapScheduleList,
+	workflow.CapRunStates, workflow.CapSchedulePause, workflow.CapLabelPrefix, workflow.CapScheduleTrigger,
+	workflow.CapForceRun, workflow.CapNodeIdentity,
+)
 
 // fakeClient is a workflow.Client with every optional interface Admin
 // uses. It records each call, so a test can prove a refused request

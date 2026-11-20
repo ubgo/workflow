@@ -216,7 +216,7 @@ func TestHandler_LabelPrefix(t *testing.T) {
 	}
 
 	n := seeded()
-	n.caps = allCaps &^ workflow.CapLabelPrefix
+	n.caps = allCaps.Without(workflow.CapLabelPrefix)
 	hn := NewHandler(New(n), bearerAuth())
 	for _, r := range []route{
 		{"GET", "/runs?label=tenant=ac*", "", ""},

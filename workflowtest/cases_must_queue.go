@@ -152,7 +152,7 @@ func (e *env) startPeer(c workflow.Client, wfs ...workflow.Workflow) {
 
 func (e *env) runLimitRow(r limitRow) {
 	e.t.Helper()
-	e.need(workflow.CapQueue | workflow.CapQueueLimitGlobal)
+	e.need(workflow.CapsOf(workflow.CapQueue, workflow.CapQueueLimitGlobal))
 	if r.route == routeOverride {
 		e.need(workflow.CapQueueOverride)
 	}
@@ -254,7 +254,7 @@ func (e *env) runLimitRow(r limitRow) {
 // leases are live, and must run everything once they expire, never above 2.
 func (e *env) runLimitCrash() {
 	e.t.Helper()
-	e.need(workflow.CapQueue | workflow.CapQueueLimitGlobal | workflow.CapDurable)
+	e.need(workflow.CapsOf(workflow.CapQueue, workflow.CapQueueLimitGlobal, workflow.CapDurable))
 	e.withQueues(workflow.QueueConfig{Name: queueA, Limit: 2})
 	if e.crash == nil {
 		e.t.Skip("Instance.Crash is nil")
