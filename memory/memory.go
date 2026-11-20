@@ -28,7 +28,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
 	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
-	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch,
 	workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, workflow.CapClosure, workflow.CapLabelPrefix,
 	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
 	workflow.CapErrorHistory, workflow.CapForceRun,
@@ -203,6 +203,8 @@ type Client struct {
 	tasks   []*task               // step attempts waiting for a worker; see pickLocked
 	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
 	buckets map[bucketKey][]*run
+	rrTurn  map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
+	rrClock uint64               // counts those picks
 	rates   map[rateKey][]time.Time
 	rateAt  time.Time   // when the armed rate-limit timer fires; zero if none
 	rateTm  clock.Timer // the armed rate-limit timer

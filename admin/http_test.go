@@ -52,6 +52,7 @@ var routes = []route{
 	{"GET", "/nodes", "", ActionListNodes},
 	{"GET", "/health", "", ActionHealth},
 	{"POST", "/runs/r1/reschedule", `{"at":"2026-10-15T09:00:00Z"}`, ActionRescheduleRun},
+	{"POST", "/runs/r1/edit", `{"priority":3}`, ActionEditRun},
 	{"POST", "/runs/r1/steps/send/cancel", "", ActionCancelStep},
 	{"GET", "/", "", ActionUI},
 	{"GET", "/ui", "", ActionUI},

@@ -129,6 +129,7 @@ var tenantRoutes = map[string]tenantRoute{
 	"GET /nodes":                          {tenantRefused, ActionListNodes},
 	"GET /health":                         {tenantRefused, ActionHealth},
 	"POST /runs/{id}/reschedule":          {tenantRun, ActionRescheduleRun},
+	"POST /runs/{id}/edit":                {tenantRun, ActionEditRun},
 	"POST /runs/{id}/steps/{step}/cancel": {tenantRun, ActionCancelStep},
 	"GET /{$}":                            {tenantOpen, ActionUI},
 	"GET /ui":                             {tenantOpen, ActionUI},

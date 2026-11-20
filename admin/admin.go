@@ -51,13 +51,16 @@ const (
 	OpHealth Operation = "health"
 	// OpReschedule moves a delayed run to a new time (RunRescheduler).
 	OpReschedule Operation = "reschedule"
+	// OpEditRun changes a scheduled run's payload, priority or start
+	// (RunEditor).
+	OpEditRun Operation = "edit_run"
 	// OpCancelStep withdraws one step of a run (StepCanceller).
 	OpCancelStep Operation = "cancel_step"
 )
 
 // Operations lists every operation in a fixed order, the order Support
 // reports them in.
-var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep}
+var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun}
 
 // requirements is the capability each operation needs. OpPause needs
 // either pause capability; which one a call needs depends on its target
@@ -91,6 +94,7 @@ var requirements = map[Operation]workflow.Caps{
 	OpNodes:      workflow.Caps{},
 	OpHealth:     workflow.Caps{},
 	OpReschedule: workflow.Caps{},
+	OpEditRun:    workflow.Caps{},
 	OpCancelStep: workflow.Caps{},
 }
 
@@ -304,6 +308,8 @@ func (a *Admin) check(op Operation) error {
 			ok = workflow.Supports(a.c, workflow.OpReschedule)
 		case OpCancelStep:
 			ok = workflow.Supports(a.c, workflow.OpCancelStep)
+		case OpEditRun:
+			ok = workflow.Supports(a.c, workflow.OpEditRun)
 		}
 	}
 	if ok {

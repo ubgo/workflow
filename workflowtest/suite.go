@@ -89,7 +89,7 @@ func Run(t *testing.T, h Harness) {
 		{"discardexhaust", discardExhaustCases},
 		{"drainreport", drainReportCases},
 	}
-	for _, group := range append(groups, p5Groups...) {
+	for _, group := range append(append(groups, p5Groups...), p3Groups...) {
 		t.Run(group.name, func(t *testing.T) {
 			for _, tc := range group.cases {
 				t.Run(tc.name, func(t *testing.T) {

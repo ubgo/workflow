@@ -1,7 +1,10 @@
 // Package events starts runs from events: publish/subscribe inside the
 // library (EV-01) and an inbound webhook handler that verifies a
 // signature and enqueues (EV-03), with HMAC signing schemes for both
-// directions (WH-03).
+// directions (WH-03). Around the bus: the CloudEvents 1.0 envelope
+// (MQ-09), payload versions upcast before subscribers see them (MQ-10),
+// an event log with replay (EV-04), and subscriptions that cancel runs
+// or divert them to another workflow (EV-05).
 //
 // A Bus is not a message broker. Publish turns one event into one Enqueue
 // per matching subscription on an ordinary workflow.Client, so an event
@@ -26,6 +29,7 @@ import (
 	"sync"
 
 	"github.com/ubgo/workflow"
+	"github.com/ubgo/workflow/clock"
 )
 
 // Labels every run started by Publish carries. Publish refuses reserved
@@ -68,6 +72,13 @@ type Message struct {
 	// Labels are copied onto each subscriber's job, beside the bus's own.
 	// Keys under a reserved prefix are refused.
 	Labels map[string]string
+
+	// Version is the version of Payload's shape (MQ-10). For an event
+	// with upcasters (WithUpcasters), a lower version is upcast to the
+	// current one before any subscription sees the message, and a higher
+	// one is refused. Zero is the oldest version, the one a publisher
+	// that never set it wrote. Ignored for events without upcasters.
+	Version int
 }
 
 // Subscription starts a run of Workflow for every published message
@@ -113,6 +124,10 @@ type Published struct {
 	// Signalled reports whether the message was also signalled to
 	// waiting runs (WithSignal) without error.
 	Signalled bool
+
+	// Cancellations has one entry per cancel subscription the message
+	// matched (SubscribeCancel), in the order they were subscribed.
+	Cancellations []Cancellation
 }
 
 // Option configures a Bus.
@@ -139,9 +154,14 @@ type Bus struct {
 	signal   bool
 	allowDup bool
 	newID    func() (string, error)
+	log      EventLog                 // WithLog; nil keeps no log
+	clk      clock.Clock              // WithClock; stamps log entries
+	versions map[string]versionPolicy // WithUpcasters, by event name
+	optErr   error                    // the first invalid option, returned by New
 
-	mu   sync.RWMutex
-	subs []Subscription
+	mu      sync.RWMutex
+	subs    []Subscription
+	cancels []CancelSubscription
 }
 
 // New returns a bus that enqueues on client. It refuses a client without
@@ -151,12 +171,18 @@ func New(client workflow.Client, opts ...Option) (*Bus, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: events: client is nil", workflow.ErrInvalid)
 	}
-	b := &Bus{client: client, newID: randomID}
+	b := &Bus{client: client, newID: randomID, clk: clock.Real{}}
 	for _, o := range opts {
 		o(b)
 	}
+	if b.optErr != nil {
+		return nil, b.optErr
+	}
 	if b.newID == nil {
 		b.newID = randomID
+	}
+	if b.clk == nil {
+		b.clk = clock.Real{}
 	}
 	if !b.allowDup && !client.Capabilities().Has(workflow.CapIdempotencyKey) {
 		return nil, &workflow.UnsupportedError{Field: "events.Bus", Missing: workflow.CapIdempotencyKey,
@@ -175,7 +201,8 @@ func randomID() (string, error) {
 }
 
 // Subscribe adds s. It returns an error wrapping ErrInvalid when s has no
-// Name or Event, has neither Workflow nor Job, or reuses a Name.
+// Name or Event, has neither Workflow nor Job, or reuses a Name (of a
+// subscription or a cancel subscription).
 func (b *Bus) Subscribe(s Subscription) error {
 	if s.Name == "" || s.Event == "" {
 		return fmt.Errorf("%w: events: subscription needs a Name and an Event", workflow.ErrInvalid)
@@ -185,11 +212,18 @@ func (b *Bus) Subscribe(s Subscription) error {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if slices.ContainsFunc(b.subs, func(x Subscription) bool { return x.Name == s.Name }) {
+	if b.nameTakenLocked(s.Name) {
 		return fmt.Errorf("%w: events: subscription %q already exists", workflow.ErrInvalid, s.Name)
 	}
 	b.subs = append(b.subs, s)
 	return nil
+}
+
+// nameTakenLocked reports whether a subscription or cancel subscription
+// already has name. b.mu is held.
+func (b *Bus) nameTakenLocked(name string) bool {
+	return slices.ContainsFunc(b.subs, func(x Subscription) bool { return x.Name == name }) ||
+		slices.ContainsFunc(b.cancels, func(x CancelSubscription) bool { return x.Name == name })
 }
 
 // Subscriptions returns the names of the subscriptions, in order.
@@ -210,11 +244,23 @@ func (b *Bus) Subscriptions() []string {
 // deliveries that failed start a run. A message matching nothing is not
 // an error. m.Name is required and reserved labels in m.Labels are
 // refused, both with ErrInvalid.
+//
+// In order, Publish: refuses a version newer than the event's current one
+// (WithUpcasters, ErrInvalid); appends m, as given, to the log
+// (WithLog), and returns the log's error without delivering when the
+// append fails; upcasts m to the current version, so Filter, Job and the
+// run see the current shape; runs every matching cancel subscription
+// (SubscribeCancel), then every divert, then starts the subscriptions'
+// runs, so the runs a message starts are never cancelled by the same
+// message; and finally signals under WithSignal.
 func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 	if m.Name == "" {
 		return Published{}, fmt.Errorf("%w: events: message has no Name", workflow.ErrInvalid)
 	}
 	if err := workflow.ValidateLabels(m.Labels); err != nil {
+		return Published{}, err
+	}
+	if err := b.checkVersion(m); err != nil {
 		return Published{}, err
 	}
 	if m.ID == "" {
@@ -224,17 +270,28 @@ func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 		}
 		m.ID = id
 	}
+	if b.log != nil {
+		if err := b.log.Append(ctx, cloneMessage(m), b.clk.Now()); err != nil {
+			return Published{ID: m.ID}, fmt.Errorf("events: log message %q: %w", m.ID, err)
+		}
+	}
+	m, err := b.upcast(m)
+	if err != nil {
+		return Published{ID: m.ID}, err
+	}
 	b.mu.RLock()
 	subs := slices.Clone(b.subs)
+	cancels := slices.Clone(b.cancels)
 	b.mu.RUnlock()
 
 	out := Published{ID: m.ID}
 	var errs []error
+	out.Cancellations, errs = b.runCancels(ctx, cancels, m)
 	for _, s := range subs {
 		if s.Event != m.Name || (s.Filter != nil && !s.Filter(m)) {
 			continue
 		}
-		ref, err := b.deliver(ctx, s, m)
+		ref, err := b.deliver(ctx, s, m, "")
 		if err != nil {
 			err = fmt.Errorf("events: subscription %q: %w", s.Name, err)
 			errs = append(errs, err)
@@ -251,8 +308,11 @@ func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 	return out, errors.Join(errs...)
 }
 
-// deliver builds the job for one subscription and enqueues it.
-func (b *Bus) deliver(ctx context.Context, s Subscription, m Message) (workflow.RunRef, error) {
+// deliver builds the job for one subscription and enqueues it. A
+// non-empty replayID (Replay) adds LabelReplay and suffixes the
+// idempotency key with "/replay/<replayID>", so the original delivery's
+// key does not swallow the replayed run.
+func (b *Bus) deliver(ctx context.Context, s Subscription, m Message, replayID string) (workflow.RunRef, error) {
 	job := workflow.Job{Workflow: s.Workflow, Payload: m.Payload}
 	if s.Job != nil {
 		var err error
@@ -271,9 +331,15 @@ func (b *Bus) deliver(ctx context.Context, s Subscription, m Message) (workflow.
 	labels[LabelEvent] = m.Name
 	labels[LabelEventID] = m.ID
 	labels[LabelSubscription] = s.Name
+	if replayID != "" {
+		labels[LabelReplay] = replayID
+	}
 	job.Labels = labels
 	if job.IdempotencyKey == "" {
 		job.IdempotencyKey = "event/" + s.Name + "/" + m.ID
 	}
-	return b.client.Enqueue(workflow.AllowReservedLabels(ctx, LabelEvent, LabelEventID, LabelSubscription), job)
+	if replayID != "" {
+		job.IdempotencyKey += "/replay/" + replayID
+	}
+	return b.client.Enqueue(workflow.AllowReservedLabels(ctx, LabelEvent, LabelEventID, LabelSubscription, LabelReplay), job)
 }

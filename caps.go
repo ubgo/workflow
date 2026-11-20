@@ -211,6 +211,9 @@ var (
 	// that many of the client's worker slots (WithWorkers) while it runs,
 	// so a heavy step leaves room for fewer others.
 	CapSlotCost = defineCap(62, "SlotCost")
+	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
+	// fields of their JSON payload (RS-08).
+	CapPayloadSearch = defineCap(63, "PayloadSearch")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.

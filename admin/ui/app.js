@@ -527,6 +527,7 @@
       kv('Duration', took === undefined ? (r.started_at ? 'running' : '—') : fmtDur(took)),
       r.labels && r.labels[LABEL_SCHEDULE] ? kv('Schedule', el('a', { href: scheduleHref(r.labels[LABEL_SCHEDULE]), class: 'mono' }, r.labels[LABEL_SCHEDULE])) : null,
       r.failed_step ? kv('Failed step', el('span', { class: 'mono' }, r.failed_step)) : null,
+      traceHref(r.trace_url) ? kv('Trace', el('a', { href: traceHref(r.trace_url), target: '_blank', rel: 'noopener noreferrer', class: 'mono' }, 'Open trace')) : null,
       kv('Labels', r.labels && Object.keys(r.labels).length ? labelChips(r.labels) : '—'),
     );
     const output = hasOutput && r.ref.run_id ? await api('GET', withSuffix(path, '/output')).catch((e) => ({ error: e.message })) : null;
@@ -537,6 +538,17 @@
       outputNode(output),
       r.payload ? [el('h2', null, 'Payload'), el('pre', { class: 'box' }, payloadText(r.payload))]
         : el('p', { class: 'muted small pad' }, 'Payload hidden (the handler was built without WithPayloads).'));
+  }
+
+  // traceHref is the run's trace link (WithTraceLink) when it is an
+  // absolute http or https URL, else null. The server checks it too; the
+  // UI checks again so a link can never run script.
+  function traceHref(u) {
+    if (!u) return null;
+    try {
+      const p = new URL(u);
+      return p.protocol === 'http:' || p.protocol === 'https:' ? p.href : null;
+    } catch (_) { return null; }
   }
 
   // progressNode is the latest progress a step reported.

@@ -77,6 +77,24 @@ for _, s := range infos {
 
 A durable driver stores the last fire and run with the schedule, so they survive a restart. A skipped tick does not change them. The admin UI shows the same fields and a Run now button ([Admin web UI](../admin/ui.md)).
 
+## Replace the running run, or buffer one
+
+Skipping is one answer to a tick that arrives while the previous run is busy. Two more: replace (the newest data matters, so cancel the old run and start the new one) and buffer one (never lose the latest tick, but never pile up more than one run behind the busy one). `workflow.GuardOverlap` applies either to the schedules its rules pick, by schedule name or by workflow:
+
+<!-- snippet: examples/run-control/main.go#guard -->
+```go
+if err := workflow.GuardOverlap(c, nil, workflow.OverlapRule{Name: "prices", Mode: workflow.OverlapReplace}); err != nil {
+	return err // needs CapTickEvents, CapRunQuery and CapCancel; call before Start
+}
+```
+
+Call it before `Start`. It watches every fired tick (`TickNotifier`, manual triggers included), lists the schedule's runs by `LabelSchedule` and then:
+
+- `OverlapReplace` cancels every unfinished run the schedule fired before this one. A running step sees its ctx cancelled.
+- `OverlapBufferOne` cancels the new run when two earlier runs of the schedule are unfinished (one running, one waiting). Give the workflow `Concurrency{MaxRuns: 1}` (keyed by the schedule when the workflow has several), so the buffered run waits instead of starting beside the running one.
+
+It needs `CapTickEvents`, `CapRunQuery` and `CapCancel` (memory, SQL, Redis) and refuses otherwise. Leave `Schedule.Overlap` at `OverlapAllow`: with `OverlapSkip` the driver skips the tick first and there is nothing to guard. The guard acts just after the fire, so for a moment the old and the new run both exist, and a process that dies in between leaves both until the next fire applies the rule again.
+
 ## Driver support
 
 | Driver | Overlap skip | Trigger now | Last fire |
