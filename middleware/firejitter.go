@@ -12,7 +12,7 @@ import (
 // FireJitterNeeds is what FireJitter needs from the driver: the tick
 // label on fired runs (CapTickTime) and a snooze that spends no attempt
 // (CapSnooze). CheckFireJitter tests a client against it.
-const FireJitterNeeds = workflow.CapTickTime | workflow.CapSnooze
+var FireJitterNeeds = workflow.CapsOf(workflow.CapTickTime, workflow.CapSnooze)
 
 // JitterFunc picks a run's jitter in [0, window) from its StepInfo. It must
 // be deterministic: every attempt and every node asks it again and must
@@ -114,7 +114,7 @@ func FireJitter(window time.Duration, opts ...FireJitterOption) workflow.Middlew
 // CheckFireJitter refuses a client that lacks FireJitterNeeds with a
 // *workflow.UnsupportedError naming what is missing.
 func CheckFireJitter(c workflow.Client) error {
-	if missing := c.Capabilities().Missing(FireJitterNeeds); missing != 0 {
+	if missing := c.Capabilities().Missing(FireJitterNeeds); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: "FireJitter", Missing: missing}
 	}
 	return nil

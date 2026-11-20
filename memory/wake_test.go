@@ -28,7 +28,9 @@ func (s *suspendClock) Now() time.Time {
 
 func (s *suspendClock) suspend(d time.Duration) { s.mu.Lock(); s.offset += d; s.mu.Unlock() }
 
-func (s *suspendClock) NewTimer(d time.Duration) clock.Timer { return realTimer{time.NewTimer(d / 1000)} }
+func (s *suspendClock) NewTimer(d time.Duration) clock.Timer {
+	return realTimer{time.NewTimer(d / 1000)}
+}
 
 type realTimer struct{ t *time.Timer }
 

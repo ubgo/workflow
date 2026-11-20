@@ -179,7 +179,9 @@ func TestFireJitterOnMemory(t *testing.T) {
 
 type noSnooze struct{ workflow.Client }
 
-func (n noSnooze) Capabilities() workflow.Caps { return n.Client.Capabilities() &^ workflow.CapSnooze }
+func (n noSnooze) Capabilities() workflow.Caps {
+	return n.Client.Capabilities().Without(workflow.CapSnooze)
+}
 
 func TestCheckFireJitter(t *testing.T) {
 	err := middleware.CheckFireJitter(noSnooze{memory.New()})

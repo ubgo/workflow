@@ -233,7 +233,7 @@ type capsMask struct {
 	hide workflow.Caps
 }
 
-func (m capsMask) Capabilities() workflow.Caps { return m.Client.Capabilities() &^ m.hide }
+func (m capsMask) Capabilities() workflow.Caps { return m.Client.Capabilities().Without(m.hide) }
 
 // countRuns counts the runs of wf a RunQuerier keeps.
 func countRuns(t *testing.T, c workflow.Client, wf string) int {

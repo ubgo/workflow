@@ -216,7 +216,7 @@ type noCancelIface struct{ workflow.Client }
 type noCancelCaps struct{ workflow.Client }
 
 func (n noCancelCaps) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ workflow.CapCancelAll
+	return n.Client.Capabilities().Without(workflow.CapCancelAll)
 }
 
 func (n noCancelCaps) CancelAll(context.Context, workflow.RunQuery) (int, error) { return 0, nil }
