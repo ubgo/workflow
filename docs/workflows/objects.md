@@ -4,7 +4,7 @@ Some work belongs to one entity at a time: a customer's cart, an account's balan
 
 ## Before you start
 
-- An object is a workflow whose calls are serialised per key with `Concurrency{MaxRuns: 1}`, so the driver needs `workflow.CapConcurrencyKey` (memory, SQL, Redis and Hatchet). `ObjectSpec.Ordered` also needs `workflow.CapKeyFIFO`.
+- An object is a workflow whose calls are serialised per key with `Concurrency{MaxRuns: 1}`, so the driver needs `workflow.CapConcurrencyKey` and a key computed in Go: memory, SQL and Redis run objects; Hatchet refuses the workflow at `Register`, since its concurrency keys are engine expressions. `ObjectSpec.Ordered` also needs `workflow.CapKeyFIFO`.
 - State lives in a `workflow.JournalStore`: `sqlstore.Client.JournalStore()` or `redis.Client.JournalStore()` so it survives restarts and every worker sees it, `workflow.NewMemoryJournal()` for one process. No new table is needed.
 - The example is [`examples/virtual-objects`](../../examples/virtual-objects). Run it with `go run ./virtual-objects` from `examples/`.
 
