@@ -34,11 +34,21 @@ func (c *Client) dispatcher() {
 			due.Stop()
 		}
 	}()
+	dueFired := false
 	for pass := 1; ; pass++ {
 		wake := c.wakeCh()
 		next := c.pass(c.ctx, pass)
 		if c.ctx.Err() != nil {
 			return
+		}
+		if dueFired {
+			// A due time arrived: the pass just promoted, admitted or
+			// readied what fell due, so wake the workers now. Waking them
+			// before the pass (as the timer fires) let a worker look,
+			// find nothing yet, and sleep until its next poll, which with
+			// a long poll interval delayed due work by up to that long.
+			dueFired = false
+			c.wakeWorkers()
 		}
 		if due != nil {
 			due.Stop()
@@ -54,7 +64,7 @@ func (c *Client) dispatcher() {
 		case <-c.ctx.Done():
 		case <-wake:
 		case <-dueC:
-			c.wakeLocal() // a backoff may have ended: wake the workers too
+			dueFired = true // the workers are woken after the next pass
 		case <-poll.C():
 		}
 		poll.Stop()

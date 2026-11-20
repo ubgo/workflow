@@ -1013,6 +1013,16 @@ func (c *Client) wakeLocal() {
 	c.signalWorker()
 }
 
+// wakeWorkers wakes one idle worker of this client (each worker that
+// finds work wakes the next), without waking the dispatcher.
+func (c *Client) wakeWorkers() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.stopped {
+		c.signalWorker()
+	}
+}
+
 // signalWorker wakes one idle worker, if any is waiting and none is
 // already being woken. It never blocks.
 func (c *Client) signalWorker() {
