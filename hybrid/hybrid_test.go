@@ -73,10 +73,10 @@ func TestCronFiresOnTheSchedulerAndRunsOnJobs(t *testing.T) {
 func TestCapabilitiesAndRefusals(t *testing.T) {
 	c := hybrid.New(memory.New(), memory.New())
 	caps := c.Capabilities()
-	if !caps.Has(workflow.CapCron | workflow.CapDelayedStart | workflow.CapTickTime) {
+	if !caps.Has(workflow.CapsOf(workflow.CapCron, workflow.CapDelayedStart, workflow.CapTickTime)) {
 		t.Errorf("caps = %s, want cron from the scheduler and runs from jobs", caps)
 	}
-	if caps&(workflow.CapScheduleTrigger|workflow.CapOverlapSkip|workflow.CapScheduleKeep|workflow.CapTickEvents) != 0 {
+	if caps.HasAny(workflow.CapsOf(workflow.CapScheduleTrigger, workflow.CapOverlapSkip, workflow.CapScheduleKeep, workflow.CapTickEvents)) {
 		t.Errorf("caps = %s, claims what the split cannot honour", caps)
 	}
 	wf := workflow.Workflow{Name: "w", Cron: []string{"* * * * *"}, CronOverlap: workflow.OverlapSkip,

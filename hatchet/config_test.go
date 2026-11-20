@@ -214,8 +214,8 @@ func TestSleepCtx(t *testing.T) {
 // declares none of those capabilities: crons are UTC only and never catch
 // up, and retries wait exactly factor^n seconds whatever the error says.
 func TestRefusesCoreOptions(t *testing.T) {
-	never := workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll | workflow.CapCronZone
-	if got := New(Config{}).Capabilities() & never; got != 0 {
+	never := workflow.CapsOf(workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll, workflow.CapCronZone)
+	if got := New(Config{}).Capabilities().Intersect(never); !got.IsZero() {
 		t.Fatalf("driver declares %s, which Hatchet cannot honour", got)
 	}
 	jitter := workflow.RetryPolicy{Max: 2, Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.5}}

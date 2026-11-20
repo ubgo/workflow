@@ -42,14 +42,14 @@ func TestFakeQueuesAndJobRetry(t *testing.T) {
 		t.Errorf("a job Retry with a function = %v, want ErrInvalid (ValidateJob)", err)
 	}
 
-	noOverride := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps &^ workflow.CapQueueOverride)}, mail)
+	noOverride := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps.Without(workflow.CapQueueOverride))}, mail)
 	if _, err := noOverride.Enqueue(ctx, workflow.Job{Workflow: "mail", Queue: "bulk"}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("a queue override without CapQueueOverride = %v, want ErrUnsupported", err)
 	}
 	if _, err := noOverride.Enqueue(ctx, workflow.Job{Workflow: "mail", Queue: "mail"}); err != nil {
 		t.Errorf("the workflow's own queue without CapQueueOverride = %v, want accepted", err)
 	}
-	noRetry := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps &^ workflow.CapJobRetry)}, oneStep("plain", noopHandler))
+	noRetry := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps.Without(workflow.CapJobRetry))}, oneStep("plain", noopHandler))
 	if _, err := noRetry.Enqueue(ctx, workflow.Job{Workflow: "plain", Retry: &workflow.RetryPolicy{Max: 1}}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("a job Retry without CapJobRetry = %v, want ErrUnsupported", err)
 	}
@@ -107,7 +107,7 @@ func TestFakeRetryAndDelete(t *testing.T) {
 		t.Errorf("Retry of an unknown ref = %v, want ErrNotFound", err)
 	}
 
-	bare := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps &^ (workflow.CapRetryRun | workflow.CapDeleteRun))}, wf)
+	bare := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps.Without(workflow.CapRetryRun, workflow.CapDeleteRun))}, wf)
 	if _, err := bare.Retry(ctx, ref); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("Retry without CapRetryRun = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestFakePause(t *testing.T) {
 	if err := f.Pause(ctx, workflow.PauseTarget{}); !errors.Is(err, workflow.ErrInvalid) {
 		t.Errorf("Pause of an empty target = %v, want ErrInvalid", err)
 	}
-	noQueue := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps &^ workflow.CapPauseQueue)})
+	noQueue := startedFake(t, []FakeOption{FakeCaps(fakeDefaultCaps.Without(workflow.CapPauseQueue))})
 	if err := noQueue.Pause(ctx, workflow.PauseQueue("mail")); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("PauseQueue without CapPauseQueue = %v, want ErrUnsupported", err)
 	}
@@ -161,7 +161,7 @@ func TestFakeCapsDropsWhatItDoesNotServe(t *testing.T) {
 	if f.Capabilities().Has(workflow.CapRunQuery) || f.Capabilities().Has(workflow.CapDrain) || f.Capabilities().Has(workflow.CapRunFinished) {
 		t.Errorf("FakeLike(memory) claims %s", f.Capabilities())
 	}
-	if !f.Capabilities().Has(workflow.CapRetryRun | workflow.CapPauseQueue | workflow.CapQueue) {
+	if !f.Capabilities().Has(workflow.CapsOf(workflow.CapRetryRun, workflow.CapPauseQueue, workflow.CapQueue)) {
 		t.Errorf("FakeLike(memory) lost a capability the Fake serves: %s", f.Capabilities())
 	}
 }

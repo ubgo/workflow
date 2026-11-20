@@ -38,7 +38,7 @@ func run(ctx context.Context) error {
 		memory.WithMiddleware(middleware.Recover(slog.New(slog.DiscardHandler))),
 	)
 	// snippet:end
-	if !c.Capabilities().Has(workflow.CapErrorHistory | workflow.CapForceRun) {
+	if !c.Capabilities().Has(workflow.CapsOf(workflow.CapErrorHistory, workflow.CapForceRun)) {
 		return errors.New("the driver lacks error history or force")
 	}
 

@@ -31,8 +31,8 @@ const (
 // for the cases that check a refusal.
 func (e *env) lacks(c workflow.Caps) {
 	e.t.Helper()
-	if e.c.Capabilities()&c != 0 {
-		e.t.Skipf("driver has %s; this case checks its refusal", e.c.Capabilities()&c)
+	if e.c.Capabilities().HasAny(c) {
+		e.t.Skipf("driver has %s; this case checks its refusal", e.c.Capabilities().Intersect(c))
 	}
 }
 
@@ -94,7 +94,7 @@ var queueCases = []testCase{
 		}
 	}},
 	{"Job.Queue overrides the workflow's queue", func(e *env) {
-		e.need(workflow.CapQueue | workflow.CapQueueOverride)
+		e.need(workflow.CapsOf(workflow.CapQueue, workflow.CapQueueOverride))
 		var s stepInfos
 		wf := oneStep(e.name("w"), s.handler())
 		wf.Queue = queueA
@@ -243,7 +243,7 @@ var jobRetryCases = []testCase{
 
 var discardCases = []testCase{
 	{"Discard ends the run discarded (or cancelled without CapRunStates), without retries or OnFailure", func(e *env) {
-		e.need(workflow.CapDiscard | workflow.CapRunFinished)
+		e.need(workflow.CapsOf(workflow.CapDiscard, workflow.CapRunFinished))
 		var c, onFail counter
 		wf := oneStep(e.name("w"), c.fail(workflow.Discard(errBoom)))
 		wf.Retry = workflow.RetryPolicy{Max: 3}
@@ -422,7 +422,7 @@ var runQueryCases = []testCase{
 		g.open()
 	}},
 	{"CancelAll cancels the runs not yet started and leaves running ones", func(e *env) {
-		e.need(workflow.CapCancelAll | workflow.CapDelayedStart)
+		e.need(workflow.CapsOf(workflow.CapCancelAll, workflow.CapDelayedStart))
 		g := newGate(e.t)
 		wf := oneStep(e.name("w"), func(ctx context.Context, in []byte) ([]byte, error) { return in, g.wait(ctx) })
 		e.up(wf)
@@ -483,7 +483,7 @@ var pauseCases = []testCase{
 		e.waitStatus(ref, workflow.StatusSucceeded, e.tm.unit)
 	}},
 	{"a paused queue holds its runs and not other queues'", func(e *env) {
-		e.need(workflow.CapPauseQueue | workflow.CapQueue)
+		e.need(workflow.CapsOf(workflow.CapPauseQueue, workflow.CapQueue))
 		var a, b counter
 		wfA := oneStep(e.name("a"), a.echo())
 		wfA.Queue = queueA
@@ -612,7 +612,7 @@ var scheduleCases = []testCase{
 		}
 	}},
 	{"ScheduleWhen skips ticks and tick observers see why", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleWhen | workflow.CapTickEvents)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleWhen, workflow.CapTickEvents))
 		e.needFake("counting ticks")
 		var c counter
 		var asked atomic.Int64
@@ -642,7 +642,7 @@ var scheduleCases = []testCase{
 		}
 	}},
 	{"Windows keep ticks outside them from firing", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleWindow)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleWindow))
 		e.needFake("placing ticks in and out of a window")
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
@@ -660,7 +660,7 @@ var scheduleCases = []testCase{
 		}
 	}},
 	{"Schedules lists schedules with their next fire time", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapScheduleList)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapScheduleList))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		wf.Cron = []string{"0 3 * * *"}
@@ -692,7 +692,7 @@ var scheduleCases = []testCase{
 		}
 	}},
 	{"a paused schedule does not fire, not even on resume", func(e *env) {
-		e.need(workflow.CapCron | workflow.CapSchedulePause)
+		e.need(workflow.CapsOf(workflow.CapCron, workflow.CapSchedulePause))
 		e.needFake("moving time while paused")
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())

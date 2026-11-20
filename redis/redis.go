@@ -21,25 +21,27 @@ import (
 // caps is what this driver really does, each proven by the workflowtest
 // conformance suite against a real Redis. See the package doc for what is
 // not declared and why.
-const caps = workflow.CapDurable | workflow.CapDelayedStart | workflow.CapDurableSleep |
-	workflow.CapIdempotencyKey | workflow.CapCron | workflow.CapCancel |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapJobRetry |
-	workflow.CapRetryUntil | workflow.CapRetryMaxErrors |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll |
-	workflow.CapCronZone | workflow.CapRunQuery | workflow.CapDeleteRun | workflow.CapDrain | workflow.CapDrainReport |
-	workflow.CapScheduleList | workflow.CapScheduleTrigger | workflow.CapScheduleHistory |
-	workflow.CapOverlapSkip | workflow.CapEnqueueOnly | workflow.CapErrorHistory |
-	workflow.CapShutdownRequeue | workflow.CapForceRun |
-	workflow.CapWaitForEvent | workflow.CapConcurrencyKey | workflow.CapRateLimit |
-	workflow.CapRunFinished | workflow.CapQueue | workflow.CapQueueOverride |
-	workflow.CapDiscard | workflow.CapDiscardExhausted | workflow.CapRunStates | workflow.CapRetryRun | workflow.CapCancelAll |
-	workflow.CapPauseWorkflow | workflow.CapPauseQueue | workflow.CapChain | workflow.CapLabelPrefix |
-	workflow.CapTenant | workflow.CapDueQuery | workflow.CapResult | workflow.CapNodeIdentity |
-	workflow.CapSnooze | workflow.CapHeartbeat |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep | workflow.CapTickTime |
-	workflow.CapRunTimeout | workflow.CapKeyFIFO |
-	workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapTickEvents | workflow.CapSchedulePause |
-	workflow.CapWorkerScale
+var caps = workflow.CapsOf(
+	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapDurableSleep,
+	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapCronZone, workflow.CapRunQuery, workflow.CapDeleteRun, workflow.CapDrain, workflow.CapDrainReport,
+	workflow.CapScheduleList, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapOverlapSkip, workflow.CapEnqueueOnly, workflow.CapErrorHistory,
+	workflow.CapShutdownRequeue, workflow.CapForceRun,
+	workflow.CapWaitForEvent, workflow.CapConcurrencyKey, workflow.CapRateLimit,
+	workflow.CapRunFinished, workflow.CapQueue, workflow.CapQueueOverride,
+	workflow.CapDiscard, workflow.CapDiscardExhausted, workflow.CapRunStates, workflow.CapRetryRun, workflow.CapCancelAll,
+	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapChain, workflow.CapLabelPrefix,
+	workflow.CapTenant, workflow.CapDueQuery, workflow.CapResult, workflow.CapNodeIdentity,
+	workflow.CapSnooze, workflow.CapHeartbeat,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+	workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents, workflow.CapSchedulePause,
+	workflow.CapWorkerScale,
+)
 
 // Defaults. Each has an option that changes it.
 const (

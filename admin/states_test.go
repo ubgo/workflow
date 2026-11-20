@@ -94,7 +94,7 @@ func TestDiscardedBesideFailures(t *testing.T) {
 // unsupported, on a client without CapRunStates, and that QueueStats
 // leaves worker counts out on a client that cannot scale.
 func TestDiscardedNeedsRunStates(t *testing.T) {
-	f := &fakeClient{caps: allCaps &^ workflow.CapRunStates}
+	f := &fakeClient{caps: allCaps.Without(workflow.CapRunStates)}
 	a := New(f)
 	var ue *workflow.UnsupportedError
 	if _, err := a.Discarded(context.Background(), workflow.RunQuery{}); !errors.As(err, &ue) || !ue.Missing.Has(workflow.CapRunStates) {

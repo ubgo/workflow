@@ -15,8 +15,10 @@ func TestRequiresNewFields(t *testing.T) {
 	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{{Name: "a", Run: noop, HeartbeatTimeout: time.Second}},
 		RunTimeout: time.Minute, Concurrency: &workflow.Concurrency{MaxRuns: 1, FIFO: true},
 		Cron: []string{"* * * * * *"}, CronSeconds: true, CronActive: workflow.Active{Until: time.Unix(10, 0)}, CronKeepRuns: 3}
-	want := workflow.CapHeartbeat | workflow.CapRunTimeout | workflow.CapKeyFIFO | workflow.CapCronSeconds |
-		workflow.CapScheduleActive | workflow.CapScheduleKeep
+	want := workflow.CapsOf(
+		workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO, workflow.CapCronSeconds,
+		workflow.CapScheduleActive, workflow.CapScheduleKeep,
+	)
 	if got := workflow.Requires(wf); !got.Has(want) {
 		t.Fatalf("Requires = %s, want it to hold %s", got, want)
 	}

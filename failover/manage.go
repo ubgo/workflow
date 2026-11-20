@@ -18,10 +18,12 @@ import (
 // unless WithSchedulesOnBoth, so like CapCron these are the primary's
 // alone in that case: the secondary never fires a tick to condition,
 // report, list or pause.
-const scheduleCaps = workflow.CapCron | workflow.CapScheduleWhen | workflow.CapScheduleWindow |
-	workflow.CapSchedulePause | workflow.CapScheduleList | workflow.CapTickEvents |
-	workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep | workflow.CapTickTime
+var scheduleCaps = workflow.CapsOf(
+	workflow.CapCron, workflow.CapScheduleWhen, workflow.CapScheduleWindow,
+	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+)
 
 var (
 	_ workflow.RunQuerier       = (*Client)(nil)
@@ -40,7 +42,7 @@ var (
 // need refuses a call when Capabilities lacks c, so a method never
 // half-works on one backend.
 func (f *Client) need(field string, c workflow.Caps) error {
-	if missing := f.Capabilities().Missing(c); missing != 0 {
+	if missing := f.Capabilities().Missing(c); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the failover backends cannot do it"}
 	}
 	return nil

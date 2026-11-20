@@ -329,7 +329,7 @@ func TestChoiceSingleBranch(t *testing.T) {
 type noKeyClient struct{ workflow.Client }
 
 func (n noKeyClient) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ workflow.CapIdempotencyKey
+	return n.Client.Capabilities().Without(workflow.CapIdempotencyKey)
 }
 
 func TestSpawnOncePerRun(t *testing.T) {

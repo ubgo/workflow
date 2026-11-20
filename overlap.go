@@ -47,7 +47,7 @@ func overlapCaps(p OverlapPolicy) Caps {
 	if p == OverlapSkip {
 		return CapOverlapSkip
 	}
-	return 0
+	return Caps{}
 }
 
 // Blocks reports whether p holds back a fire when the schedule's previous

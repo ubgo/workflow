@@ -368,7 +368,7 @@ var cronCases = []testCase{
 		// would fire at 09:00 UTC instead.
 		_, err := e.c.Schedule(ctx, workflow.Schedule{Name: e.name("s"), Workflow: wf.Name, Cron: "0 9 * * *", Location: zone})
 		if err != nil {
-			assertUnsupported(e.t, err, "Location", 0)
+			assertUnsupported(e.t, err, "Location", workflow.Caps{})
 			return
 		}
 		e.blockUntilTimers(1)

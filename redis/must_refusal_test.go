@@ -55,8 +55,8 @@ func TestQueueLimitIsRefused(t *testing.T) {
 func TestDiscardOnExhaustIsAccepted(t *testing.T) {
 	c := offlineClient(t)
 	have := c.Capabilities()
-	if !have.Has(workflow.CapDiscardExhausted | workflow.CapRunStates | workflow.CapJobRetry) {
-		t.Fatalf("redis lacks %s", have.Missing(workflow.CapDiscardExhausted|workflow.CapRunStates|workflow.CapJobRetry))
+	if !have.Has(workflow.CapsOf(workflow.CapDiscardExhausted, workflow.CapRunStates, workflow.CapJobRetry)) {
+		t.Fatalf("redis lacks %s", have.Missing(workflow.CapsOf(workflow.CapDiscardExhausted, workflow.CapRunStates, workflow.CapJobRetry)))
 	}
 	pol := workflow.RetryPolicy{Max: 1, DiscardOnExhaust: true}
 	run := func(context.Context, []byte) ([]byte, error) { return nil, nil }

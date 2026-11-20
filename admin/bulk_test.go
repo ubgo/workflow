@@ -141,7 +141,7 @@ func TestDeleteAll(t *testing.T) {
 		t.Errorf("listed %v, want %v", q.Statuses, want)
 	}
 	f2 := failedRuns(1)
-	f2.caps = allCaps &^ workflow.CapRunStates
+	f2.caps = allCaps.Without(workflow.CapRunStates)
 	_, _ = New(f2).DeleteAll(ctx, workflow.RunQuery{Queue: "default"}, BulkOptions{DryRun: true})
 	if q := f2.queries[len(f2.queries)-1]; slices.Contains(q.Statuses, workflow.StatusDiscarded) {
 		t.Errorf("discarded listed without CapRunStates: %v", q.Statuses)
@@ -150,7 +150,7 @@ func TestDeleteAll(t *testing.T) {
 
 func TestBulk_Unsupported(t *testing.T) {
 	ctx := context.Background()
-	a := New(&fakeClient{caps: workflow.CapRetryRun | workflow.CapDeleteRun})
+	a := New(&fakeClient{caps: workflow.CapsOf(workflow.CapRetryRun, workflow.CapDeleteRun)})
 	if _, err := a.RetryAll(ctx, workflow.RunQuery{}, BulkOptions{}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("retry_all without RunQuery = %v", err)
 	}

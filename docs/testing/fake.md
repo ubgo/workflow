@@ -293,7 +293,7 @@ func TestRefusedLikeProduction(t *testing.T) {
 
 	// A production driver without delayed starts refuses the reminder, and
 	// so does a Fake that claims the same capabilities.
-	noDelay := memory.New().Capabilities() &^ workflow.CapDelayedStart
+	noDelay := memory.New().Capabilities().Without(workflow.CapDelayedStart)
 	app, _ = newApp(t, workflowtest.FakeCaps(noDelay))
 	_, err := app.SignUp(ctx, "ada@example.com")
 	if !errors.Is(err, workflow.ErrUnsupported) {

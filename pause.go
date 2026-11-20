@@ -63,7 +63,7 @@ func CheckPause(have Caps, t PauseTarget) error {
 	if err := ValidatePauseTarget(t); err != nil {
 		return err
 	}
-	if missing := have.Missing(RequiresPause(t)); missing != 0 {
+	if missing := have.Missing(RequiresPause(t)); !missing.IsZero() {
 		field := "PauseTarget.Workflow"
 		if t.Queue != "" {
 			field = "PauseTarget.Queue"

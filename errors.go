@@ -99,7 +99,7 @@ func Unsupported(field, reason string) error {
 // message alone tells an operator what to change.
 func (e *UnsupportedError) Error() string {
 	msg := "workflow: " + e.Field + " unsupported by this driver"
-	if e.Missing != 0 {
+	if !e.Missing.IsZero() {
 		msg += " (missing " + e.Missing.String() + ")"
 	}
 	if e.Reason != "" {

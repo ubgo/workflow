@@ -139,7 +139,7 @@ func TestFakeRefusesLikeADriver(t *testing.T) {
 	if _, err := limited.Schedule(ctx, workflow.Schedule{Workflow: "plain", Cron: "* * * * *", Location: time.UTC}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("Schedule without CapCron: %v", err)
 	}
-	if err := NewFake(FakeCaps(0)).Cancel(ctx, workflow.RunRef{RunID: "x"}); !errors.Is(err, workflow.ErrUnsupported) {
+	if err := NewFake(FakeCaps(workflow.Caps{})).Cancel(ctx, workflow.RunRef{RunID: "x"}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("Cancel without CapCancel: %v", err)
 	}
 
@@ -154,7 +154,7 @@ func TestFakeRefusesLikeADriver(t *testing.T) {
 	startedFake(t, []FakeOption{FakeKeyExpr()}, exprWF)
 
 	// FakeLike copies a real client's capabilities, minus RunFinished.
-	if got := NewFake(FakeLike(NewFake(FakeCaps(workflow.CapCron | workflow.CapRunFinished)))).Capabilities(); got != workflow.CapCron {
+	if got := NewFake(FakeLike(NewFake(FakeCaps(workflow.CapsOf(workflow.CapCron, workflow.CapRunFinished))))).Capabilities(); got != workflow.CapCron {
 		t.Errorf("FakeLike caps = %s, want Cron", got)
 	}
 }

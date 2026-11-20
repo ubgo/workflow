@@ -180,7 +180,7 @@ var tenantCases = []testCase{
 		assertUnsupported(e.t, err, "Job.Tenant", workflow.CapTenant)
 	}},
 	{"a schedule's Tenant is the tenant of every run it fires", func(e *env) {
-		e.need(workflow.CapTenant | workflow.CapCron)
+		e.need(workflow.CapsOf(workflow.CapTenant, workflow.CapCron))
 		e.needFake("firing a tick")
 		var s stepInfos
 		wf := oneStep(e.name("w"), s.handler())
@@ -317,7 +317,7 @@ var nodeCases = []testCase{
 		})
 	}},
 	{"a failed attempt names its node in the error history", func(e *env) {
-		e.need(workflow.CapNodeIdentity | workflow.CapErrorHistory)
+		e.need(workflow.CapsOf(workflow.CapNodeIdentity, workflow.CapErrorHistory))
 		var c counter
 		wf := oneStep(e.name("w"), c.fail(workflow.Permanent(errBoom)))
 		e.up(wf)
@@ -374,7 +374,7 @@ var keyFIFOCases = []testCase{
 
 var dueQueryCases = []testCase{
 	{"DueFrom and DueTo list the delayed runs due in a window", func(e *env) {
-		e.need(workflow.CapDueQuery | workflow.CapDelayedStart | workflow.CapRunQuery)
+		e.need(workflow.CapsOf(workflow.CapDueQuery, workflow.CapDelayedStart, workflow.CapRunQuery))
 		var c counter
 		wf := oneStep(e.name("w"), c.echo())
 		e.up(wf)

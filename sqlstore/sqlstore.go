@@ -22,12 +22,14 @@ import (
 // nothing. Retry delays are computed in Go (workflow.RetryPolicy.NextDelay),
 // so jitter and RetryAfter cost nothing; cron zones and misfire policies
 // are stored with each schedule.
-const caps = workflow.CapDurable | workflow.CapDelayedStart | workflow.CapWaitForEvent |
-	workflow.CapDurableSleep | workflow.CapConcurrencyKey | workflow.CapRateLimit |
-	workflow.CapIdempotencyKey | workflow.CapCron | workflow.CapCancel | workflow.CapRunFinished |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapCronZone |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll |
-	workflow.CapLabelPrefix | workflow.CapQueueLimitGlobal | parityCaps
+var caps = workflow.CapsOf(
+	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
+	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
+	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel, workflow.CapRunFinished,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapLabelPrefix, workflow.CapQueueLimitGlobal, parityCaps,
+)
 
 // parityCaps are the queue, retry, admin, pause, schedule and drain
 // capabilities. Every one is stored state or a decision
@@ -35,12 +37,14 @@ const caps = workflow.CapDurable | workflow.CapDelayedStart | workflow.CapWaitFo
 // them the same way: queues and pauses are rows the claim statement reads,
 // per-run retry policies and attempt counts are rows the record step
 // reads, schedule windows and pauses are rows the firing node reads.
-const parityCaps = workflow.CapQueue | workflow.CapQueueOverride | workflow.CapJobRetry |
-	workflow.CapRetryUntil | workflow.CapRetryMaxErrors | workflow.CapDiscard | workflow.CapDiscardExhausted |
-	workflow.CapRunQuery | workflow.CapRetryRun | workflow.CapDeleteRun | workflow.CapCancelAll |
-	workflow.CapPauseWorkflow | workflow.CapPauseQueue | workflow.CapSchedulePause |
-	workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapTickEvents |
-	workflow.CapScheduleList | workflow.CapDrain | workflow.CapDrainReport | batch2Caps
+var parityCaps = workflow.CapsOf(
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard, workflow.CapDiscardExhausted,
+	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
+	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, batch2Caps,
+)
 
 // batch2Caps are the run-state, chain and worker-scale capabilities.
 // Retrying is read from the step rows (a ready step that failed before and
@@ -50,7 +54,7 @@ const parityCaps = workflow.CapQueue | workflow.CapQueueOverride | workflow.CapJ
 // are not among them: a Go function cannot be stored, so a closure could
 // not survive the restart this driver exists for, and
 // workflow.EnqueueClosure refuses this client.
-const batch2Caps = workflow.CapRunStates | workflow.CapChain | workflow.CapWorkerScale | p4Caps
+var batch2Caps = workflow.CapsOf(workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, p4Caps)
 
 // p4Caps are overlap skip, trigger now and last-fire bookkeeping (one
 // schedule_last row per schedule, moved in the firing transaction), the
@@ -58,15 +62,19 @@ const batch2Caps = workflow.CapRunStates | workflow.CapChain | workflow.CapWorke
 // history (attempt_errors), shutdown requeue (a step cut short by a clean
 // stop is handed back with its attempt refunded: attempt.release) and
 // force-complete and force-fail.
-const p4Caps = workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory |
-	workflow.CapEnqueueOnly | workflow.CapErrorHistory | workflow.CapShutdownRequeue | workflow.CapForceRun | p5Caps
+var p4Caps = workflow.CapsOf(
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapEnqueueOnly, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapForceRun, p5Caps,
+)
 
 // p5Caps are stored per run in run_info (migration 008): the tenant, the
 // result written when the run succeeds and the nodes that claimed its
 // attempts; due times are the runs table's run_at, kept after the start;
 // every client reports itself in the nodes table.
-const p5Caps = workflow.CapTenant | workflow.CapResult | workflow.CapDueQuery | workflow.CapNodeIdentity | workflow.CapSnooze | workflow.CapHeartbeat | workflow.CapRunTimeout | workflow.CapKeyFIFO |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep | workflow.CapTickTime
+var p5Caps = workflow.CapsOf(
+	workflow.CapTenant, workflow.CapResult, workflow.CapDueQuery, workflow.CapNodeIdentity, workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+)
 
 // Run states as stored in runs.status. Scheduled, the three terminal ones
 // and pending/active map onto workflow.Status (see Client.Status); failing

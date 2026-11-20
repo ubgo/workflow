@@ -62,18 +62,34 @@ tasks:
     cmds: ['testlock task gomin:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
-  # GOWORK=off: go.work declares the highest version (1.26.0), which an older
-  # toolchain refuses, so each module is vetted on its own.
+  # go.work declares the highest version (1.26.0), which an older toolchain
+  # refuses, so each module gets a temporary go.work at its own version
+  # holding the module and every module of this repo it requires: a module
+  # is vetted against the core and siblings in this tree, which are released
+  # with it, not against their last tags (a core API change would otherwise
+  # fail here until the core is tagged). Whether a released go.mod is tidy
+  # without go.work is deps:check's job.
   gomin:run:
-    env:
-      GOWORK: 'off'
     cmds:
       - |
+        root=$(pwd)
         find . -name go.mod -not -path './.cover/*' | sort | while read -r f; do
           d=$(dirname "$f"); v=$(awk '/^go /{print $2}' "$f")
           case $v in *.*.*) ;; *) v=$v.0 ;; esac
           echo "go$v $d"
-          (cd "$d" && GOTOOLCHAIN=go$v go vet ./...) || exit 1
+          self=$(cd "$d" && pwd); uses=$self
+          for p in $(GOWORK=off go mod edit -json "$f" | awk -F'"' '/"Path": "github.com\/ubgo\/workflow/{print $4}' | sort -u); do
+            rel=${p#github.com/ubgo/workflow}; rel=${rel#/}
+            dir=$(cd "$root/$rel" 2>/dev/null && pwd) || continue
+            if [ "$dir" != "$self" ] && [ -f "$dir/go.mod" ] && [ "$(awk '/^module /{print $2}' "$dir/go.mod")" = "$p" ]; then
+              uses="$uses $dir"
+            fi
+          done
+          w=$(mktemp -d)
+          { printf 'go %s\n\nuse (\n' "$v"; for u in $uses; do printf '\t%s\n' "$u"; done; printf ')\n'; } > "$w/go.work"
+          (cd "$d" && GOWORK="$w/go.work" GOTOOLCHAIN=go$v go vet ./...); rc=$?
+          rm -rf "$w"
+          [ $rc -eq 0 ] || exit 1
         done
 
   check:

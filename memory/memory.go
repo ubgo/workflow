@@ -17,23 +17,25 @@ import (
 // caps is everything except durability (CapRunFinished holds because every
 // terminal transition goes through finishLocked, which queues the event): the driver keeps state in memory,
 // so a restart loses it, and claiming CapDurable would be a lie.
-const caps = workflow.CapDelayedStart | workflow.CapWaitForEvent | workflow.CapDurableSleep |
-	workflow.CapConcurrencyKey | workflow.CapRateLimit | workflow.CapIdempotencyKey |
-	workflow.CapCron | workflow.CapCancel | workflow.CapRunFinished |
-	workflow.CapRetryJitter | workflow.CapRetryDelay | workflow.CapCronZone |
-	workflow.CapMisfireSkip | workflow.CapMisfireFireOnce | workflow.CapMisfireFireAll |
-	workflow.CapQueue | workflow.CapQueueOverride | workflow.CapJobRetry |
-	workflow.CapRetryUntil | workflow.CapRetryMaxErrors | workflow.CapDiscard | workflow.CapDiscardExhausted |
-	workflow.CapRunQuery | workflow.CapRetryRun | workflow.CapDeleteRun | workflow.CapCancelAll |
-	workflow.CapPauseWorkflow | workflow.CapPauseQueue | workflow.CapSchedulePause |
-	workflow.CapScheduleWhen | workflow.CapScheduleWindow | workflow.CapTickEvents |
-	workflow.CapScheduleList | workflow.CapDrain | workflow.CapDrainReport |
-	workflow.CapRunStates | workflow.CapChain | workflow.CapWorkerScale | workflow.CapClosure | workflow.CapLabelPrefix |
-	workflow.CapOverlapSkip | workflow.CapScheduleTrigger | workflow.CapScheduleHistory |
-	workflow.CapErrorHistory | workflow.CapForceRun |
-	workflow.CapSnooze | workflow.CapHeartbeat | workflow.CapTenant | workflow.CapRunTimeout |
-	workflow.CapNodeIdentity | workflow.CapKeyFIFO | workflow.CapDueQuery | workflow.CapResult |
-	workflow.CapCronSeconds | workflow.CapScheduleActive | workflow.CapScheduleKeep | workflow.CapTickTime | workflow.CapQueueLimitGlobal
+var caps = workflow.CapsOf(
+	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
+	workflow.CapCron, workflow.CapCancel, workflow.CapRunFinished,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard, workflow.CapDiscardExhausted,
+	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
+	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport,
+	workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, workflow.CapClosure, workflow.CapLabelPrefix,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapErrorHistory, workflow.CapForceRun,
+	workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapTenant, workflow.CapRunTimeout,
+	workflow.CapNodeIdentity, workflow.CapKeyFIFO, workflow.CapDueQuery, workflow.CapResult,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime, workflow.CapQueueLimitGlobal,
+)
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
 // given: enough for tests that run steps in parallel, small enough that a

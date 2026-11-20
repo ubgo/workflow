@@ -62,10 +62,10 @@ func TestTransitionTableShape(t *testing.T) {
 	// a terminal status from every non-terminal one.
 	var plain, exhaust bool
 	for _, tr := range StatusRunning.TransitionsFrom() {
-		if tr.To == StatusDiscarded && tr.Needs.Has(CapDiscard|CapRunStates) {
+		if tr.To == StatusDiscarded && tr.Needs.Has(CapsOf(CapDiscard, CapRunStates)) {
 			plain = true
 		}
-		if tr.To == StatusDiscarded && tr.Needs.Has(CapDiscardExhausted|CapRunStates) {
+		if tr.To == StatusDiscarded && tr.Needs.Has(CapsOf(CapDiscardExhausted, CapRunStates)) {
 			exhaust = true
 		}
 	}
@@ -131,7 +131,7 @@ func TestExhaustedError(t *testing.T) {
 	if derr == nil || !IsDiscarded(derr) || !errors.Is(derr, boom) {
 		t.Fatalf("want a discard wrapping boom, got %v", derr)
 	}
-	if got := EndStatus(CapRunStates|CapDiscard, derr); got != StatusDiscarded {
+	if got := EndStatus(CapsOf(CapRunStates, CapDiscard), derr); got != StatusDiscarded {
 		t.Errorf("EndStatus = %s, want discarded", got)
 	}
 	if err := (RetryPolicy{}).ExhaustedError(3, boom); err != nil {
@@ -142,7 +142,7 @@ func TestExhaustedError(t *testing.T) {
 			t.Errorf("ExhaustedError(%v) = %v, want nil", err, got)
 		}
 	}
-	if !Requires(Workflow{Steps: []Step{{Name: "a", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }, Retry: &on}}}).Has(CapDiscardExhausted | CapRunStates) {
+	if !Requires(Workflow{Steps: []Step{{Name: "a", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }, Retry: &on}}}).Has(CapsOf(CapDiscardExhausted, CapRunStates)) {
 		t.Error("DiscardOnExhaust must require CapDiscardExhausted and CapRunStates")
 	}
 }
