@@ -234,7 +234,7 @@ func TestPartitionsJobBuilder(t *testing.T) {
 // idempotency keys.
 type noRunQuery struct{ workflow.Client }
 
-func (n noRunQuery) Capabilities() workflow.Caps { var none workflow.Caps; return none }
+func (n noRunQuery) Capabilities() workflow.Caps { return workflow.Caps{} }
 
 func TestPartitionsRefusals(t *testing.T) {
 	c := partitionClient(t, (&partitionRecorder{}).workflow())

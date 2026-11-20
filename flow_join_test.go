@@ -266,7 +266,7 @@ func TestJoinRefusals(t *testing.T) {
 // without it would.
 type noSnooze struct{ workflow.Client }
 
-func (n noSnooze) Capabilities() workflow.Caps { var none workflow.Caps; return none }
+func (n noSnooze) Capabilities() workflow.Caps { return workflow.Caps{} }
 
 func TestJoinNeedsSnooze(t *testing.T) {
 	g := newGate()

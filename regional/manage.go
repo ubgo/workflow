@@ -42,7 +42,7 @@ var (
 // need refuses a call when Capabilities lacks caps, so a method never
 // half-works on some regions.
 func (c *Client) need(field string, caps workflow.Caps) error {
-	if missing := c.Capabilities().Missing(caps); missing != 0 {
+	if missing := c.Capabilities().Missing(caps); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the regions cannot do it"}
 	}
 	return nil
@@ -321,7 +321,7 @@ func (c *Client) ForceFail(ctx context.Context, ref workflow.RunRef, reason stri
 // the ref prefixed the same way.
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	var out workflow.RunRef
-	err := onRegion(c, "Reschedule", 0, ref, func(name string, r workflow.RunRescheduler, inner workflow.RunRef) error {
+	err := onRegion(c, "Reschedule", workflow.Caps{}, ref, func(name string, r workflow.RunRescheduler, inner workflow.RunRef) error {
 		got, err := r.Reschedule(ctx, inner, at)
 		out = encodeRef(name, got)
 		return err
@@ -334,7 +334,7 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 
 // CancelStep withdraws a step of the run in the region its ref names.
 func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
-	return onRegion(c, "CancelStep", 0, ref, func(_ string, s workflow.StepCanceller, inner workflow.RunRef) error {
+	return onRegion(c, "CancelStep", workflow.Caps{}, ref, func(_ string, s workflow.StepCanceller, inner workflow.RunRef) error {
 		return s.CancelStep(ctx, inner, step)
 	})
 }

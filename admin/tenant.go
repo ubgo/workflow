@@ -167,9 +167,9 @@ func (h *handler[P]) newTenantGate() *tenantGate[P] {
 	g.scope = scope
 	missing := h.a.c.Capabilities().Missing(workflow.CapTenant)
 	if h.a.rq != nil {
-		missing |= h.a.rqCaps.Missing(workflow.CapTenant)
+		missing = missing.With(h.a.rqCaps.Missing(workflow.CapTenant))
 	}
-	if missing != 0 {
+	if !missing.IsZero() {
 		g.closed = &workflow.UnsupportedError{Field: "admin.WithTenantScope", Missing: missing, Reason: "the client cannot store or filter a run's tenant"}
 		return g
 	}

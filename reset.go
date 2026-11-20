@@ -62,6 +62,5 @@ func (f Forward) ResetRun(ctx context.Context, ref RunRef, step string) (RunRef,
 	if i, ok := f.Inner.(RunResetter); ok {
 		return i.ResetRun(ctx, ref, step)
 	}
-	var none Caps
-	return RunRef{}, lacks("ResetRun", none)
+	return RunRef{}, lacks("ResetRun", Caps{})
 }

@@ -403,7 +403,7 @@ func TestTenantScope_FailsClosed(t *testing.T) {
 type noTenant struct{ *memory.Client }
 
 func (n noTenant) Capabilities() workflow.Caps {
-	return n.Client.Capabilities() &^ workflow.CapTenant
+	return n.Client.Capabilities().Without(workflow.CapTenant)
 }
 
 func TestTenantScope_RefusedWithoutCapTenant(t *testing.T) {

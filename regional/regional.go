@@ -214,7 +214,7 @@ func (c *Client) route(ctx context.Context, job workflow.Job) (string, workflow.
 }
 
 // excludedCaps are never declared: see Capabilities.
-const excludedCaps = workflow.CapClosure | workflow.CapWorkerScale
+var excludedCaps = workflow.CapsOf(workflow.CapClosure, workflow.CapWorkerScale)
 
 // Capabilities is what every region can do, since the router may send a
 // job, or a schedule, to any of them. CapRunFinished also needs every
@@ -223,13 +223,13 @@ const excludedCaps = workflow.CapClosure | workflow.CapWorkerScale
 // and worker counts belong to one region (use Region to reach its
 // client).
 func (c *Client) Capabilities() workflow.Caps {
-	caps := ^workflow.Caps(0)
+	caps := workflow.AllCaps()
 	for _, name := range c.names {
-		caps &= c.regions[name].Capabilities()
+		caps = caps.Intersect(c.regions[name].Capabilities())
 	}
-	caps &^= excludedCaps
+	caps = caps.Without(excludedCaps)
 	if _, ok := c.notifiers(); !ok {
-		caps &^= workflow.CapRunFinished
+		caps = caps.Without(workflow.CapRunFinished)
 	}
 	return caps
 }

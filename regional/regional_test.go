@@ -60,7 +60,7 @@ type noCaps struct {
 	hidden workflow.Caps
 }
 
-func (n noCaps) Capabilities() workflow.Caps { return n.Client.Capabilities() &^ n.hidden }
+func (n noCaps) Capabilities() workflow.Caps { return n.Client.Capabilities().Without(n.hidden) }
 
 type fixture struct {
 	t      *testing.T
@@ -313,7 +313,7 @@ func TestCapabilitiesIntersection(t *testing.T) {
 	clk := clock.NewFake(start)
 	c, err := regional.New(map[string]workflow.Client{
 		"eu": memory.New(memory.WithClock(clk)),
-		"us": noCaps{Client: memory.New(memory.WithClock(clk)), hidden: workflow.CapRetryRun | workflow.CapTenant},
+		"us": noCaps{Client: memory.New(memory.WithClock(clk)), hidden: workflow.CapsOf(workflow.CapRetryRun, workflow.CapTenant)},
 	}, router)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestCapabilitiesIntersection(t *testing.T) {
 	if caps.Has(workflow.CapClosure) || caps.Has(workflow.CapWorkerScale) {
 		t.Fatalf("caps %s include closures or worker scaling", caps)
 	}
-	if want := full &^ (workflow.CapRetryRun | workflow.CapTenant | workflow.CapClosure | workflow.CapWorkerScale); caps != want {
+	if want := full.Without(workflow.CapRetryRun, workflow.CapTenant, workflow.CapClosure, workflow.CapWorkerScale); caps != want {
 		t.Fatalf("caps = %s, want %s", caps, want)
 	}
 	if err := c.Register(waitWF); err != nil {

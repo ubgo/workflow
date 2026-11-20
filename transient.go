@@ -24,6 +24,5 @@ func (f Forward) SignalWaiting(ctx context.Context, ev Event) (int, error) {
 	if i, ok := f.Inner.(TransientSignaller); ok {
 		return i.SignalWaiting(ctx, ev)
 	}
-	var none Caps
-	return 0, lacks("SignalWaiting", none)
+	return 0, lacks("SignalWaiting", Caps{})
 }
