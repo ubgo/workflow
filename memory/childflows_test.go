@@ -56,3 +56,24 @@ func TestSignalFlows(t *testing.T) {
 }
 
 func TestMemoryPromises(t *testing.T) { workflowtest.RunPromiseStore(t, workflow.NewMemoryPromises()) }
+
+// TestObjectFlows proves virtual objects on the memory driver.
+func TestObjectFlows(t *testing.T) {
+	workflowtest.RunObjectFlows(t, workflowtest.ObjectHarness{
+		Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+			c := memory.New()
+			for _, wf := range wfs {
+				if err := c.Register(wf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			if err := c.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			return c
+		},
+		Store: func(*testing.T) workflow.JournalStore { return workflow.NewMemoryJournal() },
+	})
+}

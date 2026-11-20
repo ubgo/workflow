@@ -70,3 +70,26 @@ func TestPromiseStore(t *testing.T) {
 	}
 	workflowtest.RunPromiseStore(t, s)
 }
+
+// TestObjectFlows proves virtual objects against Redis, their state in
+// the driver's JournalStore.
+func TestObjectFlows(t *testing.T) {
+	rdb := redisClient(t)
+	rc := newClient(t, rdb, testPrefix(t, rdb))
+	workflowtest.RunObjectFlows(t, workflowtest.ObjectHarness{
+		Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+			for _, wf := range wfs {
+				if err := rc.Register(wf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			if err := rc.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			return rc
+		},
+		Store: func(*testing.T) workflow.JournalStore { return rc.JournalStore() },
+	})
+}

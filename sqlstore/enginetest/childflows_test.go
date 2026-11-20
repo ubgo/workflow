@@ -86,3 +86,21 @@ func TestPromiseStore(t *testing.T) {
 		})
 	}
 }
+
+// TestObjectFlows proves virtual objects on every engine, their state in
+// the journal table.
+func TestObjectFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			sc := newClient(t, e, db, prefix)
+			workflowtest.RunObjectFlows(t, workflowtest.ObjectHarness{
+				Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+					startWith(t, sc, wfs...)
+					return sc
+				},
+				Store: func(*testing.T) workflow.JournalStore { return sc.JournalStore() },
+			})
+		})
+	}
+}
