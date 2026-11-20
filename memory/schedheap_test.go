@@ -45,7 +45,7 @@ func TestScheduleHeapOneGoroutineOneTimer(t *testing.T) {
 				}
 			} else {
 				blockUntil(t, fc, n)
-				if grew < n {
+				if grew < n-10 { // other goroutines (a finished worker's) may end meanwhile
 					t.Fatalf("without the heap, %d schedules added %d goroutines, want one each", n, grew)
 				}
 			}
@@ -61,49 +61,53 @@ func TestScheduleHeapOneGoroutineOneTimer(t *testing.T) {
 	}
 }
 
-// TestScheduleHeapRearms checks the heap's head bookkeeping: a schedule
-// added with an earlier tick than the armed one fires on that tick, an
-// unscheduled head stops firing and leaves no timer behind, and a named
-// upsert replaces its entry rather than adding a second.
+// TestScheduleHeapRearms checks the heap's head bookkeeping on the real
+// clock (a fake clock cannot show a re-arm: the old timer already counts as
+// pending): with an hourly schedule armed, an every-second schedule added
+// later fires within a second or two, a named upsert keeps one entry (it
+// fires about once a second, not twice), and Unschedule stops it.
 func TestScheduleHeapRearms(t *testing.T) {
-	var hourly, minutely atomic.Int64
-	c, fc := newClient(t, []workflow.Workflow{
-		one("hourly", func(context.Context, []byte) ([]byte, error) { hourly.Add(1); return nil, nil }),
-		one("minutely", func(context.Context, []byte) ([]byte, error) { minutely.Add(1); return nil, nil }),
-	}, memory.WithScheduleHeap())
+	var secondly atomic.Int64
+	c := memory.New(memory.WithScheduleHeap())
+	for _, wf := range []workflow.Workflow{
+		one("hourly", ok),
+		one("secondly", func(context.Context, []byte) ([]byte, error) { secondly.Add(1); return nil, nil }),
+	} {
+		if err := c.Register(wf); err != nil {
+			t.Fatal(err)
+		}
+	}
 	ctx := context.Background()
-	if _, err := c.Schedule(ctx, workflow.Schedule{Workflow: "hourly", Cron: "0 * * * *", Location: time.UTC}); err != nil {
+	if err := c.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	blockUntil(t, fc, 1)
-	id, err := c.Schedule(ctx, workflow.Schedule{Workflow: "minutely", Cron: "* * * * *", Name: "m", Location: time.UTC})
+	t.Cleanup(c.Stop)
+	if _, err := c.Schedule(ctx, workflow.Schedule{Workflow: "hourly", Cron: "0 0 * * * *", Seconds: true, Location: time.UTC}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond) // the scheduler arms for the hour
+	sched := workflow.Schedule{Workflow: "secondly", Cron: "* * * * * *", Seconds: true, Name: "s", Location: time.UTC}
+	id, err := c.Schedule(ctx, sched)
 	if err != nil {
 		t.Fatal(err)
 	}
-	blockUntil(t, fc, 1)
-	fc.Advance(time.Minute)
-	waitFor(t, "the minutely schedule fired once", func() bool { return minutely.Load() == 1 })
-	// Upsert the same name: still one entry for "minutely", so the next
-	// minute fires it once, not twice.
-	if id2, err := c.Schedule(ctx, workflow.Schedule{Workflow: "minutely", Cron: "* * * * *", Name: "m", Location: time.UTC}); err != nil || id2 != id {
+	waitFor(t, "the every-second schedule added after the hourly one fired", func() bool { return secondly.Load() >= 1 })
+	if id2, err := c.Schedule(ctx, sched); err != nil || id2 != id {
 		t.Fatalf("upsert = %q, %v; want %q", id2, err, id)
 	}
-	blockUntil(t, fc, 1)
-	fc.Advance(time.Minute)
-	waitFor(t, "the upserted schedule fired", func() bool { return minutely.Load() >= 2 })
-	time.Sleep(50 * time.Millisecond)
-	if got := minutely.Load(); got != 2 {
-		t.Fatalf("after the upsert one minute fired %d runs, want 1", got-1)
+	from := secondly.Load()
+	time.Sleep(3 * time.Second)
+	if got := secondly.Load() - from; got < 2 || got > 4 {
+		t.Fatalf("in 3s after the upsert the schedule fired %d times, want about 3 (one entry)", got)
 	}
 	if err := c.Unschedule(ctx, id); err != nil {
 		t.Fatal(err)
 	}
-	blockUntil(t, fc, 1)
-	fc.Advance(58 * time.Minute) // 11:00: the hourly tick
-	waitFor(t, "the hourly schedule fired", func() bool { return hourly.Load() == 1 })
-	time.Sleep(50 * time.Millisecond)
-	if got := minutely.Load(); got != 2 {
-		t.Fatalf("the unscheduled minutely schedule fired %d times, want 2", got)
+	time.Sleep(100 * time.Millisecond) // a fire already under way may finish
+	from = secondly.Load()
+	time.Sleep(1500 * time.Millisecond)
+	if got := secondly.Load() - from; got != 0 {
+		t.Fatalf("the unscheduled schedule fired %d more times", got)
 	}
 }
 

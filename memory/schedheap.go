@@ -91,13 +91,27 @@ func (c *Client) pokeSchedulerLocked() {
 }
 
 // scheduler is the one goroutine WithScheduleHeap runs: it sleeps on one
-// timer until the earliest schedule is due (or a poke says the head
-// changed), then takes every schedule due by the clock's reading and
-// handles each as the per-schedule loop would (wakeSchedule, fire), and
-// puts it back at its next tick. Halted schedules are dropped as they
+// timer until the earliest schedule is due (or a poke says the head may
+// have changed), then takes every schedule due by the clock's reading and
+// handles each as the per-schedule loop would (wakeScheduleLocked, fire),
+// and puts it back at its next tick. Halted schedules are dropped as they
 // reach the head.
+//
+// The armed timer is replaced only when the head moves earlier than its
+// deadline. A poke that leaves the head where it was (an upsert, an
+// Unschedule, a later schedule added) keeps it, so a test that saw the
+// timer pending and advances a fake clock never races a stop and re-arm,
+// which could read the clock before the advance and arm the tick a period
+// late.
 func (c *Client) scheduler() {
 	defer c.wg.Done()
+	var t clock.Timer
+	var armed time.Time // t's deadline; zero while no timer is armed
+	defer func() {
+		if t != nil {
+			t.Stop()
+		}
+	}()
 	for {
 		c.mu.Lock()
 		for len(c.schedQ) > 0 && c.schedQ[0].s.halted {
@@ -109,26 +123,25 @@ func (c *Client) scheduler() {
 		}
 		c.mu.Unlock()
 
-		var t clock.Timer
-		var due <-chan time.Time
-		if !head.IsZero() {
+		if !head.IsZero() && (t == nil || head.Before(armed)) {
+			if t != nil {
+				t.Stop()
+			}
 			// Read the clock as late as possible, as the per-schedule
 			// loop does: a fake clock advanced in between would make an
 			// earlier reading arm the tick late.
-			t = c.clk.NewTimer(head.Sub(c.clk.Now()))
+			t, armed = c.clk.NewTimer(head.Sub(c.clk.Now())), head
+		}
+		var due <-chan time.Time
+		if t != nil {
 			due = t.C()
 		}
 		select {
 		case <-due:
+			t, armed = nil, time.Time{} // fired; a stale one (its head halted) just leads to an empty pass
 		case <-c.schedPoke:
-			if t != nil {
-				t.Stop()
-			}
 			continue
 		case <-c.ctx.Done():
-			if t != nil {
-				t.Stop()
-			}
 			return
 		}
 
