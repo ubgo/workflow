@@ -43,7 +43,7 @@ var auth = admin.Auth[user]{
 }
 ```
 
-`Action.ReadOnly()` is true for the reads, which makes a read-only role one line. Because `Resource.Query` is the parsed filter, an `Authorize` can confine a caller to its own runs, for example by refusing any list whose `Labels` lack the caller's tenant label.
+`Action.ReadOnly()` is true for the reads, which makes a read-only role one line. Because `Resource.Query` is the parsed filter, an `Authorize` can confine a caller to its own runs, for example by refusing any list whose `Labels` lack the caller's tenant label. When the runs carry `Job.Tenant`, `admin.WithTenantScope` does that confinement for every route instead ([Per-tenant dashboard](tenants.md)).
 
 ## Step 2: mount the handler
 
@@ -148,7 +148,7 @@ resolved queue_depth queue=emails depth=0 (max 2)
 ## Pitfalls
 
 - **Identify is your login, not a password check of its own.** Compare tokens with `crypto/subtle` or look them up by hash; the example's map lookup stands in for a session store.
-- **Scope by resource when tenants share a deployment.** An `Authorize` that checks only the role lets a tenant admin list another tenant's runs; check `Resource.Query.Labels` (lists, bulk cancel) and look the run up for single-run actions.
+- **Scope by resource when tenants share a deployment.** An `Authorize` that checks only the role lets a tenant admin list another tenant's runs; check `Resource.Query.Labels` (lists, bulk cancel) and look the run up for single-run actions. With `Job.Tenant` set on every run, `admin.WithTenantScope` does all of it ([Per-tenant dashboard](tenants.md)).
 - **Force actions are writes like any other.** `runs.force_complete` and `runs.force_fail` are not read-only, so a role that may only read is refused them; an `Authorize` that wants a reason for every forced failure can refuse an empty `Resource.Reason`.
 - **Run responses carry each failed attempt's error, not its stack**, unless the handler is built with `admin.WithStacks()`.
 - **Mount it behind TLS and your usual rate limits.** The handler adds none of its own.
@@ -160,4 +160,5 @@ resolved queue_depth queue=emails depth=0 (max 2)
 
 - [Admin operations](operations.md): the same operations from Go.
 - [Queue alerts](alerts.md).
+- [Per-tenant dashboard](tenants.md): `WithTenantScope`, one tenant per caller.
 - Example: [examples/admin](../../examples/admin/)

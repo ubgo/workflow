@@ -945,6 +945,21 @@ func (c *Client) worker() {
 			c.mu.Unlock()
 			return
 		}
+		// Hold the attempt's worker slots (Step.Slots) before it counts as
+		// started; the pool serves waiters in order, so a heavy step is
+		// not starved by light ones.
+		// The queue's count is taken at the pick, so no other worker passes
+		// the queue's cap while this one waits for slots.
+		slots := workflow.StepSlots(t.step)
+		c.queueExec[t.r.queue]++
+		c.mu.Unlock()
+		if err := c.slots.Acquire(c.ctx, slots); err != nil {
+			c.mu.Lock()
+			c.queueExec[t.r.queue]--
+			c.mu.Unlock()
+			return // the client stopped; shutdown cancelled the runs
+		}
+		c.mu.Lock()
 		t.r.queued--
 		t.r.executing++
 		t.r.attempts++
@@ -956,7 +971,6 @@ func (c *Client) worker() {
 			t.r.attemptedBy = append(t.r.attemptedBy, node)
 		}
 		c.executing++
-		c.queueExec[t.r.queue]++
 		c.emitLocked(t.r, workflow.LifecycleStarted, t.step.Name, t.attempt, nil)
 		c.mu.Unlock()
 		endTrack := c.drainTrack.Begin(workflow.DrainCut{RunID: t.r.id, Workflow: t.r.job.Workflow, Step: t.step.Name, Attempt: t.attempt})
@@ -964,6 +978,7 @@ func (c *Client) worker() {
 		out, edits, err := c.exec(t)
 
 		endTrack()
+		c.slots.Release(slots)
 		c.mu.Lock()
 		t.r.executing--
 		c.executing--

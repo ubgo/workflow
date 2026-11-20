@@ -415,9 +415,24 @@ func (c *Client) nextAttempts(ctx context.Context, infos []workflow.RunInfo, now
 // holds it), and its end is delivered to run-finished observers again. A
 // run that is not failed returns ErrWrongState.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	return c.retryFrom(ctx, ref, nil)
+}
+
+// retryFrom is Retry, and ResetRun when rerun lists steps: those steps
+// go back to pending with the ones that had not succeeded.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []string) (workflow.RunRef, error) {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {
 		return workflow.RunRef{}, err
+	}
+	// again selects the steps that run again: those that did not succeed,
+	// and the steps listed in rerun.
+	again, againArgs := "status <> ?", []any{stepSucceeded}
+	if len(rerun) > 0 {
+		again = "(status <> ? OR name IN (?" + strings.Repeat(", ?", len(rerun)-1) + "))"
+		for _, name := range rerun {
+			againArgs = append(againArgs, name)
+		}
 	}
 	var out workflow.RunRef
 	err = c.st.tx(ctx, func(tx *sql.Tx) error {
@@ -442,14 +457,14 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 			return err
 		}
 		for _, side := range []string{"step_ext", "step_err"} {
-			if _, err := c.st.exec(ctx, tx, "DELETE FROM {"+side+"} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id = ? AND status <> ?)",
-				row.id, stepSucceeded); err != nil {
+			if _, err := c.st.exec(ctx, tx, "DELETE FROM {"+side+"} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id = ? AND "+again+")",
+				append([]any{row.id}, againArgs...)...); err != nil {
 				return err
 			}
 		}
-		if _, err := c.st.exec(ctx, tx, `UPDATE {steps} SET status = ?, in_data = NULL, attempts = 0, failures = 0, reclaims = 0, due = 0,
-			lease_token = NULL, lease_until = 0, wait_event = '', wait_key = '' WHERE run_id = ? AND status <> ?`,
-			stepPending, row.id, stepSucceeded); err != nil {
+		if _, err := c.st.exec(ctx, tx, `UPDATE {steps} SET status = ?, in_data = NULL, out_data = NULL, attempts = 0, failures = 0, reclaims = 0, due = 0,
+			lease_token = NULL, lease_until = 0, wait_event = '', wait_key = '' WHERE run_id = ? AND `+again,
+			append([]any{stepPending, row.id}, againArgs...)...); err != nil {
 			return err
 		}
 		if _, err := c.st.exec(ctx, tx, "UPDATE {run_ext} SET discarded = 0 WHERE run_id = ?", row.id); err != nil {

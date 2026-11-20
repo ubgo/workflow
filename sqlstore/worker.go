@@ -294,7 +294,14 @@ func (c *Client) execute(a *attempt) {
 		herr = fmt.Errorf("sqlstore: step %q abandoned by %d workers (its lease expired %d times, over WithMaxReclaims %d): %w",
 			a.name, a.reclaims, a.reclaims, c.maxReclaims, ErrAbandoned)
 	} else {
-		out, herr = c.call(actx, reg, step, a, labels)
+		slots := workflow.StepSlots(step)
+		// Hold the attempt's worker slots (Step.Slots) while it runs. The
+		// lease is renewed meanwhile; a stop, a lost lease or a cancelled
+		// step ends the wait like it ends a running handler.
+		if herr = c.slots.Acquire(actx, slots); herr == nil {
+			out, herr = c.call(actx, reg, step, a, labels)
+			c.slots.Release(slots)
+		}
 	}
 	c.removeLocal(a)
 	c.countRunning(a.queue, -1)

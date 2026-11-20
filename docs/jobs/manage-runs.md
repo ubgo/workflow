@@ -113,6 +113,16 @@ if err != nil {
 
 The run keeps its `RunRef` and goes back to `queued`. When it ends again, run-finished observers see a second event for it, which they already tolerate (delivery is at least once). Its idempotency key is taken again; if another unfinished run took it meanwhile, `Retry` returns `workflow.ErrDuplicate`. Only a `failed` run can be retried; any other status returns `workflow.ErrWrongState`.
 
+## Re-run a failed run from an earlier step
+
+`Retry` always resumes at the step that failed. When the cause was upstream (a transform step that succeeded with bad output, fixed and deployed since; a source corrected by hand), re-run from that step instead with `workflow.RunResetter`:
+
+```go
+ref, err := c.(workflow.RunResetter).ResetRun(ctx, failed, "transform")
+```
+
+`ResetRun(ref, step)` drops the outputs of `step` and of every step downstream of it (`workflow.StepsFrom(wf, step)` lists them), keeps the outputs of the other steps that succeeded, and re-opens the run exactly as `Retry` does: the same `RunRef`, back to `queued`, fresh attempt counts for every step that runs again, its idempotency key taken again. A wait step that runs again waits for a new event. Only a `failed` run can be reset (`workflow.ErrWrongState` otherwise), and a step the workflow does not have returns `workflow.ErrInvalid`. The memory, SQL and Redis drivers implement it; the SQL and Redis drivers need the workflow registered on the client that calls it, to know which steps are downstream. `workflow.Use` forwards it, and a wrapper whose inner client lacks it refuses with an `UnsupportedError`.
+
 ## Step 3: forget a finished run
 
 `Delete(ref)` forgets a terminal run: afterwards `Status` returns `workflow.ErrNotFound` and `Runs` no longer lists it. An unfinished run returns `ErrWrongState`; cancel it first.
@@ -325,6 +335,8 @@ after Resume: succeeded
 ```
 
 ## Pitfalls
+
+- A step that `ResetRun` runs again makes its side effects again, and a chain edit it made (`PrependToChain`, `AppendToChain`) is made again. With `workflow.JournalKeepFailed`, its `Memo` results are kept and returned again; leave that option off when the point of the reset is to recompute.
 
 - **A label search on the SQL driver misses runs that were never indexed.** Runs written before migration 005, or by a client older than it, are found only after `IndexLabels` has run. `Migrate` runs it; a team applying `MigrationScripts` with another tool must call it.
 - **Hatchet supports most of it.** It declares `CapRunQuery`, `CapCancelAll` and `CapRetryRun`. Retry is Hatchet's replay of the failed and cancelled step tasks, which keeps the steps that succeeded (checked live). It does not declare `CapDeleteRun`, because the engine has no run delete. Retry does not take the idempotency key again on the engine: it refuses with `ErrDuplicate` when another unfinished run holds the key, but an `Enqueue` with that key while the retried run is unfinished starts a second run. Pause needs `hatchet.Config.API` (see [the Hatchet driver](../drivers/hatchet.md#step-6-pause-a-workflow-or-a-schedule)): with it the driver declares `CapPauseWorkflow`. `PauseAll()` and `PauseQueue` are refused, and `Resume(PauseAll())` clears every paused workflow of the namespace.

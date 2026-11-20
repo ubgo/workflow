@@ -916,7 +916,10 @@
       hasMetrics = c.metrics === true;
       capNames = new Set(c.capabilities.split('|'));
       const off = c.operations.filter((o) => !o.supported).map((o) => o.operation);
-      document.getElementById('caps').textContent = off.length ? 'not supported here: ' + off.join(', ') : '';
+      // A tenant-scoped caller (WithTenantScope) sees one tenant's runs
+      // and schedules; the system-wide pages come back unsupported.
+      const scope = c.tenant ? 'tenant ' + c.tenant + (off.length ? ' · ' : '') : '';
+      document.getElementById('caps').textContent = scope + (off.length ? 'not supported here: ' + off.join(', ') : '');
       for (const a of document.querySelectorAll('#nav a')) {
         const op = { queues: 'queues', runs: 'runs', failures: 'failures', discarded: 'discarded', schedules: 'schedules', system: 'health' }[a.dataset.view];
         if (caps[op] === false || (a.dataset.view === 'charts' && !hasMetrics)) a.hidden = true;
@@ -924,7 +927,7 @@
     } catch (_) {
       caps = null; // not allowed to read capabilities: show everything and let the API refuse
     }
-    if (!location.hash) location.hash = '#/queues';
+    if (!location.hash) location.hash = caps && caps.queues === false ? '#/runs' : '#/queues';
     else render();
   })();
 })();

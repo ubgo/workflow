@@ -229,6 +229,14 @@ type Step struct {
 	// handler that hangs well before a long Timeout would. Zero means
 	// none. Run steps only. Needs CapHeartbeat.
 	HeartbeatTimeout time.Duration
+
+	// Slots is how many of the client's worker slots one attempt of the
+	// step holds while it runs (FC-11): a step that needs four times the
+	// memory or CPU of an ordinary one sets 4, so a pool of eight runs it
+	// beside at most four others. Zero and one mean one slot. Above one it
+	// needs CapSlotCost, and a client refuses a workflow whose step needs
+	// more slots than its whole pool. Run steps only.
+	Slots int
 }
 
 // Kind reports which kind the step is, or "" when none or several are

@@ -29,7 +29,9 @@
 //     worker, the higher QueueConfig.Priority of their queue goes first,
 //     then the higher Job.Priority, then first come first served. An
 //     attempt held by a pause (Pause) or by its queue's Workers cap waits
-//     without blocking the others.
+//     without blocking the others. A step with Step.Slots above one holds
+//     that many of the pool's slots while it runs (CapSlotCost); attempts
+//     wait for their slots first come, first served.
 //   - A failed attempt is retried per workflow.EffectiveRetriesFor
 //     (Job.Retry, else the step's, else the workflow's) as decided by
 //     RetryPolicy.Next on the injected clock: Max, MaxErrors (releases

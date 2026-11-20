@@ -207,6 +207,10 @@ var (
 	// Version), so during a rolling deploy a run started by new code
 	// never runs on old code (LO-11).
 	CapWorkflowVersion = defineCap(61, "WorkflowVersion")
+	// CapSlotCost: Step.Slots is honoured: one attempt of the step holds
+	// that many of the client's worker slots (WithWorkers) while it runs,
+	// so a heavy step leaves room for fewer others.
+	CapSlotCost = defineCap(62, "SlotCost")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -264,6 +268,9 @@ func Requires(wf Workflow) Caps {
 			c = c.With(retryCaps(EffectiveRetries(s, wf)))
 			if s.HeartbeatTimeout > 0 {
 				c = c.With(CapHeartbeat)
+			}
+			if s.Slots > 1 {
+				c = c.With(CapSlotCost)
 			}
 		case StepWait:
 			c = c.With(CapWaitForEvent)

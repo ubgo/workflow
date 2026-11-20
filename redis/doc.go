@@ -40,6 +40,9 @@
 // implements the interfaces that need no capability: RunRescheduler,
 // StepCanceller, HealthChecker, LifecycleNotifier and PayloadLimiter
 // (512 MiB, the largest value Redis stores; WithPayloadLimit lowers it).
+// It does not declare CapSlotCost: a worker claims a whole run and runs its
+// parallel steps beside it, so a worker slot is a run, not a step attempt,
+// and a workflow with Step.Slots above one is refused at Start.
 //
 // Not declared, so Start, Enqueue or Schedule refuse what needs them with
 // an UnsupportedError instead of ignoring it: closures (a closure cannot

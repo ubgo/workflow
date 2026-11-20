@@ -211,6 +211,7 @@ strict classifier: returned "unexpected reply"
 - [Capabilities](../reference/capabilities.md): what each driver declares.
 - [Idempotency keys](../jobs/idempotency.md): what a key does within one backend.
 - [Outbox](outbox.md): keep accepting jobs while an engine is down by relaying them later instead.
+- [Regional routing](../operations/regional-routing.md): one backend per region, each job sent to its customer's region.
 - Example: [examples/failover](../../examples/failover/).
 - Example: [examples/failover-schedules](../../examples/failover-schedules/) (`WithSchedulesOnBoth`).
 - Example: [examples/failover-manage](../../examples/failover-manage/) (runs on both backends: list, retry, delete, cancel, pause).

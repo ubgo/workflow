@@ -44,6 +44,7 @@ var parityCaps = workflow.CapsOf(
 	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
 	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, batch2Caps,
+	workflow.CapSlotCost,
 )
 
 // batch2Caps are the run-state, chain and worker-scale capabilities.
@@ -448,6 +449,9 @@ type Client struct {
 	// archiveTable is WithArchiveTable: Prune moves runs to the cold tables.
 	archiveTable bool
 	workers      int
+	// slots shares the worker pool among attempts by Step.Slots
+	// (CapSlotCost); made at Start.
+	slots *workflow.SlotPool
 	// fetch is WithFetchBatch: rows per dispatcher query.
 	fetch      int
 	log        *slog.Logger
@@ -676,6 +680,9 @@ func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
 	}
+	if err := workflow.CheckSlots(wf, c.workers); err != nil {
+		return err
+	}
 	reg := &registered{
 		wf:       wf,
 		handlers: map[string]workflow.Handler{},
@@ -839,6 +846,7 @@ func (c *Client) Start(ctx context.Context) error {
 	if c.schedulerOnly {
 		workers = 0
 	}
+	c.slots = workflow.NewSlotPool(c.workers)
 	c.wg.Add(1 + workers)
 	go c.dispatcher()
 	if c.retention != nil && !c.noAutoPrune {

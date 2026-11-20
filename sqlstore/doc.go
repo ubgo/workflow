@@ -23,6 +23,8 @@
 // retry, admin, pause, schedule and drain capabilities (CapQueue,
 // CapQueueOverride, CapJobRetry, CapRetryUntil, CapRetryMaxErrors,
 // CapDiscard, CapDiscardExhausted, CapQueueLimitGlobal, CapDrainReport,
+// CapSlotCost (Step.Slots counted against WithWorkers; an attempt waits for
+// its slots after its claim, its lease renewed meanwhile),
 // CapRunQuery, CapRetryRun, CapDeleteRun, CapCancelAll,
 // CapPauseWorkflow, CapPauseQueue, CapSchedulePause, CapScheduleWhen,
 // CapScheduleWindow, CapTickEvents, CapScheduleList, CapDrain), and

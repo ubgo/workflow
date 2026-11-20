@@ -113,6 +113,20 @@
 // its progress data and its result only with WithPayloads, since both
 // are app data like a payload.
 //
+// # One tenant per caller
+//
+// WithTenantScope(func(r, who) (tenant, error)) confines each caller to
+// one workflow.Job.Tenant, for a dashboard a SaaS app shows its
+// customers: lists, counts and bulk actions are pinned to the tenant
+// before they are parsed and authorized, a run or a schedule of another
+// tenant answers 404 exactly like one that does not exist, and the
+// system-wide routes (queues, pauses, metrics, nodes, health) are
+// refused with 403, as is any route the scope does not know. A caller
+// given AllTenants is served as without the scope. The client must
+// declare workflow.CapTenant, or every request is refused with 501; a
+// scope that errs, panics or returns an empty or invalid tenant refuses
+// with 403. TenantFrom gives an Authorizer the caller's tenant.
+//
 // # Web UI
 //
 // The same handler serves a web UI at ui/ under its mount point (GET /
