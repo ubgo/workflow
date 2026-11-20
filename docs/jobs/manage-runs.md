@@ -240,6 +240,21 @@ if err := c.Resume(ctx, workflow.PauseWorkflow("fulfil-order")); err != nil {
 
 `Resume` lifts exactly the target given, except `Resume(workflow.PauseAll())`, which lifts every pause. `Paused` lists the pauses in force. On the SQL driver a pause is stored, so every node obeys it and it survives a restart.
 
+## Suspend one run
+
+A pause holds a whole workflow or queue. To hold one run (an import that looks wrong while you check its source), add the `workflow.Suspension` plugin and mark the run:
+
+```go
+journal := sqlClient.JournalStore() // or any durable JournalStore, shared by every node
+c, err := workflow.Use(sqlClient, workflow.Journal(journal), workflow.Suspension(journal, 0))
+// later, from an operator tool:
+err = workflow.SuspendRun(ctx, journal, ref)
+// and once the source is fixed:
+err = workflow.ResumeRun(ctx, journal, ref)
+```
+
+A suspended run parks at the start of its next step: the step snoozes for the plugin's poll (`DefaultSuspendPoll`, 5 seconds, when zero) without running its handler, holding no worker and spending no attempt, and looks again after each snooze; steps already running finish. `ResumeRun` clears the flag and the parked step runs at its next look. `RunSuspended` reads the flag. It needs `CapSnooze` (memory, SQL, Redis). A run that has not started yet has no RunID to key the flag by: move it with `Reschedule` instead.
+
 ## List the runs due soon
 
 A run enqueued with `Job.RunAt` waits as `scheduled` until it is due. `RunInfo.RunAt` is the time it is (or was) due, kept after it starts, and `RunQuery.DueFrom` and `RunQuery.DueTo` bound it to `[DueFrom, DueTo)`, which answers "what fires in the next hour?":
