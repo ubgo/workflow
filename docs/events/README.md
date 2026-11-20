@@ -9,8 +9,9 @@ The `events` package (`github.com/ubgo/workflow/events`, in the core module) sta
 | [Datasets and lineage](datasets.md) | `Datasets.Updated`, any-of and all-of dataset triggers, the lineage store and its queries |
 | [CloudEvents and payload versions](cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, upcasting old payload versions |
 | [Event log, replay and cancel on event](replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID, cancel subscriptions, divert |
+| [Choreography and saga choreography](choreography.md) | `WithCorrelation`, correlation and causation labels, `Trail` to list one chain's runs, compensation by events compared with `Saga` |
 
-The first two are shown by one runnable program, [examples/events-webhooks](../../examples/events-webhooks/), on the in-memory driver; datasets by [examples/datasets](../../examples/datasets/), and CloudEvents, versions, replay and cancel by [examples/events-more](../../examples/events-more/).
+The first two are shown by one runnable program, [examples/events-webhooks](../../examples/events-webhooks/), on the in-memory driver; datasets by [examples/datasets](../../examples/datasets/), CloudEvents, versions, replay and cancel by [examples/events-more](../../examples/events-more/), and choreography by [examples/saga-choreography](../../examples/saga-choreography/).
 
 ## Quick answers
 
@@ -20,4 +21,5 @@ The first two are shown by one runnable program, [examples/events-webhooks](../.
 | A run that is already waiting for the event to continue as well | `events.WithSignal()` on the bus | [Publish and subscribe › Deliver to waiting runs](publish-subscribe.md#deliver-to-waiting-runs) |
 | Accept a webhook from GitHub, Shopify or a payment provider and process it once | `events.NewWebhook` with an `events.HMAC` verifier | [Inbound webhooks](webhooks.md#accept-a-signed-webhook) |
 | Sign your own outgoing webhooks so receivers can refuse replays | `events.NewStandardWebhooks` | [Inbound webhooks › Standard Webhooks](webhooks.md#standard-webhooks) |
+| Services that each react to events and publish their own, compensation included, with one place to see the whole chain | `events.WithCorrelation()` and `events.Trail` | [Choreography](choreography.md#list-a-chain) |
 | A durable broker between services (SQS, NATS, Kafka) | Not this package: it delivers within one app's client | [Choose a driver](../choosing/drivers.md) |

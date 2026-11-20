@@ -3,8 +3,10 @@
 // signature and enqueues (EV-03), with HMAC signing schemes for both
 // directions (WH-03). Around the bus: the CloudEvents 1.0 envelope
 // (MQ-09), payload versions upcast before subscribers see them (MQ-10),
-// an event log with replay (EV-04), and subscriptions that cancel runs
-// or divert them to another workflow (EV-05).
+// an event log with replay (EV-04), subscriptions that cancel runs or
+// divert them to another workflow (EV-05), and choreography: correlation
+// and causation labels on every run a chain of events starts, listed as
+// one unit by Trail (WithCorrelation; XM-08, WP-28).
 //
 // A Bus is not a message broker. Publish turns one event into one Enqueue
 // per matching subscription on an ordinary workflow.Client, so an event
@@ -79,6 +81,21 @@ type Message struct {
 	// one is refused. Zero is the oldest version, the one a publisher
 	// that never set it wrote. Ignored for events without upcasters.
 	Version int
+
+	// Correlation names the choreography the message belongs to; it
+	// becomes LabelCorrelation on every run the message starts. Set it to
+	// start a chain under your own ID (an order number, a trace ID from
+	// another system) or to carry one in from outside; empty lets
+	// WithCorrelation fill it (inherited from the publishing step's run,
+	// else the message ID). Needs WithCorrelation: Publish refuses it on a
+	// bus without, with ErrInvalid.
+	Correlation string
+
+	// Causation is the ID of the event that led to this one; it becomes
+	// LabelCausation. Empty lets WithCorrelation fill it from the
+	// publishing step's run (its LabelEventID). Needs WithCorrelation,
+	// as Correlation does.
+	Causation string
 }
 
 // Subscription starts a run of Workflow for every published message
@@ -150,14 +167,15 @@ func AllowDuplicates() Option { return func(b *Bus) { b.allowDup = true } }
 // Bus routes published messages to subscriptions. It is safe for
 // concurrent use; Subscribe may be called at any time.
 type Bus struct {
-	client   workflow.Client
-	signal   bool
-	allowDup bool
-	newID    func() (string, error)
-	log      EventLog                 // WithLog; nil keeps no log
-	clk      clock.Clock              // WithClock; stamps log entries
-	versions map[string]versionPolicy // WithUpcasters, by event name
-	optErr   error                    // the first invalid option, returned by New
+	client    workflow.Client
+	signal    bool
+	allowDup  bool
+	newID     func() (string, error)
+	log       EventLog                 // WithLog; nil keeps no log
+	clk       clock.Clock              // WithClock; stamps log entries
+	versions  map[string]versionPolicy // WithUpcasters, by event name
+	correlate bool                     // WithCorrelation: stamp LabelCorrelation and LabelCausation
+	optErr    error                    // the first invalid option, returned by New
 
 	mu      sync.RWMutex
 	subs    []Subscription
@@ -246,7 +264,9 @@ func (b *Bus) Subscriptions() []string {
 // refused, both with ErrInvalid.
 //
 // In order, Publish: refuses a version newer than the event's current one
-// (WithUpcasters, ErrInvalid); appends m, as given, to the log
+// (WithUpcasters, ErrInvalid); fills Correlation and Causation under
+// WithCorrelation (and refuses them, with ErrInvalid, without it); appends
+// m, as given apart from those two fields, to the log
 // (WithLog), and returns the log's error without delivering when the
 // append fails; upcasts m to the current version, so Filter, Job and the
 // run see the current shape; runs every matching cancel subscription
@@ -263,12 +283,18 @@ func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 	if err := b.checkVersion(m); err != nil {
 		return Published{}, err
 	}
+	if err := b.checkChain(m); err != nil {
+		return Published{}, err
+	}
 	if m.ID == "" {
 		id, err := b.newID()
 		if err != nil {
 			return Published{}, fmt.Errorf("events: new message ID: %w", err)
 		}
 		m.ID = id
+	}
+	if b.correlate {
+		m = resolveChain(ctx, m)
 	}
 	if b.log != nil {
 		if err := b.log.Append(ctx, cloneMessage(m), b.clk.Now()); err != nil {
@@ -334,6 +360,7 @@ func (b *Bus) deliver(ctx context.Context, s Subscription, m Message, replayID s
 	if replayID != "" {
 		labels[LabelReplay] = replayID
 	}
+	allow := append([]string{LabelEvent, LabelEventID, LabelSubscription, LabelReplay}, b.chainLabels(labels, m)...)
 	job.Labels = labels
 	if job.IdempotencyKey == "" {
 		job.IdempotencyKey = "event/" + s.Name + "/" + m.ID
@@ -341,5 +368,5 @@ func (b *Bus) deliver(ctx context.Context, s Subscription, m Message, replayID s
 	if replayID != "" {
 		job.IdempotencyKey += "/replay/" + replayID
 	}
-	return b.client.Enqueue(workflow.AllowReservedLabels(ctx, LabelEvent, LabelEventID, LabelSubscription, LabelReplay), job)
+	return b.client.Enqueue(workflow.AllowReservedLabels(ctx, allow...), job)
 }
