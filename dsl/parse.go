@@ -25,33 +25,43 @@ import (
 // registers handlers. YAML is a superset of JSON; convert YAML to JSON with
 // the app's YAML library first (see the package doc).
 func Parse(data []byte) (Definition, error) {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.UseNumber() // keep 1.5 apart from 1, so an integer field can refuse it
-	var doc any
-	if err := dec.Decode(&doc); err != nil {
-		return Definition{}, fieldErr("", "not a JSON document: %v", err)
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return Definition{}, fieldErr("", "data after the JSON document")
-	}
-	if _, ok := doc.(map[string]any); !ok {
-		return Definition{}, fieldErr("", "want a JSON object, got %s", jsonKind(doc))
-	}
-	if err := checkShape(doc, reflect.TypeFor[Definition](), ""); err != nil {
+	def, err := parseDoc[Definition](data)
+	if err != nil {
 		return Definition{}, err
-	}
-	// The shape check above has seen every field; the strict decode is the
-	// second line, so a gap in checkShape cannot let a field through.
-	strict := json.NewDecoder(bytes.NewReader(data))
-	strict.DisallowUnknownFields()
-	var def Definition
-	if err := strict.Decode(&def); err != nil {
-		return Definition{}, fieldErr("", "%v", err)
 	}
 	if err := def.Validate(); err != nil {
 		return Definition{}, err
 	}
 	return def, nil
+}
+
+// parseDoc decodes one JSON object into a T strictly: the shape is checked
+// first against T's JSON fields (so an error names the JSON path), then
+// the document is decoded with unknown fields refused.
+func parseDoc[T any](data []byte) (T, error) {
+	var zero T
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber() // keep 1.5 apart from 1, so an integer field can refuse it
+	var doc any
+	if err := dec.Decode(&doc); err != nil {
+		return zero, fieldErr("", "not a JSON document: %v", err)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return zero, fieldErr("", "data after the JSON document")
+	}
+	if _, ok := doc.(map[string]any); !ok {
+		return zero, fieldErr("", "want a JSON object, got %s", jsonKind(doc))
+	}
+	if err := checkShape(doc, reflect.TypeFor[T](), ""); err != nil {
+		return zero, err
+	}
+	strict := json.NewDecoder(bytes.NewReader(data))
+	strict.DisallowUnknownFields()
+	var v T
+	if err := strict.Decode(&v); err != nil {
+		return zero, fieldErr("", "%v", err)
+	}
+	return v, nil
 }
 
 // checkShape walks the decoded document v against the Go type t, refusing

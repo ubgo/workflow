@@ -136,6 +136,43 @@ Load definitions at start-up and register them before `Start`, like any workflow
 
 YAML is a superset of JSON. The package reads JSON only, so the core module keeps to the standard library; an app that keeps its definitions in YAML converts the document to JSON with the YAML library it already uses and passes the bytes to `dsl.Parse` or `dsl.Load`. The field names are the same in both.
 
+## State machines as data
+
+A [state machine](state-machines.md) can be data too, the way a state-machine language describes states and transitions: `dsl.ParseMachine` reads a `dsl.MachineDefinition` (states with `parent`, `initial`, `parallel`, `final`, `entry` and `exit` actions and `after` timers; transitions with `from`, `event`, `to`, `guard`, `actions`, `history` and `reenter`; `unhandled`, `ordered`, `keep_log` and `retry`), and `dsl.BuildMachine` resolves guard and action names against a `dsl.MachineRegistry[D]` and calls `workflow.DefineMachine`. The data names guards and actions; the program registers the Go functions, typed on its own data type `D`, so the registry stays the security boundary.
+
+```go
+reg := dsl.NewMachineRegistry[Ticket]()
+_ = reg.Action("note", note)                 // a workflow.MachineAction[Ticket]
+_ = reg.Guard("approved-twice", approvedTwice) // a workflow.MachineGuard[Ticket]
+wf, err := dsl.LoadMachine(data, reg, dsl.MachineEnv{Store: store, Client: client})
+```
+
+```json
+{
+  "name": "ticket",
+  "initial": "open",
+  "unhandled": "reject",
+  "states": [
+    {"name": "open", "after": [{"delay": "48h", "event": "expire"}]},
+    {"name": "review", "initial": "first-line", "exit": ["note"]},
+    {"name": "first-line", "parent": "review"},
+    {"name": "escalated", "parent": "review", "entry": ["note"]},
+    {"name": "held"},
+    {"name": "closed", "final": true}
+  ],
+  "transitions": [
+    {"from": "open", "event": "assign", "to": "review"},
+    {"from": "open", "event": "expire", "to": "closed"},
+    {"from": "first-line", "event": "escalate", "to": "escalated"},
+    {"from": "review", "event": "close", "to": "closed", "guard": "approved-twice"},
+    {"from": "review", "event": "hold", "to": "held"},
+    {"from": "held", "event": "resume", "to": "review", "history": "deep"}
+  ]
+}
+```
+
+`dsl.MachineEnv` carries what is not data: the `JournalStore` instances live in, the client timers are sent on, and the clock. Refusals are `*dsl.FieldError`s with their JSON path (`transitions[3].guard`), and `workflow.DefineMachine`'s own checks (an unknown target, a compound state without an initial child) still apply. `dsl.MarshalMachine` writes a definition back. Renaming or removing a state in a stored definition strands the instances that are in it, exactly as in Go: see the state machines page's Pitfalls.
+
 ## JSON reference
 
 | Field | Type | Maps to | Notes |

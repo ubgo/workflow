@@ -53,6 +53,14 @@
 // more is written in Go, or built from a Definition and then edited in Go
 // before Register.
 //
+// # State machines
+//
+// MachineDefinition is a workflow.DefineMachine statechart as data:
+// ParseMachine, BuildMachine (guards and actions by name from a
+// MachineRegistry[D], typed on the app's data type), LoadMachine and
+// MarshalMachine, with MachineEnv carrying the store, the timer client and
+// the clock.
+//
 // Nothing in the package is global: no package-level registry, no cache,
 // no init side effects.
 package dsl
