@@ -35,4 +35,10 @@ func TestUniqueAcceptsLabelsTheLibraryAllowed(t *testing.T) {
 	if !errors.Is(err, workflow.ErrInvalid) {
 		t.Fatalf("an app-set reserved label = %v, want ErrInvalid", err)
 	}
+	// The same Unique stacked twice is still refused: its own labels never
+	// pass through the ctx allowance.
+	twice := middleware.WrapClient(middleware.WrapClient(fake, unique), unique)
+	if _, err := twice.Enqueue(context.Background(), workflow.Job{Workflow: "otp", Payload: []byte("u3")}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("Unique stacked twice = %v, want ErrInvalid", err)
+	}
 }

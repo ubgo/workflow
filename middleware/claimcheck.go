@@ -191,7 +191,7 @@ func (cc *ClaimCheck) Enqueue() workflow.EnqueueMiddleware {
 // holding chained payloads its own expiry.
 func (cc *ClaimCheck) prepare(ctx context.Context) func(workflow.Job) (workflow.Job, error) {
 	return func(job workflow.Job) (workflow.Job, error) {
-		if err := refuseInternalLabels(ctx, "ClaimCheck", job.Labels, UniqueKeyLabel, UniqueOwnerLabel); err != nil {
+		if err := refuseInternalLabels(ctx, "ClaimCheck", job.Labels, []string{ClaimCheckLabel}, UniqueKeyLabel, UniqueOwnerLabel); err != nil {
 			return job, err
 		}
 		token, err := cc.key()

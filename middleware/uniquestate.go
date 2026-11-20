@@ -104,7 +104,7 @@ type uniqueWith struct {
 
 func (u uniqueWith) middleware(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-		if err := refuseInternalLabels(ctx, "UniqueWith", job.Labels, ClaimCheckLabel); err != nil {
+		if err := refuseInternalLabels(ctx, "UniqueWith", job.Labels, uniqueOwnLabels, ClaimCheckLabel); err != nil {
 			return workflow.RunRef{}, err
 		}
 		key := u.cfg.By(job)
