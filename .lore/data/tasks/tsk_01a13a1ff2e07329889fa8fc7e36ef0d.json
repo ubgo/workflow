@@ -1,26 +1,43 @@
 {
-  "_hlc": "2026-10-14T11:15:34.752Z/0000/",
+  "_hlc": "2026-11-20T15:33:20.764Z/0000/act_afbe7ed1d969752697eebecaac20e9dc",
   "_table": "tasks",
   "_v": 2,
-  "assigned_to_actor_id": null,
+  "_w": {
+    "v": "0.1.23"
+  },
   "body": "Four P2 features still partial after batch 5. Details in the feature catalogue (private notes).",
+  "close_reason": "completed",
   "commitment": "accepted",
-  "completed_at": null,
+  "completed_at": "2026-11-20T15:33:20.617268277Z",
   "created_at": "2026-10-14T11:15:34.752203256Z",
   "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
-  "deferred_until": null,
-  "due_at": null,
+  "done_by": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "done_commit": "e79d1e9866996c88accc80e65026de95463dfedf",
+  "history": [
+    {
+      "at": "2026-11-20T15:33:20Z",
+      "by": "act_afbe7ed1d969752697eebecaac20e9dc",
+      "field": "status",
+      "from": "todo",
+      "id": "the_01a1f9973c6a7df79cad4fde789d1fa1",
+      "note": "open_items_at_close: 0",
+      "to": "done"
+    },
+    {
+      "at": "2026-11-20T15:33:20Z",
+      "by": "act_afbe7ed1d969752697eebecaac20e9dc",
+      "field": "close_reason",
+      "id": "the_01a1f9973c6a7e06a0e4a99e9c74687b",
+      "to": "completed"
+    }
+  ],
   "id": "tsk_01a13a1ff2e07329889fa8fc7e36ef0d",
-  "mission_id": null,
-  "plan_id": null,
   "priority": "medium",
   "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
-  "repo_id": null,
-  "started_at": null,
-  "status": "todo",
+  "status": "done",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
   "title": "P2 partials: WX-01, LO-11, MQ-15, MQ-16",
-  "updated_at": "2026-10-14T11:15:34.752203607Z",
-  "updated_by": "act_00000000000070008000000000000000"
+  "updated_at": "2026-11-20T15:33:20.764000000Z",
+  "updated_by": "act_afbe7ed1d969752697eebecaac20e9dc"
 }

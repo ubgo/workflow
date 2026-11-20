@@ -1,26 +1,43 @@
 {
-  "_hlc": "2026-10-14T11:06:07.901Z/0000/",
+  "_hlc": "2026-11-20T15:33:18.549Z/0000/act_afbe7ed1d969752697eebecaac20e9dc",
   "_table": "tasks",
   "_v": 2,
-  "assigned_to_actor_id": null,
+  "_w": {
+    "v": "0.1.23"
+  },
   "body": "Hatchet live run 1 on 2026-10-14 (load 85+) failed TestConformance/reschedule 'Reschedule moves a delayed run earlier': the run read as cancelled. Passed 3/3 alone and in TestRescheduleLive. Suspect resolve() VisibilityLag path in hatchet/client.go (near line 817) after Reschedule moves a run to within seconds. A one-off live failure is not assumed a flake: reproduce under load, then fix or document.",
+  "close_reason": "completed",
   "commitment": "accepted",
-  "completed_at": null,
+  "completed_at": "2026-11-20T15:33:18.416494518Z",
   "created_at": "2026-10-14T11:06:07.901342000Z",
   "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
-  "deferred_until": null,
-  "due_at": null,
+  "done_by": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "done_commit": "70fd901150a665d305014d6308bce0ffe64f0c29",
+  "history": [
+    {
+      "at": "2026-11-20T15:33:18Z",
+      "by": "act_afbe7ed1d969752697eebecaac20e9dc",
+      "field": "status",
+      "from": "todo",
+      "id": "the_01a1f99733d272fbb662b7e9fabfa104",
+      "note": "open_items_at_close: 0",
+      "to": "done"
+    },
+    {
+      "at": "2026-11-20T15:33:18Z",
+      "by": "act_afbe7ed1d969752697eebecaac20e9dc",
+      "field": "close_reason",
+      "id": "the_01a1f99733d2730d84a7be2f69f6357d",
+      "to": "completed"
+    }
+  ],
   "id": "tsk_01a13a174c9d753f9f02f7fdc1182aec",
-  "mission_id": null,
-  "plan_id": null,
   "priority": "medium",
   "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
-  "repo_id": null,
-  "started_at": null,
-  "status": "todo",
+  "status": "done",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
   "title": "Hatchet: conformance reschedule case read the run as cancelled once under load",
-  "updated_at": "2026-10-14T11:06:07.901342000Z",
+  "updated_at": "2026-11-20T15:33:18.549000000Z",
   "updated_by": "act_afbe7ed1d969752697eebecaac20e9dc"
 }
