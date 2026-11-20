@@ -125,6 +125,9 @@ func commands() []command {
 		{"delete", "RUN | --all", "forget a finished run, or every finished run a filter matches", deleteCmd},
 		{"reschedule", "RUN", "move a delayed run to --at", rescheduleCmd},
 		{"cancel-step", "RUN STEP", "withdraw one step of a run", cancelStepCmd},
+		{"reset", "RUN", "re-run a failed run in place from --step (--succeeded: a succeeded one too)", resetCmd},
+		{"fork", "RUN", "start a new run from a finished one at --step", forkCmd},
+		{"signal-waiting", "NAME", "deliver an event only to the runs waiting for it now", signalWaitingCmd},
 		{"pause", "", "pause a workflow, a queue or everything", pauseCmd("pause")},
 		{"resume", "", "resume a workflow, a queue or everything", pauseCmd("resume")},
 		{"pauses", "", "list the active pauses", pausesCmd},
@@ -307,7 +310,7 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 func usage(w io.Writer, name string) {
 	fprintf(w, "%s is a client for the workflow admin API.\n\nUsage:\n  %s [--url URL] [--token T | --header 'K: V'] <command> [flags] [args]\n\nCommands:\n", name, name)
 	for _, c := range commands() {
-		fprintf(w, "  %-10s %-12s %s\n", c.name, c.args, c.summary)
+		fprintf(w, "  %-14s %-12s %s\n", c.name, c.args, c.summary)
 	}
 	fprintf(w, `
 Global flags (before or after the command):
@@ -321,6 +324,7 @@ Examples:
   %[4]s failures --workflow send-email
   %[4]s retry --all --workflow send-email --dry-run
   %[4]s cancel --all --queue emails
+  %[4]s reset 01J9Z... --step load --dry-run
   %[4]s pause --queue emails
   %[4]s drain --queue emails --wait 10m
   %[4]s --header 'Cookie: session=...' inspect 01J9Z...

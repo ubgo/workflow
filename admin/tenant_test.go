@@ -265,6 +265,9 @@ func TestTenantScope_OneRun(t *testing.T) {
 		{"GET", "/runs/" + other + "/output", "", ActionShowOutput},
 		{"POST", "/runs/" + other + "/reschedule", `{"at":"2030-01-01T00:00:00Z"}`, ActionRescheduleRun},
 		{"POST", "/runs/" + other + "/steps/w/cancel", "", ActionCancelStep},
+		{"POST", "/runs/" + other + "/edit", `{"priority":1}`, ActionEditRun},
+		{"POST", "/runs/" + string(ts.bFail.RunID) + "/reset", `{"step":"b"}`, ActionResetRun},
+		{"POST", "/runs/" + string(ts.bFail.RunID) + "/fork", `{"step":"b"}`, ActionForkRun},
 	} {
 		rec := as(t, h, "a", r.method, r.path, r.body)
 		if rec.Code != http.StatusNotFound || errCode(t, rec) != CodeNotFound {

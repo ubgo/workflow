@@ -56,11 +56,23 @@ const (
 	OpEditRun Operation = "edit_run"
 	// OpCancelStep withdraws one step of a run (StepCanceller).
 	OpCancelStep Operation = "cancel_step"
+	// OpResetRun re-runs a failed run in place from a chosen step
+	// (RunResetter).
+	OpResetRun Operation = "reset_run"
+	// OpResetSucceeded also resets a run that succeeded
+	// (RunResetterWith, ResetOptions.Succeeded).
+	OpResetSucceeded Operation = "reset_succeeded"
+	// OpForkRun starts a new run from a finished one at a chosen step
+	// (RunForker).
+	OpForkRun Operation = "fork_run"
+	// OpSignalWaiting delivers an event only to the runs waiting for it
+	// now (TransientSignaller).
+	OpSignalWaiting Operation = "signal_waiting"
 )
 
 // Operations lists every operation in a fixed order, the order Support
 // reports them in.
-var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun}
+var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun, OpResetRun, OpResetSucceeded, OpForkRun, OpSignalWaiting}
 
 // requirements is the capability each operation needs. OpPause needs
 // either pause capability; which one a call needs depends on its target
@@ -88,14 +100,19 @@ var requirements = map[Operation]workflow.Caps{
 	// as well as the per-run action.
 	OpRetryAll:  workflow.CapsOf(workflow.CapRunQuery, workflow.CapRetryRun),
 	OpDeleteAll: workflow.CapsOf(workflow.CapRunQuery, workflow.CapDeleteRun),
-	// OpNodes, OpHealth, OpReschedule and OpCancelStep have no capability: their
+	// OpNodes, OpHealth, OpReschedule, OpEditRun, OpCancelStep and the
+	// reset, fork and signal-waiting operations have no capability: their
 	// interfaces answer for themselves and refuse at the call (a wrapper
 	// returns an UnsupportedError), so only the interface is checked.
-	OpNodes:      workflow.Caps{},
-	OpHealth:     workflow.Caps{},
-	OpReschedule: workflow.Caps{},
-	OpEditRun:    workflow.Caps{},
-	OpCancelStep: workflow.Caps{},
+	OpNodes:          workflow.Caps{},
+	OpHealth:         workflow.Caps{},
+	OpReschedule:     workflow.Caps{},
+	OpEditRun:        workflow.Caps{},
+	OpCancelStep:     workflow.Caps{},
+	OpResetRun:       workflow.Caps{},
+	OpResetSucceeded: workflow.Caps{},
+	OpForkRun:        workflow.Caps{},
+	OpSignalWaiting:  workflow.Caps{},
 }
 
 // Requirements returns the capabilities op needs. OpPause reports both
@@ -310,6 +327,14 @@ func (a *Admin) check(op Operation) error {
 			ok = workflow.Supports(a.c, workflow.OpCancelStep)
 		case OpEditRun:
 			ok = workflow.Supports(a.c, workflow.OpEditRun)
+		case OpResetRun:
+			ok = workflow.Supports(a.c, workflow.OpResetRun)
+		case OpResetSucceeded:
+			ok = workflow.Supports(a.c, workflow.OpResetSucceeded)
+		case OpForkRun:
+			ok = workflow.Supports(a.c, workflow.OpForkRun)
+		case OpSignalWaiting:
+			ok = workflow.Supports(a.c, workflow.OpSignalWaiting)
 		}
 	}
 	if ok {
