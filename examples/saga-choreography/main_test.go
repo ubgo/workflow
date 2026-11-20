@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"testing"
+
+	"github.com/ubgo/workflow/examples/internal/capture"
 )
 
 // TestRun runs the program and checks every line the guide shows: the
@@ -12,8 +13,8 @@ import (
 // inventory released once, and each order's trail as the tree of events
 // its causation labels draw.
 func TestRun(t *testing.T) {
-	var out bytes.Buffer
-	if err := run(context.Background(), &out); err != nil {
+	out, err := capture.Stdout(func() error { return run(context.Background()) })
+	if err != nil {
 		t.Fatal(err)
 	}
 	want := `order 1001 (card ok): 3 runs succeeded, 0 failed
@@ -27,7 +28,7 @@ trail order-1002 (4 runs):
     payment.failed payment.failed/o1002 -> cancel-order succeeded
       order.cancelled order.cancelled/payment.failed/o1002 -> release succeeded
 `
-	if got := out.String(); got != want {
+	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)
 	}
 }

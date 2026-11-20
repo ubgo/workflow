@@ -29,7 +29,7 @@ import (
 )
 
 func main() {
-	if err := run(context.Background(), os.Stdout); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "saga-choreography:", err)
 		os.Exit(1)
 	}
@@ -73,7 +73,8 @@ func react(bus *events.Bus, name string, do service) workflow.Workflow {
 // snippet:end
 
 // run is main without the process exit, so the test drives the same code.
-func run(ctx context.Context, w io.Writer) error {
+func run(ctx context.Context) error {
+	w := os.Stdout
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	c := memory.New()
