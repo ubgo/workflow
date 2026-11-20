@@ -200,3 +200,47 @@ func TestFairKeepsTheWorkflowsPlace(t *testing.T) {
 		t.Fatalf("order of starts %q, want %q", got, "a b p a")
 	}
 }
+
+// TestFairIndexesStayClean: a waiting round-robin run that is cancelled
+// leaves every round-robin index (places in line, fair sets, the waiting
+// set and the place-to-run map), and once the rest have run nothing is
+// left in them.
+func TestFairIndexesStayClean(t *testing.T) {
+	rdb := redisClient(t)
+	prefix := testPrefix(t, rdb)
+	f := newFairRecorder(1)
+	c := newClient(t, rdb, prefix, wfredis.WithWorkers(1))
+	wf := fairWorkflow("fairclean", f, 10, workflow.KeyWeights(map[string]int{"b": 2}, 1), 0)
+	ctx := startFair(t, c, wf)
+	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, Payload: []byte("hold:0")}); err != nil {
+		t.Fatal(err)
+	}
+	<-f.held
+	var refs []workflow.RunRef
+	for _, j := range append(fairJobs(wf.Name, "a", 3), fairJobs(wf.Name, "b", 3)...) {
+		ref, err := c.Enqueue(ctx, j)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, ref)
+	}
+	time.Sleep(20 * testPoll)
+	if err := c.Cancel(ctx, refs[1]); err != nil {
+		t.Fatal(err)
+	}
+	close(f.release)
+	f.waitStarts(t, 5, 10*time.Second)
+	time.Sleep(10 * testPoll)
+	if got := f.starts(); len(got) != 5 {
+		t.Fatalf("starts %v, want 5 (one of 6 cancelled)", got)
+	}
+	for _, pattern := range []string{":pos:*", ":posrun:*", ":fair:*", ":fwait:*"} {
+		keys, err := rdb.Keys(ctx, "*"+prefix+"*"+pattern).Result()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(keys) > 0 {
+			t.Errorf("%s left after every run ended: %v", pattern, keys)
+		}
+	}
+}

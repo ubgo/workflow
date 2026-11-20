@@ -307,8 +307,15 @@ for _ = 1, 100 do
     -- its fair set with the smallest start tag and takes that run's place.
     local pr = posrunkey(b, bestRn, bestQ)
     local h = redis.call('HGET', pr, best)
+    local hs = h and redis.call('HGET', rk(b, h), 'status')
     if not h then
       redis.call('ZREM', bestKey, best)
+      best = nil
+    elseif not hs or terminal(hs) then
+      -- a run that ended without leaving the indexes gives its place up
+      redis.call('ZREM', bestKey, best)
+      redis.call('HDEL', pr, best)
+      unfair(b, h)
       best = nil
     else
       local fk = redis.call('HGET', rk(b, h), 'fk')
