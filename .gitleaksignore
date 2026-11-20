@@ -5,3 +5,5 @@ examples/hatchet-pause/main_test.go:generic-api-key:14
 # Made-up AWS and Stripe key shapes that the SecretGuard test must refuse.
 flow_test.go:aws-access-token:382
 flow_test.go:stripe-access-token:384
+# The throwaway local test database DSN (127.0.0.1, a password the compose file sets for one run), not a credential.
+recorder/Taskfile.yml:url_with_password:15
