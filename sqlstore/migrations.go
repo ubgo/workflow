@@ -93,7 +93,8 @@ func (s *store) allMigrations() []migrate.Migration {
 	all = append(all, s.outputMigrations()...)
 	all = append(all, s.journalMigrations()...)
 	all = append(all, s.bucketMigrations()...)
-	return append(all, s.dataMigrations()...)
+	all = append(all, s.dataMigrations()...)
+	return append(all, s.inboxMigrations()...)
 }
 
 // script turns statement texts into a transactional ddl.Script, table names

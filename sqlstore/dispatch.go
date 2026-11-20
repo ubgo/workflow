@@ -367,6 +367,9 @@ func (c *Client) prune(ctx context.Context) error {
 	if _, err := c.UniqueStore().PruneExpired(ctx); err != nil {
 		return err
 	}
+	if _, err := c.Inbox().PruneExpired(ctx, c.clk.Now()); err != nil {
+		return err
+	}
 	_, err := c.DebounceStore().PruneExpired(ctx)
 	return err
 }

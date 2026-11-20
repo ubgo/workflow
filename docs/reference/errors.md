@@ -34,6 +34,8 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrNoJournal` | A memoised call ran without the `Journal` plugin or `WithJournal`; permanent | `Memo`, `MapEach`, `Loop`, `ProcessChunks`, `Spawn`, `AwaitChild`, `SetRunData`, `RunData` ([Memoisation](../workflows/memoisation.md)) |
 | `ErrNoDataStore` | A scoped data helper ran without the `Data` plugin, `WithData` or `ContextWithData`; permanent | `GetData`, `SetData`, `UpdateData`, `DeleteData` ([Share data across runs](../workflows/memoisation.md#share-data-across-runs)) |
 | `ErrDataConflict` | A conditional `DataStore.Put` found another version (another writer got there first), or `UpdateData` lost that race `UpdateDataAttempts` times; not permanent | `DataStore.Put`, `UpdateData` |
+| `ErrInboxBusy` | Another worker holds the message's inbox claim; not permanent, the message comes back | `InboxConsumer.Once`; an inbound webhook with `Inbox` answers 503 ([inbox](../jobs/idempotency.md#drop-redelivered-messages-with-an-inbox)) |
+| `ErrInboxLost` | The claim's token no longer holds the message (its lease expired and another worker took it over) | `Inbox.Complete`, `InboxConsumer.Once` |
 | `ErrLoopLimit` | A `Loop` or `ProcessChunks` reached its limit; permanent | `Loop`, `ProcessChunks` with `MaxChunks` |
 | `ErrSecretInPayload` | `SecretGuard` found what looks like a credential in a job; also matches `ErrInvalid`, and the error never prints the value | The `SecretGuard` enqueue middleware ([Secrets in payloads](../reliability/secrets.md)) |
 | `ErrNoSecretRef` | A `SecretRef` has no name; permanent | `ResolveSecret` |

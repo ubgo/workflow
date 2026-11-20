@@ -72,14 +72,17 @@ var frozenChecksums = map[string]string{
 	"sqlite ubgo/workflow/sqlstore/journal 001_journal":        "2a559bdaaa463913a28d2c5d72bd350609b0dc2d2b38245a85c2a53ec301bcdb",
 	"sqlite ubgo/workflow/sqlstore/bucket 001_buckets":         "d1d74bc8f75b17ada1cf5fe4fc716e68646fdda36c712f83fb56d3c4f8da08fa",
 	"sqlite ubgo/workflow/sqlstore/data 001_data":              "42ad4aab91f9d4d7a9169fde5cf791adbb0872380e942ef73cdc49cfeacd85d6",
+	"sqlite ubgo/workflow/sqlstore/inbox 001_inbox":            "c5542446a75fd565b261094c4302e6358150a37966584896144c2be288b384f6",
 	"postgres ubgo/workflow/sqlstore 009_schedule_tenant":      "6157cd6351fa3636ac58e9015021effb8c8fe96fadfa07ab3fbaa28a9eb7db0d",
 	"postgres ubgo/workflow/sqlstore/journal 001_journal":      "88daf7de07728cd1bb358518f3294495f91f264bc94b63382584ad10b45a1f7a",
 	"postgres ubgo/workflow/sqlstore/bucket 001_buckets":       "6aef137b46458c4029373aa0228aa73e3b46ea666dc10597a385804e62638a99",
 	"postgres ubgo/workflow/sqlstore/data 001_data":            "075b8ff10da2e595954a16e823be39c13d2fcb3e4e1124d94ff5f42724e0149b",
+	"postgres ubgo/workflow/sqlstore/inbox 001_inbox":          "024f73303868917c9f916498391b4adca115a138c3a932ffd21419c7d8f9ad6f",
 	"mysql ubgo/workflow/sqlstore 009_schedule_tenant":         "efb477c49811861bfbff552194aee728b755fefa2d60978fc2fb5a1ff3abaf92",
 	"mysql ubgo/workflow/sqlstore/journal 001_journal":         "15848682e620817a67d8ecd16d913e24625af32f406af928b63b119d5f7eb4ec",
 	"mysql ubgo/workflow/sqlstore/bucket 001_buckets":          "4740aa81988d327e2c9f1764807d053c7b3e1c53688b6a38aebab25d839ac1a6",
 	"mysql ubgo/workflow/sqlstore/data 001_data":               "a98f0bd29e481302e69eedf954df1b61bb44fa7cd462219073aa1d03a0be713b",
+	"mysql ubgo/workflow/sqlstore/inbox 001_inbox":             "e5a4167c7c75e0a38e8d2b64d9421f77a994bfca0ab426c3ecfb797d7af0de3e",
 }
 
 // checksum is the ledger's checksum of a MigrationScript, rebuilt the way
@@ -263,7 +266,7 @@ func TestSchemaAppliedElsewhereStarts(t *testing.T) {
 				t.Fatalf("Start on a schema up to 008: %v, want an error naming schedule_tenant", err)
 			}
 			applyScripts(t, e, db, prefix, func(m sqlstore.MigrationScript) bool {
-				return m.Name == "009_schedule_tenant" || m.Name == "001_journal" || m.Name == "001_buckets" || m.Name == "001_data"
+				return m.Name == "009_schedule_tenant" || m.Name == "001_journal" || m.Name == "001_buckets" || m.Name == "001_data" || m.Name == "001_inbox"
 			})
 			c, err := sqlstore.New(db, e.dialect, sqlstore.WithTablePrefix(prefix), sqlstore.WithPollInterval(testPoll))
 			if err != nil {

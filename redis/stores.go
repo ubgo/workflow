@@ -2,6 +2,8 @@ package redis
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"strconv"
@@ -334,4 +336,118 @@ func (d *DataStore) Delete(ctx context.Context, scope workflow.DataScope, name s
 		return fmt.Errorf("redis: data delete: %w", classify(err))
 	}
 	return nil
+}
+
+// Inbox is a workflow.Inbox in Redis (MQ-15): one hash per consumer and
+// message ({prefix}:inbox:<workflow.InboxKey.String>: its state, claim
+// token and end time), so a message redelivered to any process is
+// processed once. Claim, Complete and Release are each one script, so of
+// two processes claiming one message exactly one wins. Times are the now
+// the caller passes, in microseconds (exact as Lua numbers); each hash
+// also expires an hour of Redis wall time after its lease or keep ends, a
+// cleanup net that never decides anything.
+type Inbox struct {
+	rdb  goredis.UniversalClient
+	base string
+}
+
+var _ workflow.Inbox = (*Inbox)(nil)
+
+// NewInbox returns an Inbox over rdb under prefix.
+func NewInbox(rdb goredis.UniversalClient, prefix string) (*Inbox, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &Inbox{rdb: rdb, base: base}, nil
+}
+
+// Inbox returns an Inbox over this client's Redis and prefix.
+func (c *Client) Inbox() *Inbox { return &Inbox{rdb: c.rdb, base: c.base} }
+
+// inboxGrace is how long an inbox hash outlives its end time in Redis.
+const inboxGrace = time.Hour
+
+func (in *Inbox) key(k workflow.InboxKey) string { return in.base + ":inbox:" + k.String() }
+
+// inboxClaimScript claims a message. KEYS entry; ARGV now (us), until
+// (us), token, expiry (ms). Returns 'claimed', 'done' or 'busy'.
+var inboxClaimScript = goredis.NewScript(`
+local h = redis.call('HMGET', KEYS[1], 'state', 'until')
+if h[1] and tonumber(h[2]) > tonumber(ARGV[1]) then
+  if h[1] == 'done' then return 'done' end
+  return 'busy'
+end
+redis.call('HSET', KEYS[1], 'state', 'held', 'token', ARGV[3], 'until', ARGV[2])
+redis.call('PEXPIRE', KEYS[1], ARGV[4])
+return 'claimed'
+`)
+
+// inboxCompleteScript marks a held message done. KEYS entry; ARGV token,
+// until (us), expiry (ms). Returns 1, or 0 when the token does not hold it.
+var inboxCompleteScript = goredis.NewScript(`
+local h = redis.call('HMGET', KEYS[1], 'state', 'token')
+if h[1] ~= 'held' or h[2] ~= ARGV[1] then return 0 end
+redis.call('HSET', KEYS[1], 'state', 'done', 'until', ARGV[2])
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
+return 1
+`)
+
+// inboxReleaseScript frees a held message. KEYS entry; ARGV token.
+var inboxReleaseScript = goredis.NewScript(`
+local h = redis.call('HMGET', KEYS[1], 'state', 'token')
+if h[1] == 'held' and h[2] == ARGV[1] then redis.call('DEL', KEYS[1]) end
+return 1
+`)
+
+// expiryMs is the Redis expiry of a hash whose end is d after now.
+func inboxExpiryMs(d time.Duration) int64 { return (max(d, 0) + inboxGrace).Milliseconds() }
+
+// Claim implements workflow.Inbox.
+func (in *Inbox) Claim(ctx context.Context, key workflow.InboxKey, lease time.Duration, now time.Time) (workflow.InboxState, string, error) {
+	if key.Consumer == "" || key.ID == "" {
+		return 0, "", fmt.Errorf("%w: redis: inbox key needs a Consumer and an ID", workflow.ErrInvalid)
+	}
+	token := newToken()
+	res, err := inboxClaimScript.Run(ctx, in.rdb, []string{in.key(key)},
+		now.UnixMicro(), now.Add(lease).UnixMicro(), token, inboxExpiryMs(lease)).Text()
+	if err != nil {
+		return 0, "", fmt.Errorf("redis: inbox claim: %w", classify(err))
+	}
+	switch res {
+	case "claimed":
+		return workflow.InboxClaimed, token, nil
+	case "done":
+		return workflow.InboxDone, "", nil
+	default:
+		return workflow.InboxBusy, "", nil
+	}
+}
+
+// Complete implements workflow.Inbox.
+func (in *Inbox) Complete(ctx context.Context, key workflow.InboxKey, token string, keep time.Duration, now time.Time) error {
+	n, err := inboxCompleteScript.Run(ctx, in.rdb, []string{in.key(key)}, token, now.Add(keep).UnixMicro(), inboxExpiryMs(keep)).Int64()
+	if err != nil {
+		return fmt.Errorf("redis: inbox complete: %w", classify(err))
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: %s", workflow.ErrInboxLost, key)
+	}
+	return nil
+}
+
+// Release implements workflow.Inbox.
+func (in *Inbox) Release(ctx context.Context, key workflow.InboxKey, token string) error {
+	if err := inboxReleaseScript.Run(ctx, in.rdb, []string{in.key(key)}, token).Err(); err != nil {
+		return fmt.Errorf("redis: inbox release: %w", classify(err))
+	}
+	return nil
+}
+
+// newToken returns 16 random bytes in hex, an inbox claim's fencing
+// token. crypto/rand never fails on supported platforms.
+func newToken() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }

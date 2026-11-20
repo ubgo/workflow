@@ -239,3 +239,19 @@ func TestDataStore(t *testing.T) {
 	}
 	workflowtest.DataStoreContract(t, a, b)
 }
+
+// TestInbox is the workflow.Inbox contract (MQ-15) through two inboxes on
+// one prefix, as two processes would hold.
+func TestInbox(t *testing.T) {
+	rdb := redisClient(t)
+	prefix := testPrefix(t, rdb)
+	a, err := wfredis.NewInbox(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := wfredis.NewInbox(rdb, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflowtest.InboxContract(t, a, b)
+}

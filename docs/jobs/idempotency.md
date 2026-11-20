@@ -135,6 +135,54 @@ The period key comes from `workflow.PeriodKey(t, period, loc)`: `"2026-11-01"` f
 
 The key dedups only while the run holding it is unfinished, as every idempotency key does. To keep a later enqueue in the same period from charging again after the first run succeeded, also pass the period key to the payment provider's own idempotency key (`PeriodKey` alone is the stable value for that), and wrap the charge in [`workflow.Memo`](../workflows/memoisation.md#memoise-a-call-with-memo) so a retried step does not charge twice.
 
+## Drop redelivered messages with an inbox
+
+An idempotency key drops a duplicate enqueue while the run holding it is unfinished. A message source that delivers at least once (a broker redelivering after a lost ack, a webhook sender retrying, an outbox relay resending after a crash) can deliver the same message long after that, and code that consumes messages without enqueueing a run has no key at all. The inbox records the IDs each consumer has processed, for as long as you choose, so the work runs once per message ID. `workflow.InboxConsumer` runs a function once per ID:
+
+<!-- snippet: examples/consumer-inbox/main.go#consumer -->
+```go
+mailer := workflow.InboxConsumer{
+	Inbox:    workflow.NewMemoryInbox(), // sqlstore.Inbox or redis.Inbox across processes
+	Consumer: "receipt-mailer",
+	Keep:     7 * 24 * time.Hour, // remember processed IDs longer than any redelivery
+}
+for range 3 { // an at-least-once source delivers msg-1 three times
+	ran, err := mailer.Once(ctx, "msg-1", sendReceipt)
+	if err != nil {
+		return err // nack: the message comes back
+	}
+	fmt.Println("  msg-1 ran:", ran)
+}
+```
+
+`Once` claims the ID for a lease (`Lease`, default `DefaultInboxLease`, five minutes), runs the function, and marks the ID processed for `Keep` (default `DefaultInboxKeep`, seven days). A redelivery of a processed ID returns false with no error: drop it. When the function fails, the claim is released, so the next delivery runs it again. An ID another worker is processing returns `ErrInboxBusy`, which is not permanent: nack it and it comes back. Each consumer name keeps its own record, so a mailer and an indexer reading one message each process it once. Times come from `InboxConsumer.Clock` (the real clock when nil), so a fake clock drives the keep window in tests.
+
+`workflow.MemoryInbox` keeps the record in one process. For a fleet, use `sqlstore.Inbox` (`NewInbox(db, dialect)` or `Client.Inbox()`, a row per consumer and message in `<prefix>inbox`, its own migration list, expired rows pruned by the dispatcher's housekeeping or `PruneExpired`) or `redis.Inbox` (`NewInbox(rdb, prefix)` or `Client.Inbox()`, a hash per message, each step one script). Of two workers claiming one message on either, exactly one wins.
+
+`Once` is at least once: a worker that dies after the work and before the record is saved leaves its claim to expire, and the redelivery runs the work again. When the work writes to the database the inbox lives in, make it exactly once with `sqlstore.Inbox.MarkTx`, which records the message inside your own transaction, so the record and your writes commit or roll back together:
+
+<!-- snippet: examples/consumer-inbox/main.go#marktx -->
+```go
+handle := func(ctx context.Context, msgID string, total int) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // a no-op after Commit
+	key := workflow.InboxKey{Consumer: "order-writer", ID: msgID}
+	fresh, err := inbox.MarkTx(ctx, tx, key, 7*24*time.Hour, time.Now())
+	if err != nil || !fresh {
+		return err // seen before: nothing to do
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO orders (msg_id, total) VALUES (?, ?)", msgID, total); err != nil {
+		return err
+	}
+	return tx.Commit() // the order and the record commit together
+}
+```
+
+`MarkTx` returns false for a message already recorded, and runs its insert under a savepoint, so a duplicate never aborts your transaction. Of two transactions marking one message, the second waits for the first and then finds the record. An inbound webhook takes an inbox too (see [webhooks](../events/webhooks.md#drop-redeliveries-with-an-inbox)). A store of your own implements `workflow.Inbox` (`Claim`, `Complete`, `Release`, each given the caller's `now`); `workflowtest.InboxContract(t, a, b)` checks it against the contract the shipped stores pass.
+
 ## Try it
 
 ```sh
@@ -155,6 +203,7 @@ no CapIdempotencyKey: workflow: Job.IdempotencyKey unsupported by this driver (m
 - **A key dedups while the run is unfinished, not forever.** Once the run is terminal the key is free. For "at most once per order, ever", record the fact in your own database inside the step, or use [unique jobs](../reliability/unique-jobs.md) with a time window.
 - **A key dedups within one backend.** Two clients on different backends (a [failover](../reliability/failover.md) pair, two databases) each honour the key on their own; that is why the failover client requires a key and dedups only as well as each side does.
 - **Hatchet holds a key for at most `Config.IdempotencyMaxHold`**, and refuses `IdempotencyKey` together with `RunAt`.
+- **An inbox forgets an ID after `Keep`.** Set it longer than the longest redelivery your source can make (SQS keeps a message up to 14 days, Pub/Sub up to 31 with retention).
 - **On the SQL driver the key is a unique index**, so it holds across every process sharing the database; on the memory driver it holds within the process.
 
 ## Related
@@ -162,4 +211,4 @@ no CapIdempotencyKey: workflow: Job.IdempotencyKey unsupported by this driver (m
 - [Enqueue a job](enqueue.md)
 - [Unique jobs](../reliability/unique-jobs.md) and [debounce](../reliability/debounce.md), which dedup above the driver
 - [Transactional enqueue](../reliability/transactional-enqueue.md)
-- Example: [`examples/idempotency`](../../examples/idempotency)
+- Examples: [`examples/idempotency`](../../examples/idempotency), [`examples/consumer-inbox`](../../examples/consumer-inbox)

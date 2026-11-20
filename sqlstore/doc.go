@@ -393,6 +393,13 @@
 // scope and name in <prefix>data with a version, a conditional Put being
 // one guarded UPDATE or one INSERT decided by the primary key;
 // Client.DataStore or NewDataStore, owner ubgo/workflow/sqlstore/data.
+// Inbox is a durable workflow.Inbox (idempotent consumption: the message
+// IDs each consumer claimed or processed, one row per consumer and ID in
+// <prefix>inbox); MarkTx records a message inside the app's own
+// transaction, so the record and the app's writes commit together and the
+// message is processed exactly once; expired rows are deleted by the
+// dispatcher's housekeeping or PruneExpired; Client.Inbox or NewInbox,
+// owner ubgo/workflow/sqlstore/inbox.
 // Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
 // triggered to run, reported in ScheduleInfo.Tenant.

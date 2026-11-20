@@ -192,11 +192,14 @@
 //     run, optional expiry), BucketStore (workflow.BucketStore, leaky
 //     buckets: the drain and the take are one script, on the caller's
 //     clock), DebounceStore (middleware.DebounceStore: Swap is one
-//     script) and DataStore (workflow.DataStore, folder, workflow and
+//     script), DataStore (workflow.DataStore, folder, workflow and
 //     global data: a hash per value with its version, a conditional Put
-//     is one script) keep state other processes share; each has a
+//     is one script) and Inbox (workflow.Inbox, idempotent consumption:
+//     a hash per consumer and message, claim, complete and release each
+//     one script) keep state other processes share; each has a
 //     constructor (NewJournalStore, NewBucketStore, NewDebounceStore,
-//     NewDataStore) and a Client method over the client's prefix.
+//     NewDataStore, NewInbox) and a Client method over the client's
+//     prefix.
 //   - WithEnqueueOnly makes a client for web nodes that enqueue and never
 //     run work; Register is optional there.
 package redis

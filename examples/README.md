@@ -23,6 +23,7 @@ This folder is its own Go module (`github.com/ubgo/workflow/examples`), so a dat
 | [retries](retries) | Backoff with jitter, RetryAfter/DelayFor, Permanent and NoRetryOn, per-step RetriesNone, Hatchet refusing jitter and DelayFor | `workflow`, `memory`, `clock`, `hatchet` |
 | [delayed-jobs](delayed-jobs) | RunAt and ScheduledID, Status, cancel a delayed and a running run | `workflow`, `memory`, `clock` |
 | [idempotency](idempotency) | One run per key, key freed at the end, optional/required/off, refusal without CapIdempotencyKey | `workflow`, `memory`, `workflowtest` |
+| [consumer-inbox](consumer-inbox) | A message delivered three times processed once with InboxConsumer, a failed attempt run again, sqlstore Inbox.MarkTx writing one order from four concurrent deliveries, a webhook with an Inbox | `workflow`, `events`, `memory`, `sqlstore` |
 | [concurrency](concurrency) | Per-key concurrency and strategies, rate limits, priority, KeyFunc vs KeyExpr refusals | `workflow`, `memory`, `clock`, `hatchet` |
 | [cron-schedules](cron-schedules) | Cron syntax, Vixie rule, parse errors, DST, CronLocation, Schedule/Unschedule, upsert by Name on SQLite, misfire policies and Misfire.Due, WithCronParser, Hatchet refusals | `workflow`, `cron`, `memory`, `sqlstore`, `hatchet` |
 | [signals-and-sleep](signals-and-sleep) | Wait steps with KeyFrom and Key, Signal, durable sleep, wait timeout plus OnFailure, fan-in with StepInput, StepInfo, step timeout | `workflow`, `memory`, `clock`, `hatchet` |
