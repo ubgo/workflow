@@ -68,6 +68,14 @@ type ThenOption func(*thenPlugin)
 // quickly.
 func ThenErrors(fn func(error)) ThenOption { return func(p *thenPlugin) { p.errs = fn } }
 
+// ThenAfterRedo applies the rules to the ends of runs carrying LabelRedo
+// too: a run reset after it had succeeded (ResetOptions.Succeeded) and a
+// fork of a run that had succeeded (RunForker). By default Then skips
+// them, because the first success already started each rule's next job
+// and a second one would run that job again. Pass it when the next job
+// must follow the corrected result, and make that job idempotent.
+func ThenAfterRedo() ThenOption { return func(p *thenPlugin) { p.afterRedo = true } }
+
 // Then returns a plugin, named "then", that starts the next job when a
 // run finishes (EV-08): a completion trigger, so "when import succeeds,
 // start index" lives beside the workflows instead of inside import's last
@@ -129,8 +137,9 @@ func Then(rules []ThenRule, opts ...ThenOption) (Plugin, error) {
 // right after, filled when the chain is built), so one plugin value used
 // with two clients enqueues each run's next job on its own client.
 type thenPlugin struct {
-	rules []ThenRule
-	errs  func(error)
+	rules     []ThenRule
+	errs      func(error)
+	afterRedo bool
 
 	mu   sync.Mutex
 	last *thenSlot // the slot of the Use in progress
@@ -180,6 +189,9 @@ func (p *thenPlugin) RunFinishedObservers() []RunFinishedFunc {
 
 // observe starts the next job of every rule ev matches.
 func (p *thenPlugin) observe(ctx context.Context, slot *thenSlot, ev RunEvent) {
+	if ev.Labels[LabelRedo] == "true" && !p.afterRedo {
+		return // a redo: the first success already started the next jobs
+	}
 	for _, r := range p.rules {
 		on := r.On
 		if len(on) == 0 {
