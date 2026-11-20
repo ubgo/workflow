@@ -9,9 +9,7 @@ import (
 
 	driverpgx "github.com/ubgo/sqlb/contrib/driver-pgx"
 	"github.com/ubgo/workflow"
-	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/sqlstore"
-	"github.com/ubgo/workflow/workflowtest"
 )
 
 // smallPool opens a database for e whose pool holds only n connections,
@@ -88,37 +86,4 @@ func TestSmallPoolDoesNotDeadlock(t *testing.T) {
 			})
 		})
 	}
-}
-
-// TestConformanceOnOneConnection runs the shared driver suite on SQLite
-// with a pool of a single connection: the guard against the next nested
-// pool use. Any query the driver makes on the pool while the same call
-// path holds a transaction (or an open result set) waits for a connection
-// that only it holds, so the suite hangs at that call and go test's
-// -timeout dump names it, instead of the deadlock reaching a production
-// pool under load.
-func TestConformanceOnOneConnection(t *testing.T) {
-	e := engines(t)[0]
-	workflowtest.Run(t, workflowtest.Harness{Wait: conformanceWait, New: func(t *testing.T) workflowtest.Instance {
-		db, prefix := e.open(t)
-		db.SetMaxOpenConns(1)
-		clk := clock.NewFake(start)
-		// One connection queues every statement, renewals included, behind
-		// the poll loop's; the queue-case lease leaves a loaded machine room.
-		mk := func(extra ...sqlstore.Option) *sqlstore.Client {
-			return newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithClock(clk), sqlstore.WithLease(queueCaseLease)}, extra...)...)
-		}
-		current := mk()
-		return workflowtest.Instance{
-			Client: current,
-			Clock:  clk,
-			Restart: func(t *testing.T) workflow.Client {
-				current = mk()
-				return current
-			},
-			EnqueueOnly: func(t *testing.T) workflow.Client {
-				return mk(sqlstore.WithEnqueueOnly())
-			},
-		}
-	}})
 }

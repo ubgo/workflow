@@ -1,5 +1,10 @@
 package enginetest
 
+// The tests in this file are plain functions, not Test functions: the
+// package shards/cluster wraps each in a Test function of the same name, so
+// they run as a test binary of their own beside this package (see
+// conformance.go for why processes, not parallel subtests).
+
 import (
 	"context"
 	"database/sql"
@@ -85,7 +90,7 @@ func (p *perRun) snapshot() map[workflow.RunID]int {
 	return out
 }
 
-// TestClusterClaimsEachStepOnce enqueues many runs on one client of three
+// ClusterClaimsEachStepOnce enqueues many runs on one client of three
 // and checks every step ran exactly once, on whichever client claimed it.
 // It is the test that fails if the claim (SKIP LOCKED, or SQLite's
 // conditional update) lets two workers take one row.
@@ -95,7 +100,7 @@ func (p *perRun) snapshot() map[workflow.RunID]int {
 // renewals of a short lease can wait out the lease on a busy database. A
 // second execution under a 30-second lease is a double claim, not an
 // expiry.
-func TestClusterClaimsEachStepOnce(t *testing.T) {
+func ClusterClaimsEachStepOnce(t *testing.T) {
 	const lease = 30 * time.Second
 	const runs = 60
 	for _, e := range engines(t) {
@@ -138,10 +143,10 @@ func TestClusterClaimsEachStepOnce(t *testing.T) {
 	}
 }
 
-// TestClusterCronTickFiresOnce declares one cron on three clients sharing
+// ClusterCronTickFiresOnce declares one cron on three clients sharing
 // a clock and a database, and checks each tick enqueues exactly one run.
 // It is the test that fails if the tick row stops being the guard.
-func TestClusterCronTickFiresOnce(t *testing.T) {
+func ClusterCronTickFiresOnce(t *testing.T) {
 	const ticks = 4
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -179,7 +184,7 @@ func TestClusterCronTickFiresOnce(t *testing.T) {
 	}
 }
 
-// TestClusterLiveLeaseIsKept runs a step on one of three clients for
+// ClusterLiveLeaseIsKept runs a step on one of three clients for
 // longer than its claim's lease and checks no other client takes it over:
 // the renewal keeps a live worker's claim. It is the test that fails if
 // the heartbeat stops renewing.
@@ -199,7 +204,7 @@ func TestClusterCronTickFiresOnce(t *testing.T) {
 // busy that the renewal UPDATE can starve for seconds under -race on a
 // busy machine. Every client still polls the step many times between the
 // claim's lease end and the step's end.
-func TestClusterLiveLeaseIsKept(t *testing.T) {
+func ClusterLiveLeaseIsKept(t *testing.T) {
 	const (
 		lease    = queueCaseLease
 		livePoll = 100 * time.Millisecond
@@ -267,10 +272,10 @@ func TestClusterLiveLeaseIsKept(t *testing.T) {
 	}
 }
 
-// TestCancelReachesAnotherClient cancels a run from a client that is not
+// CancelReachesAnotherClient cancels a run from a client that is not
 // executing it: the executing client's handler must see its context
 // cancelled (at its next lease renewal).
-func TestCancelReachesAnotherClient(t *testing.T) {
+func CancelReachesAnotherClient(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -319,11 +324,11 @@ func TestCancelReachesAnotherClient(t *testing.T) {
 	}
 }
 
-// TestRunFinishedIsDurable checks the RunNotifier contract on this driver:
+// RunFinishedIsDurable checks the RunNotifier contract on this driver:
 // every terminal run (succeeded, failed, cancelled, never started) is
 // delivered, once in the normal case, and ends that happened while no
 // client had observers are delivered by the next client that has.
-func TestRunFinishedIsDurable(t *testing.T) {
+func RunFinishedIsDurable(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -430,11 +435,11 @@ func TestRunFinishedIsDurable(t *testing.T) {
 	}
 }
 
-// TestBatchStoreUpdateIsAtomic runs many concurrent Updates on one batch
+// BatchStoreUpdateIsAtomic runs many concurrent Updates on one batch
 // from several pools' worth of goroutines: every increment must land, and
 // the once-only latch must flip for exactly one caller. It is the test that
 // fails if Update stops locking the row before reading it.
-func TestBatchStoreUpdateIsAtomic(t *testing.T) {
+func BatchStoreUpdateIsAtomic(t *testing.T) {
 	const writers = 40
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -505,12 +510,12 @@ func TestBatchStoreUpdateIsAtomic(t *testing.T) {
 	}
 }
 
-// TestPoisonStepIsAbandoned runs a step that "kills" every worker it lands
+// PoisonStepIsAbandoned runs a step that "kills" every worker it lands
 // on (each client is crashed while the step runs) with WithMaxReclaims(1):
 // the first takeover runs it again, the second fails the attempt with an
 // error naming the abandonment, and with no retries the run fails. It is
 // the test that fails if the reclaim cap stops counting.
-func TestPoisonStepIsAbandoned(t *testing.T) {
+func PoisonStepIsAbandoned(t *testing.T) {
 	const lease = crashLease
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {

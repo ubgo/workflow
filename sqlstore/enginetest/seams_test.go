@@ -481,21 +481,6 @@ func idemWorkflow(release <-chan struct{}) workflow.Workflow {
 	}}}}
 }
 
-func startWith(t *testing.T, c *sqlstore.Client, wfs ...workflow.Workflow) context.Context {
-	t.Helper()
-	for _, wf := range wfs {
-		if err := c.Register(wf); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	if err := c.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	return ctx
-}
-
 // TestErrorClassifier: the default answers a held idempotency key with the
 // holder's run; a classifier that recognises the unique violation (here by
 // delegating) does the same; one that does not (it says "neither") makes

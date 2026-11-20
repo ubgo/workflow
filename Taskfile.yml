@@ -48,8 +48,10 @@ tasks:
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # -race because the drivers and the fake clock are concurrent code.
-  # -timeout 30m as sqlstore:test:pg: the SQLite engine suite alone runs
-  # past Go's 10-minute default on a loaded machine without hanging.
+  # -timeout 30m: the SQLite engine suite ran past Go's 10-minute default
+  # on a loaded machine (13 to 23 minutes in one process); split into shard
+  # processes (sqlstore/enginetest/shards) its longest package takes about
+  # 5, and the timeout keeps the margin for a machine loaded further.
   test:run:
     cmds: ['go test -race -timeout 30m $(go list -m | sed "s|$|/...|")']
 
