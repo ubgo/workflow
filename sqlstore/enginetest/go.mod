@@ -19,10 +19,10 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
 	github.com/ubgo/sqlb/contrib/migrate v0.1.1
-	github.com/ubgo/workflow v0.1.0
-	github.com/ubgo/workflow/sqlstore v0.0.0-00010101000000-000000000000
-	github.com/ubgo/workflow/sqlstore/pgnotify v0.0.0-00010101000000-000000000000
-	github.com/ubgo/workflow/sqlstore/pgxtx v0.0.0-00010101000000-000000000000
+	github.com/ubgo/workflow v0.2.0
+	github.com/ubgo/workflow/sqlstore v0.2.0
+	github.com/ubgo/workflow/sqlstore/pgnotify v0.2.0
+	github.com/ubgo/workflow/sqlstore/pgxtx v0.2.0
 )
 
 require (
