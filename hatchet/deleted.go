@@ -8,11 +8,12 @@ import "sync"
 const deletedStartsMax = 4096
 
 // deletedStarts holds the tokens of the delayed starts this client's
-// Cancel deleted while they were at least rescheduleGuard from due, which
-// the engine cannot have fired. resolve calls such a ScheduledID cancelled
-// at once; any other ScheduledID whose scheduled record is gone and whose
-// run is not listed waits out the engine's read lag first, since the run
-// it fired may not be listed yet. It lives in one process: another
+// Cancel deleted while they were at least dueGuard from due, which the
+// engine cannot have fired, or watched past their due time with no run
+// fired (settleLate). resolve calls such a ScheduledID cancelled at once;
+// any other ScheduledID whose scheduled record is gone and whose run is
+// not listed waits out the engine's read lag first, since the run it
+// fired may not be listed yet. It lives in one process: another
 // client's Status of the same ScheduledID still waits the lag. The zero
 // value is ready to use.
 type deletedStarts struct {
