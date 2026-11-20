@@ -131,14 +131,22 @@ func TestHealthAndPayloadLimit(t *testing.T) {
 
 // TestCancelStepOnAnotherClient: CancelStep from a client that is not
 // running the step reaches it at its next lease renewal.
+//
+// A loaded machine can fence the runner's attempt before the cancel lands,
+// and the step then starts again: the cancel request stays on the step, so
+// the next attempt is cancelled too, and started never blocks a second
+// attempt (it used to, on its one-slot channel, until the package timeout).
 func TestCancelStepOnAnotherClient(t *testing.T) {
-	const lease = 300 * time.Millisecond
+	const lease = crashLease
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
 			started := make(chan struct{}, 1)
 			wf := workflow.Workflow{Name: "cs", Steps: []workflow.Step{{Name: "a", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
-				started <- struct{}{}
+				select {
+				case started <- struct{}{}:
+				default:
+				}
 				<-ctx.Done()
 				return nil, context.Cause(ctx)
 			}}}}

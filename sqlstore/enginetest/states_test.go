@@ -147,7 +147,7 @@ func (r *chainRec) got() []string {
 // workflow is registered only on a third client, which hands it on from
 // the stored row.
 func TestChainSurvivesCrashAndHandsOn(t *testing.T) {
-	const lease = 400 * time.Millisecond
+	const lease = crashLease
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)

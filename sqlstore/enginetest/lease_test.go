@@ -112,38 +112,48 @@ func TestWithDatabaseClockRunsWork(t *testing.T) {
 // TestLeaseSkewDelaysTakeover: a crashed worker's step is not taken over
 // by a client whose lease skew margin has not passed, and is taken over by
 // one without a margin.
+//
+// Executions are counted per node, not in total: on a loaded machine the
+// first worker can fence itself and run the step again before the test
+// crashes it, which is not a takeover. The step blocks on node a whatever
+// the attempt, so the run is still waiting when a is crashed.
 func TestLeaseSkewDelaysTakeover(t *testing.T) {
 	const lease = 300 * time.Millisecond
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
-			var execs atomic.Int64
+			var onA, onB atomic.Int64
 			wf := workflow.Workflow{Name: "skew", Steps: []workflow.Step{{Name: "a", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
-				if execs.Add(1) == 1 {
+				info, _ := workflow.StepInfoFrom(ctx)
+				switch info.Node {
+				case "a":
+					onA.Add(1)
 					<-ctx.Done() // the first worker dies here
 					return nil, ctx.Err()
+				case "b":
+					onB.Add(1)
 				}
 				return nil, nil
 			}}}}
-			mk := func(opts ...sqlstore.Option) *sqlstore.Client {
-				c := newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithLease(lease)}, opts...)...)
+			mk := func(node string, opts ...sqlstore.Option) *sqlstore.Client {
+				c := newClient(t, e, db, prefix, append([]sqlstore.Option{sqlstore.WithLease(lease), sqlstore.WithNodeID(node)}, opts...)...)
 				startWith(t, c, wf)
 				return c
 			}
-			a := mk()
+			a := mk("a")
 			ref, err := a.Enqueue(context.Background(), workflow.Job{Workflow: wf.Name})
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitFor(t, 10*time.Second, "the first execution", func() bool { return execs.Load() == 1 })
+			waitFor(t, 10*time.Second, "the first execution", func() bool { return onA.Load() >= 1 })
 			crash(a)
-			b := mk(sqlstore.WithLeaseSkew(time.Hour))
+			b := mk("b", sqlstore.WithLeaseSkew(time.Hour))
 			time.Sleep(5 * lease)
-			if got := execs.Load(); got != 1 {
-				t.Fatalf("a client with an hour of lease skew took the step over %s after its lease ended (%d executions)", 4*lease, got)
+			if got := onB.Load(); got != 0 {
+				t.Fatalf("a client with an hour of lease skew took the step over %s after its lease ended (%d executions on it)", 4*lease, got)
 			}
 			b.Stop()
-			c := mk()
+			c := mk("c")
 			waitFor(t, 10*time.Second, "the takeover", func() bool {
 				st, err := c.Status(context.Background(), ref)
 				return err == nil && st == workflow.StatusSucceeded
@@ -156,8 +166,11 @@ func TestLeaseSkewDelaysTakeover(t *testing.T) {
 // stops every lease renewal, the holder cancels its own attempt with
 // ErrLeaseLost once a whole lease has passed, writes no outcome, and the
 // step runs again after the lock is released.
+//
+// The lease is crashLease: the retake after the lock must not itself be
+// fenced by a renewal a loaded machine stalls, or the step runs a third time.
 func TestLeaseFenceOnLostRenewal(t *testing.T) {
-	const lease = 600 * time.Millisecond
+	const lease = crashLease
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
