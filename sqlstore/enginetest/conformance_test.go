@@ -43,6 +43,15 @@ const (
 
 	// queueCaseLease is the lease of the clients the queue-limit cases build.
 	queueCaseLease = 5 * time.Second
+
+	// crashLease is the lease of the tests that crash a worker on purpose
+	// and wait for a takeover. A live worker fences itself (ErrLeaseLost)
+	// when a renewal write stalls for two thirds of its lease, and then the
+	// step runs again before the test crashed anything; on a loaded machine
+	// under -race a few hundred milliseconds of stall is common, so these
+	// tests use a lease whose fence needs a full second of it. Each takeover
+	// waits out about one lease.
+	crashLease = 1500 * time.Millisecond
 )
 
 // engine is one database the suite runs on.

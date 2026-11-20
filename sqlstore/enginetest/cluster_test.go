@@ -511,7 +511,7 @@ func TestBatchStoreUpdateIsAtomic(t *testing.T) {
 // error naming the abandonment, and with no retries the run fails. It is
 // the test that fails if the reclaim cap stops counting.
 func TestPoisonStepIsAbandoned(t *testing.T) {
-	const lease = 400 * time.Millisecond
+	const lease = crashLease
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
