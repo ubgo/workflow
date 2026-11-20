@@ -308,10 +308,15 @@ func TestMachine_RetryAfterFailedSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	startMachine(t, c, wf)
-	if _, err := workflow.StartMachine(context.Background(), c, "retry", "k", mdata{}, workflow.Job{}); err != nil {
+	startRef, err := workflow.StartMachine(context.Background(), c, "retry", "k", mdata{}, workflow.Job{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	awaitCtx, cancelAwait := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelAwait()
+	if _, err := workflow.AwaitResult(awaitCtx, c, startRef, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
 	store.fail.Store(1)
 	res, err := sendAwait(t, c, "retry", "k", "go")
 	if err != nil || !slices.Equal(res.States, []string{"b"}) {
@@ -365,10 +370,15 @@ func TestMachine_RetryAfterSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	startMachine(t, c, wf)
-	if _, err := workflow.StartMachine(context.Background(), c, "saved", "k", mdata{}, workflow.Job{}); err != nil {
+	startRef, err := workflow.StartMachine(context.Background(), c, "saved", "k", mdata{}, workflow.Job{})
+	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(50 * time.Millisecond)
+	awaitCtx, cancelAwait := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelAwait()
+	if _, err := workflow.AwaitResult(awaitCtx, c, startRef, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+		t.Fatal(err)
+	}
 	store.fail.Store(1)
 	res, err := sendAwait(t, c, "saved", "k", "go")
 	if err != nil || !slices.Equal(res.States, []string{"b"}) || runs.Load() != 1 {

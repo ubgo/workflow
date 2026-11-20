@@ -379,12 +379,12 @@ func machineTimers(t *testing.T, h MachineHarness) {
 	// Answered first: the timer fires into a state that was left, and
 	// the state entered again since has a timer of its own.
 	send(t, c, "sm-timer", "t2", "answer", nil)
+	reopened := time.Now() // before the send: the entry, and its timer, come after it
 	if res := send(t, c, "sm-timer", "t2", "reopen", nil); !slices.Equal(res.States, []string{"waiting"}) {
 		t.Fatalf("reopen: %+v", res)
 	}
-	reopened := time.Now()
 	await("t2", "expired", 20*time.Second)
-	if waited := time.Since(reopened); waited < delay-50*time.Millisecond {
+	if waited := time.Since(reopened); waited < delay {
 		t.Fatalf("the first entry's timer moved the second entry after %s", waited)
 	}
 	// A Reenter self-transition restarts the timer.
@@ -392,10 +392,10 @@ func machineTimers(t *testing.T, h MachineHarness) {
 		t.Fatal(err)
 	}
 	time.Sleep(delay / 2)
+	pinged := time.Now() // before the send: the re-entry, and its timer, come after it
 	send(t, c, "sm-timer", "t3", "ping", nil)
-	pinged := time.Now()
 	await("t3", "expired", 20*time.Second)
-	if waited := time.Since(pinged); waited < delay-50*time.Millisecond {
+	if waited := time.Since(pinged); waited < delay {
 		t.Fatalf("expired %s after the re-entry, before its own timer", waited)
 	}
 }

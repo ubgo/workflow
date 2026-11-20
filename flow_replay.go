@@ -144,7 +144,8 @@ type ReplayCtx struct {
 	opts    ReplayOptions
 	prefix  string
 	pos     int
-	replay  bool  // the current call was found in the history
+	peeked  int   // the position Replaying last looked at, plus one; 0: none
+	peekOK  bool  // whether a call is recorded at peeked-1
 	suspend error // set once a wait suspends this run of the handler
 	fault   error // set once a call failed for good (nondeterminism, a store error)
 }
@@ -152,9 +153,19 @@ type ReplayCtx struct {
 // Context returns the step's context.
 func (rc *ReplayCtx) Context() context.Context { return rc.ctx }
 
-// Replaying reports whether the last call returned a recorded result,
-// for code that logs only on the first execution.
-func (rc *ReplayCtx) Replaying() bool { return rc.replay }
+// Replaying reports whether the code is still inside its recorded
+// history: true while the next call is one the history holds (a run that
+// re-traces what an earlier run did), false once the code has gone past
+// the history (it reaches this point for the first time). Code that logs
+// or reports only once does it when Replaying is false. It reads the
+// store once per position; a read error counts as not replaying.
+func (rc *ReplayCtx) Replaying() bool {
+	if rc.peeked != rc.pos+1 {
+		_, ok, err := rc.load(rc.pos)
+		rc.peeked, rc.peekOK = rc.pos+1, ok && err == nil
+	}
+	return rc.peekOK
+}
 
 // replayEntry is one recorded call.
 type replayEntry struct {
@@ -197,18 +208,22 @@ func (rc *ReplayCtx) next(kind, name string) (replayEntry, bool, error) {
 	}
 	e, ok, err := rc.load(rc.pos)
 	if err != nil {
-		return e, false, err
+		return e, false, rc.fail(err)
 	}
 	if ok && (e.Kind != kind || e.Name != name) {
 		return e, false, rc.fail(Permanent(&NondeterminismError{Position: rc.pos, Recorded: e.Kind + " " + e.Name, Got: kind + " " + name}))
 	}
-	rc.replay = ok
 	if ok {
 		rc.pos++ // a recorded call is consumed here; a new one by record
 	}
 	return e, ok, nil
 }
 
+// fail marks the handler failed with err: every later call returns it,
+// and the handler returns it whatever fn returns, so code that ignores an
+// error can never record a call at a position it does not own. A
+// Permanent err fails the run; any other one retries the step, which
+// re-runs the code from the top.
 func (rc *ReplayCtx) fail(err error) error {
 	rc.fault = err
 	return err
@@ -221,7 +236,7 @@ func (rc *ReplayCtx) record(e replayEntry) error {
 		return rc.fail(Permanent(fmt.Errorf("workflow: replay: encode call %d: %w", rc.pos, err)))
 	}
 	if err := rc.j.store.Save(rc.ctx, rc.j.run, rc.key(rc.pos), b); err != nil {
-		return fmt.Errorf("workflow: replay: save call %d: %w", rc.pos, err)
+		return rc.fail(fmt.Errorf("workflow: replay: save call %d: %w", rc.pos, err))
 	}
 	rc.pos++
 	return nil
@@ -237,12 +252,16 @@ func (rc *ReplayCtx) suspendFor(d time.Duration) error {
 // result; a replay returns the recorded result without calling fn, so the
 // code after it sees the same value. Results are stored as JSON.
 //
-// A Permanent error from fn is recorded too and returned (Permanent, as
-// a plain error with the same text) on every replay, so the code takes
-// the same branch: return it to fail the step, or handle it and carry on.
-// Any other error is not recorded and is returned as it is: return it,
-// and the step's retry runs the code, and fn, again. fn is at least once:
-// the process can die after fn returns and before its result is saved.
+// The code sees exactly what every replay will see: the value decoded
+// back from its JSON, and for a Permanent error from fn, a Permanent
+// error with the same text (recorded, so the code can branch on it with
+// IsPermanent or the text, and take the same branch on every run;
+// errors.Is against fn's own sentinel does not survive the record, so
+// return a decision as a value when the code must tell errors apart).
+// Any other error is not recorded: it fails this run of the handler (every
+// later call returns it too) and the step's retry runs the code, and fn,
+// again. fn is at least once: the process can die after fn returns and
+// before its result is saved.
 func ReplayStep[T any](rc *ReplayCtx, name string, fn func(ctx context.Context) (T, error)) (T, error) {
 	var zero T
 	e, ok, err := rc.next("step", name)
@@ -262,21 +281,29 @@ func ReplayStep[T any](rc *ReplayCtx, name string, fn func(ctx context.Context) 
 	v, err := fn(rc.ctx)
 	if err != nil {
 		if !IsPermanent(err) {
-			return zero, err // not recorded: the step's retry runs it again
+			return zero, rc.fail(err) // not recorded: the step's retry runs it again
 		}
+		// The error the code sees is the one every replay will see: its
+		// text, Permanent, so the first run and the replays branch alike.
 		if rerr := rc.record(replayEntry{Kind: "step", Name: name, Err: err.Error()}); rerr != nil {
 			return zero, rerr
 		}
-		return zero, err
+		return zero, Permanent(errors.New(err.Error()))
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return zero, rc.fail(Permanent(fmt.Errorf("workflow: replay: step %q: encode result: %w", name, err)))
 	}
+	// The value the code sees is the decoded one, as on every replay (a
+	// time's zone name, unexported fields and the like do not survive JSON).
+	var back T
+	if err := json.Unmarshal(raw, &back); err != nil {
+		return zero, rc.fail(Permanent(fmt.Errorf("workflow: replay: step %q: result does not decode back: %w", name, err)))
+	}
 	if err := rc.record(replayEntry{Kind: "step", Name: name, Value: raw}); err != nil {
 		return zero, err
 	}
-	return v, nil
+	return back, nil
 }
 
 // Now returns the time on the replay's clock, recorded under name: a
@@ -349,7 +376,7 @@ func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([
 		}
 		return nil, Permanent(err)
 	case err != nil:
-		return nil, err
+		return nil, rc.fail(err)
 	case !settled:
 		return nil, rc.suspendFor(rc.opts.Poll)
 	}
@@ -358,4 +385,48 @@ func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([
 		return nil, err
 	}
 	return v, nil
+}
+
+// ReplayChild runs job as a child run and returns its result, recorded
+// under name (AwaitChild inside replayed code): the first run spawns the
+// child (memoised, so it is spawned once), later runs look at it while it
+// is unfinished, suspending the handler between looks (opts.Poll), and
+// once it succeeded its result is recorded, so replays do not ask the
+// client again. A child that ended any other way returns a Permanent
+// *RunFailedError, recorded like a Permanent step error. client is the
+// client the child runs on; the parent's driver needs CapSnooze, and
+// the child's client needs results (ResultReader).
+func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildOptions) ([]byte, error) {
+	e, ok, err := rc.next("child", name)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		if e.Err != "" {
+			return nil, Permanent(errors.New(e.Err))
+		}
+		var v []byte
+		if err := json.Unmarshal(e.Value, &v); err != nil {
+			return nil, rc.fail(Permanent(fmt.Errorf("workflow: replay: child %q: recorded result does not decode: %w", name, err)))
+		}
+		return v, nil
+	}
+	out, err := AwaitChild(rc.ctx, client, "replay-child/"+name, job, opts)
+	if d, snoozed := SnoozeDelay(err); snoozed {
+		return nil, rc.suspendFor(d)
+	}
+	if err != nil {
+		if !IsPermanent(err) {
+			return nil, rc.fail(err)
+		}
+		if rerr := rc.record(replayEntry{Kind: "child", Name: name, Err: err.Error()}); rerr != nil {
+			return nil, rerr
+		}
+		return nil, Permanent(errors.New(err.Error()))
+	}
+	raw, _ := json.Marshal(out)
+	if err := rc.record(replayEntry{Kind: "child", Name: name, Value: raw}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

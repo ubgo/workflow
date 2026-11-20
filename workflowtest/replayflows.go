@@ -32,6 +32,55 @@ func RunReplayFlows(t *testing.T, h ReplayHarness) {
 	t.Run("locals", func(t *testing.T) { replayLocals(t, h) })
 	t.Run("recorded-error", func(t *testing.T) { replayRecordedError(t, h) })
 	t.Run("nondeterminism", func(t *testing.T) { replayDiverges(t, h) })
+	t.Run("child", func(t *testing.T) { replayChild(t, h) })
+}
+
+// replayChild: replayed code awaits a child run; the child runs once and
+// its result is recorded, so later runs of the body read it from history.
+func replayChild(t *testing.T, h ReplayHarness) {
+	var children, bodies atomic.Int32
+	var c workflow.Client
+	release := make(chan struct{})
+	child := workflow.Workflow{Name: "replay-child-quote", Steps: []workflow.Step{{Name: "quote", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		children.Add(1)
+		select { // runs until the test has seen the parent look at it unfinished
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return json.Marshal("quote for " + string(in))
+	}}}}
+	parent := replayWorkflow(t, "replay-parent", func(rc *workflow.ReplayCtx, in []byte) ([]byte, error) {
+		bodies.Add(1)
+		out, err := workflow.ReplayChild(rc, "quote", c, workflow.Job{Workflow: "replay-child-quote", Payload: in}, workflow.ChildOptions{Poll: 20 * time.Millisecond})
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	}, workflow.ReplayOptions{})
+	c = h.Start(t, child, parent)
+	needCaps(t, c, workflow.CapSnooze, workflow.CapResult, workflow.CapIdempotencyKey)
+	ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "replay-parent", Payload: []byte("B-7")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	// Body 1 spawned the child, body 2 found it unfinished; once body 3
+	// has started, release the child.
+	for bodies.Load() < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the parent never looked at its child again: %d bodies", bodies.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(release)
+	out, err := flowAwait(t, c, ref)
+	if err != nil || string(out) != `"quote for B-7"` {
+		t.Fatalf("result %s %v", out, err)
+	}
+	if children.Load() != 1 || bodies.Load() < 3 {
+		t.Fatalf("child ran %d times over %d bodies, want once over at least 3", children.Load(), bodies.Load())
+	}
 }
 
 func replayWorkflow(t *testing.T, name string, fn workflow.ReplayFunc, opts workflow.ReplayOptions) workflow.Workflow {
@@ -121,6 +170,7 @@ func replayLocals(t *testing.T, h ReplayHarness) {
 
 func replayRecordedError(t *testing.T, h ReplayHarness) {
 	var calls, bodies atomic.Int32
+	var promises workflow.PromiseStore
 	wf := replayWorkflow(t, "replay-recorded-error", func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
 		bodies.Add(1)
 		_, err := workflow.ReplayStep(rc, "charge", func(context.Context) (int, error) {
@@ -134,15 +184,28 @@ func replayRecordedError(t *testing.T, h ReplayHarness) {
 			}
 			outcome = "declined"
 		}
-		if err := rc.Sleep("then", 50*time.Millisecond); err != nil {
+		if _, err := rc.AwaitPromise("then", promises, "recorded-error"); err != nil {
 			return nil, err
 		}
 		return json.Marshal(outcome)
-	}, workflow.ReplayOptions{})
+	}, workflow.ReplayOptions{Poll: 20 * time.Millisecond})
 	c := h.Start(t, wf)
 	needCaps(t, c, workflow.CapSnooze)
+	promises = h.Promises(t, c)
 	ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "replay-recorded-error"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Resolve once a second body has started: the first stopped at the
+	// promise after recording the error, so the second replays it.
+	deadline := time.Now().Add(20 * time.Second)
+	for bodies.Load() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the code never woke again: %d bodies", bodies.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := workflow.ResolvePromise(context.Background(), c, promises, "recorded-error", []byte("go")); err != nil {
 		t.Fatal(err)
 	}
 	out, err := flowAwait(t, c, ref)
@@ -155,27 +218,40 @@ func replayRecordedError(t *testing.T, h ReplayHarness) {
 }
 
 func replayDiverges(t *testing.T, h ReplayHarness) {
-	var swap, shorter atomic.Int32
+	// Each body diverges only after a run recorded its first call (a
+	// flag set once the call returned), so a step retried after a
+	// transient store error does not move the divergence.
+	var swapped, swapAfter, shortened atomic.Int32
+	var promises workflow.PromiseStore
 	other := replayWorkflow(t, "replay-swap", func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
-		// Branches on a value it did not record: the second run calls a
-		// different step at position 0.
-		name := fmt.Sprintf("step-%d", swap.Add(1))
+		// Branches on a value it did not record: once the first call is
+		// recorded, a later run calls a different step at position 0.
+		name := "step-1"
+		if swapped.Load() > 0 {
+			name = "step-2"
+			swapAfter.Add(1)
+		}
 		if _, err := workflow.ReplayStep(rc, name, func(context.Context) (int, error) { return 1, nil }); err != nil {
 			return nil, err
 		}
-		return nil, rc.Sleep("wait", 30*time.Millisecond)
-	}, workflow.ReplayOptions{})
+		swapped.Store(1)
+		_, err := rc.AwaitPromise("wait", promises, "never-swap") // never resolved: always suspends
+		return nil, err
+	}, workflow.ReplayOptions{Poll: 20 * time.Millisecond})
 	short := replayWorkflow(t, "replay-short", func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
-		if shorter.Add(1) > 1 {
-			return []byte(`"skipped"`), nil // the second run makes no call
+		if shortened.Load() > 0 {
+			return []byte(`"skipped"`), nil // a later run makes no call
 		}
 		if _, err := workflow.ReplayStep(rc, "x", func(context.Context) (int, error) { return 1, nil }); err != nil {
 			return nil, err
 		}
-		return nil, rc.Sleep("wait", 30*time.Millisecond)
-	}, workflow.ReplayOptions{})
+		shortened.Store(1)
+		_, err := rc.AwaitPromise("wait", promises, "never-short")
+		return nil, err
+	}, workflow.ReplayOptions{Poll: 20 * time.Millisecond})
 	c := h.Start(t, other, short)
 	needCaps(t, c, workflow.CapSnooze)
+	promises = h.Promises(t, c)
 	for name, want := range map[string]string{"replay-swap": "history has step step-1", "replay-short": "returned before call 0"} {
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: name})
 		if err != nil {
@@ -185,7 +261,7 @@ func replayDiverges(t *testing.T, h ReplayHarness) {
 			t.Fatalf("%s: got %v, want an error containing %q", name, err, want)
 		}
 	}
-	if swap.Load() != 2 {
-		t.Fatalf("a nondeterminism error was retried: the body ran %d times, want 2", swap.Load())
+	if swapAfter.Load() != 1 {
+		t.Fatalf("a nondeterminism error was retried: the diverging body ran %d times, want once", swapAfter.Load())
 	}
 }
