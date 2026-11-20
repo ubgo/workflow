@@ -52,6 +52,10 @@ func fairDefs(t sqlTypes) []tableDef {
 	}, indexes: []index{{"order", "workflow, fair"}}}}
 }
 
+// fairClaimLock is the lock row a SQLite claim of a client serving a
+// round-robin workflow writes first (claimTurn).
+const fairClaimLock = "claim:fair"
+
 // roundRobin reports whether wf's keys take turns.
 func roundRobin(wf workflow.Workflow) bool {
 	return wf.Concurrency != nil && wf.Concurrency.Strategy == workflow.ConcurrencyRoundRobin
@@ -176,6 +180,16 @@ func (c *Client) claimFair(ctx context.Context, tx *sql.Tx, queues []any, name s
 // re-checks the step is still claimable; on Postgres and MySQL both reads
 // lock their row.
 func (c *Client) claimTurn(ctx context.Context, tx *sql.Tx, queues []any, set, token string, until int64) (bool, error) {
+	if c.st.engine == engineSQLite {
+		// Write first: a SQLite transaction that reads and then writes
+		// must upgrade its read snapshot, which fails (busy) whenever
+		// another claimer committed in between, so concurrent claimers
+		// retry each other's transactions without end. Taking the write
+		// lock first queues them instead; SQLite has one writer anyway.
+		if _, err := c.st.exec(ctx, tx, "UPDATE {locks} SET n = n + 1 WHERE name = ?", fairClaimLock); err != nil {
+			return false, err
+		}
+	}
 	q := "SELECT st.id, st.workflow, st.priority, st.run_seq FROM {steps} st WHERE " + c.claimWhere(queues)
 	if c.st.engine != engineSQLite {
 		q += " FOR UPDATE SKIP LOCKED"
