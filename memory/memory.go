@@ -198,6 +198,8 @@ type Client struct {
 	tasks   []*task               // step attempts waiting for a worker; see pickLocked
 	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
 	buckets map[bucketKey][]*run
+	rrTurn  map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
+	rrClock uint64               // counts those picks
 	rates   map[rateKey][]time.Time
 	rateAt  time.Time   // when the armed rate-limit timer fires; zero if none
 	rateTm  clock.Timer // the armed rate-limit timer

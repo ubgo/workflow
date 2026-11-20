@@ -832,7 +832,10 @@ func (c *Client) pushTaskLocked(r *run, s workflow.Step, in []byte, attempt int)
 }
 
 // before reports whether task a goes before b: the higher queue priority
-// (QueueConfig.Priority), then the higher Job.Priority, then arrival.
+// (QueueConfig.Priority), then the higher Job.Priority, then, for two
+// runs of one ConcurrencyRoundRobin workflow under different keys, the
+// key served longer ago (FC-05: keys take turns, so a key with a backlog
+// cannot starve the others), then arrival.
 func (c *Client) before(a, b *task) bool {
 	if qa, qb := c.queues[a.r.queue].Priority, c.queues[b.r.queue].Priority; qa != qb {
 		return qa > qb
@@ -840,7 +843,36 @@ func (c *Client) before(a, b *task) bool {
 	if a.priority != b.priority {
 		return a.priority > b.priority
 	}
+	if ka, kb, ok := rrKeys(a, b); ok {
+		if ta, tb := c.rrTurn[ka], c.rrTurn[kb]; ta != tb {
+			return ta < tb
+		}
+	}
 	return a.seq < b.seq
+}
+
+// rrKeys returns the buckets of a and b when both are runs of one
+// ConcurrencyRoundRobin workflow under different keys.
+func rrKeys(a, b *task) (bucketKey, bucketKey, bool) {
+	conc := a.r.reg.wf.Concurrency
+	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin || a.r.reg != b.r.reg || a.r.bucket == b.r.bucket {
+		return bucketKey{}, bucketKey{}, false
+	}
+	wf := a.r.reg.wf.Name
+	return bucketKey{workflow: wf, key: a.r.bucket}, bucketKey{workflow: wf, key: b.r.bucket}, true
+}
+
+// servedLocked records that t's round-robin bucket just had a turn.
+func (c *Client) servedLocked(t *task) {
+	conc := t.r.reg.wf.Concurrency
+	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin {
+		return
+	}
+	if c.rrTurn == nil {
+		c.rrTurn = map[bucketKey]uint64{}
+	}
+	c.rrClock++
+	c.rrTurn[bucketKey{workflow: t.r.reg.wf.Name, key: t.r.bucket}] = c.rrClock
 }
 
 // pickLocked removes and returns the first task a worker may claim now,
@@ -879,6 +911,7 @@ func (c *Client) pickLocked() *task {
 	}
 	t := c.tasks[best]
 	c.tasks = slices.Delete(c.tasks, best, best+1)
+	c.servedLocked(t)
 	return t
 }
 
