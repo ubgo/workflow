@@ -276,6 +276,37 @@ if err := workflow.SuspendRun(ctx, journal, ref); err != nil { // holds it at it
 
 A suspended run parks at the start of its next step: the step snoozes for the plugin's poll (`DefaultSuspendPoll`, 5 seconds, when zero) without running its handler, holding no worker and spending no attempt, and looks again after each snooze; steps already running finish. `ResumeRun` clears the flag and the parked step runs at its next look. `RunSuspended` reads the flag. It needs `CapSnooze` (memory, SQL, Redis). A run that has not started yet has no RunID to key the flag by: move it with `Reschedule` instead.
 
+## Detours: hold, skip, redo
+
+An operator can take one run off its planned path without changing the workflow, by combining the operations on this page:
+
+| Detour | How |
+|---|---|
+| Hold the run between steps, then go on | `SuspendRun`, later `ResumeRun` ([Suspend one run](#suspend-one-run)) |
+| Redo from an earlier step after fixing the cause | `ResetRun(ref, step)` on the failed run ([Re-run a failed run from an earlier step](#re-run-a-failed-run-from-an-earlier-step)) |
+| Redo only the step that failed | `Retry(ref)` |
+| Skip the rest and call the run done, or failed | `ForceComplete`, `ForceFail` ([Force a run to an end](#force-a-run-to-an-end)) |
+| Skip one step that is waiting or running | [Cancel one step](#cancel-one-step) |
+| Change what a scheduled run will do before it starts | `RunEditor` ([Edit a scheduled run](edit-runs.md)) |
+
+For example, hold an import that looks wrong, let it go on, and once its transform fails because of a mapping bug, deploy the fix and redo from the transform; the fetch that succeeded is not repeated:
+
+```go
+if err := workflow.SuspendRun(ctx, journal, ref); err != nil { // hold
+	return err
+}
+// ... the source checks out
+if err := workflow.ResumeRun(ctx, journal, ref); err != nil {
+	return err
+}
+// ... the run fails in transform; the fix is deployed
+if _, err := c.(workflow.RunResetter).ResetRun(ctx, ref, "transform"); err != nil {
+	return err
+}
+```
+
+A detour that jumps ahead to a later step, or back from a succeeded run, is not built: `ResetRun` re-opens failed runs only.
+
 ## List the runs due soon
 
 A run enqueued with `Job.RunAt` waits as `scheduled` until it is due. `RunInfo.RunAt` is the time it is (or was) due, kept after it starts, and `RunQuery.DueFrom` and `RunQuery.DueTo` bound it to `[DueFrom, DueTo)`, which answers "what fires in the next hour?":

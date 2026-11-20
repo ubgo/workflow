@@ -64,6 +64,22 @@ for _, job := range []workflow.Job{
 
 `workflow.EffectiveQueue(wf, job)` is the rule every driver applies: `Job.Queue`, else `Workflow.Queue`, else the default. A step reads its run's queue from `workflow.StepInfo.Queue`, and the OpenTelemetry middleware records it on every span and metric.
 
+## Run one step on an accelerator
+
+A queue is also how work reaches the machines that have the hardware for it, such as a GPU. A queue belongs to a run, not to a step, so put the step that needs the accelerator in a workflow of its own on that queue, and call it from the main workflow as a child run:
+
+```go
+infer := workflow.Workflow{Name: "infer", Queue: "gpu", Steps: []workflow.Step{{Name: "model", Run: runModel}}}
+photo := workflow.Workflow{Name: "photo", Queue: "cpu", Steps: []workflow.Step{
+	{Name: "resize", Run: resize},
+	{Name: "label", After: []string{"resize"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		return workflow.AwaitChild(ctx, c, "label", workflow.Job{Workflow: "infer", Payload: in}, workflow.ChildOptions{})
+	}},
+}}
+```
+
+On a shared store (sqlstore, Redis, Hatchet) the GPU nodes start their client with `WithQueues(workflow.QueueConfig{Name: "gpu", Workers: 1})` and the other nodes with the CPU queues, so the model only ever runs where the GPU is, one attempt per card. In one process, `memory.WithQueues` with `Workers: 1` on the GPU queue keeps the card to one job at a time while the CPU queue runs several. `AwaitChild` waits without holding a worker (it needs the Journal plugin and `CapSnooze`).
+
 ## Step 4: pause a queue
 
 `Pause` with `workflow.PauseQueue(name)` holds the runs on that queue without cancelling them. No step attempt of a held run is claimed, attempts already running finish, and enqueues are still accepted; the held runs report `queued` until `Resume`.

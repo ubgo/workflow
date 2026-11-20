@@ -123,6 +123,25 @@ if err := json.Unmarshal(data, &back); err != nil { // refuses another version, 
 
 Reading refuses another version, unknown fields (so a document from a newer release never loses meaning silently) and zones that do not load; every error wraps `workflow.ErrScheduleJSON`. `json.Unmarshal` loads zones with `cron.LoadZone`; `workflow.UnmarshalSchedule(data, loadZone)` takes your own loader, for a zone alias table or a test. Writing refuses `time.Local` and a fixed offset, since neither has a name another process can load. The JSON form does not validate the rest of the schedule; `Client.Schedule` does that when it is created.
 
+## Keep a cursor between runs
+
+A schedule that pulls new rows each tick needs to remember where the last tick stopped. Keep that cursor in the schedule's own folder of a [`DataStore`](../workflows/memoisation.md#share-data-across-runs) and move it with `UpdateData`, a compare-and-set, so two runs of the schedule never both take the same rows:
+
+```go
+c, err := workflow.Use(client, workflow.Data(store)) // store: sqlstore.DataStore, redis.DataStore or MemoryData
+// ...
+{Name: "pull", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+	info, _ := workflow.StepInfoFrom(ctx)
+	folder := workflow.Folder("schedule/" + info.Labels[workflow.LabelSchedule])
+	_, err := workflow.UpdateData(ctx, folder, "cursor", func(last int64, _ bool) (int64, error) {
+		return importAfter(ctx, last, 500) // processes up to 500 rows after last, returns the new last ID
+	})
+	return nil, err
+}}
+```
+
+The cursor survives restarts on a durable store and is shared by every node. `LabelSchedule` is the schedule's ID, set on every run it fires (`CapTickEvents`); a run started by hand has none, so key the folder by `Schedule.Name` instead when manual runs should move the same cursor. `UpdateData` may call the function again when another writer changed the cursor first, so make the import idempotent or keep the work outside it and only the cursor move inside.
+
 ## Task output
 
 A scheduled run is ordinary Go code, so its output is its logs: log through `log/slog` with [`middleware.Logging`](../observability/logging.md) for every step, and ship the logs where the team reads them. For a summary per run, an `After` [schedule hook](hooks.md) can send it.

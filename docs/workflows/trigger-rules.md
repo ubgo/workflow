@@ -39,6 +39,32 @@ return workflow.WithRules(wf, workflow.RulesSpec{
 - `RulesSpec.Rules` gives a step a `TriggerRule`. A child of a tolerated or ruled step without an entry gets `RuleAllSucceeded`, so a failure or a skip below it propagates as a skip instead of reaching a handler as data.
 - `RulesSpec.Finally` lists exit handlers. A Finally step with no `After` is placed after every leaf, every other Run step is tolerated so nothing can stop it, and it runs once all its parents are done. After its handler returns, the run fails with `ErrStepsFailed` when any step before it failed, so the run's status stays honest.
 
+## Setup and teardown
+
+A step that acquires something (a test environment, a lease, a temporary bucket) and a Finally step that releases it make a setup and teardown pair: the teardown runs after the work whether it succeeded or failed, and the run still ends failed when the work failed. Pass the resource from setup to teardown as run data, since the teardown's input is its parents' outputs, not the setup's:
+
+```go
+wf, err := workflow.WithRules(workflow.Workflow{Name: "e2e", Steps: []workflow.Step{
+	{Name: "setup", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		env, err := createEnv(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return nil, workflow.SetRunData(ctx, "env", env)
+	}},
+	{Name: "test", After: []string{"setup"}, Run: runSuite},
+	{Name: "teardown", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		env, ok, err := workflow.RunData[string](ctx, "env")
+		if err != nil || !ok {
+			return nil, err // setup failed before it made one: nothing to release
+		}
+		return nil, deleteEnv(ctx, env)
+	}},
+}}, workflow.RulesSpec{Finally: []string{"teardown"}})
+```
+
+`SetRunData` needs the Journal plugin. When setup itself fails, the teardown still runs and finds no value. A teardown that must not run twice for one resource can memoise its call with `workflow.Memo`.
+
 ## The rules
 
 | Rule | The step runs when |
