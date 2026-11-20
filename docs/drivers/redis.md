@@ -94,6 +94,8 @@ again, err := web.Enqueue(ctx, workflow.Job{Workflow: "send-email", IdempotencyK
 
 `Runs` lists runs by filter, including tenant, label prefix and due time (it walks an index by enqueue time and filters in Go); `Retry` re-opens a failed run from its failed step; `Delete` forgets a finished run; `CancelAll` cancels by filter; `Reschedule` moves a delayed run; `CancelStep` withdraws one step; `RunInfo.Errors` keeps each failed attempt (`WithErrorHistory`, 20 by default) with the node it ran on. A finished run's keys expire after `WithRetention` (24 hours by default), measured by Redis on wall time. Every operation of the [admin module](../admin/operations.md) works on this client.
 
+`ResetRun` re-opens a failed run from a chosen step, keeping the outputs of the steps before it; `ResetRunWith(ctx, ref, step, workflow.ResetOptions{Succeeded: true})` does the same to a succeeded run in place, in the one script that checks its status, and stamps `workflow.LabelRedo` on it. Its chain was handed on when it succeeded and is not handed on again; a succeeded run whose chain handoff failed is refused with `workflow.ErrWrongState`. `ForkRun(ctx, ref, step, workflow.ForkOptions{})` starts a new run from a finished one at `step`, on the original's workflow version, queue, priority and tenant, with the outputs of the steps it keeps, `workflow.ForkLabels`, no chain and no idempotency key unless `ForkOptions.IdempotencyKey` gives one; the original is untouched. Both need the client to have the workflow registered, to know which steps are downstream.
+
 ## Shared stores
 
 The client's Redis also holds state the middleware shares across processes. Each has a method over the client's prefix and a standalone constructor:

@@ -2,7 +2,9 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -89,12 +91,16 @@ func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 // reported again to run-finished observers when it ends. See
 // workflow.RunRetrier.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
-	return c.retryFrom(ctx, ref, "")
+	return c.retryFrom(ctx, ref, "", workflow.ResetOptions{})
 }
 
 // retryFrom is Retry, and ResetRun when from names a step: from and every
-// step downstream of it start again too, their outputs dropped.
-func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string) (workflow.RunRef, error) {
+// step downstream of it start again too, their outputs dropped. With
+// opts.Succeeded (ResetRunWith) a succeeded run is reset the same way,
+// gets workflow.LabelRedo, loses its stored result and never hands its
+// chain on again; the status check is in the script, so a run that moved
+// meanwhile is not touched.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	id, err := runID(ref)
 	if err != nil {
 		return workflow.RunRef{}, err
@@ -103,8 +109,12 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 	if err != nil {
 		return workflow.RunRef{}, err
 	}
-	if r.status != workflow.StatusFailed {
-		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not failed", workflow.ErrWrongState, ref, r.status)
+	if !workflow.ResetStatusOK(r.status, opts) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, r.status, resetWants(opts))
+	}
+	redo := r.status == workflow.StatusSucceeded
+	if redo && len(r.chain) > 0 {
+		return workflow.RunRef{}, chainPending(ref)
 	}
 	var rerun []string
 	if from != "" {
@@ -116,13 +126,33 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 			return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, r.wf, from)
 		}
 	}
+	again := []string{} // the steps that run again: their resolved waits are dropped
 	for name, rec := range r.steps {
 		if !rec.Done || slices.Contains(rerun, name) {
 			r.steps[name] = &stepRec{}
+			again = append(again, name)
 		}
 	}
+	againJSON, err := json.Marshal(again)
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: encode steps: %w", err)
+	}
+	allow, labels := "0", ""
+	if redo {
+		allow = "1"
+		l := maps.Clone(r.labels)
+		if l == nil {
+			l = map[string]string{}
+		}
+		l[workflow.LabelRedo] = "true"
+		b, err := json.Marshal(l)
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("redis: encode labels: %w", err)
+		}
+		labels = string(b)
+	}
 	h := &held{stored: r}
-	res, err := retryScript.Run(ctx, c.rdb, c.keys(), c.base, id, r.finishedRaw, encodeSteps(h), c.clk.Now().UnixMilli()).Slice()
+	res, err := retryScript.Run(ctx, c.rdb, c.keys(), c.base, id, r.finishedRaw, encodeSteps(h), c.clk.Now().UnixMilli(), allow, labels, string(againJSON)).Slice()
 	if err != nil {
 		return workflow.RunRef{}, fmt.Errorf("redis: retry: %w", classify(err))
 	}
@@ -135,8 +165,26 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
 	case "dup":
 		return workflow.RunRef{}, fmt.Errorf("%w: run %+v: its idempotency key is held by run %s", workflow.ErrDuplicate, ref, str(res[1]))
+	case "chain":
+		return workflow.RunRef{}, chainPending(ref)
 	}
-	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not failed", workflow.ErrWrongState, ref, str(res[1]))
+	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(opts))
+}
+
+// resetWants names the statuses retryFrom accepts with opts, for its
+// ErrWrongState message.
+func resetWants(opts workflow.ResetOptions) string {
+	if opts.Succeeded {
+		return "failed or succeeded"
+	}
+	return "failed"
+}
+
+// chainPending is the error of a reset of a succeeded run that still
+// holds a chain it did not hand on (the handoff failed when it ended):
+// resetting it would hand that chain on later, so it is refused.
+func chainPending(ref workflow.RunRef) error {
+	return fmt.Errorf("%w: run %+v succeeded but still holds a chain it did not hand on; a reset would hand it on", workflow.ErrWrongState, ref)
 }
 
 // CancelAll cancels every run matching q in the statuses

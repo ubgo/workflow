@@ -196,8 +196,45 @@ func RunRedoFlows(t *testing.T, h FlowHarness) {
 			t.Fatalf("the chain ran %d times, want 1: a reset of a succeeded run must not hand it on again", n)
 		}
 	}
-	// A reset run that failed is still reset by plain ResetRun later: it
-	// does not need Succeeded once it has failed.
+	if c.Capabilities().Has(workflow.CapWaitForEvent) {
+		redoWait(t, h)
+	}
+}
+
+// redoWait: a wait step that runs again after a reset of a succeeded run
+// waits for a new event; the one it took before stays taken.
+func redoWait(t *testing.T, h FlowHarness) {
+	t.Helper()
+	wf := workflow.Workflow{Name: "redo-wait", Steps: []workflow.Step{
+		{Name: "approve", Wait: &workflow.WaitSpec{Event: "approve", Key: "k"}},
+		{Name: "apply", After: []string{"approve"}, Run: func(_ context.Context, in []byte) ([]byte, error) { return in, nil }},
+	}}
+	c := h.Start(t, wf)
+	rs := c.(workflow.RunResetterWith)
+	ctx := context.Background()
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: wf.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Signal(ctx, workflow.Event{Name: "approve", Key: "k", Payload: []byte(`"v1"`)}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := flowAwait(t, c, ref); err != nil || string(out) != `"v1"` {
+		t.Fatalf("first run: %q %v", out, err)
+	}
+	if _, err := rs.ResetRunWith(ctx, ref, "approve", workflow.ResetOptions{Succeeded: true}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if st, err := c.Status(ctx, ref); err != nil || st.IsTerminal() {
+		t.Fatalf("a reset wait step must wait for a new event; the run is %s (%v)", st, err)
+	}
+	if err := c.Signal(ctx, workflow.Event{Name: "approve", Key: "k", Payload: []byte(`"v2"`)}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := flowAwait(t, c, ref); err != nil || string(out) != `"v2"` {
+		t.Fatalf("after the reset and a new event: %q %v, want \"v2\"", out, err)
+	}
 }
 
 // RunForkFlows proves workflow.RunForker on a driver: a fork of a failed
