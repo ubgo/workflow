@@ -95,6 +95,7 @@ Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger 
 | Lifecycle event kinds | `inserted`, `started`, `retrying`, `snoozed`, `progress`, `finished` (`workflow.LifecycleInserted` and the rest) | `LifecycleEvent.Kind` |
 | Unique struct tag | `unique` (`middleware.UniqueTag`) | Payload fields `middleware.ArgsTagged` reads |
 | Schedule JSON | `{"v": 1, ...}` (`workflow.ScheduleJSONVersion`), the zone by IANA name | `json.Marshal` of a `Schedule` |
+| Message attributes | `ubgo-workflow`, `ubgo-tenant`, `ubgo-queue`, `ubgo-idempotency-key`, `ubgo-priority`, `ubgo-run-at`, `ubgo-l-<label key>` or `ubgo-labels` (JSON) under `workflow.DefaultAttributePrefix` (`Attributes.Prefix`); trace labels as `traceparent`, `tracestate`, `baggage` (`workflow.DefaultTraceAttributes`, `Attributes.Trace`) | `workflow.Attributes` encoding a job for a broker or HTTP hop |
 | Admin command line environment | `WORKFLOW_ADMIN_URL`, `WORKFLOW_ADMIN_TOKEN`, `WORKFLOW_ADMIN_HEADER` | The `workflow` command (`cli`) |
 
 ## Metrics
