@@ -341,7 +341,7 @@ func shippedEmail(c workflow.Client) workflow.MachineAction[Order] {
 | Redis | Yes | Yes |
 | Hatchet | Refused at `Register`: its concurrency keys are engine expressions, and a machine's key is computed in Go | — |
 
-There is no table of the machine's own: an instance is one record in the `JournalStore` you pass, under the same internal run ID scheme as a virtual object's key. The Journal plugin's retention never removes it.
+There is no table of the machine's own: an instance is one record in the `JournalStore` you pass, under the same internal run ID scheme as a virtual object's key. The Journal plugin's retention never removes it; `ForgetMachine` does.
 
 ## A machine, workflow steps or an object?
 
@@ -357,7 +357,7 @@ A machine's action can still start a workflow (`client.Enqueue` with `m.Idempote
 
 - Renaming or removing a state strands every instance in it: its next event fails permanently with "stored state is not in the machine". Keep the old state until no instance is in it, with a transition out to the new one. History that names a removed state skips it.
 - Timer events are machine-wide event names: a transition on `payment-timeout` from any active state takes the timer's event, and a client can send `payment-timeout` itself with `SendEvent`. Give each timer an event name only its own transitions use.
-- Guards must be pure. A guard can run more than once per event; `Data` is a pointer, so a change a guard makes would be saved.
+- Guards must be pure. A guard can run more than once per event. It gets a shallow copy of the data, so a change to a top-level field is dropped, but maps and slices are shared with the real data: a change to one of those from a guard would be saved.
 - An event's handling may take at most `workflow.MaxMachineMicrosteps` (100) transitions, counting those of raised and done events; past it the event fails permanently, so a raise loop cannot spin for ever.
 - Entry actions run on every entry: through history, a `Reenter` transition and a re-entered state alike. An action that must happen once per instance belongs on a transition, or behind `m.IdempotencyKey`.
 - The log lives in the instance's record, and every handled event rewrites the record. Keep `KeepLog` small for instances with many events, or negative to keep none.
