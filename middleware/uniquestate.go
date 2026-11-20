@@ -53,6 +53,16 @@ type UniqueConfig struct {
 	// When the holder's run is not known yet (a race with its enqueue),
 	// it still returns ErrDuplicate.
 	ReturnExisting bool
+
+	// Replace makes a duplicate update the holder instead (UQ-08, conflict
+	// replaces): while the holder's run is still scheduled, its payload,
+	// priority and, when the new job sets one, RunAt become the new job's
+	// (workflow.RunEditor), and the holder's RunRef is returned marked a
+	// duplicate. A holder that has left the scheduled state is not
+	// touched: the enqueue is answered as without Replace (ReturnExisting
+	// or ErrDuplicate). Needs Client implementing workflow.RunEditor
+	// (memory, sqlstore, Redis) and a store implementing UniqueHolders.
+	Replace bool
 }
 
 // UniqueWith is Unique with a choice of which holder states count
@@ -72,8 +82,13 @@ func UniqueWith(cfg UniqueConfig) (workflow.EnqueueMiddleware, error) {
 	if len(cfg.States) > 0 && cfg.Client == nil {
 		return nil, fmt.Errorf("%w: UniqueWith: States needs a Client to look the holder up", workflow.ErrInvalid)
 	}
+	if cfg.Replace {
+		if _, ok := cfg.Client.(workflow.RunEditor); !ok {
+			return nil, fmt.Errorf("%w: UniqueWith: Replace needs a Client implementing workflow.RunEditor", workflow.ErrInvalid)
+		}
+	}
 	holders, ok := cfg.Store.(UniqueHolders)
-	track := len(cfg.States) > 0 || cfg.ReturnExisting
+	track := len(cfg.States) > 0 || cfg.ReturnExisting || cfg.Replace
 	if track && !ok {
 		return nil, fmt.Errorf("%w: UniqueWith: States and ReturnExisting need a store implementing UniqueHolders", workflow.ErrInvalid)
 	}
@@ -105,7 +120,7 @@ func (u uniqueWith) middleware(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 			return workflow.RunRef{}, err
 		}
 		if !ok {
-			return u.duplicate(ctx, key)
+			return u.duplicate(ctx, key, job)
 		}
 		job.Labels = stampUnique(job.Labels, key, owner)
 		ref, err := next(workflow.AllowReservedLabels(ctx, UniqueKeyLabel, UniqueOwnerLabel), job)
@@ -151,7 +166,27 @@ func (u uniqueWith) acquire(ctx context.Context, key, owner string) (bool, error
 }
 
 // duplicate answers an enqueue whose key is held.
-func (u uniqueWith) duplicate(ctx context.Context, key string) (workflow.RunRef, error) {
+func (u uniqueWith) duplicate(ctx context.Context, key string, job workflow.Job) (workflow.RunRef, error) {
+	if u.cfg.Replace {
+		_, ref, found, err := u.holders.Holder(ctx, key)
+		if err != nil {
+			return workflow.RunRef{}, wrapAcquire(err)
+		}
+		if found {
+			edit := workflow.JobEdit{Payload: &job.Payload, Priority: &job.Priority}
+			if !job.RunAt.IsZero() {
+				edit.RunAt = &job.RunAt
+			}
+			got, err := u.cfg.Client.(workflow.RunEditor).EditRun(ctx, ref, edit)
+			switch {
+			case err == nil:
+				workflow.MarkDuplicate(ctx)
+				return got, nil
+			case !errors.Is(err, workflow.ErrWrongState) && !errors.Is(err, workflow.ErrNotFound):
+				return workflow.RunRef{}, fmt.Errorf("workflow/middleware: unique replace: %w", err)
+			}
+		}
+	}
 	if u.cfg.ReturnExisting {
 		_, ref, found, err := u.holders.Holder(ctx, key)
 		if err != nil {
