@@ -21,6 +21,10 @@ type MemoryStore struct {
 	clk       clock.Clock
 	retention Retention
 
+	// pruneMu serialises Prune, so two prunes at once cannot both list
+	// and archive the same runs (see Prune).
+	pruneMu sync.Mutex
+
 	mu sync.Mutex
 	// runs is every record by Key (KeyOf). A record holds its steps; a
 	// step holds its events.
@@ -350,11 +354,17 @@ func (s *MemoryStore) Pending(_ context.Context, limit int) ([]RunRecord, error)
 // Prune implements Pruner: stage one drops the steps of runs finished
 // longer ago than the rule's Steps age, stage two archives and deletes runs
 // finished longer ago than its Runs age.
+//
+// Archive sees each run exactly once per store: prunes run one at a time,
+// a chunk Archive accepted is deleted at once, whatever ctx does, and a
+// chunk it refused stays for the next prune.
 func (s *MemoryStore) Prune(ctx context.Context) (PruneResult, error) {
 	var res PruneResult
 	if s.retention.IsZero() {
 		return res, nil
 	}
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
 	now := s.clk.Now()
 	s.mu.Lock()
 	var doomed []RunRecord

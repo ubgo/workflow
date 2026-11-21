@@ -434,6 +434,76 @@ func TestMemoryStorePrunesScheduledRun(t *testing.T) {
 	}
 }
 
+// TestMemoryStoreArchivesOnce: two prunes of one MemoryStore at the same
+// time hand each run to Archive once. Before prunes were serialised, the
+// second listed the runs the first was still archiving and archived them
+// again.
+func TestMemoryStoreArchivesOnce(t *testing.T) {
+	ctx := context.Background()
+	clk := clock.NewFake(start)
+	var (
+		mu      sync.Mutex
+		seen    = map[string]int{}
+		calls   int
+		entered = make(chan struct{})
+		release = make(chan struct{})
+	)
+	archive := func(_ context.Context, rs []recorder.RunRecord) error {
+		mu.Lock()
+		calls++
+		first := calls == 1
+		for _, r := range rs {
+			seen[r.Key()]++
+		}
+		mu.Unlock()
+		if first { // hold the first prune inside Archive while the second starts
+			close(entered)
+			<-release
+		}
+		return nil
+	}
+	s, err := recorder.NewMemoryStore(recorder.WithMemoryClock(clk), recorder.WithMemoryRetention(recorder.Retention{RetentionRule: recorder.RetentionRule{Runs: time.Hour}, Archive: archive}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const runs = 3
+	for i := range runs {
+		ref := workflow.RunRef{RunID: workflow.RunID("r" + string(rune('a'+i)))}
+		if err := s.UpsertRun(ctx, recorder.RunWrite{Ref: ref, Workflow: "w", At: start}); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.FinishRun(ctx, recorder.Finish{Ref: ref, Status: workflow.StatusSucceeded, FinishedAt: start, At: start}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clk.Advance(2 * time.Hour)
+	var wg sync.WaitGroup
+	prune := func() {
+		defer wg.Done()
+		if _, err := s.Prune(ctx); err != nil {
+			t.Error(err)
+		}
+	}
+	wg.Add(1)
+	go prune()
+	<-entered
+	wg.Add(1)
+	go prune()
+	time.Sleep(50 * time.Millisecond) // the second prune lists the runs, or waits its turn
+	close(release)
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) != runs {
+		t.Fatalf("archived %d distinct runs, want %d", len(seen), runs)
+	}
+	for k, n := range seen {
+		if n != 1 {
+			t.Errorf("run %s archived %d times, want once", k, n)
+		}
+	}
+}
+
 // TestJSONPathsArrayWithoutMatch: a wildcard path into an array whose
 // elements hold nothing at the rest of the path leaves the body as it was;
 // one element that does is redacted alone.

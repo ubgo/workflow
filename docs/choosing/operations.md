@@ -44,7 +44,7 @@ The SQL driver keeps every finished run until you turn on retention, and the hot
 - The `WithArchive` hook sees a chunk at least once: it runs before the delete transaction, so a delete that fails hands the same runs to the next prune. A run that a guard keeps (it was retried meanwhile) is copied but not deleted. Key what the hook writes by run ID.
 - A hook that keeps failing stops every prune, and the hot tables grow again; log its error and alert on it.
 - Retention in a cluster where no client registers an `OnRunFinished` observer deletes nothing unless `Retention.Undelivered` is true; watch `PruneResult.HeldUndelivered`.
-- The recorder's store prunes only when you call `Prune`; schedule it yourself. Its `Archive` sees a run at least once too.
+- The recorder's store prunes only when you call `Prune`; schedule it yourself. Its `Archive` sees a run at least once on `sqlrecorder` (a cancelled prune no longer repeats a batch; a crash or a failed delete right after `Archive` does) and exactly once on `MemoryStore`; key what it writes by run ID.
 - `StartWhen` blocks, and its `ctx` becomes the client's lifetime once `Start` runs: a `context.WithTimeout` given to it stops the workers at the deadline as well. Put a deadline inside the `ReadyFunc` instead.
 - A `ReadyFunc` that returns an error ends the wait for good. A dependency that is still booting should return `false, nil`.
 - A readiness probe does not stop a client from scheduling: a node with a wrong clock but a healthy database reports ready and fires wrong ticks. That is what `StartWhen` is for.
