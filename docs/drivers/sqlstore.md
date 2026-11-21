@@ -428,13 +428,14 @@ if _, err := c.Status(ctx, first); errors.Is(err, workflow.ErrNotFound) {
 }
 ```
 
-Step 3: read the history back. `Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, AfterRunID, Limit})` returns `FinishedRun` values, newest finish first (ties by run ID), each with its step outputs; `Limit` is 100 when zero. Page by passing the last run of one page as the next page's cursor: its `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as `AfterRunID`, so runs that finished at the same instant are neither skipped nor repeated. `FinishedBefore` alone is a strict "before" (the example below, whose runs all finish at different times, uses only that). It reads the tables directly, so it needs `Migrate`, not `Start`:
+Step 3: read the history back. `Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, AfterRunID, Limit})` returns `FinishedRun` values, newest finish first (ties by run ID), each with its step outputs; `Limit` is 100 when zero. Page by passing the last run of one page as the next page's cursor: its `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as `AfterRunID`, so runs that finished at the same instant are neither skipped nor repeated. `FinishedBefore` alone is a strict "before" and skips a run that tied with the last one shown. In the example `INV-1` and `INV-2` finish at the same instant and the page boundary falls between them; `INV-2` on page 2 is the tie-breaker at work. It reads the tables directly, so it needs `Migrate`, not `Start`:
 
 <!-- snippet: examples/sql-archive/main.go#read -->
 ```go
-var before time.Time // zero: start from the newest finish
+var before time.Time     // zero: start from the newest finish
+var after workflow.RunID // the tie-breaker: runs that finished at before, after this ID
 for page := 1; ; page++ {
-	runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, Limit: pageSize})
+	runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, AfterRunID: after, Limit: pageSize})
 	if err != nil {
 		return err
 	}
@@ -444,7 +445,8 @@ for page := 1; ; page++ {
 	for _, r := range runs {
 		fmt.Fprintf(w, "page %d: %s %s %s outputs %s\n", page, r.Ref.RunID, r.Status, r.Payload, outputs(r.Outputs))
 	}
-	before = runs[len(runs)-1].FinishedAt // the next page finished before the last one here
+	last := runs[len(runs)-1] // the next page starts after it in (finish, ID) order
+	before, after = last.FinishedAt, last.Ref.RunID
 }
 ```
 
@@ -452,8 +454,8 @@ for page := 1; ; page++ {
 pruned 3 runs from the hot tables
 status of run_000001: not found (it left the queue)
 page 1: run_000003 succeeded "INV-3" outputs render="pdf:INV-3" send="sent"
-page 1: run_000002 succeeded "INV-2" outputs render="pdf:INV-2" send="sent"
-page 2: run_000001 succeeded "INV-1" outputs render="pdf:INV-1" send="sent"
+page 1: run_000001 succeeded "INV-1" outputs render="pdf:INV-1" send="sent"
+page 2: run_000002 succeeded "INV-2" outputs render="pdf:INV-2" send="sent"
 ```
 
 ## Per-run facts, journal and bucket state
