@@ -224,23 +224,54 @@ func (s *Store) Migrate(ctx context.Context) error {
 }
 
 // execRetry runs one idempotent migration statement, again on a
-// contention error: two processes creating the same table at once can
-// collide inside the engine's catalog (Postgres reports a duplicate type)
-// even with IF NOT EXISTS, and the retry then finds the table.
+// contention error or a catalog race: two processes creating the same
+// table or index at once can collide inside the engine's catalog even
+// with IF NOT EXISTS (Postgres reports the relation or its row type as
+// already existing, 42P07 or 42710, or a unique violation in pg_type),
+// and the retry then finds the object and skips it.
 func (s *Store) execRetry(ctx context.Context, stmt string, vals ...any) error {
-	return s.retry(ctx, func() error {
+	again := func(err error) bool { return s.retryable(err) || catalogRace(err) }
+	return s.retryOn(ctx, again, func() error {
 		_, err := s.db.ExecContext(ctx, stmt, vals...)
 		return err
 	})
+}
+
+// catalogRaceMarkers are the errors of an IF NOT EXISTS statement that
+// lost a race with the same statement of another process: Postgres
+// duplicate_table (42P07, also for an index) and duplicate_object (42710,
+// the table's row type), MySQL ER_TABLE_EXISTS_ERROR (1050). They are
+// migration-only: a write never creates a catalog object, so they are not
+// part of DefaultRetryable.
+var catalogRaceMarkers = []string{"42P07", "42710", "Error 1050"}
+
+// catalogRace reports whether err is a lost IF NOT EXISTS race (see
+// catalogRaceMarkers).
+func catalogRace(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, m := range catalogRaceMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // retry runs fn up to the store's attempts while it fails with a
 // contention error, with a short growing pause between tries, and returns
 // its last error.
 func (s *Store) retry(ctx context.Context, fn func() error) error {
+	return s.retryOn(ctx, s.retryable, fn)
+}
+
+// retryOn is retry with its own test of which errors are worth a retry.
+func (s *Store) retryOn(ctx context.Context, again func(error) bool, fn func() error) error {
 	var err error
 	for attempt := 1; attempt <= s.attempts; attempt++ {
-		if err = fn(); err == nil || !s.retryable(err) {
+		if err = fn(); err == nil || !again(err) {
 			return err
 		}
 		select {

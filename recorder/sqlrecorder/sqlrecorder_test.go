@@ -91,6 +91,27 @@ func TestDefaultRetryable(t *testing.T) {
 	}
 }
 
+// TestCatalogRace: the lost IF NOT EXISTS races Migrate retries are
+// recognised, and stay out of DefaultRetryable (a write never creates a
+// catalog object, so a WithRetryable classifier need not know them).
+func TestCatalogRace(t *testing.T) {
+	for _, msg := range []string{
+		`ERROR: relation "wf_rec_runs" already exists (SQLSTATE 42P07)`,
+		`ERROR: type "wf_rec_steps" already exists (SQLSTATE 42710)`,
+		"Error 1050 (42S01): Table 'wf_rec_runs' already exists",
+	} {
+		if !catalogRace(errors.New(msg)) {
+			t.Errorf("not a catalog race: %s", msg)
+		}
+		if DefaultRetryable(errors.New(msg)) {
+			t.Errorf("DefaultRetryable takes a migration-only error: %s", msg)
+		}
+	}
+	if catalogRace(nil) || catalogRace(errors.New("syntax error at or near")) {
+		t.Error("catalog race false positive")
+	}
+}
+
 func TestTerminalStatuses(t *testing.T) {
 	var want []string
 	for _, st := range []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting,
