@@ -38,6 +38,7 @@ var caps = workflow.CapsOf(
 	workflow.CapWorkflowVersion,
 	workflow.CapSlotCost,
 	workflow.CapWaitOwnRun,
+	workflow.CapRoundRobin, workflow.CapKeyWeights,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
@@ -204,12 +205,15 @@ type Client struct {
 	tasks   []*task               // step attempts waiting for a worker; see pickLocked
 	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
 	buckets map[bucketKey][]*run
-	rrTurn  map[bucketKey]uint64 // when a ConcurrencyRoundRobin bucket last had a task picked; see before
-	rrClock uint64               // counts those picks
-	rates   map[rateKey][]time.Time
-	rateAt  time.Time   // when the armed rate-limit timer fires; zero if none
-	rateTm  clock.Timer // the armed rate-limit timer
-	scheds  map[workflow.ScheduleID]*schedule
+	// fairPass is where each ConcurrencyRoundRobin bucket's last admitted
+	// run ends in virtual time, and fairMax the largest of them per
+	// workflow (workflow.FairTurn); see fairTagLocked.
+	fairPass map[bucketKey]int64
+	fairMax  map[string]int64
+	rates    map[rateKey][]time.Time
+	rateAt   time.Time   // when the armed rate-limit timer fires; zero if none
+	rateTm   clock.Timer // the armed rate-limit timer
+	scheds   map[workflow.ScheduleID]*schedule
 
 	queueExec      map[string]int                // executing attempts per queue
 	executing      int                           // executing attempts in all

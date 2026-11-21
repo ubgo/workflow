@@ -277,9 +277,18 @@ func TestCancelReachesAnotherClient(t *testing.T) {
 			started := make(chan struct{}, 1)
 			stopped := make(chan error, 1)
 			wf := workflow.Workflow{Name: "cancel", Steps: []workflow.Step{{Name: "only", Run: func(ctx context.Context, in []byte) ([]byte, error) {
-				started <- struct{}{}
+				// Non-blocking sends: on a loaded machine the lease can expire
+				// and the step run again; a second send into a full channel
+				// would hold the worker, and the test's cleanup, forever.
+				select {
+				case started <- struct{}{}:
+				default:
+				}
 				<-ctx.Done()
-				stopped <- context.Cause(ctx)
+				select {
+				case stopped <- context.Cause(ctx):
+				default:
+				}
 				return nil, ctx.Err()
 			}}}}
 			ctx, cancel := context.WithCancel(context.Background())

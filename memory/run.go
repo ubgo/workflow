@@ -46,6 +46,7 @@ type run struct {
 	admitted  bool
 	idem      *idemKey
 	bucket    string   // concurrency key value
+	fair      int64    // fair tag under ConcurrencyRoundRobin, set on admission (FC-05/FC-06)
 	rateKeys  []string // one per Workflow.RateLimits entry
 	seq       uint64
 	executing int // step attempts running on a worker
@@ -216,6 +217,7 @@ func (c *Client) admitLocked() {
 	})
 	now := c.clk.Now()
 	var wake time.Time
+	fairNow := map[string]int64{} // per round-robin workflow, read once per pass; see fairTagLocked
 	kept := c.pending[:0]
 	for _, r := range c.pending {
 		wf := r.reg.wf
@@ -238,6 +240,7 @@ func (c *Client) admitLocked() {
 		if wf.Concurrency != nil {
 			c.buckets[bk] = append(c.buckets[bk], r)
 		}
+		c.fairTagLocked(r, bk, fairNow)
 		r.admitted = true
 		c.armRunTimeoutLocked(r)
 		// Ready Run steps (the roots, or after Retry the steps whose
@@ -832,10 +835,8 @@ func (c *Client) pushTaskLocked(r *run, s workflow.Step, in []byte, attempt int)
 }
 
 // before reports whether task a goes before b: the higher queue priority
-// (QueueConfig.Priority), then the higher Job.Priority, then, for two
-// runs of one ConcurrencyRoundRobin workflow under different keys, the
-// key served longer ago (FC-05: keys take turns, so a key with a backlog
-// cannot starve the others), then arrival.
+// (QueueConfig.Priority), then the higher Job.Priority, then arrival.
+// Round robin (fairPick) then reorders inside a workflow's place.
 func (c *Client) before(a, b *task) bool {
 	if qa, qb := c.queues[a.r.queue].Priority, c.queues[b.r.queue].Priority; qa != qb {
 		return qa > qb
@@ -843,36 +844,84 @@ func (c *Client) before(a, b *task) bool {
 	if a.priority != b.priority {
 		return a.priority > b.priority
 	}
-	if ka, kb, ok := rrKeys(a, b); ok {
-		if ta, tb := c.rrTurn[ka], c.rrTurn[kb]; ta != tb {
-			return ta < tb
-		}
-	}
 	return a.seq < b.seq
 }
 
-// rrKeys returns the buckets of a and b when both are runs of one
-// ConcurrencyRoundRobin workflow under different keys.
-func rrKeys(a, b *task) (bucketKey, bucketKey, bool) {
-	conc := a.r.reg.wf.Concurrency
-	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin || a.r.reg != b.r.reg || a.r.bucket == b.r.bucket {
-		return bucketKey{}, bucketKey{}, false
-	}
-	wf := a.r.reg.wf.Name
-	return bucketKey{workflow: wf, key: a.r.bucket}, bucketKey{workflow: wf, key: b.r.bucket}, true
+// roundRobin reports whether reg's runs take turns by key.
+func roundRobin(reg *registered) bool {
+	conc := reg.wf.Concurrency
+	return conc != nil && conc.Strategy == workflow.ConcurrencyRoundRobin
 }
 
-// servedLocked records that t's round-robin bucket just had a turn.
-func (c *Client) servedLocked(t *task) {
-	conc := t.r.reg.wf.Concurrency
-	if conc == nil || conc.Strategy != workflow.ConcurrencyRoundRobin {
+// fairTagLocked gives r, admitted into bucket bk, its start tag when its
+// workflow is ConcurrencyRoundRobin (workflow.FairTurn). The workflow's
+// virtual time is the smallest start tag of its tasks waiting for a
+// worker or, when none waits, the largest pass of its keys. It is read
+// once per admission pass (pass caches it per workflow): the runs a pass
+// admits start at or after it, so it cannot move within the pass. Callers
+// hold c.mu.
+func (c *Client) fairTagLocked(r *run, bk bucketKey, pass map[string]int64) {
+	if !roundRobin(r.reg) {
 		return
 	}
-	if c.rrTurn == nil {
-		c.rrTurn = map[bucketKey]uint64{}
+	if c.fairPass == nil {
+		c.fairPass, c.fairMax = map[bucketKey]int64{}, map[string]int64{}
 	}
-	c.rrClock++
-	c.rrTurn[bucketKey{workflow: t.r.reg.wf.Name, key: t.r.bucket}] = c.rrClock
+	now, ok := pass[bk.workflow]
+	if !ok {
+		waiting := false
+		for _, t := range c.tasks {
+			if t.r.reg == r.reg && t.r.ctx.Err() == nil && (!waiting || t.r.fair < now) {
+				now, waiting = t.r.fair, true
+			}
+		}
+		if !waiting {
+			now = c.fairMax[bk.workflow]
+		}
+		pass[bk.workflow] = now
+	}
+	start, next := workflow.FairTurn(c.fairPass[bk], now, workflow.FairWeight(r.reg.wf.Concurrency, r.bucket))
+	r.fair = start
+	c.fairPass[bk] = next
+	c.fairMax[bk.workflow] = max(c.fairMax[bk.workflow], next)
+	if len(c.fairPass) > 1024 {
+		// A key whose pass is behind the virtual time starts at it anyway
+		// (FairTurn), so its entry can go.
+		for k, p := range c.fairPass {
+			if p < now && k.workflow == bk.workflow {
+				delete(c.fairPass, k)
+			}
+		}
+	}
+}
+
+// fairPick applies round robin (FC-05) to the task at best: when its run
+// belongs to a ConcurrencyRoundRobin workflow, the turn goes to the
+// eligible task of the same workflow, queue and Job.Priority whose run has
+// the smallest start tag (then arrival). Fairness so reorders which key
+// takes the workflow's place in line, never the place itself: the picked
+// task takes best's arrival number and best keeps the picked one's, so the
+// workflow's places in line stay where its runs' arrivals put them.
+// Callers hold c.mu.
+func (c *Client) fairPick(eligible []int, best int) int {
+	b := c.tasks[best]
+	if !roundRobin(b.r.reg) {
+		return best
+	}
+	pick := best
+	for _, i := range eligible {
+		t := c.tasks[i]
+		if t.r.reg != b.r.reg || t.r.queue != b.r.queue || t.priority != b.priority {
+			continue
+		}
+		// Equal tags go by the run's own arrival: a task's seq may be a
+		// place it took over from an earlier pick.
+		if p := c.tasks[pick]; t.r.fair < p.r.fair || (t.r.fair == p.r.fair && (t.r.seq < p.r.seq || (t.r.seq == p.r.seq && t.seq < p.seq))) {
+			pick = i
+		}
+	}
+	c.tasks[pick].seq, c.tasks[best].seq = c.tasks[best].seq, c.tasks[pick].seq
+	return pick
 }
 
 // pickLocked removes and returns the first task a worker may claim now,
@@ -909,9 +958,9 @@ func (c *Client) pickLocked() *task {
 	if w := c.weightedLocked(eligible, c.queues[c.tasks[best].r.queue].Priority); w >= 0 {
 		best = w
 	}
+	best = c.fairPick(eligible, best)
 	t := c.tasks[best]
 	c.tasks = slices.Delete(c.tasks, best, best+1)
-	c.servedLocked(t)
 	return t
 }
 

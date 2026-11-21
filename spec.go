@@ -526,7 +526,7 @@ const (
 	ConcurrencyDropNewest       ConcurrencyStrategy = "drop_newest"        // the new run is dropped; see below
 	ConcurrencyCancelNewest     ConcurrencyStrategy = "cancel_newest"      // the new run is cancelled; see below
 	ConcurrencyCancelInProgress ConcurrencyStrategy = "cancel_in_progress" // the running one is cancelled
-	ConcurrencyRoundRobin       ConcurrencyStrategy = "round_robin"        // keys take turns
+	ConcurrencyRoundRobin       ConcurrencyStrategy = "round_robin"        // keys take turns (CapRoundRobin; weights: Concurrency.Weight)
 )
 
 // Concurrency caps simultaneous runs per key: each distinct key value is
@@ -548,6 +548,67 @@ type Concurrency struct {
 	// order. Only with ConcurrencyQueueNewest (the default). Needs
 	// CapKeyFIFO.
 	FIFO bool
+
+	// Weight gives each key its share of the workers under
+	// ConcurrencyRoundRobin (FC-06): while keys have work waiting, a key
+	// of weight 3 gets three turns for every turn of a key of weight 1.
+	// nil gives every key weight 1; a result below 1 counts as 1 and one
+	// above MaxKeyWeight as MaxKeyWeight. The driver calls it in Go when
+	// it admits a run of the key, so it may read a plan table or a
+	// config, but should be fast. KeyWeights builds one from a map. Only
+	// with ConcurrencyRoundRobin; needs CapKeyWeights.
+	Weight func(key string) int
+}
+
+// MaxKeyWeight is the largest Concurrency.Weight a driver honours; larger
+// weights count as MaxKeyWeight.
+const MaxKeyWeight = 1 << 20
+
+// KeyWeights returns a Concurrency.Weight that reads weights from a map,
+// with def for a key the map does not list.
+func KeyWeights(weights map[string]int, def int) func(key string) int {
+	m := make(map[string]int, len(weights))
+	for k, v := range weights {
+		m[k] = v
+	}
+	return func(key string) int {
+		if w, ok := m[key]; ok {
+			return w
+		}
+		return def
+	}
+}
+
+// FairStride is the virtual time one turn of a key of weight w costs
+// under ConcurrencyRoundRobin: MaxKeyWeight / w, with w clamped to
+// 1..MaxKeyWeight. See FairTurn.
+func FairStride(w int) int64 {
+	w = min(max(w, 1), MaxKeyWeight)
+	return MaxKeyWeight / int64(w)
+}
+
+// FairTurn is the start-time fair queueing step every driver applies when
+// it admits a run of a ConcurrencyRoundRobin workflow, so every driver
+// gives the same shares. pass is where the key's previous run ended in
+// virtual time (zero for a new key) and now is the workflow's virtual
+// time: the smallest start tag of the workflow's runs waiting for a
+// worker, or, when none waits, the largest pass of any key. The run gets
+// start tag max(pass, now), so a key that had nothing waiting rejoins at
+// the current turn and gets no credit for the time it was idle, and the
+// key's pass moves to start + FairStride(w). The driver serves the
+// waiting runs of the workflow in start tag order (then arrival).
+func FairTurn(pass, now int64, w int) (start, next int64) {
+	start = max(pass, now)
+	return start, start + FairStride(w)
+}
+
+// FairWeight returns c's weight for key: 1 when c or its Weight is nil.
+// Drivers call it when they admit a run.
+func FairWeight(c *Concurrency, key string) int {
+	if c == nil || c.Weight == nil {
+		return 1
+	}
+	return min(max(c.Weight(key), 1), MaxKeyWeight)
 }
 
 // ConcurrencyKey derives a key from a job: the concurrency bucket, the

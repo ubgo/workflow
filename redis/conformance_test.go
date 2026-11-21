@@ -120,5 +120,11 @@ func TestConformance(t *testing.T) {
 				return newClient(t, rdb, prefix, wfredis.WithClock(clk), wfredis.WithEnqueueOnly())
 			},
 		}
+	}, NewWithQueues: func(t *testing.T, qs []workflow.QueueConfig) workflowtest.Instance {
+		// The round-robin cases (group "fair") serve one queue with one
+		// worker, so the order of starts is the order of turns.
+		prefix := testPrefix(t, rdb)
+		clk := clock.NewFake(start)
+		return workflowtest.Instance{Client: newClient(t, rdb, prefix, wfredis.WithClock(clk), wfredis.WithQueues(qs...)), Clock: clk}
 	}})
 }

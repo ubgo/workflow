@@ -75,7 +75,8 @@ var p4Caps = workflow.CapsOf(
 var p5Caps = workflow.CapsOf(
 	workflow.CapTenant, workflow.CapResult, workflow.CapDueQuery, workflow.CapNodeIdentity, workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
-	workflow.CapWorkflowVersion, // run_version (migration 010)
+	workflow.CapWorkflowVersion,                    // run_version (migration 010)
+	workflow.CapRoundRobin, workflow.CapKeyWeights, // fair_keys and run_fair (migration 011)
 )
 
 // Run states as stored in runs.status. Scheduled, the three terminal ones
@@ -486,6 +487,7 @@ type Client struct {
 	local    map[string]map[*attempt]bool // run id -> attempts executing here
 	rateWake time.Time                    // earliest moment a rate-limited run may start
 	names    []any                        // registered workflow names, the IN list of every query
+	fairAny  bool                         // a registered workflow is ConcurrencyRoundRobin: claims hand turns (fair.go)
 	// queues is WithQueues: empty means every queue from one pool. tiers
 	// is the same list grouped by Priority, highest first, as the claim
 	// walks it; served is the names as IN-list arguments.
@@ -818,8 +820,9 @@ func (c *Client) Start(ctx context.Context) error {
 		}
 	}
 	c.started = true
-	for name := range c.wfs {
+	for name, reg := range c.wfs {
 		c.names = append(c.names, name)
+		c.fairAny = c.fairAny || roundRobin(reg.wf)
 	}
 	c.verFilter = c.buildVersionFilter()
 	c.mu.Unlock()
@@ -886,6 +889,11 @@ func (c *Client) Start(ctx context.Context) error {
 // prepare writes what Start needs before any worker runs: a lock row per
 // workflow with an admission policy and the declared cron schedules.
 func (c *Client) prepare(ctx context.Context) error {
+	if c.fairAny && c.st.engine == engineSQLite {
+		if err := c.ensureLock(ctx, fairClaimLock); err != nil {
+			return err
+		}
+	}
 	for _, reg := range c.wfs {
 		if reg.wf.Concurrency != nil || len(reg.wf.RateLimits) > 0 {
 			if err := c.ensureLock(ctx, lockName(reg.wf.Name)); err != nil {

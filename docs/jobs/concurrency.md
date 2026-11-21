@@ -71,7 +71,7 @@ fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflo
 | `ConcurrencyCancelNewest` | Is recorded as cancelled and never runs | Keeps running |
 | `ConcurrencyCancelInProgress` | Runs | The oldest running run of the bucket is cancelled to make room |
 
-With `ConcurrencyRoundRobin` the memory driver also hands its workers the waiting steps of different keys in turn, the key served longest ago first, so a tenant that enqueued a thousand runs does not delay a tenant that enqueued one; Hatchet does the same with its group round-robin. The SQL and Redis drivers cap each bucket at `MaxRuns` but take waiting steps in priority and arrival order.
+With `ConcurrencyRoundRobin` the keys also take turns for the workers, so a tenant that enqueued a thousand runs does not delay a tenant that enqueued one; see [Share the workers fairly between keys](#share-the-workers-fairly-between-keys).
 
 Use queueing for work that must all happen (reports, imports), dropping for work where one run in flight is enough (a "sync now" button pressed twice), and cancel-in-progress for work where only the latest matters (a preview re-rendered on every keystroke).
 
@@ -130,6 +130,53 @@ The rules:
 - `Job.Priority` still goes first: a higher-priority run of the key starts before older ones. Leave priorities equal on a workflow that must keep order.
 - A run holds its slot until it ends, retries and backoffs included, so the next run of the key waits for the previous one to finish, not just for its current attempt.
 
+## Share the workers fairly between keys
+
+`MaxRuns` caps each key, but it does not decide whose run a free worker takes next. With the default strategy that is the oldest run, so a tenant that enqueued a thousand runs a minute ago is served before a tenant that enqueued one now. `ConcurrencyRoundRobin` makes the keys take turns:
+
+<!-- snippet: examples/fair-share/main.go#turns -->
+```go
+conc := &workflow.Concurrency{
+	Key:      tenant,
+	MaxRuns:  10,                             // per tenant at once
+	Strategy: workflow.ConcurrencyRoundRobin, // tenants take turns for the workers
+}
+```
+
+`Concurrency.Weight` gives some keys a bigger share: while keys have work waiting, a key of weight 3 gets three turns for each turn of a key of weight 1. `workflow.KeyWeights` builds one from a map; any `func(key string) int` works, so the weight can come from the tenant's plan:
+
+<!-- snippet: examples/fair-share/main.go#weights -->
+```go
+conc := &workflow.Concurrency{
+	Key:      tenant,
+	MaxRuns:  10,
+	Strategy: workflow.ConcurrencyRoundRobin,
+	// gold gets three turns for each turn of a tenant of weight 1
+	Weight: workflow.KeyWeights(map[string]int{"gold": 3}, 1),
+}
+```
+
+The example holds one worker while acme enqueues four runs, then globex and initech enqueue theirs; then tenants free (weight 1) and gold (weight 3). Both drivers print the order the worker started them in:
+
+```text
+memory:
+  round robin: acme-1 globex-1 initech-1 acme-2 globex-2 acme-3 acme-4
+  weights: free-1 gold-1 gold-2 gold-3 gold-4 free-2 gold-5 gold-6 free-3 free-4
+sqlite:
+  round robin: acme-1 globex-1 initech-1 acme-2 globex-2 acme-3 acme-4
+  weights: free-1 gold-1 gold-2 gold-3 gold-4 free-2 gold-5 gold-6 free-3 free-4
+```
+
+How it works, the same on every driver that has `workflow.CapRoundRobin`: when a run is admitted it gets a turn number from its key, one stride after the key's previous run (`workflow.FairTurn`; the stride is shorter for a heavier key), and free workers serve the workflow's waiting runs by turn number. A key that had nothing waiting starts at the current turn, so it gets no credit for the time it was idle and cannot flood the workers when it comes back.
+
+The rules:
+
+- Turns apply inside one workflow and one priority. `Job.Priority` still goes first, and a round-robin workflow keeps its place among other workflows: fairness decides which tenant's run takes the workflow's next place in line, never whether the workflow goes before another one.
+- A turn is a run, not a step: the steps of one run share its turn.
+- Weights need `workflow.CapKeyWeights` and `ConcurrencyRoundRobin` (`Register` refuses `Weight` with another strategy, `ErrInvalid`). The memory, SQL and Redis drivers have both capabilities; Hatchet serves keys in equal turns with its group round-robin and refuses `Weight`.
+- Shares hold while keys have work waiting. A key with nothing waiting does not hold back the others, and its unused share goes to them.
+- A key that is at `MaxRuns` does not block the others' admission either: its waiting runs are passed over until a slot frees (the SQL driver skips full buckets when it reads waiting runs; Redis parks them per bucket).
+
 ## Rate limits
 
 `Workflow.RateLimits` caps run starts: at most `Limit` starts per window of length `Per`, per key value. A run held back by a limit stays queued and starts once the window allows it; it is delayed, never dropped. Several limits on one workflow must all allow a start.
@@ -186,6 +233,7 @@ The `priority` lines belong to [Enqueue › Priority](enqueue.md#priority).
 - **A key function runs at enqueue time, on the job.** It sees `Payload` and `Labels`, not step outputs. Keep it cheap and deterministic: the same job must always land in the same bucket.
 - **FIFO orders starts, not ends.** With `MaxRuns` above 1, runs of one key start in order but can finish in any order; use `MaxRuns: 1` for a strict sequence.
 - **A failed run does not stop the sequence.** The next run of the key starts once the failed one has ended; if later runs depend on earlier ones, check for that in the step.
+- **The weight function runs when a run is admitted.** It is called once per run, in the worker that admits it (on SQL and Redis that may be another process than the one that enqueued it), so every client must register the same `Weight`, and it should be fast; a weight change applies to runs admitted after it.
 - **Concurrency caps runs, not workers.** A capped bucket holds runs queued but uses no worker while it waits; how many steps run at once overall is the driver's worker count (`memory.WithWorkers`, `sqlstore.WithWorkers`, Hatchet `Config.Slots`).
 
 ## Related
@@ -195,3 +243,4 @@ The `priority` lines belong to [Enqueue › Priority](enqueue.md#priority).
 - [Capabilities](../concepts/capabilities.md)
 - Example: [`examples/concurrency`](../../examples/concurrency)
 - Example: [`examples/queue-weights`](../../examples/queue-weights) (FIFO per key)
+- Example: [`examples/fair-share`](../../examples/fair-share) (round robin and weights)

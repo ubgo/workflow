@@ -70,8 +70,11 @@
 //     with an UnsupportedError. QueueNewest and
 //     RoundRobin hold the new run until its bucket has room (each bucket is
 //     capped at MaxRuns, so no key can starve another); with RoundRobin the
-//     workers also take the waiting steps of different keys in turn (the
-//     key served longest ago first), so a key with a backlog does not
+//     keys also take turns for the workers (CapRoundRobin): each admitted
+//     run gets a turn from its key (workflow.FairTurn, strides from
+//     Concurrency.Weight, CapKeyWeights), and a worker hands the place in
+//     line it picked to the waiting task of the same workflow, queue and
+//     priority with the earliest turn, so a key with a backlog does not
 //     delay the others behind it; DropNewest and
 //     CancelNewest record the new run as StatusCancelled; CancelInProgress
 //     cancels the bucket's oldest running run to make room. A cancelled
