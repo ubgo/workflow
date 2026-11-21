@@ -46,6 +46,24 @@ func Update(ctx context.Context, client Client, store PromiseStore, ev Event, op
 	if client == nil || store == nil || ev.Name == "" {
 		return nil, invalidf("Update needs a client, a promise store and an event name")
 	}
+	return update(ctx, client, store, ev, opts, func(ev Event) error { return client.Signal(ctx, ev) })
+}
+
+// UpdateRun is Update addressed to one run by its ID: the wait step
+// that takes it has WaitSpec.OwnRun (CapWaitOwnRun), and the request
+// goes through SignalRun, so only the run ref names answers.
+func UpdateRun(ctx context.Context, client Client, store PromiseStore, ref RunRef, name string, payload []byte, opts AwaitOptions) ([]byte, error) {
+	if client == nil || store == nil || name == "" || ref.RunID.IsZero() {
+		return nil, invalidf("UpdateRun needs a client, a promise store, a run ID and a signal name")
+	}
+	return update(ctx, client, store, Event{Name: name, Payload: payload}, opts, func(ev Event) error {
+		return SignalRun(ctx, client, ref, ev.Name, ev.Payload)
+	})
+}
+
+// update sends ev's payload wrapped in an UpdateRequest through send and
+// waits for the reply promise.
+func update(ctx context.Context, client Client, store PromiseStore, ev Event, opts AwaitOptions, send func(Event) error) ([]byte, error) {
 	if !client.Capabilities().Has(CapWaitForEvent) {
 		return nil, &UnsupportedError{Field: "Update", Missing: CapWaitForEvent, Reason: "the run receives an update through a wait step"}
 	}
@@ -58,7 +76,7 @@ func Update(ctx context.Context, client Client, store PromiseStore, ev Event, op
 		return nil, fmt.Errorf("workflow: update: encode: %w", err)
 	}
 	ev.Payload = raw
-	if err := client.Signal(ctx, ev); err != nil {
+	if err := send(ev); err != nil {
 		return nil, fmt.Errorf("workflow: update: signal: %w", err)
 	}
 	out, err := WaitPromise(ctx, store, id, opts)

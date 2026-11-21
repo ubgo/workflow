@@ -39,9 +39,12 @@ type ApprovalSpec struct {
 	After []string
 	// Key or KeyFrom identify the request: the order ID, or a token the
 	// app generated with NewApprovalToken and stored in the job (read it
-	// back with KeyFrom). Exactly one is needed.
+	// back with KeyFrom). OwnRun identifies it by the run's own ID instead
+	// (answer with ApproveRun or RejectRun; needs CapWaitOwnRun). Exactly
+	// one of the three is needed.
 	Key     string
 	KeyFrom ConcurrencyKey
+	OwnRun  bool
 	// Timeout bounds the wait; zero waits forever. A timeout fails the
 	// run with ErrWaitTimeout (pair it with WithRules for an escalation
 	// branch).
@@ -56,15 +59,41 @@ func ApprovalStep(a ApprovalSpec) (Step, error) {
 	if a.Name == "" {
 		return Step{}, invalidf("approval step has no Name")
 	}
-	if (a.Key == "") == a.KeyFrom.IsZero() {
-		return Step{}, invalidf("approval step %q needs exactly one of Key and KeyFrom", a.Name)
+	set := 0
+	for _, b := range []bool{a.Key != "", !a.KeyFrom.IsZero(), a.OwnRun} {
+		if b {
+			set++
+		}
 	}
-	return Step{Name: a.Name, After: a.After, Wait: &WaitSpec{Event: ApprovalEvent, Key: a.Key, KeyFrom: a.KeyFrom, Timeout: a.Timeout}}, nil
+	if set != 1 {
+		return Step{}, invalidf("approval step %q needs exactly one of Key, KeyFrom and OwnRun", a.Name)
+	}
+	return Step{Name: a.Name, After: a.After, Wait: &WaitSpec{Event: ApprovalEvent, Key: a.Key, KeyFrom: a.KeyFrom, OwnRun: a.OwnRun, Timeout: a.Timeout}}, nil
 }
 
 // Approve resumes the runs waiting for approval key with an approval.
 func Approve(ctx context.Context, c Client, key, by, note string) error {
 	return answerApproval(ctx, c, key, Decision{Approved: true, By: by, Note: note})
+}
+
+// ApproveRun answers the approval step of the run ref names
+// (ApprovalSpec.OwnRun) with an approval, through SignalRun.
+func ApproveRun(ctx context.Context, c Client, ref RunRef, by, note string) error {
+	return answerRun(ctx, c, ref, Decision{Approved: true, By: by, Note: note})
+}
+
+// RejectRun answers the approval step of the run ref names
+// (ApprovalSpec.OwnRun) with a rejection, through SignalRun.
+func RejectRun(ctx context.Context, c Client, ref RunRef, by, note string) error {
+	return answerRun(ctx, c, ref, Decision{Approved: false, By: by, Note: note})
+}
+
+func answerRun(ctx context.Context, c Client, ref RunRef, d Decision) error {
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	return SignalRun(ctx, c, ref, ApprovalEvent, b)
 }
 
 // Reject resumes the runs waiting for approval key with a rejection.

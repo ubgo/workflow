@@ -118,4 +118,5 @@ The parent looked at its children several times while they ran, and spent one at
 - [Memoise work inside a step](memoisation.md), [Branching](branching.md)
 - [Chains of jobs](chains.md), [Batches](../batches/batches.md), [Wait for a batch in a workflow](../batches/await.md)
 - [Idempotency keys](../jobs/idempotency.md), [Manage runs](../jobs/manage-runs.md)
+- [Escalation and signal handlers](escalation.md#escalate-from-a-child-to-its-parent): a child signalling its parent without stopping
 - Example: [examples/flow-children](../../examples/flow-children/)

@@ -53,6 +53,12 @@
 //     step after the Signal takes the first one sent after the run was
 //     enqueued, and never takes the same signal twice. Signals older than
 //     the oldest unfinished run are dropped.
+//   - A wait with WaitSpec.OwnRun waits on the run's own address
+//     (workflow.RunKey of its RunID; CapWaitOwnRun). The client is a
+//     workflow.RunSignalReader: PendingSignals lists the kept signals
+//     addressed to a run that it has not taken, by sequence, and
+//     TakeSignal marks one taken in the same per-run record a wait uses,
+//     so workflow.OnSignals handles them between steps.
 //
 // # Policies
 //

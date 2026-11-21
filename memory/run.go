@@ -740,7 +740,7 @@ func (r *run) markConsumedLocked(seq uint64) {
 }
 
 func (c *Client) startWait(r *run, s workflow.Step) {
-	key, err := s.Wait.ResolveKey(r.job) // Start refused Expr keys, so this is Func or the fixed Key
+	key, err := s.Wait.ResolveKeyFor(r.job, r.id) // Start refused Expr keys, so this is Func, the fixed Key or the run address
 	if err != nil {
 		c.wg.Add(1)
 		go func() { // the coordinator calls startWait, so it cannot send to itself

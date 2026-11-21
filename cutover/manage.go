@@ -561,7 +561,7 @@ func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, err
 func (c *Client) Supports(op workflow.Op) bool {
 	switch op {
 	case workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun,
-		workflow.OpSignalWaiting, workflow.OpNodes:
+		workflow.OpSignalWaiting, workflow.OpNodes, workflow.OpRunSignals:
 		return workflow.Supports(c.old, op) && workflow.Supports(c.new, op)
 	}
 	return false

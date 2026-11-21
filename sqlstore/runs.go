@@ -584,7 +584,7 @@ func (c *Client) startStep(ctx context.Context, tx *sql.Tx, reg *registered, row
 	if err != nil {
 		c.log.Error("sqlstore: wait key reads a run without labels", "run", row.id, "error", err)
 	}
-	key, err := s.Wait.ResolveKey(job) // Start refused Expr keys, so this is a Func or the fixed Key
+	key, err := s.Wait.ResolveKeyFor(job, workflow.RunID(row.id)) // Start refused Expr keys, so this is a Func, the fixed Key or the run address
 	if err != nil {
 		return c.markFailing(ctx, tx, row, s.Name, in, err.Error(), o)
 	}

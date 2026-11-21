@@ -37,7 +37,7 @@ var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapForceRun,
 	workflow.CapTenant, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
-	workflow.CapWorkflowVersion,
+	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun,
 )
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
