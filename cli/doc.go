@@ -1,7 +1,9 @@
 // Package cli is a command line client for the admin JSON API
 // (github.com/ubgo/workflow/admin): list and inspect runs, retry, cancel
-// and delete them one at a time or by filter, pause and resume, list and
-// trigger schedules, watch a queue drain and read run-end history.
+// and delete them one at a time or by filter, reset or fork a finished
+// run from a step, signal the runs waiting for an event, pause and
+// resume, list and trigger schedules, watch a queue drain and read
+// run-end history.
 //
 // It talks HTTP only. It imports nothing beyond the standard library (not
 // even the workflow core), so installing it pulls no driver, SDK or
@@ -29,6 +31,9 @@
 //	delete RUN | delete --all    forget one finished run, or every finished run a filter matches
 //	reschedule RUN --at T        move a delayed run that has not started
 //	cancel-step RUN STEP         withdraw one step of a run
+//	reset RUN --step S           re-run a failed run in place from step S (--succeeded: a succeeded one too)
+//	fork RUN --step S            start a new run from a finished one at step S (--key, --label k=v)
+//	signal-waiting NAME          deliver an event only to the runs waiting for it now (--key, --payload JSON)
 //	pause|resume                 --workflow W | --queue Q | --everything
 //	pauses                       the active pauses
 //	queues                       depth and oldest wait per queue
@@ -40,7 +45,7 @@
 //	nodes                        the nodes that are online
 //
 // Every destructive command takes --dry-run, which reads what it would
-// touch and changes nothing; --all on retry, cancel and delete asks the
+// touch and changes nothing (signal-waiting reads the capabilities); --all on retry, cancel and delete asks the
 // server to preview with the same filter. Every command takes --json,
 // which prints the API's own JSON answer instead of a table. The exit
 // code is 0 on success, 1 when the API refused or failed (or drain timed

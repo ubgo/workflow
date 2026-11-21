@@ -678,16 +678,27 @@ return wake
 
 // retryScript re-opens a failed run from its failed step. ARGV base, id,
 // the run's finished value as read (so a run that changed since is not
-// touched), the new steps JSON, now (ms). It takes the idempotency key
-// again. Returns {'ok'}, {'notfound'}, {'state', status} or {'dup', id,
-// status, sid}.
+// touched), the new steps JSON, now (ms), '1' when a succeeded run may be
+// reset too (ResetRunWith with ResetOptions.Succeeded, else '0'), and the
+// labels JSON such a run gets (its labels plus workflow.LabelRedo). It
+// takes the idempotency key again. A succeeded run also gets those labels
+// and loses its stored result; one whose chain field is still set (its
+// handoff did not happen) is refused with {'chain'}, so a chain is never
+// handed on twice. ARGV[8] is the JSON list of the steps that run again:
+// the payload of a wait each of them resolved (wv:<step>) is dropped, so a
+// wait step that runs again waits for a new event, as
+// workflow.RunResetter promises; the events it took stay taken (c:<n>).
+// Returns {'ok'}, {'notfound'}, {'state', status}, {'chain'} or {'dup',
+// id, status, sid}.
 var retryScript = goredis.NewScript(luaPrelude + `
 local b, id = ARGV[1], ARGV[2]
 readyNow = tonumber(ARGV[5])
 local key = rk(b, id)
-local h = redis.call('HMGET', key, 'status', 'finished', 'idem', 'wf', 'sf')
+local h = redis.call('HMGET', key, 'status', 'finished', 'idem', 'wf', 'sf', 'chain')
 if not h[1] then return {'notfound'} end
-if h[1] ~= 'failed' or h[2] ~= ARGV[3] then return {'state', h[1]} end
+local redo = h[1] == 'succeeded' and ARGV[6] == '1'
+if (h[1] ~= 'failed' and not redo) or h[2] ~= ARGV[3] then return {'state', h[1]} end
+if redo and h[6] and h[6] ~= '' then return {'chain'} end
 if h[3] and h[3] ~= '' then
   local cur = redis.call('HGET', b .. ':idem', h[3])
   if cur and cur ~= id then
@@ -700,6 +711,8 @@ redis.call('PERSIST', key)
 redis.call('HSET', key, 'status', 'queued', 'err', '', 'fstep', '', 'finished', '', 'forced', '',
   'steps', ARGV[4], 'owner', '', 'reclaims', '0', 'adm', '0')
 redis.call('HDEL', key, 'ck', 'sigpend', 'rto')
+if redo then redis.call('HSET', key, 'labels', ARGV[7], 'out', '') end
+for _, s in ipairs(cjson.decode(ARGV[8])) do redis.call('HDEL', key, 'wv:' .. s) end
 for _, f in ipairs(redis.call('HKEYS', key)) do
   if string.sub(f, 1, 3) == 'xs:' then redis.call('HDEL', key, f) end
 end
@@ -708,6 +721,27 @@ redis.call('ZADD', b .. ':floors', h[5] or '0', id)
 enready(b, id)
 redis.call('PUBLISH', b .. ':wake', 'e')
 return {'ok'}
+`)
+
+// forkScript starts a fork of a finished run (ForkRun) as a new run.
+// ARGV base, the original's id, its finished value as read (so a run
+// retried or reset since is not forked from outputs it no longer has),
+// the fork's steps JSON (the kept steps done with the original's
+// outputs), the fork's idempotency field (empty for none), then the
+// fork's createArity values. The check, the create (run hash, run index,
+// floors, ready or pending set, idempotency hash) and the steps are one
+// script. Returns {'new'}, {'notfound'}, {'state', status} or {'dup', id,
+// status, sid} when the key is held by an unfinished run.
+var forkScript = goredis.NewScript(luaPrelude + `
+local b, oid = ARGV[1], ARGV[2]
+local h = redis.call('HMGET', rk(b, oid), 'status', 'finished')
+if not h[1] then return {'notfound'} end
+if not terminal(h[1]) or (h[2] or '') ~= ARGV[3] then return {'state', h[1]} end
+local dup = create_idem(b, ARGV[5], ARGV, 6)
+if dup then return dup end
+redis.call('HSET', rk(b, ARGV[6]), 'steps', ARGV[4])
+redis.call('PUBLISH', b .. ':wake', 'e')
+return {'new'}
 `)
 
 // deliverScript claims undelivered run ends of the given workflows for

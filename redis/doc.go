@@ -110,6 +110,21 @@
 //     StatusDiscarded, without retries or OnFailure. Retry re-opens a
 //     failed run from its failed step, admitted again under its
 //     workflow's policies.
+//   - ResetRun re-opens a failed run from a chosen step (that step and
+//     every step downstream of it run again); ResetRunWith with
+//     ResetOptions.Succeeded also takes a succeeded run, in the same
+//     script as Retry, which checks the status, writes workflow.LabelRedo
+//     into the run's labels and clears its result. The chain was handed
+//     on and cleared when the run succeeded, so it is not handed on
+//     again; a succeeded run still holding a chain (its handoff failed)
+//     is refused with ErrWrongState. ForkRun starts a new run from a
+//     finished one at a step, on the original's workflow version, queue,
+//     priority, tenant and job retry policy, with workflow.ForkLabels, no
+//     chain and only ForkOptions.IdempotencyKey; one script checks the
+//     original is still the finished run read, creates the fork through
+//     Enqueue's create helper and writes the kept steps done with the
+//     original's outputs. Both need the workflow registered on the
+//     client (ErrInvalid otherwise).
 //   - A run's chain (Job.Chain and the edits its steps made with
 //     PrependToChain and AppendToChain, applied only when the attempt
 //     succeeds) is stored with the run; the script that ends the run

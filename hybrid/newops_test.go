@@ -64,7 +64,7 @@ func TestNewOps_ReachTheJobsClient(t *testing.T) {
 	if err != nil || string(out) != `"edited"` {
 		t.Fatalf("edited run's result on the jobs client = %q, %v", out, err)
 	}
-	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting} {
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting} {
 		if !workflow.Supports(c, op) {
 			t.Errorf("Supports(%s) = false over a memory jobs client", op)
 		}
@@ -88,6 +88,12 @@ func TestNewOps_RefusedWhenTheJobsClientLacksThem(t *testing.T) {
 	if _, err := c.ResetRun(ctx, ref, "w"); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("ResetRun: %v, want ErrUnsupported", err)
 	}
+	if _, err := c.ResetRunWith(ctx, ref, "w", workflow.ResetOptions{Succeeded: true}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ResetRunWith: %v, want ErrUnsupported", err)
+	}
+	if _, err := c.ForkRun(ctx, ref, "w", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ForkRun: %v, want ErrUnsupported", err)
+	}
 	payload := []byte(`1`)
 	if _, err := c.EditRun(ctx, ref, workflow.JobEdit{Payload: &payload}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("EditRun: %v, want ErrUnsupported", err)
@@ -95,9 +101,16 @@ func TestNewOps_RefusedWhenTheJobsClientLacksThem(t *testing.T) {
 	if n, err := c.SignalWaiting(ctx, workflow.Event{Name: "go"}); !errors.Is(err, workflow.ErrUnsupported) || n != 0 {
 		t.Errorf("SignalWaiting = %d, %v; want 0, ErrUnsupported", n, err)
 	}
-	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting} {
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting} {
 		if workflow.Supports(c, op) {
 			t.Errorf("Supports(%s) = true with a jobs client without it", op)
 		}
 	}
+}
+
+// TestRedoAndForkFlows runs the shared succeeded-reset and fork suites
+// through hybrid.
+func TestRedoAndForkFlows(t *testing.T) {
+	t.Run("redo", func(t *testing.T) { workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: startHybrid}) })
+	t.Run("fork", func(t *testing.T) { workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: startHybrid}) })
 }

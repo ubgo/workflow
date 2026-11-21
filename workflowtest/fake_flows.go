@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -16,10 +17,12 @@ import (
 // The optional operations the Fake records itself although they carry no
 // capability bit: it does them unless FakeLike copied a client that does
 // not (workflow.Supports).
-var fakeOps = []workflow.Op{workflow.OpResetRun, workflow.OpSignalWaiting}
+var fakeOps = []workflow.Op{workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting}
 
 var (
 	_ workflow.RunResetter        = (*Fake)(nil)
+	_ workflow.RunResetterWith    = (*Fake)(nil)
+	_ workflow.RunForker          = (*Fake)(nil)
 	_ workflow.TransientSignaller = (*Fake)(nil)
 	_ workflow.OpProber           = (*Fake)(nil)
 )
@@ -28,7 +31,7 @@ var (
 func (f *Fake) does(op workflow.Op) bool { return f.ops == nil || f.ops[op] }
 
 // Supports answers for the operations the Fake records (ResetRun,
-// SignalWaiting) itself, and for the others as workflow.Forward does: by
+// ResetRunWith, ForkRun, SignalWaiting) itself, and for the others as workflow.Forward does: by
 // the pass-through client, false without one.
 func (f *Fake) Supports(op workflow.Op) bool {
 	if slices.Contains(fakeOps, op) {
@@ -37,10 +40,14 @@ func (f *Fake) Supports(op workflow.Op) bool {
 	return f.Forward.Supports(op)
 }
 
-// FakeReset is one successful ResetRun call.
+// FakeReset is one successful ResetRun or ResetRunWith call.
 type FakeReset struct {
 	Ref  workflow.RunRef
 	Step string
+
+	// Succeeded is ResetOptions.Succeeded of a ResetRunWith call that
+	// reset a succeeded run.
+	Succeeded bool
 }
 
 // ResetRun records a reset of a recorded failed run from step and moves
@@ -53,18 +60,33 @@ type FakeReset struct {
 // FakeLike(c) with a c that has no ResetRun it is an UnsupportedError. Use
 // Finish to fail a run first.
 func (f *Fake) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	return f.ResetRunWith(ctx, ref, step, workflow.ResetOptions{})
+}
+
+// ResetRunWith is ResetRun that, with opts.Succeeded, also resets a
+// recorded succeeded run, which then carries workflow.LabelRedo, as
+// workflow.RunResetterWith does. After FakeLike(c) with a c that does
+// not reset succeeded runs (workflow.OpResetSucceeded), such a call is an
+// UnsupportedError.
+func (f *Fake) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
 	}
 	if !f.does(workflow.OpResetRun) {
 		return workflow.RunRef{}, workflow.Unsupported("ResetRun", "the client the Fake is like does not implement it")
 	}
+	if opts.Succeeded && !f.does(workflow.OpResetSucceeded) {
+		return workflow.RunRef{}, workflow.Unsupported("ResetRunWith", "the client the Fake is like does not reset a succeeded run")
+	}
 	f.mu.Lock()
 	r, ok := f.byRef[ref]
 	if !ok {
 		f.mu.Unlock()
 		if f.inner != nil {
-			return f.Forward.ResetRun(ctx, ref, step)
+			if opts == (workflow.ResetOptions{}) {
+				return f.Forward.ResetRun(ctx, ref, step)
+			}
+			return f.Forward.ResetRunWith(ctx, ref, step, opts)
 		}
 		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
 	}
@@ -72,9 +94,10 @@ func (f *Fake) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (
 	if workflow.StepsFrom(f.wfs[r.job.Workflow], step) == nil {
 		return workflow.RunRef{}, fmt.Errorf("%w: workflow %q has no step %q", workflow.ErrInvalid, r.job.Workflow, step)
 	}
-	if r.status != workflow.StatusFailed {
-		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s; only a failed run can be reset", workflow.ErrWrongState, ref, r.status)
+	if !workflow.ResetStatusOK(r.status, opts) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s; it cannot be reset with %+v", workflow.ErrWrongState, ref, r.status, opts)
 	}
+	redo := r.status == workflow.StatusSucceeded
 	if r.key != ([2]string{}) {
 		if holder, held := f.idem[r.key]; held && holder != r {
 			return workflow.RunRef{}, fmt.Errorf("%w: run %+v holds the key %q", workflow.ErrDuplicate, holder.ref, r.key[1])
@@ -82,7 +105,14 @@ func (f *Fake) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (
 		f.idem[r.key] = r
 	}
 	r.status = workflow.StatusQueued
-	f.resets = append(f.resets, FakeReset{Ref: ref, Step: step})
+	if redo {
+		r.job.Labels = maps.Clone(r.job.Labels)
+		if r.job.Labels == nil {
+			r.job.Labels = map[string]string{}
+		}
+		r.job.Labels[workflow.LabelRedo] = "true"
+	}
+	f.resets = append(f.resets, FakeReset{Ref: ref, Step: step, Succeeded: redo})
 	return r.ref, nil
 }
 
@@ -128,11 +158,12 @@ func (f *Fake) SignalsWaiting() []workflow.Event {
 	return slices.Clone(f.waiting)
 }
 
-// AssertReset fails t unless ref was reset from step.
+// AssertReset fails t unless ref was reset from step (a failed or a
+// succeeded run).
 func (f *Fake) AssertReset(t testing.TB, ref workflow.RunRef, step string) {
 	t.Helper()
 	resets := f.Resets()
-	if slices.Contains(resets, FakeReset{Ref: ref, Step: step}) {
+	if slices.ContainsFunc(resets, func(r FakeReset) bool { return r.Ref == ref && r.Step == step }) {
 		return
 	}
 	t.Errorf("run %+v was not reset from step %q; resets: %+v", ref, step, resets)

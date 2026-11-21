@@ -28,6 +28,10 @@
 //	reschedule                   none              workflow.RunRescheduler
 //	edit_run                     none              workflow.RunEditor
 //	cancel_step                  none              workflow.StepCanceller
+//	reset_run                    none              workflow.RunResetter
+//	reset_succeeded              none              workflow.RunResetterWith
+//	fork_run                     none              workflow.RunForker
+//	signal_waiting               none              workflow.TransientSignaller
 //
 // Support reports which ones the client has and what it lacks, so a
 // screen hides what cannot work; an unsupported call returns a
@@ -74,7 +78,11 @@
 // step) have no capability bit: whether they are offered is
 // workflow.Supports, which a wrapper (workflow.Forward, failover) answers
 // for the clients it wraps, and a client without them is refused at the
-// call.
+// call. The same goes for ResetRun (re-run a failed run in place from a
+// step; with ResetOptions.Succeeded also one that succeeded, which needs
+// reset_succeeded), ForkRun (a new run from a finished one at a step,
+// the original unchanged) and SignalWaiting (an event delivered only to
+// the runs waiting for it now, with the count resumed).
 //
 // Schedule returns one schedule with its overlap policy and, on a client
 // with CapScheduleHistory, its last fire and the run it started
@@ -121,8 +129,8 @@
 // customers: lists, counts and bulk actions are pinned to the tenant
 // before they are parsed and authorized, a run or a schedule of another
 // tenant answers 404 exactly like one that does not exist, and the
-// system-wide routes (queues, pauses, metrics, nodes, health) are
-// refused with 403, as is any route the scope does not know. A caller
+// system-wide routes (queues, pauses, metrics, nodes, health, and
+// signal-waiting, since an event has no tenant) are refused with 403, as is any route the scope does not know. A caller
 // given AllTenants is served as without the scope. The client must
 // declare workflow.CapTenant, or every request is refused with 501; a
 // scope that errs, panics or returns an empty or invalid tenant refuses
@@ -144,7 +152,9 @@
 // and cancel on a run list, each showing the server's dry-run count
 // before the confirming click; a run's progress, tenant, due time,
 // nodes and result, with reschedule for a delayed run and cancel step
-// for a running one; charts of run ends per step by status over one,
+// for a running one; reset and fork of a finished run from a step typed
+// on its page (reset of a succeeded run only with "also if it
+// succeeded" ticked; fork opens the new run); charts of run ends per step by status over one,
 // six or 24 hours, with totals and a table view, when WithMetrics is
 // wired; and a system page with the health report and the online nodes.
 // It is three files embedded in

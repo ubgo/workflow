@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -251,6 +252,123 @@ func TestCLI_AgainstAdminHandler(t *testing.T) {
 		t.Errorf("metrics failed=%d succeeded=%d, want at least 4 and 2", failed, ok)
 	}
 	if code, out, _ := run(t, url, true, "caps"); code != cli.ExitOK || !strings.Contains(out, "retry_all") {
+		t.Errorf("caps: %q", out)
+	}
+}
+
+// TestCLI_ResetForkSignalWaiting runs reset, fork and signal-waiting
+// against the real admin handler over a memory client: a failed run is
+// reset from its failing step once the cause is fixed, a succeeded run
+// needs --succeeded, a fork from a wait step waits for a new event, and
+// signal-waiting resumes it.
+func TestCLI_ResetForkSignalWaiting(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := memory.New()
+	var broken atomic.Bool
+	broken.Store(true)
+	var extracts atomic.Int32
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(c.Register(workflow.Workflow{Name: "pipe", Steps: []workflow.Step{
+		{Name: "extract", Run: func(context.Context, []byte) ([]byte, error) { extracts.Add(1); return nil, nil }},
+		{Name: "load", After: []string{"extract"}, Run: func(context.Context, []byte) ([]byte, error) {
+			if broken.Load() {
+				return nil, workflow.Permanent(errors.New("bad rows"))
+			}
+			return nil, nil
+		}},
+		{Name: "w", After: []string{"load"}, Wait: &workflow.WaitSpec{Event: "go", Key: "k"}},
+	}}))
+	must(c.Start(ctx))
+	auth := admin.Auth[string]{
+		Identify: func(r *http.Request) (string, error) {
+			if r.Header.Get("Authorization") == "Bearer "+token {
+				return "ops", nil
+			}
+			return "", errors.New("no token")
+		},
+		Authorize: func(context.Context, admin.Request[string]) error { return nil },
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/admin/", http.StripPrefix("/admin", admin.NewHandler(admin.New(c), auth)))
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	url := srv.URL + "/admin"
+	status := func(ref workflow.RunRef) workflow.Status { st, _ := c.Status(ctx, ref); return st }
+
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "pipe"})
+	must(err)
+	id := ref.RunID.String()
+	waitFor(t, func() bool { return status(ref) == workflow.StatusFailed })
+
+	// Reset from extract once the cause is fixed: unlike retry, which
+	// resumes at load, extract runs again.
+	if code, out, stderr := run(t, url, true, "reset", id, "--step", "extract", "--dry-run"); code != cli.ExitOK || !strings.Contains(out, "would reset") {
+		t.Fatalf("dry reset: %d %q %q", code, out, stderr)
+	}
+	if status(ref) != workflow.StatusFailed {
+		t.Fatalf("the dry run changed the run: %s", status(ref))
+	}
+	broken.Store(false)
+	if code, out, stderr := run(t, url, true, "reset", id, "--step", "extract"); code != cli.ExitOK || out != "reset "+id+" from step extract\n" {
+		t.Fatalf("reset: %d %q %q", code, out, stderr)
+	}
+	waitFor(t, func() bool { return status(ref) == workflow.StatusWaiting })
+	if n := extracts.Load(); n != 2 {
+		t.Fatalf("extract ran %d times, want 2", n)
+	}
+	// Fork refuses an unfinished run; signal-waiting finishes it.
+	if code, _, stderr := run(t, url, true, "fork", id, "--step", "w"); code != cli.ExitError || !strings.Contains(stderr, "409") {
+		t.Errorf("fork of a waiting run: %d %q", code, stderr)
+	}
+	if code, out, stderr := run(t, url, true, "signal-waiting", "go", "--key", "k", "--payload", `{"ok":true}`); code != cli.ExitOK || out != "signalled go: 1 waiting runs resumed\n" {
+		t.Fatalf("signal-waiting: %d %q %q", code, out, stderr)
+	}
+	waitFor(t, func() bool { return status(ref) == workflow.StatusSucceeded })
+
+	// A succeeded run is reset only with --succeeded.
+	if code, _, stderr := run(t, url, true, "reset", id, "--step", "load"); code != cli.ExitError || !strings.Contains(stderr, "409") {
+		t.Errorf("reset of a succeeded run: %d %q", code, stderr)
+	}
+	if code, _, stderr := run(t, url, true, "reset", id, "--step", "load", "--dry-run"); code != cli.ExitError || !strings.Contains(stderr, "--succeeded") {
+		t.Errorf("dry reset of a succeeded run: %d %q", code, stderr)
+	}
+
+	// Fork from the wait step: the fork waits for a new event, the
+	// original is unchanged, and the same key again names the fork.
+	code, out, stderr := run(t, url, true, "fork", id, "--step", "w", "--key", "replay-1", "--label", "why=replay", "--json")
+	var forked struct {
+		Ref struct {
+			RunID string `json:"run_id"`
+		} `json:"ref"`
+	}
+	if code != cli.ExitOK || json.Unmarshal([]byte(out), &forked) != nil || forked.Ref.RunID == "" || forked.Ref.RunID == id {
+		t.Fatalf("fork: %d %q %q", code, out, stderr)
+	}
+	fork := workflow.RunRef{RunID: workflow.RunID(forked.Ref.RunID)}
+	waitFor(t, func() bool { return status(fork) == workflow.StatusWaiting })
+	if status(ref) != workflow.StatusSucceeded || extracts.Load() != 2 {
+		t.Fatalf("the original is %s and extract ran %d times after the fork", status(ref), extracts.Load())
+	}
+	if code, out, _ := run(t, url, true, "fork", id, "--step", "w", "--key", "replay-1"); code != cli.ExitOK || out != "key replay-1 is held by run "+forked.Ref.RunID+"; nothing started\n" {
+		t.Errorf("fork with a held key: %d %q", code, out)
+	}
+	if code, out, _ := run(t, url, true, "inspect", forked.Ref.RunID); code != cli.ExitOK || !strings.Contains(out, "why=replay") || !strings.Contains(out, "fork-of="+id) {
+		t.Errorf("inspect fork: %q", out)
+	}
+	if code, out, _ := run(t, url, true, "signal-waiting", "go", "--key", "k", "--json"); code != cli.ExitOK || !strings.Contains(out, `"resumed": 1`) {
+		t.Errorf("signal-waiting --json: %d %q", code, out)
+	}
+	waitFor(t, func() bool { return status(fork) == workflow.StatusSucceeded })
+	if code, out, _ := run(t, url, true, "signal-waiting", "go", "--key", "k"); code != cli.ExitOK || !strings.Contains(out, "0 waiting runs") {
+		t.Errorf("signal-waiting with nobody waiting: %d %q", code, out)
+	}
+	if code, out, _ := run(t, url, true, "caps"); code != cli.ExitOK || !strings.Contains(out, "fork_run") || !strings.Contains(out, "signal_waiting") {
 		t.Errorf("caps: %q", out)
 	}
 }

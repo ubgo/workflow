@@ -138,3 +138,31 @@ func TestSlotFlows(t *testing.T) {
 		})
 	}
 }
+
+// TestRedoFlows proves ResetRunWith (a succeeded run) on every engine.
+func TestRedoFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+				db, prefix := e.open(t)
+				sc := newClient(t, e, db, prefix)
+				startWith(t, sc, wfs...)
+				return sc
+			}})
+		})
+	}
+}
+
+// TestForkFlows proves ForkRun on every engine.
+func TestForkFlows(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+				db, prefix := e.open(t)
+				sc := newClient(t, e, db, prefix)
+				startWith(t, sc, wfs...)
+				return sc
+			}})
+		})
+	}
+}

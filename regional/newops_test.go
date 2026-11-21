@@ -112,7 +112,7 @@ func TestNewOps_RouteByRegion(t *testing.T) {
 	}
 	fx.waitStatus(onEU, workflow.StatusSucceeded)
 	fx.waitStatus(onUS, workflow.StatusSucceeded)
-	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting} {
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting} {
 		if !workflow.Supports(fx.c, op) {
 			t.Errorf("Supports(%s) = false over two memory regions", op)
 		}
@@ -168,6 +168,12 @@ func TestNewOps_RefusedWhenARegionLacksThem(t *testing.T) {
 	if _, err := c.ResetRun(ctx, onEU, "w"); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("ResetRun in a region without it: %v, want ErrUnsupported", err)
 	}
+	if _, err := c.ResetRunWith(ctx, onEU, "w", workflow.ResetOptions{Succeeded: true}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ResetRunWith in a region without it: %v, want ErrUnsupported", err)
+	}
+	if _, err := c.ForkRun(ctx, onEU, "w", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ForkRun in a region without it: %v, want ErrUnsupported", err)
+	}
 	payload := []byte(`1`)
 	if _, err := c.EditRun(ctx, onEU, workflow.JobEdit{Payload: &payload}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("EditRun in a region without it: %v, want ErrUnsupported", err)
@@ -179,7 +185,7 @@ func TestNewOps_RefusedWhenARegionLacksThem(t *testing.T) {
 	if st, err := c.Status(ctx, onUS); err != nil || st != workflow.StatusWaiting {
 		t.Errorf("a refused SignalWaiting delivered to us: %s %v", st, err)
 	}
-	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting} {
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting} {
 		if workflow.Supports(c, op) {
 			t.Errorf("Supports(%s) = true with a region without it", op)
 		}
@@ -200,4 +206,11 @@ func waitFor(t *testing.T, c workflow.Client, ref workflow.RunRef, want workflow
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// TestRedoAndForkFlows runs the shared succeeded-reset and fork suites
+// through regional.
+func TestRedoAndForkFlows(t *testing.T) {
+	t.Run("redo", func(t *testing.T) { workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: startRegions}) })
+	t.Run("fork", func(t *testing.T) { workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: startRegions}) })
 }

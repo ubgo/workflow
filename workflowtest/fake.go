@@ -199,6 +199,7 @@ type Fake struct {
 
 	ops      map[workflow.Op]bool     // fakeOps the Fake does; nil: all (FakeLike narrows it)
 	resets   []FakeReset              // successful ResetRun calls, in order
+	forks    []FakeFork               // successful ForkRun calls, in order
 	waiting  []workflow.Event         // SignalWaiting calls, in order
 	promises *workflow.MemoryPromises // the store Promises returns; nil until asked
 }
