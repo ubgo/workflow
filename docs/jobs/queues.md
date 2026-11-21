@@ -66,19 +66,60 @@ for _, job := range []workflow.Job{
 
 ## Run one step on an accelerator
 
-A queue is also how work reaches the machines that have the hardware for it, such as a GPU. A queue belongs to a run, not to a step, so put the step that needs the accelerator in a workflow of its own on that queue, and call it from the main workflow as a child run:
+A queue is also how work reaches the machines that have the hardware for it, such as a GPU. A queue belongs to a run, not to a step, so put the step that needs the accelerator in a workflow of its own on that queue, and call it from the main workflow as a child run. The program is [`examples/accelerator-queue`](../../examples/accelerator-queue): two SQL worker clients share one SQLite database, the way a CPU node and a GPU node share a store.
 
+Each kind of node starts its client with only the queues it serves. The GPU node has one worker for its one card, so the model never shares it:
+
+<!-- snippet: examples/accelerator-queue/main.go#nodes -->
 ```go
-infer := workflow.Workflow{Name: "infer", Queue: "gpu", Steps: []workflow.Step{{Name: "model", Run: runModel}}}
-photo := workflow.Workflow{Name: "photo", Queue: "cpu", Steps: []workflow.Step{
+cpu, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithPollInterval(poll),
+	sqlstore.WithQueues(workflow.QueueConfig{Name: cpuQueue, Workers: cpuWorkers}))
+if err != nil {
+	return err
+}
+gpu, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithPollInterval(poll),
+	sqlstore.WithQueues(workflow.QueueConfig{Name: gpuQueue, Workers: gpuWorkers})) // one attempt per card
+if err != nil {
+	return err
+}
+```
+
+The step that needs the card is the whole of the `infer` workflow, on queue `gpu`; the `photo` workflow stays on `cpu` and its `label` step waits for `infer` with `workflow.AwaitChild`:
+
+<!-- snippet: examples/accelerator-queue/main.go#workflows -->
+```go
+infer := workflow.Workflow{Name: "infer", Queue: gpuQueue, Steps: []workflow.Step{{Name: "model", Run: runModel}}}
+photo := workflow.Workflow{Name: "photo", Queue: cpuQueue, Steps: []workflow.Step{
 	{Name: "resize", Run: resize},
 	{Name: "label", After: []string{"resize"}, Run: func(ctx context.Context, in []byte) ([]byte, error) {
-		return workflow.AwaitChild(ctx, c, "label", workflow.Job{Workflow: "infer", Payload: in}, workflow.ChildOptions{})
+		// Spawns infer once (the Journal remembers it), then snoozes
+		// until it ends: the CPU worker is free while the GPU works.
+		return workflow.AwaitChild(ctx, c, "label", workflow.Job{Workflow: "infer", Payload: in},
+			workflow.ChildOptions{Poll: poll})
 	}},
 }}
 ```
 
-On a shared store (sqlstore, Redis, Hatchet) the GPU nodes start their client with `WithQueues(workflow.QueueConfig{Name: "gpu", Workers: 1})` and the other nodes with the CPU queues, so the model only ever runs where the GPU is, one attempt per card. In one process, `memory.WithQueues` with `Workers: 1` on the GPU queue keeps the card to one job at a time while the CPU queue runs several. `AwaitChild` waits without holding a worker (it needs the Journal plugin and `CapSnooze`).
+`AwaitChild` spawns the child once and then snoozes the parent step until the child ends, so the CPU worker is free while the GPU works. It needs the Journal plugin (it remembers the spawned child, so a snoozed or retried step never spawns it twice) and `CapSnooze` on the parent's driver. On a shared store, use a durable journal that every CPU node reads, such as the SQL driver's own:
+
+<!-- snippet: examples/accelerator-queue/main.go#journal -->
+```go
+cpuClient, err := workflow.Use(cpu, workflow.Journal(journal)) // AwaitChild needs the Journal plugin
+if err != nil {
+	return err
+}
+```
+
+```text
+photo p1: succeeded, result "label of p1"
+photo p2: succeeded, result "label of p2"
+photo p3: succeeded, result "label of p3"
+resize on cpu-node: 3, resize on gpu-node: 0
+model on gpu-node: 3, model on cpu-node: 0
+model attempts at once on the GPU node: at most 1
+```
+
+Every node registers both workflows, so any node can enqueue either, but each claims only the steps of the queues in its `WithQueues`. The same layout works on Redis, whose workers also serve the queues they are given. Hatchet maps each queue to a worker of its own too, but it does not declare `CapSnooze`, so `AwaitChild` refuses there with a permanent `UnsupportedError` rather than spend an attempt on every look. In one process, `memory.WithQueues` with `Workers: 1` on the GPU queue keeps the card to one job at a time while the CPU queue runs several.
 
 ## Step 4: pause a queue
 
@@ -225,6 +266,7 @@ The first report holds the only worker while three more runs queue. When it ends
 ## Pitfalls
 
 - **Hatchet binds a workflow to the workers that registered it.** The Hatchet driver maps a queue to its own Hatchet worker with `Slots` set to `Workers`, so `Workflow.Queue` and per-queue caps work, but a `Job.Queue` that differs from the workflow's is refused (no `CapQueueOverride`), and so is a non-zero `QueueConfig.Priority`, since separate workers cannot be ordered against each other. Check `Capabilities()` before relying on either. `Workers: 0` falls back to `Config.Slots`, and a workflow whose queue this process does not list gets no worker here. A workflow reaches the Hatchet engine only when some worker registers it, so an `Enqueue` of a workflow whose queue no process has ever served fails: the engine does not know it yet.
+- **A child on an accelerator queue waits for a node that serves it.** If every GPU node is down, the `infer` children queue and their parents keep snoozing; nothing fails until a run timeout or the parent's own limits say so. Alert on the age of the oldest run on the GPU queue.
 - **A queue no client serves never runs.** On a shared store nothing warns you: the runs wait. List them with `Runs` filtered by `Queue` (see [manage runs](manage-runs.md)).
 - **`Workers` is per client.** Three processes each serving `reports` with `Workers: 1` run up to three reports at once. A cap across every process is `QueueConfig.Limit` for the whole queue (see [Cap a queue across every worker](#cap-a-queue-across-every-worker)), or a concurrency limit on one workflow (`Workflow.Concurrency`).
 - **Redis and Hatchet refuse `Limit`.** A Redis worker claims a run whole, so the driver keeps no count of a queue's in-flight step attempts across clients, and Hatchet has slots per worker and a limit per workflow but nothing for a whole queue. Both refuse a non-zero `Limit` at `Start`; use `Workers` for a per-client cap, or `Workflow.Concurrency` for a limit across processes.

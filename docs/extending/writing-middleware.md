@@ -44,10 +44,11 @@ An enqueue middleware has the same shape one level up: `func(next workflow.Enque
 // EnqueueMiddleware makes workflow.Use run these on every Enqueue through
 // the client it returns. The first entry sees the job first.
 func (p *tenancy) EnqueueMiddleware() []workflow.EnqueueMiddleware {
+	// byTenant is the uniqueness key: one queued job per tenant and workflow.
 	byTenant := func(j workflow.Job) string { return j.Labels["tenant"] + "/" + j.Workflow }
 	return []workflow.EnqueueMiddleware{
 		requireLabel("tenant"),
-		middleware.Unique(byTenant, p.unique, time.Hour),
+		middleware.Unique(byTenant, p.unique, time.Hour), // TTL: a lock whose release was lost frees itself
 	}
 }
 

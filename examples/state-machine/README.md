@@ -112,6 +112,8 @@ The states:
 
 <!-- snippet: examples/state-machine/main.go#states -->
 ```go
+// orderStates is the order's statechart: its states, their parents and
+// the actions and timers on them.
 func orderStates() []workflow.MachineState[Order] {
 	return []workflow.MachineState[Order]{
 		{Name: "cart", Exit: say("exit cart")},
@@ -122,7 +124,7 @@ func orderStates() []workflow.MachineState[Order] {
 
 		{Name: "payment", Parent: "fulfilment", Initial: "awaiting"},
 		{Name: "awaiting", Parent: "payment", Exit: say("exit awaiting"),
-			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}},
+			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}}, // unpaid after half an hour: cancel
 		{Name: "paid", Parent: "payment", Final: true, Entry: say("enter paid")},
 
 		{Name: "shipping", Parent: "fulfilment", Initial: "packing"},
@@ -141,6 +143,8 @@ The transitions:
 
 <!-- snippet: examples/state-machine/main.go#transitions -->
 ```go
+// orderTransitions says which event moves the order from which state to
+// which, with the guard and actions on each.
 func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 	return []workflow.MachineTransition[Order]{
 		{From: "cart", Event: "checkout", To: "fulfilment"},
@@ -160,6 +164,7 @@ func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 
 		// A transition of fulfilment applies in every state below it.
 		{From: "fulfilment", Event: "hold", To: "on-hold"},
+		// Deep history: resume where each region was, not at its initial state.
 		{From: "on-hold", Event: "resume", To: "fulfilment", History: workflow.HistoryDeep},
 		{From: "fulfilment", Event: "cancel", To: "cancelled"},
 	}
@@ -170,6 +175,8 @@ Define the machine:
 
 <!-- snippet: examples/state-machine/main.go#define -->
 ```go
+// orderMachine defines the order machine from its states and transitions,
+// keeping each instance's record in store.
 func orderMachine(store workflow.JournalStore, c workflow.Client, clk clock.Clock) (workflow.Workflow, error) {
 	return workflow.DefineMachine(workflow.MachineSpec[Order]{
 		Name:        "order",

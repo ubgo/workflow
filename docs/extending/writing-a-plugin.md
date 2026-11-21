@@ -16,6 +16,22 @@ A plugin is how you ship a feature that touches several seams at once (what may 
 | `workflow.EnqueueMiddlewareProvider` | `EnqueueMiddleware() []workflow.EnqueueMiddleware` | runs on every `Enqueue` through the returned client; the first entry sees the job first |
 | `workflow.RunFinishedProvider` | `RunFinishedObservers() []workflow.RunFinishedFunc` | registers each on the client's `RunNotifier`; refuses a client without one (an `UnsupportedError` naming `CapRunFinished`) rather than dropping them |
 
+Because `Use` finds the optional interfaces by type assertion, a method whose name or signature is slightly wrong compiles and is simply never called. Assert every interface the plugin means to provide, so the compiler checks it:
+
+<!-- snippet: examples/custom-plugin/plugin.go#provides -->
+```go
+// Use finds each contribution by type assertion, so a method with a typo
+// in its name or signature is not an error: the contribution is silently
+// missing. These assertions make the compiler check every interface the
+// plugin means to implement.
+var (
+	_ workflow.Plugin                    = (*tenancy)(nil)
+	_ workflow.EnqueueMiddlewareProvider = (*tenancy)(nil)
+	_ workflow.StepMiddlewareProvider    = (*tenancy)(nil)
+	_ workflow.RunFinishedProvider       = (*tenancy)(nil)
+)
+```
+
 A plugin that needs a table (a lock store, an audit log) takes the store as a constructor argument and leaves creating it to the app, as every store in the library does ([Bring your own store](custom-stores.md#bring-your-own-store)).
 
 ## Write a plugin
@@ -49,10 +65,11 @@ An enqueue middleware takes the next `workflow.EnqueueFunc` and returns one; ret
 // EnqueueMiddleware makes workflow.Use run these on every Enqueue through
 // the client it returns. The first entry sees the job first.
 func (p *tenancy) EnqueueMiddleware() []workflow.EnqueueMiddleware {
+	// byTenant is the uniqueness key: one queued job per tenant and workflow.
 	byTenant := func(j workflow.Job) string { return j.Labels["tenant"] + "/" + j.Workflow }
 	return []workflow.EnqueueMiddleware{
 		requireLabel("tenant"),
-		middleware.Unique(byTenant, p.unique, time.Hour),
+		middleware.Unique(byTenant, p.unique, time.Hour), // TTL: a lock whose release was lost frees itself
 	}
 }
 
@@ -161,6 +178,7 @@ second job for acme: workflow: duplicate idempotency key: unique key "acme/invoi
 
 ## Pitfalls
 
+- A contribution method with the wrong signature (`StepMiddleware() []workflow.Handler`, say) does not satisfy the interface, so `Use` never calls it and nothing fails. Keep the `var _ workflow.StepMiddlewareProvider = (*yourPlugin)(nil)` assertions next to the type.
 - An observer plugin on a client without `RunNotifier` is refused by `Use`. If your plugin can work without run ends (a lock that expires on a TTL, say), offer the observer as a separate plugin or an option, so apps on such a client can still use the rest.
 - Observers can only be added before `Start`, so `Use` must run before `Start`.
 - Step middleware sees the input after the driver's own middleware ran (a driver-level codec has already decrypted it). Do not log payloads: they may hold personal data.

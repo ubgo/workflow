@@ -32,6 +32,11 @@ import (
 	wfotel "github.com/ubgo/workflow/otel"
 )
 
+// awaitPoll is how often Await re-reads the run: a few milliseconds keeps
+// the in-memory demo fast without spinning.
+const awaitPoll = 2 * time.Millisecond
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "admin-audit:", err)
@@ -39,11 +44,26 @@ func main() {
 	}
 }
 
+// role is the app's own closed set of principal roles.
+type role string
+
+// The roles the demo's tokens carry: an admin may write, a viewer only read.
+const (
+	roleAdmin  role = "admin"
+	roleViewer role = "viewer"
+)
+
 // user is the app's own principal type.
-type user struct{ Name, Role string }
+type user struct {
+	Name string
+	Role role
+}
 
-var tokens = map[string]user{"t-ann": {"ann", "admin"}, "t-vic": {"vic", "viewer"}}
+// tokens maps each bearer token to its user, standing in for a session store.
+var tokens = map[string]user{"t-ann": {"ann", roleAdmin}, "t-vic": {"vic", roleViewer}}
 
+// auth identifies the caller from the bearer token and lets admins write
+// while everyone else may only read.
 var auth = admin.Auth[user]{
 	Identify: func(r *http.Request) (user, error) {
 		u, ok := tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
@@ -53,12 +73,26 @@ var auth = admin.Auth[user]{
 		return u, nil
 	},
 	Authorize: func(_ context.Context, req admin.Request[user]) error {
-		if req.Who.Role == "admin" || req.Action.ReadOnly() {
+		if req.Who.Role == roleAdmin || req.Action.ReadOnly() {
 			return nil
 		}
 		return errors.New("read only")
 	},
 }
+
+// snippet:tracelink
+// traceLink builds the run page's "Open trace" link from the trace ID the
+// otel enqueue middleware carried in the run's labels. A run enqueued
+// without that middleware carries none, and gets no link.
+func traceLink(r workflow.RunInfo) string {
+	id, ok := wfotel.TraceIDOf(r.Labels) // 32 hex digits from the W3C traceparent
+	if !ok {
+		return ""
+	}
+	return "https://tracing.example.com/trace/" + id
+}
+
+// snippet:end
 
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
@@ -91,7 +125,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: awaitPoll}); err != nil {
 		return err
 	}
 
@@ -100,13 +134,7 @@ func run(ctx context.Context) error {
 	audit := &admin.MemoryAudit{} // an app writes to its own audit table
 	h := admin.NewHandler(admin.New(c, admin.WithClock(clk)), auth,
 		admin.WithAudit(audit),
-		admin.WithTraceLink(func(r workflow.RunInfo) string {
-			id, ok := wfotel.TraceIDOf(r.Labels)
-			if !ok {
-				return ""
-			}
-			return "https://tracing.example.com/trace/" + id
-		}))
+		admin.WithTraceLink(traceLink))
 	// snippet:end
 	srv := httptest.NewServer(http.StripPrefix("/admin", h))
 	defer srv.Close()
@@ -126,7 +154,7 @@ func run(ctx context.Context) error {
 		path := strings.Replace(strings.TrimPrefix(a.url, srv.URL), ref.RunID.String(), "<run>", 1)
 		fmt.Printf("  %s %s %s: %d\n", tokens[a.token].Name, a.method, path, code)
 	}
-	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: awaitPoll}); err != nil {
 		return err
 	}
 
@@ -158,6 +186,17 @@ func run(ctx context.Context) error {
 	}
 	fmt.Println("run detail:")
 	fmt.Printf("  status %s\n  trace_url %s\n", detail.Status, detail.TraceURL)
+
+	page, err := c.Runs(ctx, workflow.RunQuery{Ref: ref})
+	if err != nil {
+		return err
+	}
+	// snippet:spancontext
+	// The whole span context, for code that starts a span linked to the
+	// enqueue (nil: the W3C propagator, the otel module's default).
+	sc := wfotel.SpanContextOf(page.Runs[0].Labels, nil)
+	fmt.Printf("  span context: span %s, sampled %v\n", sc.SpanID(), sc.IsSampled())
+	// snippet:end
 	return nil
 }
 

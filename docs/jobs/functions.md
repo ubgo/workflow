@@ -130,6 +130,23 @@ second process ran send-welcome: succeeded
 | Captures local variables | Yes | No: everything it needs is in the argument |
 | Idempotency key, chain | No | Yes, as any job |
 
+## Try it
+
+```sh
+cd examples
+go run ./functions
+```
+
+```text
+send-welcome: succeeded after 2 attempts, step "func"
+bad address: failed, catch ran for "eve@example.invalid"
+unregistered name: ErrNotFound true
+first process stopped with the run waiting
+second process ran send-welcome: succeeded
+```
+
+The function failed once and succeeded on its retry; the run that failed for good ran its catch function with the same argument; a name no process registered is refused with `ErrNotFound`. The last two lines are the restart: the first SQL client enqueued a delayed run and stopped, and a second client over the same SQLite file registered the same name and ran it.
+
 ## Pitfalls
 
 - **The name is the contract.** Runs are stored under the name, not the code. Renaming a `Func` leaves its waiting runs under the old name, and the SQL driver claims only workflows its client registered, so they wait until some process registers the old name again. Keep the old name registered until its runs drain.

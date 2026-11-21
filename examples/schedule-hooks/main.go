@@ -15,6 +15,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -31,12 +32,34 @@ import (
 	"github.com/ubgo/workflow/middleware"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-hooks:", err)
 		os.Exit(1)
 	}
 }
+
+// pingTimeout bounds one heartbeat ping. The local stand-in answers at
+// once; against a real service it keeps a slow one from delaying the
+// hooks that run after the ping on the same goroutine.
+const pingTimeout = 2 * time.Second
+
+const (
+	// eventTimeout bounds every real-time wait: for a tick, a run's end
+	// or the pings, which the local stand-in delivers at once.
+	eventTimeout = 5 * time.Second
+	// pingPoll is how often heartbeat.wait counts the pings again.
+	pingPoll = time.Millisecond
+	// eventBuffer holds ticks and run ends until the program reads them,
+	// so the observers never block the scheduler.
+	eventBuffer = 16
+	// expectedPings is every ping the program causes: four fired ticks
+	// and four run ends.
+	expectedPings = 8
+	// failHour is the hour whose run fails, to show the failure hook.
+	failHour = 11
+)
 
 // start is Monday 5 January 2026, 07:30 UTC: the first hourly tick is
 // 08:00.
@@ -49,6 +72,8 @@ type heartbeat struct {
 	paths map[string]int
 }
 
+// ServeHTTP implements http.Handler: it counts the ping's path and answers
+// 200.
 func (h *heartbeat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.paths[r.URL.Path]++
@@ -56,6 +81,7 @@ func (h *heartbeat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// String implements fmt.Stringer: each path pinged and how often, sorted.
 func (h *heartbeat) String() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -68,7 +94,7 @@ func (h *heartbeat) String() string {
 
 // wait polls until n pings have arrived.
 func (h *heartbeat) wait(n int) error {
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(eventTimeout)
 	for {
 		h.mu.Lock()
 		total := 0
@@ -80,9 +106,9 @@ func (h *heartbeat) wait(n int) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%d of %d pings arrived in 5s", total, n)
+			return fmt.Errorf("%d of %d pings arrived in %s", total, n, eventTimeout)
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(pingPoll)
 	}
 }
 
@@ -114,8 +140,8 @@ func run(ctx context.Context) error {
 	srv := &heartbeat{paths: map[string]int{}}
 	hb := httptest.NewServer(srv)
 	defer hb.Close()
-	ticks := make(chan workflow.Tick, 16)
-	ends := make(chan workflow.RunEvent, 16)
+	ticks := make(chan workflow.Tick, eventBuffer)
+	ends := make(chan workflow.RunEvent, eventBuffer)
 
 	// snippet:observer
 	err = c.(workflow.TickNotifier).OnTick(func(_ context.Context, t workflow.Tick) {
@@ -126,8 +152,15 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// snippet:pinger
+	ping := middleware.NewPinger(
+		middleware.HTTPPing(hb.Client()),                                  // a GET; a status outside 2xx is a failure
+		middleware.WithPingTimeout(pingTimeout),                           // a dead service cannot hold up the hooks
+		middleware.WithPingLogger(slog.Default().With("check", "orders")), // failures at Warn, never with the URL
+	)
+	// snippet:end
+
 	// snippet:hooks
-	ping := middleware.NewPinger(middleware.HTTPPing(hb.Client()))
 	err = workflow.AttachScheduleHooks(c, workflow.ScheduleHooks{
 		Workflow:  "sync-orders",
 		Name:      "office-hours",               // one schedule; empty means all of the workflow's
@@ -173,6 +206,7 @@ func run(ctx context.Context) error {
 	}
 
 	fmt.Println("-- ticks")
+	// hour moves to the next hourly tick and prints what happened.
 	hour := func() error { return advanceHour(ctx, clk, ticks, ends) }
 	for _, step := range []func(){
 		nil,                               // 08:00 outside the window
@@ -219,7 +253,7 @@ func run(ctx context.Context) error {
 	fmt.Println("-- heartbeat pings")
 	// Tick hooks and run hooks run on separate observer goroutines, so wait
 	// for all eight pings (four fired ticks, four run ends) to land.
-	if err := srv.wait(8); err != nil {
+	if err := srv.wait(expectedPings); err != nil {
 		return err
 	}
 	fmt.Println(" ", srv)
@@ -230,7 +264,7 @@ func run(ctx context.Context) error {
 // failure hook.
 func syncOrders(clk clock.Clock) workflow.Handler {
 	return func(context.Context, []byte) ([]byte, error) {
-		if clk.Now().Hour() == 11 {
+		if clk.Now().Hour() == failHour {
 			return nil, errors.New("orders API timed out")
 		}
 		return nil, nil
@@ -266,19 +300,50 @@ func advanceHour(ctx context.Context, clk *clock.Fake, ticks <-chan workflow.Tic
 	var t workflow.Tick
 	select {
 	case t = <-ticks:
-	case <-time.After(5 * time.Second):
-		return errors.New("no tick in 5s")
+	case <-time.After(eventTimeout):
+		return fmt.Errorf("no tick in %s", eventTimeout)
 	}
 	at := t.At.In(time.UTC).Format("15:04")
-	if t.Outcome != workflow.TickFired {
-		fmt.Printf("  %s %s (%s)\n", at, t.Outcome, t.Reason)
+	if t.Outcome != workflow.TickFired || t.Err != nil {
+		fmt.Printf("  %s %s\n", at, describe(t))
 		return nil
 	}
 	select {
 	case ev := <-ends:
-		fmt.Printf("  %s fired, run %s\n", at, ev.Status)
-	case <-time.After(5 * time.Second):
-		return errors.New("the fired run did not end in 5s")
+		fmt.Printf("  %s %s, run %s\n", at, describe(t), ev.Status)
+	case <-time.After(eventTimeout):
+		return fmt.Errorf("the fired run did not end in %s", eventTimeout)
 	}
 	return nil
 }
+
+// describe says what happened to a tick, from its Outcome and, for a
+// skipped tick, its Reason.
+// snippet:outcome
+func describe(t workflow.Tick) string {
+	switch t.Outcome {
+	case workflow.TickFired: // a run was enqueued (t.Run), or the enqueue failed (t.Err)
+		if t.Err != nil {
+			return "fired, enqueue failed: " + t.Err.Error()
+		}
+		if t.Manual {
+			return "fired by hand"
+		}
+		return "fired"
+	case workflow.TickSkipped: // due and on time, but not fired
+		switch t.Reason {
+		case workflow.TickReasonWindow:
+			return "skipped (window)" // outside the schedule's Windows
+		case workflow.TickReasonWhen:
+			return "skipped (when)" // ScheduleWhen returned false
+		case workflow.TickReasonPaused:
+			return "skipped (paused)" // SchedulePauser holds the schedule
+		}
+		return "skipped (" + t.Reason + ")"
+	case workflow.TickMisfired: // the misfire policy dropped late ticks
+		return fmt.Sprintf("misfired, %d dropped, newest %s", t.Missed, t.At.Format("15:04"))
+	}
+	return string(t.Outcome)
+}
+
+// snippet:end

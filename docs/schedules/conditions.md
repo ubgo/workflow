@@ -72,7 +72,7 @@ campaign := workflow.Active{
 	From:  time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 	Until: time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC), // exclusive
 }
-runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign})
+runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign}) // asks for 10, the period holds 3
 ```
 
 Ticks outside the period are not ticks at all, unlike a window: there is no skipped-tick event for them and no misfire catch-up across the time before `From`, so a schedule created today with `From` next Monday does not fire the days in between when Monday comes. `workflow.NextActive(schedule, after, loc, active)` is the shared next-tick rule every driver uses, and `NextRuns` applies the period too, so a dashboard lists only the fires that will happen. Once `Until` has passed the schedule stays listed and never fires; `Unschedule` it to remove it.

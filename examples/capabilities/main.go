@@ -27,6 +27,7 @@ import (
 	"github.com/ubgo/workflow/sqlstore"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "capabilities:", err)
@@ -72,7 +73,7 @@ func run(ctx context.Context) (err error) {
 		Cron:         []string{"0 9 * * *"},
 		CronLocation: kolkata,
 		Misfire:      workflow.Misfire{Policy: workflow.MisfireSkip},
-		Retry:        workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second, Factor: 2, Jitter: 0.2}},
+		Retry:        workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second, Factor: 2, Jitter: 0.2}}, // 3 retries from 1s, doubling, 20% jitter (needs RetryJitter)
 		Steps: []workflow.Step{{Name: "send", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 			return nil, nil
 		}}},
@@ -123,7 +124,7 @@ func run(ctx context.Context) (err error) {
 		return err
 	}
 	labels()
-	return nil
+	return allowReserved(ctx)
 }
 
 // validation shows that specs are checked before anything runs.
@@ -192,4 +193,39 @@ func labels() {
 	err := workflow.ValidateLabels(map[string]string{"tenant": "acme", "workflow.batch.id": "b1"})
 	fmt.Println("ValidateLabels:", err)
 	// snippet:end
+}
+
+// allowReserved shows the guard every driver's Enqueue runs on labels
+// (workflow.CheckJobLabels): a reserved label typed by an app is refused,
+// and the package that owns the prefix lets its own labels through by
+// allowing them on the context. Batch labels stand in for any owner here;
+// in an app only the batch package itself writes them.
+func allowReserved(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	c := memory.New()
+	if err := c.Register(workflow.Workflow{Name: "ping", Steps: []workflow.Step{{Name: "pong", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}}}); err != nil {
+		return err
+	}
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	defer c.Stop()
+	// snippet:allow-reserved
+	job := workflow.Job{Workflow: "ping", Labels: map[string]string{
+		workflow.LabelPrefixBatch + "id":    "b1",
+		workflow.LabelPrefixBatch + "index": "0",
+	}}
+	_, err := c.Enqueue(ctx, job)
+	fmt.Println("app enqueue:", err)
+
+	owner := workflow.AllowReservedLabels(ctx, workflow.LabelPrefixBatch+"id") // one named key
+	_, err = c.Enqueue(owner, job)
+	fmt.Println("one key allowed:", err)
+
+	owner = workflow.AllowReservedPrefix(ctx, workflow.LabelPrefixBatch) // every key under the prefix
+	_, err = c.Enqueue(owner, job)
+	fmt.Println("prefix allowed:", err == nil)
+	// snippet:end
+	return nil
 }

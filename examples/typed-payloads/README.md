@@ -78,6 +78,7 @@ The app's own size cap:
 <!-- snippet: examples/typed-payloads/main.go#max-payload -->
 ```go
 app := middleware.WrapClient(c, middleware.MaxPayload(1024)) // the app's own cap
+// big is a payload of 2,000 characters, over the app's cap.
 big := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 2000) + `"`)}
 _, err = app.Enqueue(ctx, big)
 var tooBig *workflow.PayloadTooLargeError

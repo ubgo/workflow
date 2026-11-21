@@ -115,6 +115,28 @@ trail order-1002 (4 runs):
 
 A run that failed, or one still waiting, shows up in the trail with its status, so a stuck saga is found by its correlation, not by searching logs.
 
+## Try it
+
+```sh
+cd examples
+go run ./saga-choreography
+```
+
+```text
+order 1001 (card ok): 3 runs succeeded, 0 failed
+order 1002 (card declined): 4 runs succeeded, 0 failed
+inventory: reserved 2, released 1
+trail order-1001 (3 runs):
+  order.placed o1001 -> charge succeeded, reserve succeeded
+    payment.captured payment.captured/o1001 -> confirm-order succeeded
+trail order-1002 (4 runs):
+  order.placed o1002 -> charge succeeded, reserve succeeded
+    payment.failed payment.failed/o1002 -> cancel-order succeeded
+      order.cancelled order.cancelled/payment.failed/o1002 -> release succeeded
+```
+
+Order 1002's declined card took the compensation path: `payment.failed` started `cancel-order`, whose `order.cancelled` released the stock, so inventory shows two reservations and one release. Each indented line is an event whose `LabelCausation` names the line above it, and every event ID after the first is derived from its cause, which is why a retried step could not start the next service twice. `go test ./saga-choreography` checks every line.
+
 ## Choreography or an orchestrated saga
 
 [`workflow.Saga`](../workflows/sagas.md) is the orchestrated form: one step holds every action and its compensation, runs them in order and undoes the finished ones newest first. Pick it when one team owns the whole flow and the order of compensations matters. Choreography suits services owned apart that should not know each other: each adds a subscription and publishes events, and no code anywhere holds the whole flow. The price is that the flow lives only in the subscriptions, so `Trail` is how you see it, and the compensation order is whatever the events make it.
@@ -126,3 +148,9 @@ A run that failed, or one still waiting, shows up in the trail with its status, 
 - `LabelCausation` names the event, not the run: when two subscribers of one event both publish, their events share a causation. Tell them apart by the event's name or ID.
 - The labels are reserved. `Publish` refuses them in `Message.Labels` and in a `Subscription.Job`'s labels, and a public `Enqueue` refuses them, with `ErrInvalid`; only the bus sets them.
 - A trail is as long as the chain. For a chain that loops (an event that leads back to itself), narrow `q` with `Workflow`, `Statuses` or `From`, or the listing grows with every turn.
+
+## Related
+
+- [Publish and subscribe](publish-subscribe.md), [Event log, replay and cancel](replay-and-cancel.md), [Events](README.md)
+- [Sagas](../workflows/sagas.md), [Search runs by label](../jobs/manage-runs.md#search-by-label)
+- Example: [examples/saga-choreography](../../examples/saga-choreography/)

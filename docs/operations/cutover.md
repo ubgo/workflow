@@ -75,10 +75,37 @@ moved, err := c.MoveSchedules(ctx, func(info workflow.ScheduleInfo) ([]byte, err
 if err != nil {
 	return err
 }
-for _, m := range moved {
+for _, m := range moved { // a cutover.Moved: Name, Workflow, From (old:...), To (new:...)
 	fmt.Printf("moved %q from %s to %s\n", m.Name, m.From, m.To)
 }
 ```
+
+`MoveSchedules` returns one `cutover.Moved` per schedule moved: its `Name` and `Workflow`, `From` (the old, `old:`-prefixed ID) and `To` (the new, `new:`-prefixed ID). Store the new IDs wherever the app kept the old ones. It stops at the first failure and returns what it moved so far; a schedule is never left firing on both, because when the old copy cannot be removed the new copy is unscheduled again before the error is returned. Run it once, from one process.
+
+The two backends are the two values of `cutover.Side`: `cutover.SideOld` and `cutover.SideNew`, which are also the prefixes of every ID the client hands out. An app not ready to move its schedules yet builds the client with `cutover.SchedulesOn(cutover.SideOld)`:
+
+<!-- snippet: examples/backend-cutover/main.go#keep-old -->
+```go
+c := cutover.New(memory.New(), memory.New(),
+	cutover.SchedulesOn(cutover.SideOld), // Workflow.Cron and Schedule stay on the old backend
+)
+```
+
+Its schedules then land on the old backend, and `MoveSchedules` refuses, since this client is meant to keep them there:
+
+<!-- snippet: examples/backend-cutover/main.go#sides -->
+```go
+id, err := c.Schedule(ctx, workflow.Schedule{Name: "weekly", Workflow: "report", Cron: "0 6 * * 1", Location: time.UTC})
+if err != nil {
+	return err
+}
+side, _, _ := strings.Cut(string(id), ":") // every ID this client hands out starts with its Side
+fmt.Printf("schedule on the old side: %t (%s)\n", cutover.Side(side) == cutover.SideOld, id)
+_, err = c.MoveSchedules(ctx, func(workflow.ScheduleInfo) ([]byte, error) { return nil, nil })
+fmt.Println("MoveSchedules refused under SchedulesOn(SideOld):", errors.Is(err, workflow.ErrInvalid))
+```
+
+When the app is ready, it builds the client again with the default (`SideNew`) and calls `MoveSchedules`.
 
 `Schedules` lists both backends, so what is still on `old:` is visible. `Schedule` returns an ID with its backend's prefix; `Unschedule`, `PauseSchedule` and `ResumeSchedule` decode it, and an unprefixed ID (stored before the cutover) is tried on the old backend first.
 
@@ -128,6 +155,9 @@ schedule "nightly" on new:schedule-4
 -- Retire the old backend
 unfinished runs on the old backend: 1
 after the export finished: 0 - the app can drop the old backend
+-- Keep the schedules on the old backend for now
+schedule on the old side: true (old:schedule-1)
+MoveSchedules refused under SchedulesOn(SideOld): true
 ```
 
 ## Pitfalls

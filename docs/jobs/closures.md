@@ -104,6 +104,24 @@ hatchet refuses: missing Closure, ErrUnsupported true
 
 The failover client sends closures to its primary only (a closure has no idempotency key, so it cannot safely go to two backends) and declares `CapClosure` when its primary does. A client wrapped with `middleware.WrapClient` or `WithCodec` forwards closures to the client underneath; enqueue middleware does not run for them, since a closure has no payload or `Job`.
 
+## Try it
+
+```sh
+cd examples
+go run ./closures
+```
+
+```text
+closure warm-price-cache: succeeded after 2 attempts, workflow "ubgo.workflow.closure", label "ubgo.workflow/closure"
+Status: succeeded, step "closure"
+closure nudge: cancelled before it started
+closure without Fn: ErrInvalid true
+sqlstore refuses: missing Closure, ErrUnsupported true
+hatchet refuses: missing Closure, ErrUnsupported true
+```
+
+The first line is the closure that failed once and succeeded on its retry, run under the reserved workflow name and label every closure run carries; the second reads the same run through `Status` like any other run. The delayed closure was cancelled before its start, a closure without `Fn` is refused with `ErrInvalid`, and the SQL and Hatchet drivers refuse closures with an `UnsupportedError` naming the missing capability.
+
 ## Pitfalls
 
 - **Lost on restart.** A closure waiting in the queue, delayed, or mid-retry when the process exits is gone. Use a [`Func`](functions.md) or a registered workflow for work that must happen.

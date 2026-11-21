@@ -30,6 +30,7 @@ import (
 	"github.com/ubgo/workflow/redis"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "node-health:", err)
@@ -40,6 +41,24 @@ func main() {
 // envURL names the Redis for the scheduler and worker nodes, such as
 // redis://localhost:7012/0.
 const envURL = "REDIS_URL"
+
+const (
+	// pollInterval is how often the memory part checks on its run: short,
+	// because the in-memory driver finishes it in well under a millisecond.
+	pollInterval = time.Millisecond
+	// prefixBase writes the nanosecond clock in base 36, so each run's
+	// Redis prefix is unique and still short.
+	prefixBase = 36
+	// tickBuffer holds the nodes ticks ran on until onRedis reads the first;
+	// a full buffer drops the rest, which the example does not need.
+	tickBuffer = 8
+	// tickTimeout bounds the wait for the first tick: the schedule fires
+	// every second, so ten seconds means something is wrong.
+	tickTimeout = 10 * time.Second
+	// scanBatch is the SCAN count hint when deleting the example's keys: a
+	// few hundred keys per round trip.
+	scanBatch = 500
+)
 
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
@@ -58,7 +77,9 @@ func run(ctx context.Context) error {
 // probes serves a liveness and a readiness route from the client's health.
 // They need no login: a load balancer or an orchestrator calls them.
 func probes(c workflow.Client) http.Handler {
+	const probeTimeout = 2 * time.Second // a probe must not hang
 	mux := http.NewServeMux()
+	// answer writes the status code and one line per health check.
 	answer := func(w http.ResponseWriter, ok bool, rep workflow.HealthReport) {
 		code := http.StatusOK
 		if !ok {
@@ -72,13 +93,13 @@ func probes(c workflow.Client) http.Handler {
 		}
 	}
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second) // a probe must not hang
+		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 		defer cancel()
 		rep := workflow.CheckHealth(ctx, c)
 		answer(w, rep.Live, rep) // not live: restart the process
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 		defer cancel()
 		rep := workflow.CheckHealth(ctx, c)
 		answer(w, rep.Ready, rep) // not ready: send no traffic, keep the process
@@ -114,6 +135,7 @@ func onMemory(ctx context.Context) error {
 	}
 	srv := httptest.NewServer(probes(c))
 	defer srv.Close()
+	// probe calls one probe route and prints its status code and body.
 	probe := func(path string) {
 		res, err := http.Get(srv.URL + path)
 		if err != nil {
@@ -141,7 +163,7 @@ func onMemory(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: time.Millisecond}); err != nil {
+	if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: pollInterval}); err != nil {
 		return err
 	}
 	// snippet:attempts
@@ -190,10 +212,10 @@ func onRedis(ctx context.Context, url string) (err error) {
 	}
 	rdb := goredis.NewClient(opts)
 	defer func() { err = errors.Join(err, rdb.Close()) }()
-	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), prefixBase)
 	defer func() { _ = deletePrefix(context.Background(), rdb, prefix) }()
 
-	ran := make(chan string, 8)
+	ran := make(chan string, tickBuffer)
 	tick := workflow.Workflow{Name: "tick", Steps: []workflow.Step{{Name: "beat", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 		info, _ := workflow.StepInfoFrom(ctx)
 		select {
@@ -212,7 +234,7 @@ func onRedis(ctx context.Context, url string) (err error) {
 		return err
 	}
 	worker, err := redis.New(rdb, redis.WithPrefix(prefix), redis.WithNodeID("worker-1"),
-		redis.WithoutScheduler(), redis.WithPollInterval(50*time.Millisecond)) // runs steps, fires no schedule
+		redis.WithoutScheduler(), redis.WithPollInterval(50*time.Millisecond)) // runs steps, fires no schedule; looks for work every 50ms
 	if err != nil {
 		return err
 	}
@@ -234,8 +256,8 @@ func onRedis(ctx context.Context, url string) (err error) {
 	select {
 	case node := <-ran:
 		fmt.Println("tick fired by sched-1, ran on", node)
-	case <-time.After(10 * time.Second):
-		return errors.New("no tick ran within 10s")
+	case <-time.After(tickTimeout):
+		return fmt.Errorf("no tick ran within %s", tickTimeout)
 	}
 	nodes, err := worker.Nodes(ctx)
 	if err != nil {
@@ -249,7 +271,7 @@ func onRedis(ctx context.Context, url string) (err error) {
 
 // deletePrefix removes every key of the example's prefix.
 func deletePrefix(ctx context.Context, rdb *goredis.Client, prefix string) error {
-	iter := rdb.Scan(ctx, 0, "{"+prefix+"}*", 500).Iterator()
+	iter := rdb.Scan(ctx, 0, "{"+prefix+"}*", scanBatch).Iterator()
 	for iter.Next(ctx) {
 		if err := rdb.Del(ctx, iter.Val()).Err(); err != nil {
 			return err

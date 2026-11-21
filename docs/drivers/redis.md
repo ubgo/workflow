@@ -4,9 +4,9 @@ The `redis` module runs workflows on Redis through go-redis v9. Every run, sched
 
 ## Before you start
 
-- A Redis that does not evict keys (`maxmemory-policy noeviction`): an evicted run or lease is lost work, not a cache miss. The shared local stack's Redis is set up that way.
+- A Redis that does not evict keys (`maxmemory-policy noeviction`): an evicted run or lease is lost work, not a cache miss. `noeviction` is Redis's default, so a stock server, such as the one in the repository's `compose.yml` (see [Try it](#try-it)), is already set up that way.
 - The module: `go get github.com/ubgo/workflow/redis@latest` (Go 1.24 or later). It is separate from the core, so an app without Redis never downloads go-redis.
-- The example is [`examples/redis-worker`](../../examples/redis-worker). Run it with `go run ./redis-worker` from `examples/`; set `REDIS_URL` for the live part.
+- The examples are [`examples/redis-worker`](../../examples/redis-worker) (a web node, two workers, a retried job and a triggered schedule) and [`examples/redis-parity`](../../examples/redis-parity) (every option and every feature the SQL driver has too). Run them with `go run ./redis-worker` and `go run ./redis-parity` from `examples/`; set `REDIS_URL` for the live part.
 
 ## Create the client
 
@@ -16,16 +16,53 @@ The package is named `redis`, like go-redis itself, so import one of them under 
 ```go
 rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
 defer func() { err = errors.Join(err, rdb.Close()) }()
-prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), prefixBase)
+// newWorker builds one worker client on the shared prefix.
 newWorker := func() (*redis.Client, error) {
 	return redis.New(rdb,
-		redis.WithPrefix(prefix), // clients that share a prefix share every run and schedule
-		redis.WithPollInterval(50*time.Millisecond),
+		redis.WithPrefix(prefix),                    // clients that share a prefix share every run and schedule
+		redis.WithPollInterval(50*time.Millisecond), // short for the demo; how often a worker looks for due runs
 	)
 }
 ```
 
 Then `Register` your workflows and `Start`, as on every driver; nothing runs before `Start`, and cancelling its context stops the client. Clients that share a prefix (`WithPrefix`, default `wf`) share every run and schedule; give each app, and each test, its own.
+
+## Set up a worker
+
+Every other option has a default that suits production; set them when a test needs a fake clock, a fleet needs shorter leases, or run IDs must follow your own scheme:
+
+<!-- snippet: examples/redis-parity/main.go#options -->
+```go
+var ids atomic.Int64 // shared by every client of this process
+logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+// newWorker builds one client of the prefix with every option set.
+newWorker := func(node string, extra ...redis.Option) (*redis.Client, error) {
+	opts := []redis.Option{
+		redis.WithPrefix(prefix),           // clients of one prefix share runs and schedules
+		redis.WithClock(clock.Real{}),      // due times, sleeps, backoff, cron fires
+		redis.WithLeaseClock(clock.Real{}), // leases and polling: keep this one real
+		redis.WithLease(leaseFor),          // a claim's life without renewal (default 30s)
+		redis.WithMaxReclaims(maxReclaims), // expiries in a row before ErrAbandoned (default 5)
+		redis.WithPollInterval(pollEvery),  // fallback when no wake-up message came (default 1s)
+		redis.WithWorkers(4),               // runs this client executes at once (default 10)
+		redis.WithIDFunc(func() string { // unique across the prefix, no ':' or '{'
+			return fmt.Sprintf("%s-%06d", prefix, ids.Add(1))
+		}),
+		redis.WithLogger(logger),                              // a failed renewal, a lost hand-back
+		redis.WithMiddleware(),                                // step middleware, outermost first
+		redis.WithCronParser(cron.Parse),                      // the same parser on every client
+		redis.WithJitterSource(func() float64 { return 0.5 }), // pin Backoff.Jitter's draw
+		redis.WithNodeID(node),
+	}
+	return redis.New(rdb, append(opts, extra...)...)
+}
+```
+
+- **Two clocks.** `WithClock` drives everything that is part of the workflow: due times, sleeps, backoff, step timeouts, cron fires. `WithLeaseClock` drives leases and polling, which are about a worker being alive and so are wall time. A test that moves a fake `WithClock` by an hour must leave `WithLeaseClock` real, or every running step looks abandoned.
+- **Leases.** A run is claimed whole under a lease of `WithLease` (30 seconds by default), renewed every third of it. A worker that dies stops renewing, and its runs are claimed again once the lease expires, so `WithLease` is also the longest a dead worker's run waits. A run whose lease expires `WithMaxReclaims` times in a row (default 5) with no step finishing fails with `redis.ErrAbandoned`, so a step that crashes every worker it lands on cannot loop through the fleet.
+- **IDs.** `WithIDFunc` replaces the run IDs. They must be unique across every client of the prefix and contain no `:` or `{`. The default is the creation time in milliseconds as 13 hex digits followed by 16 random ones, so IDs sort by time and equal-priority runs start oldest first; IDs in another order change only that order.
+- **The rest.** `WithPollInterval` is the fallback when a wake-up message was missed (one second); `WithWorkers` caps how many runs one client executes at once (10); `WithCronParser` must be the same on every client of a prefix, since any of them may fire any schedule; `WithJitterSource` pins `Backoff.Jitter`'s draw in tests; `WithLogger` receives what no caller can see (a failed renewal, a run that could not be handed back); `WithMiddleware` wraps every step and `OnFailure` handler, the first outermost.
 
 ## What it can do and what it refuses
 
@@ -33,13 +70,242 @@ It declares, each proven by the conformance suite against a real Redis: `CapDura
 
 The client also implements the interfaces that have no capability bit: `RunRescheduler` (`Reschedule`), `StepCanceller` (`CancelStep`), `HealthChecker` (`Health`), `NodeLister` (`Nodes`), `LifecycleNotifier` (`OnLifecycle`) and `PayloadLimiter`, whose limit is 512 MiB, the largest value Redis stores, lowered with `WithPayloadLimit`.
 
-`CapWorkerScale` means `QueueLoads` and `SetWorkers` over the `WithQueues` list ([Worker balancing](../operations/balancing.md)). It does not declare `CapClosure` or `CapQueueLimitGlobal`, and it refuses three things with an `UnsupportedError` at `Start`, `Enqueue` or `Schedule` instead of ignoring them:
+`CapWorkerScale` means `QueueLoads` and `SetWorkers` over the `WithQueues` list ([Worker balancing](../operations/balancing.md)). It does not declare `CapClosure`, `CapQueueLimitGlobal` or `CapSlotCost` (a worker claims a whole run, so a workflow with `Step.Slots` above one is refused at `Start`), and it refuses three things with an `UnsupportedError` at `Start`, `Enqueue` or `Schedule` instead of ignoring them:
 
 - **Closures** (`CapClosure`): a Go closure cannot be stored in Redis. Register a workflow, or use [functions by name](../jobs/functions.md).
 - **A queue limit across clients** (`CapQueueLimitGlobal`): a run is claimed whole, so the driver keeps no count of a queue's in-flight step attempts across clients, and a non-zero `QueueConfig.Limit` is refused at `Start`. `QueueConfig.Workers` still caps one client; see [Named queues](../jobs/queues.md#cap-a-queue-across-every-worker).
 - **Expression keys** (`KeyExpr`): concurrency, rate and wait keys are Go functions (`workflow.KeyFunc`) evaluated in the client; an engine-language expression is refused at `Start`.
 
+An app can ask the client before it relies on a feature. Both refusals happen in `Start` before it touches Redis, so they need no server:
+
+<!-- snippet: examples/redis-parity/main.go#declares -->
+```go
+c, err := redis.New(rdb)
+if err != nil {
+	return err
+}
+for _, cp := range []workflow.Caps{
+	workflow.CapWaitForEvent, workflow.CapConcurrencyKey, workflow.CapRateLimit,
+	workflow.CapQueue, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
+	workflow.CapRunFinished, workflow.CapChain, workflow.CapScheduleWhen,
+	workflow.CapShutdownRequeue,
+	workflow.CapClosure, workflow.CapQueueLimitGlobal, // two it does not declare; CapSlotCost is the third
+} {
+	fmt.Fprintf(w, "%v: %v\n", cp, c.Capabilities().Has(cp))
+}
+```
+
+<!-- snippet: examples/redis-parity/main.go#refuses -->
+```go
+// A key in an engine language: the driver evaluates keys in Go.
+exprKey, err := redis.New(rdb)
+if err != nil {
+	return err
+}
+if err := exprKey.Register(workflow.Workflow{
+	Name:        "per-tenant",
+	Concurrency: &workflow.Concurrency{Key: workflow.KeyExpr("input.tenant"), MaxRuns: 1},
+	Steps:       []workflow.Step{{Name: "only", Run: noop}},
+}); err != nil {
+	return err
+}
+err = exprKey.Start(ctx)
+fmt.Fprintln(w, "KeyExpr at Start: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+
+// A cap across every client: a run is claimed whole, so no count of a
+// queue's step attempts across clients is kept.
+limited, err := redis.New(rdb, redis.WithQueues(workflow.QueueConfig{Name: "imports", Workers: 2, Limit: 5})) // Limit is the refused field
+if err != nil {
+	return err
+}
+err = limited.Start(ctx)
+fmt.Fprintln(w, "QueueConfig.Limit at Start: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+```
+
+```text
+WaitForEvent: true
+ConcurrencyKey: true
+RateLimit: true
+Queue: true
+PauseWorkflow: true
+PauseQueue: true
+RunFinished: true
+Chain: true
+ScheduleWhen: true
+ShutdownRequeue: true
+Closure: false
+QueueLimitGlobal: false
+KeyExpr at Start: ErrUnsupported = true
+QueueConfig.Limit at Start: ErrUnsupported = true
+```
+
+Each refusal is a `*workflow.UnsupportedError` that matches `workflow.ErrUnsupported` and names the field.
+
 What the capabilities mean is in [Capabilities](../reference/capabilities.md); how each driver compares is in [Choose a driver](../choosing/drivers.md).
+
+## Use the features the SQL driver has
+
+The workflows below run unchanged on the SQL and memory drivers. On Redis each feature's state lives in Redis and every limit is decided in a Lua script, so it holds across every client of the prefix:
+
+<!-- snippet: examples/redis-parity/main.go#workflows -->
+```go
+approval := workflow.Workflow{Name: "approval", Steps: []workflow.Step{
+	{Name: "await", Wait: &workflow.WaitSpec{
+		Event:   "approved",
+		KeyFrom: workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["order"] }),
+	}},
+	{Name: "ship", After: []string{"await"}, Run: func(_ context.Context, in []byte) ([]byte, error) {
+		approved <- string(in) // the wait step's output is the signal's payload
+		return nil, nil
+	}},
+}}
+perCustomer := workflow.Workflow{
+	Name: "invoice",
+	Concurrency: &workflow.Concurrency{ // one run per customer at a time, across clients
+		Key:     workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["customer"] }),
+		MaxRuns: 1,
+	},
+	Steps: []workflow.Step{{Name: "bill", Run: func(context.Context, []byte) ([]byte, error) {
+		n := running.Add(1)
+		for {
+			m := most.Load()
+			if n <= m || most.CompareAndSwap(m, n) {
+				break
+			}
+		}
+		time.Sleep(stepWork)
+		running.Add(-1)
+		return nil, nil
+	}}},
+}
+sms := workflow.Workflow{
+	Name: "sms",
+	RateLimits: []workflow.RateLimit{{ // a sliding window kept in Redis
+		Key:   workflow.KeyFunc(func(workflow.Job) string { return "provider" }),
+		Limit: smsPerHour,
+		Per:   time.Hour,
+	}},
+	Steps: []workflow.Step{{Name: "send", Run: noop}},
+}
+extract := workflow.Workflow{Name: "extract", Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) {
+	record("extract")
+	return nil, nil
+}}}}
+load := workflow.Workflow{Name: "load", Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) {
+	record("load")
+	return nil, nil
+}}}}
+heartbeat := workflow.Workflow{
+	Name: "heartbeat",
+	// Decided per tick on the firing client: skip the first tick only.
+	ScheduleWhen: func(context.Context, workflow.Tick) bool { return whenCalls.Add(1) > 1 },
+	Steps:        []workflow.Step{{Name: "beat", Run: noop}},
+}
+```
+
+### Step 1: observe run ends and ticks
+
+Register observers before `Start`; afterwards `OnRunFinished` and `OnTick` return `workflow.ErrAlreadyStarted`. Run ends are recorded by the script that ends the run and delivered at least once by a client with observers that registered the workflow, including ends that happened while no client ran:
+
+<!-- snippet: examples/redis-parity/main.go#observers -->
+```go
+err = worker.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { // before Start
+	if ev.Workflow == "approval" {
+		observed <- ev
+	}
+})
+if err != nil {
+	return err
+}
+err = worker.OnTick(func(_ context.Context, t workflow.Tick) {
+	if t.Workflow == "heartbeat" {
+		select {
+		case ticks <- t:
+		default:
+		}
+	}
+})
+```
+
+### Step 2: wait for a signal
+
+A wait step registers for its event and hands the run back, so a waiting run holds no worker. `Signal` keeps the signal, and a run takes only signals sent after its enqueue, so signalling right after `Enqueue` is safe:
+
+<!-- snippet: examples/redis-parity/main.go#signal -->
+```go
+ref, err := worker.Enqueue(ctx, workflow.Job{Workflow: "approval", Labels: map[string]string{"order": "o-7"}})
+if err != nil {
+	return err
+}
+if err := worker.Signal(ctx, workflow.Event{Name: "approved", Key: "o-7", Payload: []byte(`"by ops"`)}); err != nil {
+	return err
+}
+```
+
+The step after the wait gets the signal's payload as its input (`"by ops"` here).
+
+### Step 3: hold a key to one run at a time, and limit a rate
+
+The `invoice` workflow's concurrency key allows one run per customer; three runs of one customer, served by two clients, ran one at a time. The `sms` workflow's rate limit allows two runs per hour in a sliding window stored in Redis; the third waits, `queued`, until the window has room. A run of a workflow with a concurrency or rate policy first waits in a pending list, and a client that registered the workflow admits it in one script against the stored slots and windows.
+
+### Step 4: give a queue its own worker, and pause a workflow
+
+A client started `WithQueues` claims only runs of those queues, the higher `QueueConfig.Priority` first:
+
+<!-- snippet: examples/redis-parity/main.go#queues -->
+```go
+reports, err := newWorker("reports-node", redis.WithQueues(workflow.QueueConfig{Name: "reports", Workers: 1}))
+```
+
+A pause is stored in Redis, so every client obeys it and it survives a restart. Steps already running finish; nothing new is claimed until `Resume`:
+
+<!-- snippet: examples/redis-parity/main.go#pause -->
+```go
+// Any client of the prefix pauses; every client obeys it.
+if err := worker.Pause(ctx, workflow.PauseWorkflow("render")); err != nil {
+	return err
+}
+// A worker client enqueues only what it registered (or use WithEnqueueOnly).
+held, err := reports.Enqueue(ctx, workflow.Job{Workflow: "render"})
+if err != nil {
+	return err
+}
+```
+
+### Step 5: chain jobs and add a schedule condition
+
+A chain is stored with the run and handed on in the script that records the run's success, so a crash between the two jobs loses nothing:
+
+<!-- snippet: examples/redis-parity/main.go#chain -->
+```go
+first, err := worker.Enqueue(ctx, workflow.Job{
+	Workflow: "extract",
+	Chain:    []workflow.Job{{Workflow: "load"}}, // starts once extract succeeded, stored with the run
+})
+```
+
+`Workflow.ScheduleWhen` is Go code, so it is decided on the client that fires the tick, which must have registered the workflow; the tick is reported to `OnTick` observers as `skipped` with the reason `when`:
+
+<!-- snippet: examples/redis-parity/main.go#condition -->
+```go
+id, err := worker.Schedule(ctx, workflow.Schedule{Name: "beat", Workflow: "heartbeat", Cron: "* * * * * *", Seconds: true, Location: time.UTC})
+if err != nil {
+	return err
+}
+```
+
+What the program prints for these steps:
+
+```text
+approval: the step after the wait got "by ops"
+run-finished observer saw approval: succeeded
+invoice: 3 runs of customer acme on two clients, at most 1 at a time
+sms: 2 succeeded, the next one is queued (2 per hour)
+render while paused: queued, paused targets 1
+render after resume: succeeded on queue reports by [reports-node]
+chain: extract then load
+heartbeat: a tick skipped (reason "when"), a later one fired
+```
 
 ## How work moves
 
@@ -51,6 +317,42 @@ What the capabilities mean is in [Capabilities](../reference/capabilities.md); h
 - **Backoff, snooze and sleep** hand the run back to the due set, so a waiting run holds no worker. A **wait step** registers for its event and hands the run back until its deadline; `Signal` keeps the signal (a run takes only signals sent after its enqueue) and makes every waiting run on that name and key ready in one script.
 - **Run ends are delivered at least once.** Every script that ends a run records the end; a client with `OnRunFinished` observers claims the ends of its workflows under a lease, calls the observers and removes the entry, including ends that happened while no client ran (`CapRunFinished`).
 - **A clean stop** (cancel the `Start` context, or `Drain`) hands every run back at once without counting the cut-off attempts (`CapShutdownRequeue`): the next worker runs them with the same `StepInfo.Attempt`. A crashed client hands back nothing; its runs wait for their leases.
+
+A clean stop during a deploy, from the old worker to the new one:
+
+<!-- snippet: examples/redis-parity/main.go#clean-stop -->
+```go
+first, err := newWorker("deploy-old")
+if err != nil {
+	return err
+}
+if err := first.Register(long); err != nil {
+	return err
+}
+firstCtx, stopFirst := context.WithCancel(ctx)
+if err := first.Start(firstCtx); err != nil {
+	stopFirst()
+	return err
+}
+ref, err := first.Enqueue(ctx, workflow.Job{Workflow: "long"})
+if err != nil {
+	stopFirst()
+	return err
+}
+<-started
+stopFirst() // a clean stop: the run goes back at once, the attempt not counted
+first.Stop()
+
+next, err := newWorker("deploy-new") // the new version of the worker
+if err != nil {
+	return err
+}
+if err := next.Register(long); err != nil {
+	return err
+}
+```
+
+The step saw `StepInfo.Attempt` 1 on both workers (`attempts [1 1]`): the cut-off attempt was not spent.
 - **Cancel, `ForceComplete` and `ForceFail`** end the run in one script and tell the holder to cancel its steps ([Force a run to an end](../jobs/manage-runs.md#force-a-run-to-an-end)).
 
 ## Schedules
@@ -106,8 +408,52 @@ The client's Redis also holds state the middleware shares across processes. Each
 | `DebounceStore` | `middleware.Debounce` bursts | `Client.DebounceStore()` | `redis.NewDebounceStore(rdb, prefix)` |
 | `JournalStore` | Step memoisation (`workflow.JournalStore`) | `Client.JournalStore()` | `redis.NewJournalStore(rdb, prefix, ttl)` |
 | `BucketStore` | Leaky buckets (`workflow.BucketStore`) | `Client.BucketStore()` | `redis.NewBucketStore(rdb, prefix)` |
+| `DataStore` | Shared data by scope (`workflow.DataStore`: `SetData`, `GetData`, `UpdateData`) | `Client.DataStore()` | `redis.NewDataStore(rdb, prefix)` |
+| `PromiseStore` | Promises settled once (`workflow.PromiseStore`) | `Client.PromiseStore()` | `redis.NewPromiseStore(rdb, prefix, ttl)` |
+| `Inbox` | A consumer's message deduplication (`workflow.Inbox`) | `Client.Inbox()` | `redis.NewInbox(rdb, prefix)` |
+| `AggregateStore` | `middleware.Aggregate`'s pending items | `Client.AggregateStore()` | `redis.NewAggregateStore(rdb, prefix)` |
 
 A lock's or entry's expiry is a Redis expiry, so it is wall time.
+
+The constructors need no driver client: a process that only shares state (a web node that reads `SetData` values, a consumer with an inbox) builds the store over the same Redis and prefix as the workers. A prefix that breaks the rules of `WithPrefix` is refused with `workflow.ErrInvalid`:
+
+<!-- snippet: examples/redis-parity/main.go#stores -->
+```go
+// keep is how long a settled promise or a step memo is kept.
+const keep = 24 * time.Hour
+data, err := redis.NewDataStore(rdb, prefix) // workflow.DataStore: SetData, GetData, UpdateData
+if err != nil {
+	return err
+}
+promises, err := redis.NewPromiseStore(rdb, prefix, keep) // workflow.PromiseStore
+if err != nil {
+	return err
+}
+journal, err := redis.NewJournalStore(rdb, prefix, keep) // workflow.JournalStore, step memos
+if err != nil {
+	return err
+}
+inbox, err := redis.NewInbox(rdb, prefix) // workflow.Inbox: a consumer's dedup of messages
+if err != nil {
+	return err
+}
+buckets, err := redis.NewBucketStore(rdb, prefix) // workflow.BucketStore: leaky buckets
+if err != nil {
+	return err
+}
+aggregates, err := redis.NewAggregateStore(rdb, prefix) // middleware.Aggregate's pending items
+if err != nil {
+	return err
+}
+```
+
+```text
+data: plan="pro" version 1
+promise: first settle true, second settle false, value "paid"
+journal: fetch=42 found true
+```
+
+The second `Settle` of a promise keeps the first value and reports `first` false, on every process of the prefix.
 
 ## Options
 
@@ -129,9 +475,11 @@ A lock's or entry's expiry is a Redis expiry, so it is wall time.
 
 ## Try it
 
+The repository's `compose.yml` has a throwaway Redis on `127.0.0.1:36379` (the one `task redis:test` uses); start it from the repository root with `docker compose --profile redis up -d --wait` and remove it afterwards with `docker compose --profile redis down -v`.
+
 ```sh
 cd examples
-REDIS_URL=redis://localhost:7012/0 go run ./redis-worker
+REDIS_URL=redis://127.0.0.1:36379/0 go run ./redis-worker
 ```
 
 ```text
@@ -140,6 +488,44 @@ same key, same run: true
 send-email succeeded after 2 attempts, sent 1 time(s), errors kept 1
 schedule nightly: last run succeeded, next fire 02:00 UTC
 ```
+
+The parity program prints what the driver declares without a server, and runs every feature above with one (about ten seconds, most of it the schedule waiting for a second tick):
+
+```sh
+cd examples
+REDIS_URL=redis://127.0.0.1:36379/0 go run ./redis-parity
+```
+
+```text
+WaitForEvent: true
+ConcurrencyKey: true
+RateLimit: true
+Queue: true
+PauseWorkflow: true
+PauseQueue: true
+RunFinished: true
+Chain: true
+ScheduleWhen: true
+ShutdownRequeue: true
+Closure: false
+QueueLimitGlobal: false
+KeyExpr at Start: ErrUnsupported = true
+QueueConfig.Limit at Start: ErrUnsupported = true
+approval: the step after the wait got "by ops"
+run-finished observer saw approval: succeeded
+invoice: 3 runs of customer acme on two clients, at most 1 at a time
+sms: 2 succeeded, the next one is queued (2 per hour)
+render while paused: queued, paused targets 1
+render after resume: succeeded on queue reports by [reports-node]
+chain: extract then load
+heartbeat: a tick skipped (reason "when"), a later one fired
+long: cut short on deploy-old, finished on deploy-new, attempts [1 1]
+data: plan="pro" version 1
+promise: first settle true, second settle false, value "paid"
+journal: fetch=42 found true
+```
+
+Without `REDIS_URL` it stops after the refusals with `REDIS_URL is not set: the live run is skipped`.
 
 The driver's own tests run the full conformance suite plus a crash test (one of three workers killed mid-step: every step runs once on the survivors), a lost-lease test (a stale holder's late result is fenced off) and a cron test (three clients, five ticks, five runs): `task redis:test` against the shared stack's Redis, or `WFTEST_REDIS_URL=redis://host:port/0 task redis:test` against another.
 
@@ -174,6 +560,9 @@ The recorder's end-to-end suite runs its driver cases on this driver, recording 
 - **Reserved labels are refused at `Enqueue`.** A label copied from a request under `ubgo.workflow/`, `workflow.batch.` or `otel.` is an error now, not a silent override.
 - **A run's stored error is text.** A finished run's `RunEvent.Err` is rebuilt from the stored message inside its `RunError`, so `errors.Is` reaches the library's `ErrForced` but not your own sentinels; decide in the step, not in the observer.
 - **Lifecycle events can be dropped.** They are a local, best-effort feed: past 4,096 queued events the client drops new ones and logs a warning ([Lifecycle events](../observability/lifecycle.md)).
+- **A worker client enqueues only what it registered.** `Enqueue` on a client that did not `Register` the workflow returns `workflow.ErrNotFound`, unless the client was built `WithEnqueueOnly()`. Register the workflow there too, or enqueue from a web-node client.
+- **`ErrAbandoned` is matched by text after the fact.** The run fails with an error wrapping `redis.ErrAbandoned`, but the stored error is rebuilt from its message, so `errors.Is(ev.Err, redis.ErrAbandoned)` in an observer, or on `RunInfo`, is false; look for `redis.ErrAbandoned.Error()` in `RunInfo.Error` instead.
+- **A fake `WithClock` with a real lease clock.** Moving the fake clock fires due times and cron ticks, never lease expiries; a dead worker's run is taken again only after `WithLease` of real time, and only when its process died: a clean stop hands its runs back at once.
 - **The transaction is not yours.** Redis cannot join the app's SQL transaction; for an enqueue that must commit with your data, use the [outbox](../reliability/outbox.md) with this client as its target.
 
 ## Related
@@ -182,3 +571,4 @@ The recorder's end-to-end suite runs its driver cases on this driver, recording 
 - [The SQL driver](sqlstore.md), [The Hatchet driver](hatchet.md), [The in-memory driver](memory.md)
 - [Deploy workers](../operations/deploy.md), [Nodes and health](../operations/nodes.md), [Hybrid placement](hybrid.md)
 - [Record run history](../observability/run-recorder.md)
+- Examples: [redis-worker](../../examples/redis-worker/) and [redis-parity](../../examples/redis-parity/)

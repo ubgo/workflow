@@ -90,6 +90,23 @@ The worker drains exactly as `Drain` does, with no deadline: it claims nothing m
 | Hatchet | Runs stay on the engine and go to any worker serving their workflow. On-failure handlers count as attempts; durable sleep and wait steps do not, since they hold no worker |
 | In-memory | Nothing outlives the client: runs not finished become cancelled. Recycling on this driver suits tests and single-process tools only |
 
+## Try it
+
+```sh
+cd examples
+go run ./worker-recycling
+```
+
+```text
+generation 1: recycled (max_jobs), jobs done: 2
+generation 2: recycled (max_jobs), jobs done: 2
+generation 3: queue empty, jobs done: 1, exit
+done: 5 of 5
+memory worker: recycled (max_memory) at 600 MiB, ErrRecycle true
+```
+
+The program plays the supervisor: five jobs wait in a SQLite queue and each generation is a fresh worker with `MaxJobs: 2`. The first two generations recycle after two jobs each and are restarted; the third finds one job, then the queue empty, and stop-when-idle ends it with a nil error, so the loop exits. The last line is a separate memory worker whose `Memory` reading (a fake that rises from 200 to 600 MiB) passes `MaxMemory` of 512 MiB at its next `CheckEvery`; once `Done` closes, its `StopCause` is a `*workflow.RecycleError` with the reason and the reading, and matches `workflow.ErrRecycle`.
+
 ## Pitfalls
 
 - **A long step delays the exit.** The drain has no deadline, so a step that runs for an hour keeps the old process alive for that hour after the limit. Bound steps with `Step.Timeout`.

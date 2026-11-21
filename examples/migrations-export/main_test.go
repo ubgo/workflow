@@ -56,6 +56,12 @@ started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique
   ubgo/workflow/sqlstore/unique 002_unique_holder
+migrations per owner:
+  ubgo/workflow/sqlstore: 11 in Client.Migrate
+  ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
+  ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 1 in Outbox.Migrate
 refused, unknown migrations: [099_from_the_future]
 Start refused too: sqlstore: the database schema is newer than this code
 postgres: CREATE TABLE IF NOT EXISTS "jobs"."wf_runs"

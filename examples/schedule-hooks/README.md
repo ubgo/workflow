@@ -68,11 +68,21 @@ err = c.(workflow.TickNotifier).OnTick(func(_ context.Context, t workflow.Tick) 
 })
 ```
 
+A heartbeat pinger with a timeout and a logger:
+
+<!-- snippet: examples/schedule-hooks/main.go#pinger -->
+```go
+ping := middleware.NewPinger(
+	middleware.HTTPPing(hb.Client()),                                  // a GET; a status outside 2xx is a failure
+	middleware.WithPingTimeout(pingTimeout),                           // a dead service cannot hold up the hooks
+	middleware.WithPingLogger(slog.Default().With("check", "orders")), // failures at Warn, never with the URL
+)
+```
+
 Hooks and heartbeat pings for one schedule:
 
 <!-- snippet: examples/schedule-hooks/main.go#hooks -->
 ```go
-ping := middleware.NewPinger(middleware.HTTPPing(hb.Client()))
 err = workflow.AttachScheduleHooks(c, workflow.ScheduleHooks{
 	Workflow:  "sync-orders",
 	Name:      "office-hours",               // one schedule; empty means all of the workflow's

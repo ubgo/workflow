@@ -71,12 +71,22 @@ var greet = workflow.DefineVersioned(2, upcasters, func(_ context.Context, in Gr
 
 // snippet:end
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "typed-payloads:", err)
 		os.Exit(1)
 	}
 }
+
+const (
+	// awaitPoll is how often the program looks at a run it waits for: the
+	// in-memory driver ends a run in microseconds.
+	awaitPoll = 10 * time.Millisecond
+	// hugeChars is the size of the payload sent past the app's cap: more
+	// than the driver's 4096-byte limit, so the driver refuses it.
+	hugeChars = 5000
+)
 
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
@@ -102,15 +112,17 @@ func run(ctx context.Context) error {
 		return err
 	}
 	defer c.Stop()
-	wait := workflow.AwaitOptions{Poll: 10 * time.Millisecond}
+	wait := workflow.AwaitOptions{Poll: awaitPoll}
 
 	fmt.Println("typed:")
 	// snippet:job-of
+	// snippet:build-job
 	job, err := workflow.JobOf("send-welcome", Welcome{UserID: "u-7", Plan: "pro"})
 	if err != nil {
 		return err
 	}
 	job.IdempotencyKey = "welcome:u-7" // the rest of the Job is set as usual
+	// snippet:end
 	ref, err := c.Enqueue(ctx, job)
 	if err != nil {
 		return err
@@ -131,6 +143,7 @@ func run(ctx context.Context) error {
 	fmt.Println("size limits:")
 	// snippet:max-payload
 	app := middleware.WrapClient(c, middleware.MaxPayload(1024)) // the app's own cap
+	// big is a payload of 2,000 characters, over the app's cap.
 	big := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 2000) + `"`)}
 	_, err = app.Enqueue(ctx, big)
 	var tooBig *workflow.PayloadTooLargeError
@@ -139,7 +152,7 @@ func run(ctx context.Context) error {
 	}
 	// snippet:end
 	fmt.Printf("  ErrPayloadTooLarge %t, ErrInvalid %t\n", errors.Is(err, workflow.ErrPayloadTooLarge), errors.Is(err, workflow.ErrInvalid))
-	huge := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 5000) + `"`)}
+	huge := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", hugeChars) + `"`)}
 	_, err = c.Enqueue(ctx, huge)
 	if errors.As(err, &tooBig) {
 		fmt.Printf("  %d bytes over the %s limit of %d\n", tooBig.Size, tooBig.Source, tooBig.Limit)
@@ -155,17 +168,22 @@ func run(ctx context.Context) error {
 	release1 := middleware.WrapClient(c, middleware.PayloadVersion(1)) // the old release, still enqueuing
 	release2 := middleware.WrapClient(c, middleware.PayloadVersion(2)) // this release
 	// snippet:end
+	oldJob, err := workflow.JobOf("greet", GreetV1{Name: "Ann Lee"})
+	if err != nil {
+		return err
+	}
+	newJob, err := workflow.JobOf("greet", GreetV2{First: "Bo", Last: "Chen"})
+	if err != nil {
+		return err
+	}
 	for _, e := range []struct {
-		client  workflow.Client
-		payload any
+		client workflow.Client
+		job    workflow.Job
 	}{
-		{release1, GreetV1{Name: "Ann Lee"}},
-		{release2, GreetV2{First: "Bo", Last: "Chen"}},
+		{release1, oldJob},
+		{release2, newJob},
 	} {
-		job, err := workflow.JobOf("greet", e.payload)
-		if err != nil {
-			return err
-		}
+		job := e.job
 		ref, err := e.client.Enqueue(ctx, job)
 		if err != nil {
 			return err
@@ -184,7 +202,7 @@ func run(ctx context.Context) error {
 		}
 		fmt.Printf("  version %d %s -> %s\n", v, job.Payload, raw)
 	}
-	newer := workflow.Job{Workflow: "greet", Payload: []byte(`{}`), Labels: map[string]string{workflow.LabelPayloadVersion: "3"}}
+	newer := workflow.Job{Workflow: "greet", Payload: []byte(`{}`), Labels: map[string]string{workflow.LabelPayloadVersion: "3"}} // newer than this release reads
 	_, err = release2.Enqueue(ctx, newer)
 	fmt.Printf("  version 3 sent to release 2: ErrInvalid %t\n", errors.Is(err, workflow.ErrInvalid))
 	return nil

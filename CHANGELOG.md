@@ -4,6 +4,16 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+### Documentation
+
+- A learning path of thirteen steps from a first job to the full production setup, each with its guide and a runnable example, and a "Start from your goal" table of about a hundred tasks, at the top of [docs/README.md](docs/README.md); every page in the index now lists the example programs its code comes from.
+- Decision guides under [docs/choosing/](docs/choosing/README.md): which driver or wrapper, with each driver's capabilities and refusals; which method (job, workflow, schedule, batch, state machine or events; waits, signals or promises; retries, snooze or release; leader election or lease-only cron; archive tables, `WithArchive` or the recorder's archive; `StartWhen` or a readiness probe; `LatestOnly` or a misfire policy); which setup for one binary, a web fleet with workers, several regions or tenants, and tests.
+- The [feature index](docs/reference/features.md) grew from 421 to 550 rows (the `workflow` command, every admin HTTP route and the repository tasks included); every row with an example points at a program whose code uses the feature's API, and every API row but a few links a guide section that teaches it with code.
+- 38 new example programs, each run by `go test` (161 in all), among them `sql-leader-election`, `sql-archive`, `sql-options`, `insert-contract`, `redis-parity`, `memory-options`, `hatchet-schedules`, `start-gate`, `sleep-wake`, `namespaces`, `latest-only`, `schedule-keep-runs`, `step-middleware`, `route-jobs`, `queue-guards`, `release-errors`, `step-slots`, `accelerator-queue`, `run-transitions`, `tenant-spans`, `flow-boundary`, `flow-cancel`, `machine-dsl`, `then-redo`, `escalation-wrappers`, `events-signal`, `datasets-shared`, `batch-completion`, `admin-routes`, `admin-inspect`, `admin-reset-fork`, `admin-alerts`, `cli-tour`, `recorder-sql`, `recorder-custom-store`, `fake-forks`, `driver-conformance` and `failover-observer`.
+- Every guide follows one shape: what it is and when you want it, Before you start, steps whose Go code is synced from an example, Try it with the real output, Pitfalls and Related links; the pages that lacked a Try it, a synced snippet or Pitfalls have them now.
+- The Redis examples and guides use one address, `redis://127.0.0.1:36379/0`, the throwaway Redis of the repository's `compose.yml` that `task redis:test` starts.
+
+
 ## [0.2.1] - 2026-11-21
 
 The core `v0.2.1` and every separate module at `v0.2.1`: `admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify` and `sqlstore/pgxtx`. Each separate module requires the core `v0.2.1` (and `recorder/sqlrecorder` requires `recorder/v0.2.1`). `otel`, `recorder`, `recorder/sqlrecorder`, `sentry`, `sqlstore/pgnotify` and `sqlstore/pgxtx` have no code change since v0.2.0; they move to v0.2.1 so the set moves together. This is a patch release: every change below adds API or fixes behaviour, and no exported identifier of any module was removed or changed (checked with `apidiff` against v0.2.0). Capabilities 0 to 63 keep their numbers; `WaitOwnRun` (64), `RoundRobin` (65) and `KeyWeights` (66) are new. sqlstore adds migration `011_fair_turns`, applied by `Client.Migrate`.

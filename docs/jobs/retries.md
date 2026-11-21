@@ -19,7 +19,7 @@ policy := workflow.RetryPolicy{
 	Max: 3, // three retries after the first attempt
 	Backoff: workflow.Backoff{
 		Initial: time.Second,
-		Factor:  2,
+		Factor:  2, // each delay doubles: 1s, 2s, 4s
 		Max:     time.Minute,
 		Jitter:  0.5, // each delay is drawn from [d/2, d]
 	},
@@ -32,7 +32,8 @@ Set it as `Workflow.Retry`, the default for every step, or as `Step.Retry` for o
 
 <!-- snippet: examples/retries/main.go#delays -->
 ```go
-b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5}
+b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5} // doubling, capped at 10s
+// Five retries: the fifth hits the 10s cap.
 for n := 1; n <= 5; n++ {
 	// JitteredDelay takes the uniform draw in [0, 1) as an argument.
 	fmt.Printf("retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
@@ -53,7 +54,7 @@ retry 5: delay 10s, with draw 0.5: 7.5s
 
 <!-- snippet: examples/retries/main.go#per-step -->
 ```go
-signupDefault := workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second}}
+signupDefault := workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second}} // three retries, 1s apart
 signup := workflow.Workflow{
 	Name:  "signup",
 	Retry: signupDefault, // the default for every step that leaves Retry nil
@@ -84,7 +85,37 @@ A step's retry policy can be set in four places, and the first one that is set w
 
 `workflow.EffectiveRetriesFor(step, wf, job)` is that rule in one function, and every driver that retries calls it (memory, SQL and Redis; `workflow.RunInline` too), so no two drivers resolve a step's policy differently. `workflow.EffectiveRetries(step, wf)` is the same with no job, for code that decides at declaration time. The field comments on `RetryPolicy` carry the same table, and `Max` counts retries after the first attempt, so the value that applies gives `Max+1` attempts at most.
 
-The `retry-limits` example shows the job override and the `discard-exhausted` example runs all four levels side by side:
+The rule is a pure function, so you can ask it which policy a step would get before any run exists. The `retries` example resolves the same step at each level; only the `Max` of the winner is printed:
+
+<!-- snippet: examples/retries/main.go#precedence -->
+```go
+noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
+wf := workflow.Workflow{
+	Name:  "ship",
+	Retry: workflow.RetryPolicy{Max: 2}, // level 3: every step whose Retry is nil
+	Steps: []workflow.Step{
+		{Name: "label", Retry: &workflow.RetryPolicy{Max: 5}, Run: noop}, // level 2: this step only
+		{Name: "notify", Run: noop},
+	},
+}
+bare := workflow.Workflow{Name: "bare", Steps: []workflow.Step{{Name: "only", Run: noop}}}
+override := workflow.Job{Workflow: "ship", Retry: &workflow.RetryPolicy{Max: 1}} // level 1: this run only
+
+fmt.Println("  job over step:", workflow.EffectiveRetriesFor(wf.Steps[0], wf, override).Max)
+fmt.Println("  step over workflow:", workflow.EffectiveRetriesFor(wf.Steps[0], wf, workflow.Job{}).Max)
+fmt.Println("  workflow default:", workflow.EffectiveRetriesFor(wf.Steps[1], wf, workflow.Job{}).Max)
+fmt.Println("  library default:", workflow.EffectiveRetriesFor(bare.Steps[0], bare, workflow.Job{}).Max,
+	"| DefaultRetryMax:", workflow.DefaultRetryMax)
+```
+
+```text
+  job over step: 1
+  step over workflow: 5
+  workflow default: 2
+  library default: 0 | DefaultRetryMax: 0
+```
+
+The `retry-limits` example shows the job override on a real run and the `discard-exhausted` example runs all four levels side by side:
 
 <!-- snippet: examples/discard-exhausted/main.go#job -->
 ```go
@@ -110,6 +141,28 @@ c := memory.New(
 
 With `Jitter: 0.5` and a pinned draw of 0.5, the `sync` workflow's first retry comes 750ms after the failure (1s shortened by a quarter) and the second 1.5s after that.
 
+The range is easiest to see with the draw at its ends. Jitter needs `workflow.CapRetryJitter` on the client: the memory, SQL and Redis drivers have it, and Hatchet refuses a policy with jitter at `Register` ([Pitfalls](#pitfalls)). `Backoff.Delay(n)` is the exact delay before retry `n`, and `JitteredDelay` shortens it by at most `Jitter` of itself:
+
+<!-- snippet: examples/retries/main.go#jitter -->
+```go
+b := workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.25} // the last quarter of each delay is random
+fmt.Println("  needs:", workflow.CapRetryJitter, "| memory has it:", memory.New().Capabilities().Has(workflow.CapRetryJitter))
+fmt.Println("  retry", jitterRetry, "exact delay:", b.Delay(jitterRetry))
+for _, u := range []float64{0, 0.5, 0.999} { // the shortest, a middle and almost the full delay
+	fmt.Printf("  draw %.3f: %s\n", u, b.JitteredDelay(jitterRetry, u))
+}
+```
+
+```text
+  needs: RetryJitter | memory has it: true
+  retry 2 exact delay: 4s
+  draw 0.000: 4s
+  draw 0.500: 3.5s
+  draw 0.999: 3.001s
+```
+
+Jitter only ever shortens a delay, never lengthens it, so `Backoff.Max` stays a true upper bound.
+
 ## Retry after a delay the error names
 
 Sometimes the failure says when to come back: a 429 with `Retry-After: 30`, a lock held until a known time. Wrap the error with `workflow.RetryAfter(err, d)` and give the policy a `DelayFor` that reads it. `workflow.RetryAfterDelay` is the stock one:
@@ -117,14 +170,15 @@ Sometimes the failure says when to come back: a 429 with `Retry-After: 30`, a lo
 <!-- snippet: examples/retries/main.go#retry-after -->
 ```go
 rateLimited := workflow.RetryPolicy{
-	Max:      2,
+	Max:      2, // two retries after the first attempt
 	Backoff:  workflow.Backoff{Initial: time.Second},
 	DelayFor: workflow.RetryAfterDelay, // honour RetryAfter(err, d)
 }
+// callAPI is rate limited on its first attempt and succeeds after.
 callAPI := func(n int) error {
 	if n == 1 {
 		// The API answered 429 with Retry-After: 30.
-		return workflow.RetryAfter(errors.New("429 too many requests"), 30*time.Second)
+		return workflow.RetryAfter(errors.New("429 too many requests"), 30*time.Second) // the Retry-After value
 	}
 	return nil
 }
@@ -149,10 +203,11 @@ Some failures are final: a declined card, a payload that does not parse, a recor
 <!-- snippet: examples/retries/main.go#no-retry -->
 ```go
 noRetry := workflow.RetryPolicy{
-	Max:       5,
+	Max:       5, // never reached: both errors below stop at the first attempt
 	Backoff:   workflow.Backoff{Initial: time.Second},
 	NoRetryOn: func(err error) bool { return errors.Is(err, errNotFound) },
 }
+// charge fails with an error marked Permanent; lookup with one NoRetryOn matches.
 charge := func(int) error {
 	return workflow.Permanent(errors.New("card declined")) // retrying cannot help
 }
@@ -315,6 +370,7 @@ Not every "try again later" is a failure. A report the upstream has not finished
 
 <!-- snippet: examples/snooze-heartbeat/main.go#snooze -->
 ```go
+// fetch snoozes until the report it downloads is ready.
 fetch := func(ctx context.Context, _ []byte) ([]byte, error) {
 	info, _ := workflow.StepInfoFrom(ctx)
 	tries <- info.Attempt
@@ -372,7 +428,7 @@ cd examples
 go run ./retries
 ```
 
-After the backoff table above, the program runs one workflow per section and ends with the refusals:
+After the backoff table above, the program runs one workflow per section, then the refusals, the jitter range and the policy precedence:
 
 ```text
 sync:
@@ -406,6 +462,19 @@ refusals:
   memory: <nil>
   hatchet: workflow "sync" step "call": workflow: Retry.Backoff.Jitter unsupported by this driver (missing RetryJitter): Hatchet waits exactly Factor^n seconds and has no jitter | unsupported: true
   hatchet: workflow "sync" step "call": workflow: Retry.DelayFor unsupported by this driver (missing RetryDelay): Hatchet sets a retry's delay from the backoff only, never from the error (RetryAfter)
+
+jitter:
+  needs: RetryJitter | memory has it: true
+  retry 2 exact delay: 4s
+  draw 0.000: 4s
+  draw 0.500: 3.5s
+  draw 0.999: 3.001s
+
+precedence:
+  job over step: 1
+  step over workflow: 5
+  workflow default: 2
+  library default: 0 | DefaultRetryMax: 0
 ```
 
 The attempt number comes from `workflow.StepInfoFrom(ctx).Attempt`, 1 for the first attempt.
@@ -420,7 +489,7 @@ wf := workflow.Workflow{
 	Name: "sync",
 	Retry: workflow.RetryPolicy{
 		Max:     3,
-		Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.5},
+		Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.5}, // the jitter is what Hatchet refuses
 	},
 	Steps: []workflow.Step{{Name: "call", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 }

@@ -1,4 +1,6 @@
-// Command workflow-json runs a workflow whose definition is data: a JSON
+// Command workflow-json runs a workflow whose definition is data. It
+// first checks a misspelled document with dsl.Parse, which refuses it
+// with a *dsl.FieldError naming the field's JSON path. A JSON
 // document names its steps, their order, a wait for an event, retries and
 // timeouts, and the Go handlers it runs by name. The program registers
 // those handlers in a dsl.Registry, loads the document with dsl.Load,
@@ -11,6 +13,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -23,6 +26,14 @@ import (
 
 // runTimeout bounds the whole program, generous for a slow CI host.
 const runTimeout = 10 * time.Second
+
+// pollEvery is how often the program re-reads a run's status while it
+// waits: a millisecond keeps the in-memory demo quick.
+const pollEvery = time.Millisecond
+
+// orders are the IDs of the two orders the program runs through the
+// workflow, in the order they are enqueued and printed.
+var orders = []string{"A-1", "A-2"}
 
 // snippet:definition
 // orderJSON is the definition as an app would keep it in a file, a
@@ -50,6 +61,7 @@ type payment struct {
 	Paid  int
 }
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "workflow-json:", err)
@@ -61,6 +73,19 @@ func main() {
 func run(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
+
+	// snippet:check
+	// Parse checks a document without any handler: a typo is refused with
+	// the JSON path of the field, which a form can show next to it.
+	_, err := dsl.Parse([]byte(`{"name": "order", "steps": [{"name": "reserve", "handlr": "reserve-stock"}]}`))
+	var fe *dsl.FieldError
+	if errors.As(err, &fe) {
+		fmt.Printf("checked: %s: %s\n", fe.Path, fe.Reason)
+	}
+	// snippet:end
+	if fe == nil {
+		return fmt.Errorf("a misspelled field was not refused with a FieldError: %v", err)
+	}
 
 	// snippet:registry
 	reg := dsl.NewRegistry()
@@ -97,7 +122,7 @@ func run(ctx context.Context) error {
 	}
 
 	refs := map[string]workflow.RunRef{}
-	for _, id := range []string{"A-1", "A-2"} {
+	for _, id := range orders {
 		ref, err := c.Enqueue(ctx, workflow.Job{
 			Workflow: "order",
 			Payload:  fmt.Appendf(nil, "%q", id),
@@ -108,19 +133,19 @@ func run(ctx context.Context) error {
 		}
 		refs[id] = ref
 	}
-	for _, id := range []string{"A-1", "A-2"} {
+	for _, id := range orders {
 		if err := untilWaiting(ctx, c, refs[id]); err != nil {
 			return err
 		}
 	}
 	fmt.Println("both orders waiting for payment")
-	for _, p := range []payment{{"A-2", 25}, {"A-1", 40}} {
+	for _, p := range []payment{{"A-2", 25}, {"A-1", 40}} { // paid out of order: each wait takes only its own order's payment
 		if err := c.Signal(ctx, workflow.Event{Name: "payment.succeeded", Key: p.Order, Payload: fmt.Appendf(nil, `{"Order":%q,"Paid":%d}`, p.Order, p.Paid)}); err != nil {
 			return err
 		}
 	}
-	for _, id := range []string{"A-1", "A-2"} {
-		out, err := workflow.AwaitResult(ctx, c, refs[id], workflow.AwaitOptions{Poll: time.Millisecond})
+	for _, id := range orders {
+		out, err := workflow.AwaitResult(ctx, c, refs[id], workflow.AwaitOptions{Poll: pollEvery})
 		if err != nil {
 			return err
 		}
@@ -166,7 +191,7 @@ func untilWaiting(ctx context.Context, c workflow.Client, ref workflow.RunRef) e
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("run %s never reached waiting: %w", ref.RunID, ctx.Err())
-		case <-time.After(time.Millisecond):
+		case <-time.After(pollEvery):
 		}
 	}
 }

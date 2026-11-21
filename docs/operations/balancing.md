@@ -118,6 +118,23 @@ after one round: emails workers 1 running 0 waiting 0; imports workers 7 running
 
 `Balancer` is one method, `Balance(loads []QueueLoad) map[string]int`, and `workflow.BalancerFunc` turns a function into one. A queue left out of the answer keeps its count. For a different weight with the same minimum, maximum and step rules, use `workflow.Proportional(cfg, weight)`: for example, weight by `Depth` times an expected job duration you keep per queue, or give a paying tenant's queue double weight. A strategy can also read signals outside the loads (time of day, a feature flag) since it is your code.
 
+## Try it
+
+```sh
+cd examples
+go run ./worker-balancing
+```
+
+```text
+by depth: emails 1, imports 7
+by wait:  emails 2, imports 6
+bounded:  emails 3, imports 5
+before: emails workers 4 running 0 waiting 0; imports workers 4 running 4 waiting 8
+after one round: emails workers 1 running 0 waiting 0; imports workers 7 running 7 waiting 5
+```
+
+The first three lines are the strategies of Steps 2 and 3 applied to the same loads. The last two are a real memory client: twelve imports arrive while emails sit idle, so before balancing four imports run and eight wait behind the cap of four; after one round of the loop, `ByDepth` has moved three workers from emails to imports, seven imports run and five wait. `main_test.go` in the example checks every line.
+
 ## Pitfalls
 
 - **The pool is the ceiling.** On the memory, SQL and Redis drivers, a queue's cap lives inside the pool set by `WithWorkers`. A balancer total above the pool size gives caps the pool cannot fill.

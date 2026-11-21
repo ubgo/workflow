@@ -1,6 +1,6 @@
 # events-webhooks
 
-The `events` package on the in-memory driver: a `Bus` that turns one published event into a run per subscription and deduplicates a republish by the event's ID, a webhook handler that verifies an HMAC signature and enqueues, and the Standard Webhooks scheme refusing a changed body and a replay. The handler is called through `httptest`, so nothing listens on a port. Every run holds until the program ends, so the deduplication of unfinished runs is visible.
+The `events` package on the in-memory driver: a `Bus` that turns one published event into a run per subscription and deduplicates a republish by the event's ID, a webhook handler that verifies an HMAC signature and enqueues, the Standard Webhooks scheme refusing a changed body and a replay, and a Shopify-style HMAC secret (base64 digest) rotated without dropping a delivery. The handler is called through `httptest`, so nothing listens on a port. Every run holds until the program ends, so the deduplication of unfinished runs is visible.
 
 ```sh
 cd examples
@@ -29,6 +29,10 @@ standard webhooks:
   verified id=msg_1 err=<nil>
   changed body: ErrSignature=true
   replayed after 10m: ErrSignature=true
+hmac rotation:
+  new signature: g0kvyILC8kxerVjwwPqiYVmYAoBSuxlWZ1pbtLCkJS4=
+  during rotation: old secret verifies true, new secret verifies true
+  after rotation:  old secret verifies false, new secret verifies true
 ```
 
 ## The code
@@ -84,7 +88,7 @@ h, err := events.NewWebhook(events.WebhookConfig{
 	Verifier: signer,
 	Client:   c,
 	Workflow: "github-push",
-	MaxBody:  1 << 10,
+	MaxBody:  1 << 10, // 1 KiB; a bigger body is refused with 413
 })
 if err != nil {
 	return err
@@ -105,7 +109,7 @@ Standard Webhooks headers for an outgoing request, verified on the way in:
 
 <!-- snippet: examples/events-webhooks/main.go#standard -->
 ```go
-sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk)
+sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk) // older timestamps are replays
 if err != nil {
 	return err
 }
@@ -113,6 +117,37 @@ body := []byte(`{"type":"invoice.paid"}`)
 req := httptest.NewRequest(http.MethodPost, "/hooks/billing", bytes.NewReader(body))
 req.Header = sw.Headers("msg_1", body) // webhook-id, webhook-timestamp, webhook-signature
 id, err := sw.Verify(req, body)
+```
+
+An HMAC secret rotated: the new secret signs, both verify until the old one is removed:
+
+<!-- snippet: examples/events-webhooks/main.go#hmac-rotate -->
+```go
+before := events.HMAC{
+	Header:   "X-Shopify-Hmac-Sha256",
+	Encoding: events.EncodingBase64, // GitHub's hex is the default, events.EncodingHex
+	Secrets:  [][]byte{[]byte("old-secret")},
+}
+during := before
+during.Secrets = [][]byte{[]byte("new-secret"), []byte("old-secret")} // new first: it signs, both verify
+after := before
+after.Secrets = [][]byte{[]byte("new-secret")} // every sender has switched
+
+sigOld, err := before.Sign(body) // a sender still on the old secret
+if err != nil {
+	return err
+}
+sigNew, err := during.Sign(body) // a sender already on the new one
+if err != nil {
+	return err
+}
+// verifies reports whether v accepts body signed with sig.
+verifies := func(v events.Verifier, sig string) bool {
+	req := httptest.NewRequest(http.MethodPost, "/hooks/shopify", bytes.NewReader(body))
+	req.Header.Set("X-Shopify-Hmac-Sha256", sig)
+	_, err := v.Verify(req, body)
+	return !errors.Is(err, events.ErrSignature)
+}
 ```
 
 The guides that copy this program are [publish and subscribe](../../docs/events/publish-subscribe.md) and [inbound webhooks](../../docs/events/webhooks.md). `go test ./events-webhooks` checks every line.

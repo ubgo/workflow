@@ -26,6 +26,7 @@ audit log:
 run detail:
   status succeeded
   trace_url https://tracing.example.com/trace/4bf92f3577b34da6a3ce929d0e0e4736
+  span context: span 00f067aa0ba902b7, sampled true
 `
 	if out != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out, want)

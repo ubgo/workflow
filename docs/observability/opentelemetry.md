@@ -27,7 +27,7 @@ inst, err := wfotel.New(append([]wfotel.Option{
 	wfotel.WithMeterProvider(mp),
 	wfotel.WithLabelFilter(func(key string) bool { return key == "tier" }), // span attribute workflow.label.tier
 	wfotel.WithMetricLabels("tier"),                                        // a label with few values only
-}, opts...)...)
+}, d.opts...)...)
 if err != nil {
 	return err
 }
@@ -41,7 +41,42 @@ The enqueue span is named `workflow.enqueue <workflow>`, kind Producer, with `wo
 
 The enqueue middleware writes the enqueue span's trace context into a copy of the job's labels, and the step middleware reads it back from the run's labels, so the step span joins the caller's trace across processes and machines. Every key is prefixed with `otel.LabelPrefix` (`otel.`), so with the default W3C TraceContext propagator the labels are `otel.traceparent` and, when the trace has state, `otel.tracestate`. The prefix is reserved for this package and every driver accepts it.
 
-`otel.WithPropagator(p)` replaces the propagator. The default is W3C TraceContext, not the OpenTelemetry global propagator, whose default propagates nothing. When a step's labels carry no trace context, its span's parent is whatever span the context already holds.
+`otel.WithPropagator(p)` replaces the propagator. The default is W3C TraceContext, not the OpenTelemetry global propagator, whose default propagates nothing. When a step's labels carry no trace context, its span's parent is whatever span the context already holds. The example's third run hands it a composite propagator that carries W3C baggage as well, so a value the caller put in its context's baggage reaches the step:
+
+<!-- snippet: examples/opentelemetry/main.go#propagation -->
+```go
+// W3C trace context plus baggage, so a value the caller put in the
+// baggage reaches the step on another machine.
+prop := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+withBaggage := wfotel.WithPropagator(prop)
+```
+
+Inside a step, the run's labels show what the enqueue middleware wrote, and the context holds what the step middleware restored. A step never needs to read these labels itself; this is how to look when a trace does not join up:
+
+<!-- snippet: examples/opentelemetry/main.go#trace-labels -->
+```go
+// traceLabels reads, inside a step, the run's labels under otel.LabelPrefix
+// (the trace context the enqueue middleware wrote) and the baggage the
+// step middleware restored from them.
+func traceLabels(ctx context.Context) string {
+	info, _ := workflow.StepInfoFrom(ctx)
+	var keys []string
+	for k := range info.Labels {
+		if strings.HasPrefix(k, wfotel.LabelPrefix) { // "otel.": reserved for the trace context
+			keys = append(keys, k)
+		}
+	}
+	slices.Sort(keys)
+	plan := baggage.FromContext(ctx).Member("plan").Value()
+	return fmt.Sprintf("trace labels on the run: %s; baggage in the step: plan=%s", strings.Join(keys, " "), plan)
+}
+```
+
+```text
+trace labels on the run: otel.baggage otel.traceparent; baggage in the step: plan=pro
+```
+
+Outside a step (an admin link, a log line), `otel.TraceIDOf(labels)` returns the trace ID from a run's labels under the default propagator, and `otel.SpanContextOf(labels, prop)` does the same with the propagator you passed to `WithPropagator`.
 
 ## Across a broker or HTTP hop
 
@@ -107,11 +142,7 @@ attrs, err := workflow.Attributes{Limits: workflow.SQSAttributes}.Encode(traced)
 
 <!-- snippet: examples/opentelemetry/main.go#parenting -->
 ```go
-opts := []wfotel.Option{
-	wfotel.WithParenting(wfotel.ParentNewRootLink),
-	wfotel.WithStepSpanName(func(info workflow.StepInfo) string { return "step " + info.Step }),
-	wfotel.WithEnqueueSpanName(func(job workflow.Job) string { return "enqueue " + job.Workflow }),
-}
+parenting := wfotel.WithParenting(wfotel.ParentNewRootLink)
 ```
 
 With the default the example prints `same trace: true, step parent is the enqueue span: true`; with `ParentNewRootLink` it prints `same trace: false, ... step links to it: true`.
@@ -119,6 +150,17 @@ With the default the example prints `same trace: true, step parent is the enqueu
 ## Span names
 
 `otel.WithStepSpanName(fn)` names step spans from the driver's `StepInfo` (zero when the context has none), and `otel.WithEnqueueSpanName(fn)` names enqueue spans from the job. An empty result falls back to the default name. Backends index span names, so keep a name to a bounded set of values: never a run ID, a payload field or a label with unbounded values.
+
+<!-- snippet: examples/opentelemetry/main.go#span-names -->
+```go
+names := []wfotel.Option{
+	// A bounded set of names: the step name, never a run ID.
+	wfotel.WithStepSpanName(func(info workflow.StepInfo) string { return "step " + info.Step }),
+	wfotel.WithEnqueueSpanName(func(job workflow.Job) string { return "enqueue " + job.Workflow }),
+}
+```
+
+The example's second run passes these with `ParentNewRootLink`, and its spans are named `enqueue send-email` and `step send` instead of `workflow.enqueue send-email` and `workflow.step send-email/send` ([Try it](#try-it)).
 
 ## Job labels on spans
 
@@ -130,6 +172,16 @@ ref, err := client.Enqueue(ctx, workflow.Job{Workflow: "send-email", Labels: map
 if err != nil {
 	return err
 }
+```
+
+`WithAllLabels` records every label instead; the example's third run uses it, and its spans carry `workflow.label.user=u-42` as well. Use it only where no label holds personal data or secrets:
+
+<!-- snippet: examples/opentelemetry/main.go#all-labels -->
+```go
+// Every label but the otel. ones becomes a span attribute: only where
+// no label holds personal data. WithLabelFilter picks keys instead.
+allLabels := wfotel.WithAllLabels()
+fmt.Println("span attribute of the user label:", wfotel.LabelAttributePrefix+"user")
 ```
 
 The enqueue middleware refuses a job that already carries a label under `otel.` with `workflow.ErrInvalid`, before any span or count, rather than letting a caller choose the trace a run joins. So put `Enqueue` in a chain once:
@@ -153,7 +205,55 @@ Five instruments, under the scope `otel.ScopeName` (`github.com/ubgo/workflow/ot
 | `workflow.queue.wait` | `MetricQueueWait` | histogram, seconds (`QueueWaitBuckets()`, 5ms to 1h) | step attempt the driver gave a `ReadyAt` | `workflow.name`, `workflow.step`, `workflow.queue` |
 | `workflow.queue.depth` | `MetricQueueDepth` | gauge | queue, at each collection | `workflow.queue` |
 
-`workflow.outcome` is an `otel.Outcome`: `ok`, `error` (retryable), `permanent`, `cancelled` or `discarded` (the step returned `workflow.Discard`). Run IDs never become metric attributes. `otel.WithMetricLabels(keys...)` adds the named job labels to every metric as `workflow.label.<key>`, for per-tenant or per-tier SLOs; a job without the label records `""`, so every series has the same keys. `New` refuses an empty key or one under `otel.` with `workflow.ErrInvalid`. `otel.WithClock` sets the clock step durations are measured on (nil means the real clock).
+`workflow.outcome` is an `otel.Outcome`: `ok`, `error` (retryable), `permanent`, `cancelled` or `discarded` (the step returned `workflow.Discard`). Run IDs never become metric attributes. `otel.WithMetricLabels(keys...)` adds the named job labels to every metric as `workflow.label.<key>`, for per-tenant or per-tier SLOs; a job without the label records `""`, so every series has the same keys. `New` refuses an empty key or one under `otel.` with `workflow.ErrInvalid`.
+
+`otel.WithClock` sets the clock step durations are measured on (nil means the real clock). A test passes a fake clock and moves it inside the step, so the duration it reads is exact; the example's step advances it by 1.5 seconds:
+
+<!-- snippet: examples/opentelemetry/main.go#clock -->
+```go
+clk := clock.NewFake(clockStart)
+measured := wfotel.WithClock(clk) // step durations are measured on this clock
+```
+
+Read an instrument by its constant rather than a string you retype, and an outcome by `otel.AttrOutcome` and an `otel.Outcome` value. This is how a test asserts on metrics with the SDK's manual reader:
+
+<!-- snippet: examples/opentelemetry/main.go#read-metrics -->
+```go
+// stepMetrics reads two instruments by their names: the attempts that
+// ended with outcome ok, and the seconds the step histogram summed.
+func stepMetrics(rm metricdata.ResourceMetrics) (ok int64, seconds float64) {
+	for _, sm := range rm.ScopeMetrics {
+		if sm.Scope.Name != wfotel.ScopeName {
+			continue
+		}
+		for _, m := range sm.Metrics {
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				if m.Name != wfotel.MetricStepOutcomes {
+					continue
+				}
+				for _, p := range data.DataPoints {
+					if v, _ := p.Attributes.Value(wfotel.AttrOutcome); v.AsString() == string(wfotel.OutcomeOK) {
+						ok += p.Value
+					}
+				}
+			case metricdata.Histogram[float64]:
+				if m.Name != wfotel.MetricStepDuration {
+					continue
+				}
+				for _, p := range data.DataPoints {
+					seconds += p.Sum
+				}
+			}
+		}
+	}
+	return ok, seconds
+}
+```
+
+```text
+step attempts with outcome ok: 1, step time: 1.5s
+```
 
 ## Count run ends
 
@@ -222,9 +322,24 @@ metric workflow.step.outcomes workflow.label.tier=pro workflow.name=send-email w
 metric workflow.enqueue.count workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok
 metric workflow.queue.wait workflow.label.tier=pro workflow.name=send-email workflow.queue=default workflow.step=send
 metric workflow.runs.finished workflow.name=send-email workflow.run.status=succeeded
+Enqueue middleware twice: true
+-- every label, W3C baggage in the trace labels, durations on a fake clock
+span attribute of the user label: workflow.label.user
+span "workflow.enqueue send-email" kind=producer workflow.label.tier=pro workflow.label.user=u-42 workflow.name=send-email workflow.outcome=ok
+span "workflow.step send-email/send" kind=consumer workflow.attempt=1 workflow.label.tier=pro workflow.label.user=u-42 workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+same trace: true, step parent is the enqueue span: true, step links to it: false
+run ID on the enqueue span: true
+metric workflow.step.duration workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+metric workflow.step.outcomes workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+metric workflow.enqueue.count workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok
+metric workflow.queue.wait workflow.label.tier=pro workflow.name=send-email workflow.queue=default workflow.step=send
+metric workflow.runs.finished workflow.name=send-email workflow.run.status=succeeded
+trace labels on the run: otel.baggage otel.traceparent; baggage in the step: plan=pro
+step attempts with outcome ok: 1, step time: 1.5s
+Enqueue middleware twice: true
 ```
 
-The example prints span attributes sorted and without the run ID, which changes on every run. `go test ./opentelemetry` checks every line.
+The example prints span attributes sorted and without the run ID, which changes on every run, and prints the step time only on the third run, whose clock is fake. `go test ./opentelemetry` checks every line.
 
 ## Pitfalls
 
@@ -234,6 +349,9 @@ The example prints span attributes sorted and without the run ID, which changes 
 - **A label filter sees every key.** `WithAllLabels` records whatever the app put on the job, including tenant or user IDs; prefer `WithLabelFilter` with an explicit list.
 - **The error text is recorded on failed spans.** Steps that put secrets in error strings leak them to the trace backend, as they already do to logs and run status.
 - **Message attributes have small limits.** SQS takes 10 attributes per message, so a job with many labels has them packed into one; a consumer that reads attributes by name should decode with the same codec. Over a limit, `Encode` refuses the job rather than dropping a label.
+- **Baggage crosses only with a propagator that carries it.** The default propagator is W3C TraceContext alone: baggage set before `Enqueue` is dropped unless `WithPropagator` includes `propagation.Baggage{}`, and the same propagator must be used on the enqueue and the worker side, since both read it from the one `Instrumentation`.
+- **A trace label set by hand is refused.** Labels under `otel.LabelPrefix` belong to the enqueue middleware; the consumer side of a broker hop restores them under `AllowReservedPrefix`, as shown above, and nothing else should write them.
+- **`WithClock` should be the driver's clock.** Step durations and queue wait are read on it (span start and end times come from the tracer provider), and queue wait is the step's start on that clock minus the driver's `ReadyAt`. A clock that is not the driver's, as in the example's third run, records a queue wait of zero, because a negative wait is clamped.
 - **Parenting depends on the context the driver passes.** `ParentLink` keeps the span the driver's context already holds; on a driver that starts no span of its own, the step span has no parent and only the link.
 
 ## Related

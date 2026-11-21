@@ -15,7 +15,66 @@ The core module holds the contract (`workflow.Client`, the specs, capabilities, 
 go get github.com/ubgo/workflow@latest
 ```
 
-Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints nothing: the core module requires no other module (a `deps_test.go` in the repository fails the build if its `go.mod` ever gains a `require` line).
+Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints a single line, the module's own Go version (`github.com/ubgo/workflow@v0.2.1 go@1.24.0`) and no other module: the core module requires no other module (a `deps_test.go` in the repository fails the build if its `go.mod` ever gains a `require` line).
+
+## Step 2 — Check the install with a program
+
+Put a `main.go` next to your `go.mod`: a one-step workflow on the in-memory driver, which needs no server. Inside `main`, register the workflow on a client:
+
+<!-- snippet: examples/quickstart/main.go#register -->
+```go
+c := memory.New()
+err := c.Register(workflow.Workflow{
+	Name: "greet",
+	Steps: []workflow.Step{{
+		Name: "say",
+		Run: workflow.Define(func(ctx context.Context, in greet) (string, error) {
+			done <- "hello " + in.Name
+			return "ok", nil
+		}),
+	}},
+})
+if err != nil {
+	return err
+}
+```
+
+Then start the workers and enqueue a job:
+
+<!-- snippet: examples/quickstart/main.go#start -->
+```go
+ctx, cancel := context.WithCancel(ctx)
+defer cancel() // cancelling the Start context stops the workers
+if err := c.Start(ctx); err != nil {
+	return err
+}
+ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "greet", Payload: []byte(`{"Name":"Ada"}`)})
+if err != nil {
+	return err
+}
+```
+
+The whole file, with its imports and the payload type, is [`examples/quickstart/main.go`](../../examples/quickstart/main.go); copy it as it is. [Quickstart](quickstart.md) explains each line.
+
+## Try it
+
+In an empty folder:
+
+```sh
+go mod init example.com/hello
+go get github.com/ubgo/workflow@latest
+# save examples/quickstart/main.go here as main.go
+go mod tidy
+go run .
+```
+
+```text
+go: creating new go.mod: module example.com/hello
+go: added github.com/ubgo/workflow v0.2.1
+hello Ada
+```
+
+The version is the newest tag when you run it. `hello Ada` is the step's output: the module resolved, the program compiled against it, and the memory driver ran the job.
 
 ## Pick your modules
 
@@ -78,6 +137,8 @@ The minimums are proven, not claimed: `task gomin` vets each module under the Go
 
 ## Pitfalls
 
+- `go get` before any code imports the module writes it to `go.mod` as `// indirect`. Run `go mod tidy` once your code imports it, or a later tidy in CI shows an unexpected diff.
+- Run the examples from the repository clone (`cd workflow/examples`), not with `go run github.com/ubgo/workflow/examples/...@latest`: the examples module is wired to the working tree by the committed `go.work` and is not meant to be installed.
 - The memory driver keeps everything in the process. It declares every capability except `CapDurable`, so nothing refuses it; a queued job is gone when the process exits. Pick a durable driver for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
 - `sqlstore` never creates its tables at `Start`. Run `Client.Migrate` from your deploy first ([migrations](../operations/migrations.md#run-the-migrations)).
 

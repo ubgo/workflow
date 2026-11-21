@@ -56,6 +56,77 @@ unknown run: true
 
 The memory driver also shows how a failed run's error names its run ([Run errors](#run-errors)). Three more markers belong to step handlers rather than to calls on the client: `workflow.Permanent(err)` fails a step at once without its remaining retries (`IsPermanent` detects it); `workflow.RetryAfter(err, d)` asks for a specific delay before the next retry under a policy that reads it, and counts as a release rather than an error for `RetryPolicy.MaxErrors` (`IsRelease` detects it); and `workflow.Discard(err)` drops the run without failing it (`IsDiscarded` detects it). They are covered in [retries](../jobs/retries.md#errors-that-must-not-retry) and [limits beyond Max](../jobs/retries.md#limits-beyond-max). Packages add their own sentinels next to their features (for example `middleware.ErrPanic`, `middleware.ErrThrottled`, `sqlstore.ErrAbandoned`, `sqlstore.ErrSchemaTooNew`, `failover.ErrKeyRequired`); the [error reference](../reference/errors.md#errors) lists them all.
 
+### Tell a release from a failure
+
+A release is a failed attempt that is nobody's fault: the partner API answered 429 and named when to come back. Mark it with `workflow.RetryAfter(err, d)` where the step turns a response into an error:
+
+<!-- snippet: examples/release-errors/main.go#mark -->
+```go
+// callPartner turns an HTTP status into the error a step returns: a 429 is
+// a release (RetryAfter with the wait the API asked for), a 5xx a plain
+// error, a 4xx a Permanent one that retrying cannot fix.
+func callPartner(status int) error {
+	switch {
+	case status == http.StatusTooManyRequests:
+		return workflow.RetryAfter(fmt.Errorf("429 too many requests"), retryAfterWait)
+	case status >= http.StatusInternalServerError:
+		return errServer
+	case status >= http.StatusBadRequest:
+		return workflow.Permanent(fmt.Errorf("partner refused the request: %d", status))
+	}
+	return nil
+}
+```
+
+`workflow.IsRelease(err)` reports whether the mark is anywhere in the chain, so it survives `fmt.Errorf("...: %w", err)`; `workflow.RetryAfterDelay` reads the wait back. A nil error stays nil, and `Permanent` wins over a release:
+
+<!-- snippet: examples/release-errors/main.go#classify -->
+```go
+release := callPartner(http.StatusTooManyRequests)
+wrapped := fmt.Errorf("sync orders: %w", release) // the mark survives wrapping
+d, _ := workflow.RetryAfterDelay(wrapped, 1)
+fmt.Fprintln(w, "  429 is a release:", workflow.IsRelease(wrapped), "| wait:", d)
+fmt.Fprintln(w, "  503 is a release:", workflow.IsRelease(callPartner(http.StatusServiceUnavailable)))
+fmt.Fprintln(w, "  RetryAfter(nil, d) is nil:", workflow.RetryAfter(nil, time.Second) == nil)
+
+// Permanent still wins over a release: the policy does not retry it.
+policy := workflow.RetryPolicy{Max: maxAttempts, DelayFor: workflow.RetryAfterDelay}
+both := workflow.RetryAfter(workflow.Permanent(errors.New("account closed")), time.Second)
+fmt.Fprintln(w, "  RetryAfter(Permanent(err)) retried:", policy.Retryable(both, 1))
+```
+
+```text
+  429 is a release: true | wait: 10ms
+  503 is a release: false
+  RetryAfter(nil, d) is nil: true
+  RetryAfter(Permanent(err)) retried: false
+```
+
+The difference matters to `RetryPolicy.MaxErrors`: a release counts against `Max` only, any other error against both. Drivers keep the count in a `workflow.Attempts` (`Count` grows `N` on every failure and `Errors` only when `IsRelease` is false), and the step below keeps the same counter to print it:
+
+<!-- snippet: examples/release-errors/main.go#policy -->
+```go
+policy := workflow.RetryPolicy{
+	Max:       maxAttempts - 1, // retries after the first attempt
+	MaxErrors: maxErrors,       // releases do not count here
+	DelayFor:  workflow.RetryAfterDelay,
+}
+var count workflow.Attempts // the same counter every driver keeps
+// step calls the fake API with this attempt's answer and prints the count.
+step := func(ctx context.Context, _ []byte) ([]byte, error) {
+	info, _ := workflow.StepInfoFrom(ctx)
+	err := callPartner(responses[info.Attempt-1])
+	if err != nil {
+		count = count.Count(err) // N always grows, Errors only when !IsRelease(err)
+		fmt.Fprintf(w, "  attempt %d: %v (release: %t) -> attempts %d, errors %d\n",
+			info.Attempt, err, workflow.IsRelease(err), count.N, count.Errors)
+	}
+	return nil, err
+}
+```
+
+Against answers of 429, 429, 503, 429, 503 the step stops on attempt five, its second real error, although `Max` allows ten attempts. The wait in `RetryAfter` is honoured only under a policy whose `DelayFor` reads it (`RetryAfterDelay`), which needs `workflow.CapRetryDelay`; under any other policy the error still counts as a release but waits the normal backoff.
+
 ## Backend outages
 
 A caller sometimes has to tell "the backend is down" from "the backend refused this request": a failover client should move a job to its secondary on the first, never on the second. Drivers wrap errors from an unreachable backend with `workflow.Unavailable(err)`; the result matches `workflow.ErrUnavailable` under `errors.Is` while the original error stays reachable for `errors.Is` and `errors.As`, and `workflow.IsUnavailable(err)` is the short form. `Unavailable(nil)` is nil.
@@ -135,6 +206,28 @@ Because it wraps the step's error, `errors.Is(err, yourSentinel)` still holds th
 ```sh
 cd examples
 go run ./capabilities
+```
+
+The lifecycle sentinels print as shown in [Sentinel errors](#sentinel-errors). For releases and failures:
+
+```sh
+cd examples
+go run ./release-errors
+```
+
+```text
+classify:
+  429 is a release: true | wait: 10ms
+  503 is a release: false
+  RetryAfter(nil, d) is nil: true
+  RetryAfter(Permanent(err)) retried: false
+sync:
+  attempt 1: 429 too many requests (release: true) -> attempts 1, errors 0
+  attempt 2: 429 too many requests (release: true) -> attempts 2, errors 0
+  attempt 3: 503 service unavailable (release: false) -> attempts 3, errors 1
+  attempt 4: 429 too many requests (release: true) -> attempts 4, errors 1
+  attempt 5: 503 service unavailable (release: false) -> attempts 5, errors 2
+  run failed after 2 errors and 3 releases
 ```
 
 ## Pitfalls

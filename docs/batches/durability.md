@@ -13,7 +13,39 @@ A batch's state (which jobs ended how, which callbacks fired, which are pending)
 
 The store persists a `batch.State` as one record and never interprets it. It holds the batch's name, callback names, labels and `AllowFailures`; one `batch.JobState` per job (its `Ref` once `Enqueue` returned, and its terminal `Status`, empty until then); the latches `Cancelled`, `CatchFired` and `Finished`; the pending callbacks; and the dispatch progress described below. `State.Open()` reports whether the batch still needs the Manager (a job not finished, or a callback pending).
 
-`batch.NewMemoryStore()` is the in-process store, for tests and the memory driver. Every Manager reporting into a batch must share it, so it holds only inside one process.
+`Get` returns that record, the way the Manager sees it. The example reads it once the batch has run; the one job process A never finished starting has no ref and is recorded as cancelled:
+
+<!-- snippet: examples/batch-durable/main.go#state -->
+```go
+st, err := store.Get(ctx, id) // a batch.State: the whole batch as one record
+if err != nil {
+	return err
+}
+fmt.Printf("state %q: finished=%v cancelled=%v catch fired=%v\n", st.Name, st.Finished, st.Cancelled, st.CatchFired)
+for i, j := range st.Jobs { // one batch.JobState per job, in dispatch order
+	fmt.Printf("job %d: %s, has ref=%v\n", i, j.Status, !j.Ref.IsZero())
+}
+```
+
+```text
+state "nightly": finished=true cancelled=false catch fired=false
+job 0: succeeded, has ref=true
+job 1: succeeded, has ref=true
+job 2: cancelled, has ref=false
+job 3: succeeded, has ref=true
+job 4: succeeded, has ref=true
+```
+
+Read the state for inspection and admin tools only; change a batch through the `Manager` (`Cancel`, `Add`, `RetryFailed`), never with `Store.Update` directly, because the Manager's latches and callbacks are decided inside its own updates.
+
+`batch.NewMemoryStore()` is the in-process store, for tests and the memory driver ([examples/batches](../../examples/batches/) uses it). Every Manager reporting into a batch must share it, so it holds only inside one process:
+
+<!-- snippet: examples/batches/main.go#memstore -->
+```go
+store := batch.NewMemoryStore()
+```
+
+`MemoryStore` also implements `batch.Pruner`, so `Manager.Prune` works on it ([lifecycle](lifecycle.md#step-4-prune-old-batches)). Every read and write copies the state's job list, pending callbacks and labels, so a caller cannot change the stored batch by editing what `Get` returned.
 
 ## A durable store
 
@@ -76,11 +108,12 @@ go run ./batch-durable
 ```text
 process A started jobs 0 and 1, then stalled on job 2
 finally: 5 jobs, 4 succeeded, 1 cancelled
-job 0: succeeded
-job 1: succeeded
-job 2: cancelled
-job 3: succeeded
-job 4: succeeded
+state "nightly": finished=true cancelled=false catch fired=false
+job 0: succeeded, has ref=true
+job 1: succeeded, has ref=true
+job 2: cancelled, has ref=false
+job 3: succeeded, has ref=true
+job 4: succeeded, has ref=true
 process A's dispatch ended with an error: true
 ```
 
@@ -92,6 +125,7 @@ The example runs both "processes" in one program on one SQLite file and moves a 
 - **No specs, no restart.** Without `WithResumableDispatch`, on the one-`Enqueue`-per-job path, every job the dead process never started is cancelled.
 - **A short lease takes over live dispatches.** A lease shorter than one slow `Enqueue` lets a resumer take over from a dispatcher that is merely slow; the original then stops at its next write. Keep the default unless you know your slowest call.
 - **Resumption needs a ticker.** The poller, the callback retry loop and the Hatchet `BatchSource` call `ResumeDispatches`; `WithManualCallbackRetry` on a hook-only client turns the loop off, and then the app must call it.
+- **A store of your own must lock per batch.** An `Update` that reads, runs `fn` and writes without a lock or a version check lets two processes both see `CatchFired` unset and both enqueue `Catch`. `Unfinished` must return exactly the batches whose `State.Open()` is true; one that drops a batch with a pending callback leaves that callback unretried.
 - **Every process needs the same store.** A Manager on a different store (or a `MemoryStore`) never sees the batch.
 
 ## Related

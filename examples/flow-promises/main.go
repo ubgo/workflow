@@ -21,6 +21,7 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "flow-promises:", err)
@@ -28,8 +29,20 @@ func main() {
 	}
 }
 
+// Timing tunables: in-memory runs move in microseconds, so short polls
+// keep the program fast without spinning.
+const (
+	// pollEvery is how often the program looks at a run it waits for.
+	pollEvery = 2 * time.Millisecond
+	// settle is how long the refund run gets to reach its promise before
+	// the program checks that it is still waiting.
+	settle = 20 * time.Millisecond
+	// chainTimeout bounds the wait for the poller's chain of runs.
+	chainTimeout = 5 * time.Second
+)
+
 // await is how the program waits for a run.
-var await = workflow.AwaitOptions{Poll: 2 * time.Millisecond}
+var await = workflow.AwaitOptions{Poll: pollEvery}
 
 // cartKey makes every cart run wait on its own key.
 var cartKey = workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["cart"] })
@@ -51,7 +64,7 @@ func run(ctx context.Context) error {
 		if err := json.Unmarshal(in, &requestID); err != nil {
 			return nil, workflow.Permanent(err)
 		}
-		return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond)
+		return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond) // snoozes and looks again this often
 	}}}}
 	// snippet:end
 
@@ -69,14 +82,15 @@ func run(ctx context.Context) error {
 	// snippet:end
 
 	// snippet:continue
+	const rounds = 3 // the poller stops after its third round
 	var client workflow.Client = c
 	poller := workflow.Workflow{Name: "poller", Steps: []workflow.Step{{Name: "round", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 		var round int
 		if err := json.Unmarshal(in, &round); err != nil {
 			return nil, workflow.Permanent(err)
 		}
-		// ... one round of polling ...
-		if round < 3 {
+		// A real poller checks its source here; this one only counts rounds.
+		if round < rounds {
 			if _, err := workflow.ContinueAsNew(ctx, client, []byte(fmt.Sprint(round+1))); err != nil {
 				return nil, err
 			}
@@ -99,7 +113,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(settle)
 	st, err := c.Status(ctx, ref)
 	if err != nil {
 		return err
@@ -135,7 +149,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	// snippet:update
-	updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
+	updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second) // a run that never takes the signal never answers
 	defer cancelUpd()
 	answer, err := workflow.Update(updCtx, c, promises, workflow.Event{Name: "cart.add", Key: "cart-8", Payload: []byte(`"hat"`)}, await)
 	if err != nil {
@@ -148,17 +162,17 @@ func run(ctx context.Context) error {
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "poller", Payload: []byte("1")}); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(chainTimeout)
 	for {
 		page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Workflow: "poller", Statuses: []workflow.Status{workflow.StatusSucceeded}})
 		if err != nil {
 			return err
 		}
-		if len(page.Runs) == 3 || time.Now().After(deadline) {
+		if len(page.Runs) == rounds || time.Now().After(deadline) {
 			fmt.Println("  rounds run as separate runs:", len(page.Runs))
 			break
 		}
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(pollEvery)
 	}
 	return nil
 }

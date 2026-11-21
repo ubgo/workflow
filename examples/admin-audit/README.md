@@ -1,6 +1,6 @@
 # admin-audit
 
-The admin handler's audit log and trace links, on the in-memory driver: `admin.WithAudit` records every write action (a viewer's refused retry included) with who, what, the run, the status and the time on a fake clock, and `admin.WithTraceLink` with `otel.TraceIDOf` gives the run detail a `trace_url` built from the trace the OpenTelemetry enqueue middleware carried in the run's labels.
+The admin handler's audit log and trace links, on the in-memory driver: `admin.WithAudit` records every write action (a viewer's refused retry included) with who, what, the run, the status and the time on a fake clock, and `admin.WithTraceLink` with `otel.TraceIDOf` gives the run detail a `trace_url` built from the trace the OpenTelemetry enqueue middleware carried in the run's labels; `otel.SpanContextOf` reads the whole span context from the same labels.
 
 ```sh
 cd examples
@@ -20,6 +20,7 @@ audit log:
 run detail:
   status succeeded
   trace_url https://tracing.example.com/trace/4bf92f3577b34da6a3ce929d0e0e4736
+  span context: span 00f067aa0ba902b7, sampled true
 ```
 
 The guide that copies this program is [audit log and trace links](../../docs/admin/audit-and-traces.md). `go test ./admin-audit` checks every line.

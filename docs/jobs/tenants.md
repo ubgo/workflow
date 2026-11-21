@@ -29,6 +29,40 @@ The tenant travels with the run:
 - `RunInfo.Tenant` carries it in run listings, `RunEvent.Tenant` on the [run-finished hook](../observability/run-finished.md), and `LifecycleEvent.Tenant` on lifecycle events.
 - The OpenTelemetry middleware records it as the `workflow.tenant` span attribute when built with `otel.WithTenant()`; it is off by default, since a tenant ID may be data you do not want in traces.
 
+### Record the tenant on spans
+
+Pass `otel.WithTenant()` to `otel.New` with the rest of the OpenTelemetry options:
+
+<!-- snippet: examples/tenant-spans/main.go#with-tenant -->
+```go
+opts := []wfotel.Option{
+	wfotel.WithTenant(), // Job.Tenant becomes the workflow.tenant span attribute
+}
+```
+
+The step middleware then sets `workflow.tenant` (`otel.AttrTenant`) on every step span, and the enqueue middleware on every enqueue span, for any job with a non-empty tenant. Both middleware come from the same `Instrumentation`:
+
+<!-- snippet: examples/tenant-spans/main.go#setup -->
+```go
+inst, err := wfotel.New(append([]wfotel.Option{wfotel.WithTracerProvider(tp)}, opts...)...)
+if err != nil {
+	return err
+}
+c := memory.New(memory.WithMiddleware(inst.Step())) // step spans
+client := middleware.WrapClient(c, inst.Enqueue())  // enqueue spans
+```
+
+```text
+default:
+  workflow.enqueue send-invoice (producer) workflow.tenant: (not recorded)
+  workflow.step send-invoice/send (consumer) workflow.tenant: (not recorded)
+WithTenant:
+  workflow.enqueue send-invoice (producer) workflow.tenant: acme
+  workflow.step send-invoice/send (consumer) workflow.tenant: acme
+```
+
+The tenant is never a metric dimension, even with the option: one series per tenant would grow without bound. To count by a small set of tenant tiers, put the tier in a label and opt into it with `otel.WithMetricLabels` ([OpenTelemetry](../observability/opentelemetry.md#metrics)).
+
 ## Give a schedule a tenant
 
 A schedule made with `Client.Schedule` can belong to a tenant too: a nightly report per customer is one schedule per customer. `Schedule.Tenant` becomes the `Job.Tenant` of every run the schedule fires, by a tick or by `TriggerSchedule`, so those runs are found by `RunQuery.Tenant` like any other run of that tenant:
@@ -88,6 +122,12 @@ go run ./results-progress
 
 The `tenants:` lines above are the end of its output. `go test ./results-progress` checks every line.
 
+```sh
+go run ./tenant-spans
+```
+
+prints the six span lines of [Record the tenant on spans](#record-the-tenant-on-spans). `go test ./tenant-spans` checks them.
+
 ## Pitfalls
 
 - **A tenant is a field, not a boundary.** The library stores and filters it; it does not stop one tenant's code from reading another's data, and it does not limit a tenant's share of the workers. For a fair share, key a [concurrency limit](concurrency.md) on the tenant (`workflow.KeyFunc(func(j workflow.Job) string { return j.Tenant })`).
@@ -101,4 +141,4 @@ The `tenants:` lines above are the end of its output. `go test ./results-progres
 - [Manage runs](manage-runs.md): `Runs` and its other filters.
 - [Concurrency and rate limits](concurrency.md): a cap per tenant.
 - [Enqueue a job](enqueue.md): the other `Job` fields.
-- Example: [examples/results-progress](../../examples/results-progress/).
+- Examples: [examples/results-progress](../../examples/results-progress/), [examples/tenant-spans](../../examples/tenant-spans/).

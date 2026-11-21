@@ -83,7 +83,19 @@ If an `Enqueue` fails during `Dispatch`, the jobs not yet enqueued are recorded 
 
 ## Track progress
 
-`Manager.Progress(ctx, id)` returns a `batch.Progress` snapshot: `Total`, `Pending`, `Succeeded`, `Failed`, `CancelledJobs`, `Discarded` (jobs that ended discarded, also counted in the bucket `DiscardedAs` names), whether the batch itself was `Cancelled`, and whether it is `Finished` (every job terminal). `Processed()` is the number of jobs that ended in any status, and `Percent()` that number as a whole percentage of `Total`. An unknown ID returns an error wrapping `workflow.ErrNotFound`.
+`Manager.Progress(ctx, id)` returns a `batch.Progress` snapshot: `Total`, `Pending`, `Succeeded`, `Failed`, `CancelledJobs`, `Discarded` (jobs that ended discarded, also counted in the bucket `DiscardedAs` names), whether the batch itself was `Cancelled`, and whether it is `Finished` (every job terminal). `Processed()` is the number of jobs that ended in any status (`Total - Pending`), and `Percent()` that number as a whole percentage of `Total`, rounded down. An unknown ID returns an error wrapping `workflow.ErrNotFound`.
+
+<!-- snippet: examples/batches/main.go#progress -->
+```go
+done, err := m.Progress(ctx, id) // a snapshot of the batch's counts
+if err != nil {
+	return err
+}
+fmt.Printf("progress %s: total=%d pending=%d succeeded=%d failed=%d processed=%d (%d%%) finished=%v\n",
+	done.ID, done.Total, done.Pending, done.Succeeded, done.Failed, done.Processed(), done.Percent(), done.Finished)
+```
+
+After the first batch's callbacks ran, it prints `progress thumbs-1: total=3 pending=0 succeeded=3 failed=0 processed=3 (100%) finished=true`. `Progress` reads the store, so any process sharing the store sees the same counts; it is a snapshot, so poll it for a progress bar. The same `Progress` value is the JSON payload of every callback.
 
 ## Cancel a batch
 
@@ -117,7 +129,26 @@ fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid))
 
 ## Batch IDs
 
-A batch ID is 128 random bits as hex by default. `batch.WithIDFunc(fn)` makes IDs with `fn` instead, for example a UUIDv7 or a ULID so IDs sort by time or match the app's own; the example numbers them `thumbs-1`, `thumbs-2`. An ID must be unique across every process sharing the store (`Store.Create` refuses a repeat) and non-empty: `Dispatch` fails with `fn`'s error, or `workflow.ErrInvalid` for an empty ID, and saves nothing. The ID appears in the `workflow.batch.id` label and in the callbacks' idempotency keys (`batch:<id>:<kind>`), so keep it to characters the engine accepts in a label value. A nil `fn` keeps the default.
+A batch ID is 128 random bits as hex by default. `batch.WithIDFunc(fn)` makes IDs with `fn` instead, for example a UUIDv7 or a ULID so IDs sort by time or match the app's own. The example numbers them `thumbs-1`, `thumbs-2` so its output is the same on every run:
+
+<!-- snippet: examples/batches/main.go#idfunc -->
+```go
+batch.WithIDFunc(func() (batch.ID, error) { // the default is 128 random bits as hex
+	seq++
+	return batch.ID("thumbs-" + strconv.Itoa(seq)), nil
+}),
+```
+
+An ID must be unique across every process sharing the store (`Store.Create` refuses a repeat) and non-empty: `Dispatch` fails with `fn`'s error, or `workflow.ErrInvalid` for an empty ID, and saves nothing:
+
+<!-- snippet: examples/batches/main.go#empty-id -->
+```go
+blank := batch.New(client, store, batch.WithIDFunc(func() (batch.ID, error) { return "", nil }))
+_, err = blank.Dispatch(ctx, batch.Batch{Jobs: []workflow.Job{{Workflow: "resize"}}})
+fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid)) // nothing was saved or enqueued
+```
+
+The ID appears in the `workflow.batch.id` label and in the callbacks' idempotency keys (`batch:<id>:<kind>`), so keep it to characters the engine accepts in a label value. A nil `fn` keeps the default. A counter like the example's is only safe in one process; across processes use an ID the store cannot see twice, such as a UUID.
 
 ## Try it
 
@@ -131,6 +162,7 @@ go run ./batches
 dispatched thumbs-1
 finally thumbs-1 tenant=acme succeeded=3 failed=0 cancelledJobs=0 cancelled=false
 then thumbs-1 tenant=acme succeeded=3 failed=0 cancelledJobs=0 cancelled=false
+progress thumbs-1: total=3 pending=0 succeeded=3 failed=0 processed=3 (100%) finished=true
 -- a job fails
 catch thumbs-2 tenant=acme succeeded=0 failed=1 cancelledJobs=0 cancelled=true
 finally thumbs-2 tenant=acme succeeded=0 failed=1 cancelledJobs=1 cancelled=true
@@ -142,9 +174,19 @@ pending finally: attempts=1 last error: batch thumbs-4: enqueue finally callback
 finally thumbs-4 tenant=globex succeeded=1 failed=0 cancelledJobs=0 cancelled=false
 -- a reserved label
 refused: true
+-- an empty batch ID
+refused: true
+-- a client that starts a group in one call
+group-1: grouped=true, RunGroup calls=1
+group-1: finally succeeded=3 of 3
+group-2: grouped=false, RunGroup calls=1
+group-2: finally succeeded=3 of 3
+-- Hatchet bulk-trigger chunks
+chunks of at most 500 runs and 1048576 bytes
+over the ceiling refused: true
 ```
 
-Callbacks are separate runs that may finish in any order, so the example sorts each group of lines. The fourth batch is on [completion › callbacks that fail to enqueue](completion.md#callbacks-that-fail-to-enqueue). `go test ./batches` runs the same program and checks every line.
+Callbacks are separate runs that may finish in any order, so the example sorts each group of lines. The fourth batch is on [completion › callbacks that fail to enqueue](completion.md#callbacks-that-fail-to-enqueue), and the group lines on [native group runs](native-groups.md). `go test ./batches` runs the same program and checks every line.
 
 ## Pitfalls
 
@@ -152,6 +194,8 @@ Callbacks are separate runs that may finish in any order, so the example sorts e
 - **Callbacks are at least once without idempotency keys.** On a driver with `CapIdempotencyKey`, every callback carries the key `batch:<id>:<kind>`, so a retry after an enqueue that landed but was not recorded cannot double it. On a driver without it, a crash at that moment can enqueue a callback twice; make callbacks idempotent.
 - **`Catch` sees the batch at the failure.** Its `Progress` is a snapshot taken when the failure was recorded, before the other jobs were cancelled; read `Finally` for the final counts.
 - **A job's labels are copied, not mutated.** `Dispatch` clones each job's labels before adding the batch labels, so reusing a `Job` value across batches is safe.
+- **`Progress` is a snapshot, not a stream.** It reads the store once; a job that ends a moment later is not in it. For a push on every job end, set `Batch.Progress` to a workflow ([lifecycle](lifecycle.md#step-1-report-the-start-and-every-job-end)).
+- **`Percent` rounds down.** 199 of 200 jobs ended reads 99, and it reads 100 only once every job ended. Test `Finished` to decide that a batch is done; `Pending` is the number of jobs not yet ended.
 - **`MemoryStore` is per process.** Every `Manager` reporting into a batch must share its store; in several processes, use a durable store ([durability](durability.md)).
 
 ## Related

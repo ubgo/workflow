@@ -28,6 +28,8 @@ var tokens = map[string]user{
 	"t-ops":    {"oz", ""},
 }
 
+// auth identifies a request's user by its bearer token and checks each
+// action with authorize.
 var auth = admin.Auth[user]{
 	Identify: func(r *http.Request) (user, error) {
 		u, ok := tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
@@ -36,7 +38,7 @@ var auth = admin.Auth[user]{
 		}
 		return u, nil
 	},
-	Authorize: func(context.Context, admin.Request[user]) error { return nil },
+	Authorize: authorize,
 }
 
 // scope confines a customer to its tenant and lets an operator see all.
@@ -70,7 +72,28 @@ mux.Handle("/admin/", http.StripPrefix("/admin", admin.NewHandler(admin.New(c), 
 | `GET /capabilities` and the UI's files | Served. The capabilities answer names the tenant and reports queues, pauses, nodes, health and signal-waiting as unsupported and metrics as absent, so the UI hides those pages and opens on the runs list. |
 | Any other path | 403, so a route added to the handler later stays closed to scoped callers until it has a rule. |
 
-`Authorize` still runs on every request the scope lets through, with the same actions as before; `admin.TenantFrom(req.HTTP.Context())` gives it the caller's tenant. A caller given `AllTenants` is served exactly as without the scope.
+`Authorize` still runs on every request the scope lets through, with the same actions as before; `admin.TenantFrom(req.HTTP.Context())` gives it the caller's tenant, and false for a caller given `AllTenants`, who is served exactly as without the scope. The scope decides what a customer can see; `Authorize` still decides what it may do. The example lets a customer's users read and cancel their runs and nothing else:
+
+<!-- snippet: examples/admin-tenants/main.go#authorize -->
+```go
+// authorize lets a customer's users read their tenant's runs and cancel
+// them, and nothing else; an operator may do anything. The scope has
+// already confined the request to the tenant: TenantFrom says which one,
+// and false for an operator given AllTenants.
+func authorize(_ context.Context, req admin.Request[user]) error {
+	tenant, scoped := admin.TenantFrom(req.HTTP.Context())
+	if !scoped || req.Action.ReadOnly() {
+		return nil
+	}
+	switch req.Action {
+	case admin.ActionCancelRun, admin.ActionCancelRuns:
+		return nil
+	}
+	return fmt.Errorf("%s users may not %s", tenant, req.Action)
+}
+```
+
+The handler's `Auth.Authorize` is this function, so a customer's `DELETE` of its own run answers 403 while its bulk cancel goes through, and the operator, unscoped, may do both.
 
 The conservative choice is deliberate: the routes that cannot be confined to one tenant are refused for every scoped caller, whatever `Authorize` says. An operator who needs them gets `AllTenants` from the scope, which is one place to audit.
 
@@ -88,6 +111,7 @@ acme GET globex's run: 404
 acme GET /runs?tenant=globex: 403
 acme GET /queues: 403
 acme GET /capabilities: tenant acme
+acme DELETE its own run: 403 {"error":{"code":"forbidden","message":"not allowed: runs.delete"}}
 -- A bulk action stays in the tenant
 acme POST /runs/cancel: 200 {"cancelled":2}
 globex's run: waiting

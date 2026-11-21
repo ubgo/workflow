@@ -7,7 +7,8 @@ A step that starts child runs does not always need every one of them. A price lo
 - Both build on [child runs](children.md): the client needs the Journal plugin, and `workflow.CapIdempotencyKey` so a retried step never starts a child twice.
 - They wait by snoozing the parent's step, so the parent's driver needs `workflow.CapSnooze` (memory, SQL and Redis declare it; Hatchet does not, and both refuse there with a permanent `*workflow.UnsupportedError` before starting any child).
 - Reading the winners' results needs `workflow.CapResult`; cancelling the rest needs `workflow.CapCancel`; completing it needs `workflow.CapForceRun`. Each is checked before any child starts.
-- The example is [`examples/flow-joins`](../../examples/flow-joins). Run it with `go run ./flow-joins` from `examples/`.
+- `CancelChildren` needs `workflow.CapCancelAll` on the children's client.
+- The examples are [`examples/flow-joins`](../../examples/flow-joins) (joins, maps, multi-merge) and [`examples/flow-cancel`](../../examples/flow-cancel) (cancel every child of a step). Run them with `go run ./flow-joins` and `go run ./flow-cancel` from `examples/`.
 
 ## Continue on the first child to succeed
 
@@ -18,7 +19,7 @@ A step that starts child runs does not always need every one of them. A price lo
 res, err := workflow.JoinChildren(ctx, c, "mirrors", mirrors("slow", "eu", "slow"), workflow.JoinSpec{
 	Need: 1,
 	Rest: workflow.JoinCancelRest,
-	Poll: 5 * time.Millisecond,
+	Poll: 5 * time.Millisecond, // how often the join re-reads its children
 })
 if err != nil {
 	return nil, err // a Snooze while no mirror has answered yet
@@ -35,9 +36,9 @@ The `workflow.JoinResult` lists every child started (`Refs`), the indexes of the
 <!-- snippet: examples/flow-joins/main.go#quorum -->
 ```go
 res, err := workflow.JoinChildren(ctx, c, "mirrors", mirrors("eu", "down", "us", "slow"), workflow.JoinSpec{
-	Need: 2,
+	Need: 2, // two answers make a quorum
 	Rest: workflow.JoinCancelRest,
-	Poll: 5 * time.Millisecond,
+	Poll: 5 * time.Millisecond, // how often the join re-reads its children
 })
 if err != nil {
 	return nil, err
@@ -67,13 +68,41 @@ A join that fails cancels the children still running with either `JoinCancelRest
 
 ## Cancel every child of a step
 
-`workflow.CancelChildren(ctx, client, runID, step)` cancels every unfinished child that a step of a run spawned (an empty step means every step of the run), from inside the run or from an operator's tool. It finds them by the parent labels `Spawn` writes (`workflow.ChildLabels` builds the same query), so the children's client needs `workflow.CapCancelAll`.
+A step that spawned children with `Spawn` (or `JoinChildren` with `JoinKeepRest`) moves on and leaves them running. When their work is no longer wanted (the order was cancelled, the album deleted), `workflow.CancelChildren(ctx, client, runID, step)` cancels every unfinished child that `step` of the run spawned and returns how many it cancelled. Call it from a later step of the run (with `workflow.StepInfoFrom(ctx)` for the run ID) or from an operator's tool that holds the parent's ref. The example is [`examples/flow-cancel`](../../examples/flow-cancel): an album spawns three renders from its `render-all` step and succeeds while they run.
+
+<!-- snippet: examples/flow-cancel/main.go#cancel-children -->
+```go
+n, err := workflow.CancelChildren(ctx, c, ref.RunID, "render-all")
+if err != nil {
+	return err
+}
+fmt.Fprintf(w, "  cancelled %d children\n", n)
+```
+
+An empty `step` cancels the children of every step of the run. The call finds the children by the parent labels `Spawn` wrote and cancels them with one `BulkCanceller.CancelAll`, so the children's client needs `workflow.CapCancelAll` and must filter by those labels and by every unfinished status (the memory, SQL and Redis drivers do); a client without it is refused with an `*workflow.UnsupportedError` before anything is cancelled, and a zero run ID with an error matching `workflow.ErrInvalid`. Only children that are queued, running, waiting or retrying count: a second call returns 0.
+
+`workflow.ChildLabels(runID, step)` builds the same label filter (`LabelParentRun`, plus `LabelParentStep` when `step` is not empty), so a `RunQuery` lists the children, for a report or to cancel only some of them:
+
+<!-- snippet: examples/flow-cancel/main.go#child-labels -->
+```go
+page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{
+	Labels: workflow.ChildLabels(ref.RunID, "render-all"),
+})
+if err != nil {
+	return err
+}
+for _, r := range page.Runs {
+	fmt.Fprintf(w, "  child %s of step %s: %s\n", r.Payload, r.Labels[workflow.LabelParentStep], r.Status)
+}
+```
 
 ## Run downstream work once per arriving branch
 
 A step's `After` joins its parents: it runs once, after all of them. When each branch should start the downstream work on its own as it arrives (a multi-merge: "paid", "packed" and "shipped" each send a notification), let each branch start it as a child run with `Spawn` instead of listing it as a later step:
 
+<!-- snippet: examples/flow-joins/main.go#multi-merge -->
 ```go
+// branch is one parallel step that starts its own downstream run.
 branch := func(name string) workflow.Step {
 	return workflow.Step{Name: name, Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 		_, err := workflow.Spawn(ctx, c, "downstream", []workflow.Job{{Workflow: "notify", Payload: []byte(`"` + name + `"`)}})
@@ -82,7 +111,7 @@ branch := func(name string) workflow.Step {
 }
 ```
 
-Each branch starts one run, and a retried branch never starts it twice. This multiplies runs by design, so use it only when every arrival really needs its own downstream run.
+Each branch starts one run, and a retried branch never starts it twice: in the example the three branches of `order-events` start three `notify` runs, in whatever order the branches finish. This multiplies runs by design, so use it only when every arrival really needs its own downstream run.
 
 ## Run a child per item of a large source
 
@@ -92,7 +121,7 @@ Each branch starts one run, and a retried branch never starts it twice. This mul
 ```go
 res, err := workflow.MapRuns(ctx, c, "products", products, func(_ int, id int) (workflow.Job, error) {
 	return workflow.Job{Workflow: "product", Payload: []byte(strconv.Itoa(id))}, nil
-}, workflow.MapRunsOptions{InFlight: 3, MaxFailures: 1, Poll: 5 * time.Millisecond})
+}, workflow.MapRunsOptions{InFlight: 3, MaxFailures: 1, Poll: 5 * time.Millisecond}) // 3 children at a time, 1 failure allowed
 if err != nil {
 	return nil, err
 }
@@ -101,9 +130,65 @@ return json.Marshal(res)
 
 Each look retires the children that ended, starts new ones up to `InFlight` and journals its progress after every child it starts, so a step retried after a crash continues where it left off; each child carries an idempotency key made from the run, the step, `name` and the item's index, so a crash between an enqueue and the save starts no item twice while its run is unfinished. `MaxFailures` is how many items may fail (`workflow.MapUnlimitedFailures` for any number); past it, the children still running are cancelled and the step fails with a permanent `*workflow.MapRunsError`. The `workflow.MapRunsResult` counts started, succeeded and failed items and lists the first `KeepFailed` failures (a hundred by default) with their index.
 
+## Try it
+
+```sh
+cd examples
+go run ./flow-joins
+```
+
+```text
+discriminator:
+  first answer: "eu: 42"
+  mirrors: 1 succeeded, 2 cancelled
+partial join:
+  two of four answered, winners: [0,2]
+distributed map:
+  started 10, succeeded 9, failed 1 (item 4)
+multi-merge:
+  one notification per branch: packed, paid, shipped
+```
+
+The slow mirrors were still running when the first answer won, and were cancelled. Cancelling every child of a step is in the second program:
+
+```sh
+go run ./flow-cancel
+```
+
+```text
+cancel every child of a step:
+  album succeeded, 3 renders running
+  cancelled 3 children
+  child 3 of step render-all: cancelled
+  child 2 of step render-all: cancelled
+  child 1 of step render-all: cancelled
+  cancel again: 0 children (only unfinished ones count)
+withdraw several steps:
+  quote succeeded with "cached feed-eu + cached feed-us"
+  withdraw again: ErrWrongState true, both steps named true
+deliver only to runs waiting now:
+  before any run waits: resumed 0
+  the run started later is still waiting: the first nudge was not kept
+  while it waits: resumed 1
+  run succeeded
+```
+
+The run listing is newest first, so the children print in reverse order.
+
 ## Pitfalls
 
 - `page` must return the same items for the same cursor: a look after a crash may ask for a page again.
 - Items fetched but not yet started are kept in the journal as JSON between looks. Keep pages small.
 - A join's winners are decided in job order between two looks, not by finish time.
 - `JoinKeepRest` leaves children running after the parent moved on. They still use workers and can still fail; use `JoinCancelRest` when their work is no longer wanted.
+- `CancelChildren` finds children by their parent labels only. Runs a step enqueued with plain `Enqueue` carry no such labels and are not cancelled; start them with `Spawn`.
+- `CancelChildren` cancels children; it does not cancel the parent. Cancelling a parent does not cancel its children either ([child runs](children.md#pitfalls)), so call `CancelChildren` from the tool that cancels the parent.
+- The children's client must declare `CapCancelAll`. When children run on another backend than the parent, pass that backend's client. On Hatchet the call is refused today with an `*workflow.UnsupportedError` naming `RunQuery.Statuses`: it asks for retrying runs too, a status Hatchet cannot filter by; cancel the refs `Spawn` returned instead.
+
+## Related
+
+- [Child runs](children.md): `Spawn` and `AwaitChildren`, which joins build on
+- [Memoise work inside a step](memoisation.md#turn-on-the-journal): the journal that keeps a join's decision
+- [Promises, updates and signal helpers](promises.md#withdraw-several-steps-of-a-run): withdraw steps of one run instead of whole child runs
+- [Manage runs](../jobs/manage-runs.md): cancel, list and bulk-cancel runs
+- Examples: [examples/flow-joins](../../examples/flow-joins/), [examples/flow-cancel](../../examples/flow-cancel/)

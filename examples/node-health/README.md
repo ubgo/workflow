@@ -25,7 +25,7 @@ REDIS_URL is not set: the scheduler and worker nodes are skipped
 Against the shared local stack's Redis:
 
 ```sh
-REDIS_URL=redis://localhost:7012/0 go run ./node-health
+REDIS_URL=redis://127.0.0.1:36379/0 go run ./node-health
 ```
 
 The last line is replaced by:
@@ -94,7 +94,9 @@ Liveness and readiness routes:
 // probes serves a liveness and a readiness route from the client's health.
 // They need no login: a load balancer or an orchestrator calls them.
 func probes(c workflow.Client) http.Handler {
+	const probeTimeout = 2 * time.Second // a probe must not hang
 	mux := http.NewServeMux()
+	// answer writes the status code and one line per health check.
 	answer := func(w http.ResponseWriter, ok bool, rep workflow.HealthReport) {
 		code := http.StatusOK
 		if !ok {
@@ -108,13 +110,13 @@ func probes(c workflow.Client) http.Handler {
 		}
 	}
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second) // a probe must not hang
+		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 		defer cancel()
 		rep := workflow.CheckHealth(ctx, c)
 		answer(w, rep.Live, rep) // not live: restart the process
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
 		defer cancel()
 		rep := workflow.CheckHealth(ctx, c)
 		answer(w, rep.Ready, rep) // not ready: send no traffic, keep the process
@@ -144,7 +146,7 @@ if err != nil {
 	return err
 }
 worker, err := redis.New(rdb, redis.WithPrefix(prefix), redis.WithNodeID("worker-1"),
-	redis.WithoutScheduler(), redis.WithPollInterval(50*time.Millisecond)) // runs steps, fires no schedule
+	redis.WithoutScheduler(), redis.WithPollInterval(50*time.Millisecond)) // runs steps, fires no schedule; looks for work every 50ms
 if err != nil {
 	return err
 }

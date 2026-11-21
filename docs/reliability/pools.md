@@ -85,6 +85,63 @@ Pass `switches` to `AutoDisable` on every worker. In the example two workers tak
 
 Per-endpoint ordering and isolation come from the workflow, not from this middleware: `Concurrency{Key: endpoint, MaxRuns: 1, FIFO: true}` delivers one message per endpoint at a time and in order (FIFO needs `CapKeyFIFO`), so a slow endpoint holds back only its own deliveries.
 
+## Try it
+
+The program for this page also runs the other job guards of [Guards](../jobs/guards.md); the sections for this page are `pool`, `critical section`, `auto-disable` and `auto-disable across workers`:
+
+```sh
+cd examples
+go run ./job-guards
+```
+
+```text
+expiry:
+  late run: discarded, code sent 0 time(s)
+sweep:
+  checked 2 waiting run(s), cancelled 2
+bounds:
+  acme: enqueued
+  acme: enqueued
+  acme: refused, quota exceeded
+  globex: enqueued
+  globex: refused, queue full
+quiet hours:
+  Asia/Tokyo: starts Tue 08:00 JST
+  Europe/Berlin: starts now
+validation:
+  invalid: true workflow: invalid spec: payload of workflow "charge": order o-7: amount 0 is not positive
+  valid order enqueued
+ladder:
+  4 retries after 5s, 5m0s, 30m0s, 2h0m0s
+conditions:
+  qty 4: stock left 6
+  qty 0: failed after 1 attempt(s), constraint violated: true
+  qty 12: failed after 1 attempt(s), constraint violated: true
+pool:
+  6 renders succeeded, at most 2 at once
+critical section:
+  transfer succeeded, at most 1 step(s) in the section at once
+auto-disable:
+  delivery 1: failed
+  delivery 2: failed
+  disabled https://hooks.example.com/a - tell its owner
+  delivery 3: failed
+  delivery 4: discarded
+  delivery 5: discarded
+  endpoint called 3 time(s)
+  disabled after Enable: false
+auto-disable across workers:
+  delivery 1 on worker 1: failed
+  delivery 2 on worker 2: failed
+  worker 1 disabled https://hooks.example.com/b
+  delivery 3 on worker 1: failed
+  delivery 4 on worker 2: discarded
+  delivery 5 on worker 1: discarded
+  endpoint called 3 time(s)
+```
+
+Six renders on six workers ran two at a time. The two steps of the transfer never overlapped. The endpoint was called three times: the third failure tripped the switch, the next two deliveries were discarded without a call, and `Enable` turned it back on. Across two workers sharing one SQL table, the third failure, on worker 1, tripped the switch for both, so worker 2's next delivery was discarded.
+
 ## Pitfalls
 
 - `ttl` is what frees a slot whose holder crashed. A step that runs longer than `ttl` loses its exclusivity: its slot expires and another step may take it while the first still runs. Set `ttl` above the step's timeout.
@@ -94,3 +151,12 @@ Per-endpoint ordering and isolation come from the workflow, not from this middle
 - A store error fails the attempt (it is retried); the step never runs without a slot. A slot that could not be released frees itself after `ttl`.
 - With `MemoryDisable` each process counts apart, so an endpoint failing on three workers trips three times, once per worker, and each `onDisable` fires; use a shared store for one switch.
 - `AutoDisable` drops a store error while recording an outcome, so the switch may trip one failure late; an error reading the switch fails the attempt rather than calling an endpoint that may be disabled.
+
+## Related
+
+- [Concurrency keys](../jobs/concurrency.md): limit runs that share a key inside one workflow, rather than every step that names a pool.
+- [Guards](../jobs/guards.md): the other job guards the same program runs.
+- [Unique jobs](unique-jobs.md): the `UniqueStore` pools and critical sections hold their slots in.
+- [Retries](../jobs/retries.md): `RetryAfterDelay`, which `PoolRetryAfter` needs.
+- [Debounce a burst](debounce.md): keep one job of a burst instead of limiting how many run.
+- Example: [examples/job-guards](../../examples/job-guards/).

@@ -29,6 +29,9 @@ schedule "nightly" on new:schedule-4
 -- Retire the old backend
 unfinished runs on the old backend: 1
 after the export finished: 0 - the app can drop the old backend
+-- Keep the schedules on the old backend for now
+schedule on the old side: true (old:schedule-1)
+MoveSchedules refused under SchedulesOn(SideOld): true
 `
 	if out != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out, want)

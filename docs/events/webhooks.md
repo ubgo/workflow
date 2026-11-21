@@ -24,7 +24,7 @@ h, err := events.NewWebhook(events.WebhookConfig{
 	Verifier: signer,
 	Client:   c,
 	Workflow: "github-push",
-	MaxBody:  1 << 10,
+	MaxBody:  1 << 10, // 1 KiB; a bigger body is refused with 413
 })
 if err != nil {
 	return err
@@ -53,9 +53,60 @@ Other fields: `MaxBody` caps the body (`events.DefaultWebhookMaxBody`, 1 MiB, wh
 
 ## HMAC signatures
 
-`events.HMAC` is a plain HMAC scheme: a header holding an optional `Prefix` followed by the HMAC of the body. It fits GitHub (`X-Hub-Signature-256`, prefix `sha256=`, hex, delivery ID in `X-GitHub-Delivery`) and Shopify (`X-Shopify-Hmac-Sha256`, `Encoding: events.EncodingBase64`). `Hash` defaults to SHA-256. It both verifies incoming requests and signs outgoing bodies with `Sign(body)`, which returns the header value.
+`events.HMAC` is a plain HMAC scheme: a header holding an optional `Prefix` followed by the HMAC of the body. It implements `events.Verifier` for incoming requests and signs outgoing bodies with `Sign(body)`, which returns the header value. Its fields:
 
-`Secrets` holds several keys: `Sign` uses the first and `Verify` accepts any, compared in constant time, so a secret is rotated by putting the new one first, keeping the old one until every sender has switched, then removing it.
+| Field | Meaning | Default |
+|---|---|---|
+| `Header` | The header holding the signature. Required | none |
+| `Secrets` | The keys, at least one. `Sign` uses the first, `Verify` accepts any | none |
+| `Prefix` | Written before the digest, such as `sha256=` | none |
+| `Encoding` | How the digest is written: `events.EncodingHex` or `events.EncodingBase64` | hex |
+| `Hash` | The hash constructor, such as `sha1.New` for an old sender | SHA-256 |
+| `IDHeader` | The header carrying the sender's delivery ID, which `Verify` returns | none |
+
+It fits GitHub (`X-Hub-Signature-256`, prefix `sha256=`, hex, delivery ID in `X-GitHub-Delivery`, as in [Accept a signed webhook](#accept-a-signed-webhook)) and Shopify (`X-Shopify-Hmac-Sha256`, no prefix, `events.EncodingBase64`).
+
+### Rotate a secret
+
+`Verify` tries every secret, each compared in constant time, so a secret is rotated without dropping a delivery: put the new secret first, keep the old one until every sender has switched, then remove it.
+
+<!-- snippet: examples/events-webhooks/main.go#hmac-rotate -->
+```go
+before := events.HMAC{
+	Header:   "X-Shopify-Hmac-Sha256",
+	Encoding: events.EncodingBase64, // GitHub's hex is the default, events.EncodingHex
+	Secrets:  [][]byte{[]byte("old-secret")},
+}
+during := before
+during.Secrets = [][]byte{[]byte("new-secret"), []byte("old-secret")} // new first: it signs, both verify
+after := before
+after.Secrets = [][]byte{[]byte("new-secret")} // every sender has switched
+
+sigOld, err := before.Sign(body) // a sender still on the old secret
+if err != nil {
+	return err
+}
+sigNew, err := during.Sign(body) // a sender already on the new one
+if err != nil {
+	return err
+}
+// verifies reports whether v accepts body signed with sig.
+verifies := func(v events.Verifier, sig string) bool {
+	req := httptest.NewRequest(http.MethodPost, "/hooks/shopify", bytes.NewReader(body))
+	req.Header.Set("X-Shopify-Hmac-Sha256", sig)
+	_, err := v.Verify(req, body)
+	return !errors.Is(err, events.ErrSignature)
+}
+```
+
+```text
+hmac rotation:
+  new signature: g0kvyILC8kxerVjwwPqiYVmYAoBSuxlWZ1pbtLCkJS4=
+  during rotation: old secret verifies true, new secret verifies true
+  after rotation:  old secret verifies false, new secret verifies true
+```
+
+`Verify` returns an error matching `events.ErrSignature` for a missing header, a missing prefix, a digest that does not decode in the configured encoding, and a digest no secret produces. An `HMAC` with no `Header` or no `Secrets` refuses every request the same way, so a misconfigured verifier fails closed. `Sign` returns an error when the first secret is missing or empty.
 
 A plain HMAC has no timestamp, so it cannot refuse a replayed request; the handler's deduplication by delivery ID is what makes a replay of an unfinished delivery start nothing. Prefer Standard Webhooks where the sender supports it.
 
@@ -65,7 +116,7 @@ A plain HMAC has no timestamp, so it cannot refuse a replayed request; the handl
 
 <!-- snippet: examples/events-webhooks/main.go#standard -->
 ```go
-sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk)
+sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk) // older timestamps are replays
 if err != nil {
 	return err
 }
@@ -135,6 +186,10 @@ standard webhooks:
   verified id=msg_1 err=<nil>
   changed body: ErrSignature=true
   replayed after 10m: ErrSignature=true
+hmac rotation:
+  new signature: g0kvyILC8kxerVjwwPqiYVmYAoBSuxlWZ1pbtLCkJS4=
+  during rotation: old secret verifies true, new secret verifies true
+  after rotation:  old secret verifies false, new secret verifies true
 ```
 
 ## Pitfalls
@@ -142,6 +197,7 @@ standard webhooks:
 - **Deduplication lasts while the run is unfinished.** A delivery repeated after its run ended starts a new run; set `Inbox` to drop it for as long as the inbox keeps the ID, or make the workflow idempotent.
 - **The default ID is the body's hash.** Two different deliveries with identical bodies share an ID; use a scheme or an `ID` function that returns the sender's own delivery ID.
 - **Plain HMAC cannot refuse a replay** of a delivery whose run has ended. Standard Webhooks can, within its tolerance.
+- **Remove an old secret only when no sender uses it.** A secret dropped too early turns every delivery from a sender still on it into a 401, and the sender retries until it gives up.
 - **Keep the raw body.** Signatures are over the exact bytes; a proxy or middleware that re-encodes JSON before the handler breaks every signature.
 - **A 200 means stored, not processed.** The run may still fail; watch it like any other run.
 

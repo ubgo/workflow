@@ -6,7 +6,7 @@ A run's status answers "where is it now?". Two moments need more than queued, ru
 
 - `workflow.CapRunStates` is declared by the memory, SQL and Redis drivers. Hatchet does not declare it: its engine has no such states, so a run in backoff reads `queued` there, and since Hatchet lacks `CapDiscard` too, `Discard` acts as `Permanent` and the run reads `failed` (see [Pitfalls](#pitfalls)).
 - The full status list is in [Cancel and status](cancel-and-status.md#read-a-runs-status).
-- The example is [`examples/run-states`](../../examples/run-states). Run it with `go run ./run-states` from `examples/`.
+- The examples are [`examples/run-states`](../../examples/run-states) (retrying, discarded, batches and the admin view, on the memory driver) and [`examples/run-transitions`](../../examples/run-transitions) (the state machine as data). Run them with `go run ./run-states` and `go run ./run-transitions` from `examples/`.
 
 ## Retrying
 
@@ -99,7 +99,113 @@ A run is created `scheduled` (a `Job.RunAt` in the future, `CapDelayedStart`) or
 
 Failed and discarded differ in what happens next. Failed is a failure an operator must see, so `OnFailure` runs and a batch's `Catch` fires. Discarded is a run dropped on purpose or given up on by policy: `OnFailure` does not run, the chain does not continue, the idempotency key is released, and `Err` matches `ErrDiscarded` and `ErrCancelled`.
 
-The table is data you can read and check against, not only prose. `workflow.Transitions()` returns every legal move as a `workflow.Transition{From, To, Trigger, Needs}`; `status.TransitionsFrom()` lists the moves that leave one status, and `status.CanTransitionTo(to)` asks whether a move exists at all (it ignores capabilities; read `Needs` for those). A driver can check a status change it is about to store against it, and a test can walk it. The same machine, in prose, sits next to the `Status` type in `status.go`.
+### Read the machine in code
+
+The table is data you can read and check against, not only prose. `workflow.Transitions()` returns every legal move as a `workflow.Transition{From, To, Trigger, Needs}`, and `Needs` is the set of capabilities a driver must declare to report the move (zero means any driver). `status.TransitionsFrom()` lists the moves that leave one status:
+
+<!-- snippet: examples/run-transitions/main.go#from -->
+```go
+for _, t := range workflow.StatusRetrying.TransitionsFrom() {
+	fmt.Fprintf(w, "%s -> %s: %s (needs %s)\n", t.From, t.To, t.Trigger, t.Needs)
+}
+```
+
+```text
+retrying -> running: the backoff elapsed and a worker claimed the step (needs RunStates)
+retrying -> queued: the backoff elapsed (needs RunStates)
+retrying -> waiting: parallel steps changed which status describes the run (needs RunStates)
+retrying -> cancelled: Cancel or CancelAll (needs Cancel)
+retrying -> failed: the run went past Workflow.RunTimeout (needs RunTimeout)
+retrying -> failed: ForceFail (needs ForceRun)
+retrying -> succeeded: ForceComplete (needs ForceRun)
+```
+
+The same pair of statuses can appear more than once with different triggers (`failed` above is reached by a run timeout and by `ForceFail`), so look for the move you mean, not only the target. A terminal status other than `failed` has no moves at all.
+
+`status.CanTransitionTo(to)` asks whether a move exists at all. It ignores capabilities, so it answers for the machine, not for one driver:
+
+<!-- snippet: examples/run-transitions/main.go#can -->
+```go
+for _, move := range [][2]workflow.Status{ // each pair is a from -> to move
+	{workflow.StatusFailed, workflow.StatusQueued},       // Retry re-opens a failed run
+	{workflow.StatusDiscarded, workflow.StatusQueued},    // a discarded run is never re-opened
+	{workflow.StatusScheduled, workflow.StatusSucceeded}, // ForceComplete
+	{workflow.StatusSucceeded, workflow.StatusFailed},    // terminal: no way out
+} {
+	fmt.Fprintf(w, "%s -> %s allowed: %v\n", move[0], move[1], move[0].CanTransitionTo(move[1]))
+}
+```
+
+```text
+failed -> queued allowed: true
+discarded -> queued allowed: false
+scheduled -> succeeded allowed: true
+succeeded -> failed allowed: false
+```
+
+To ask what one driver can report, keep the moves whose `Needs` its capabilities cover. A driver without `CapRunStates` never reports `retrying` or `discarded`, so eight moves drop out:
+
+<!-- snippet: examples/run-transitions/main.go#caps -->
+```go
+// reportable counts the moves in the machine whose Needs caps covers.
+reportable := func(caps workflow.Caps) (n int) {
+	for _, t := range workflow.Transitions() {
+		if caps.Has(t.Needs) {
+			n++
+		}
+	}
+	return n
+}
+caps := memory.New().Capabilities()
+noRunStates := caps.Without(workflow.CapRunStates) // as on a driver without retrying and discarded
+fmt.Fprintf(w, "the machine has %d moves; memory reports %d, without CapRunStates %d\n",
+	len(workflow.Transitions()), reportable(caps), reportable(noRunStates))
+```
+
+```text
+the machine has 40 moves; memory reports 40, without CapRunStates 32
+```
+
+### Guard a status change in a driver of your own
+
+A driver you write can check every status change against the machine before it stores it, so a bug in its own bookkeeping shows up as an error instead of a run in an impossible state. The guard needs both answers: the move must exist, and one of its transitions must be covered by the driver's capabilities:
+
+<!-- snippet: examples/run-transitions/main.go#guard -->
+```go
+// errIllegalMove is what checkMove wraps, so a caller tests for it with
+// errors.Is instead of matching the message.
+var errIllegalMove = errors.New("illegal status change")
+
+// checkMove is the guard a driver of your own runs before it stores a
+// status change: the move must be in the machine, and the driver must
+// declare every capability one of the matching transitions needs.
+func checkMove(caps workflow.Caps, from, to workflow.Status) error {
+	if !from.CanTransitionTo(to) {
+		return fmt.Errorf("%w: no move from %s to %s", errIllegalMove, from, to)
+	}
+	for _, t := range from.TransitionsFrom() {
+		if t.To == to && caps.Has(t.Needs) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %s to %s needs capabilities this driver lacks", errIllegalMove, from, to)
+}
+```
+
+<!-- snippet: examples/run-transitions/main.go#check -->
+```go
+fmt.Fprintln(w, "memory, running -> retrying:", checkMove(caps, workflow.StatusRunning, workflow.StatusRetrying))
+fmt.Fprintln(w, "no CapRunStates, running -> retrying:", checkMove(noRunStates, workflow.StatusRunning, workflow.StatusRetrying))
+fmt.Fprintln(w, "memory, cancelled -> queued:", checkMove(caps, workflow.StatusCancelled, workflow.StatusQueued))
+```
+
+```text
+memory, running -> retrying: <nil>
+no CapRunStates, running -> retrying: illegal status change: running to retrying needs capabilities this driver lacks
+memory, cancelled -> queued: illegal status change: no move from cancelled to queued
+```
+
+The library's own tests walk the table the same way (`status_transitions_test.go`): every pair `CanTransitionTo` accepts is in `Transitions()`, no move starts and ends on the same status, and only `failed` leaves a terminal status. The same machine, in prose, sits next to the `Status` type in `status.go`.
 
 ## Batches and discarded jobs
 
@@ -161,12 +267,39 @@ describe := func(s workflow.Status) string {
 
 `Status.Valid()` reports whether a string is one of the known statuses, for code that reads a status from a database column or a query string.
 
+## Try it
+
+```sh
+cd examples
+go run ./run-states
+```
+
+```text
+memory declares CapRunStates: true
+sync-invoices: retrying, attempt 2 at 1m0s, last error "upstream 503"
+after the backoff: succeeded
+ship-order: discarded, terminal true, ErrDiscarded true, ErrCancelled true
+admin discarded: ship-order, "workflow: run cancelled: workflow: run discarded: step \"ship\": order o-9 no longer exists"
+call-partner with MaxErrors 2: failed
+batch with DiscardedAs "": batch-catch ran; succeeded 1, failed 1, discarded 1
+batch with DiscardedAs "succeeded": batch-then ran; succeeded 2, failed 0, discarded 1
+  retrying: waiting to retry
+  discarded: dropped on purpose
+  failed: needs a look
+  succeeded: done
+```
+
+The first line checks the capability the rest needs. The run in backoff reads `retrying` with its next attempt one minute after the start and then succeeds; `ship-order` ends `discarded` and still matches `ErrCancelled`; the admin lists it apart from failures; `call-partner` runs out of errors under `MaxErrors` and ends `failed` because its policy has no `DiscardOnExhaust`; the two batches count the dropped job as failed and then as succeeded; the last four lines are the status switch with its default branch.
+
+`go run ./run-transitions` prints the state machine lines shown under [Read the machine in code](#read-the-machine-in-code).
+
 ## Pitfalls
 
 - **Hatchet reports neither state.** Code that must work on every driver checks `Capabilities().Has(workflow.CapRunStates)` before relying on `retrying` or `discarded`. On Hatchet a `RunQuery` or `CancelAll` filter naming either status is refused with an `UnsupportedError` (field `RunQuery.Statuses`) rather than answered with an empty page. A driver with `CapDiscard` but not `CapRunStates` reports a discard as `cancelled` with an `Err` matching `ErrDiscarded`.
 - **A failover client reports them only when both backends do.** Its `CapRunStates` is the intersection of the two.
 - **`Retrying` is not stuck.** A run with a long backoff sits in `retrying` for that long. Alert on `NextAttemptAt` being far away, not on the status alone.
 - **Discard hides the run from failure views.** That is its purpose, and `DiscardOnExhaust` does the same for every run its policy gives up on. When in doubt return `Permanent(err)` under a policy without the option, which fails the run where an operator sees it.
+- **`CanTransitionTo` ignores capabilities.** It answers for the machine. A driver that guards its own status changes must also check `Needs` from `TransitionsFrom`, or it would accept `retrying` without `CapRunStates`.
 - **`DiscardOnExhaust` needs both `CapDiscardExhausted` and `CapRunStates`.** Hatchet declares neither and refuses the option at `Register`, so a run out of retries is `failed` there.
 
 ## Related
@@ -174,4 +307,5 @@ describe := func(s workflow.Status) string {
 - [Retries](retries.md): backoff, `Discard`, `DiscardOnExhaust`, `MaxErrors` and `Until`.
 - [Cancel and status](cancel-and-status.md): every status and how to read it.
 - [Manage runs](manage-runs.md): listing and retrying runs.
+- [Writing a driver](../extending/writing-a-driver.md): what a driver of your own must report.
 - [Batch lifecycle](../batches/lifecycle.md): how a batch reacts to its jobs' ends.

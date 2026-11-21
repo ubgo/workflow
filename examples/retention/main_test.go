@@ -16,9 +16,11 @@ func TestRun(t *testing.T) {
 	want := `now: deleted 3, held undelivered 0, idempotency 0, batch 0
 a day later: deleted 2
 a week later: deleted 1
-archived: email failed "fail", email succeeded "a", email succeeded "b", report succeeded "r1", report succeeded "r2", report succeeded "r3"
+archived: email failed "fail" err=sqlstore: step "send" failed after 1 attempt(s): mailbox does not exist, email succeeded "a" send="sent", email succeeded "b" send="sent", report succeeded "r1" build="r1", report succeeded "r2" build="r2", report succeeded "r3" build="r3"
 no observer, Undelivered false: deleted 0, held undelivered 1
 Undelivered true: deleted 1
+archive failed: deleted 0, error is the hook's: true
+the run is kept: succeeded
 `
 	if got := out; got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)

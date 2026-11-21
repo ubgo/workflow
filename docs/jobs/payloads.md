@@ -27,7 +27,18 @@ type Receipt struct {
 }
 ```
 
-`workflow.JobOf(workflow, v)` returns a `Job` for that workflow whose `Payload` is `v` encoded as JSON, and an error wrapping `workflow.ErrInvalid` when `v` cannot be encoded. Everything else on the job (`IdempotencyKey`, `RunAt`, `Labels`, `Tenant`) is set on the returned value as usual. On the other side, the step's handler is a `workflow.Define` over the same type, so it receives the decoded struct:
+`workflow.JobOf(workflow, v)` returns a `Job` for that workflow whose `Payload` is `v` encoded as JSON, and an error wrapping `workflow.ErrInvalid` when `v` cannot be encoded. Everything else on the job (`IdempotencyKey`, `RunAt`, `Labels`, `Tenant`) is set on the returned value as usual:
+
+<!-- snippet: examples/typed-payloads/main.go#build-job -->
+```go
+job, err := workflow.JobOf("send-welcome", Welcome{UserID: "u-7", Plan: "pro"})
+if err != nil {
+	return err
+}
+job.IdempotencyKey = "welcome:u-7" // the rest of the Job is set as usual
+```
+
+On the other side, the step's handler is a `workflow.Define` over the same type, so it receives the decoded struct:
 
 <!-- snippet: examples/typed-payloads/main.go#handler -->
 ```go
@@ -72,6 +83,7 @@ A queue is a poor place for a 5 MB document: an engine refuses messages over its
 <!-- snippet: examples/typed-payloads/main.go#max-payload -->
 ```go
 app := middleware.WrapClient(c, middleware.MaxPayload(1024)) // the app's own cap
+// big is a payload of 2,000 characters, over the app's cap.
 big := workflow.Job{Workflow: "send-welcome", Payload: []byte(`"` + strings.Repeat("x", 2000) + `"`)}
 _, err = app.Enqueue(ctx, big)
 var tooBig *workflow.PayloadTooLargeError

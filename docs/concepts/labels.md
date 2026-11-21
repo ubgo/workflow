@@ -38,6 +38,36 @@ Where the check runs:
 - Each owning package refuses incoming labels under its own prefix: `middleware.Unique` and `ClaimCheck.Enqueue` refuse a job that already carries their labels (so a caller cannot release someone else's lock or point a run at another run's blobs), `batch` refuses reserved batch labels on `Batch.Labels`, and the `otel` enqueue middleware refuses incoming `otel.` labels.
 - Every driver's public `Enqueue` (and `EnqueueTx`, `EnqueueMany` and group dispatch) calls [`workflow.CheckJobLabels(ctx, job)`](ds:block?id=checkjoblabels-p6m28b9h), which refuses a reserved label on the job or a chained job with `workflow.ErrInvalid` unless the package that owns it allowed that key on the context ([`workflow.AllowReservedLabels`](ds:block?id=allowreservedlabels-4czg8eyz), [`AllowReservedPrefix`](ds:block?id=allowreservedprefix-f884j92u)). A label typed by the app or copied from a request is refused; a label the library stamped passes. It is a guard against accidents and untrusted input, not a sandbox: only the owning package should call the allow functions.
 
+### Let the owning package through
+
+Code that owns a prefix (a plugin of your own that stamps labels under one, or the library packages above) allows its keys on the context of the `Enqueue` that carries them. `AllowReservedLabels(ctx, keys...)` allows exactly the keys it names; `AllowReservedPrefix(ctx, prefix)` allows every key under a prefix. Both add to what `ctx` already allows. The example uses the batch prefix to show the three outcomes; in an app only the `batch` package writes those labels:
+
+<!-- snippet: examples/capabilities/main.go#allow-reserved -->
+```go
+job := workflow.Job{Workflow: "ping", Labels: map[string]string{
+	workflow.LabelPrefixBatch + "id":    "b1",
+	workflow.LabelPrefixBatch + "index": "0",
+}}
+_, err := c.Enqueue(ctx, job)
+fmt.Println("app enqueue:", err)
+
+owner := workflow.AllowReservedLabels(ctx, workflow.LabelPrefixBatch+"id") // one named key
+_, err = c.Enqueue(owner, job)
+fmt.Println("one key allowed:", err)
+
+owner = workflow.AllowReservedPrefix(ctx, workflow.LabelPrefixBatch) // every key under the prefix
+_, err = c.Enqueue(owner, job)
+fmt.Println("prefix allowed:", err == nil)
+```
+
+```text
+app enqueue: workflow: invalid spec: job for "ping": label "workflow.batch.id" uses the reserved prefix "workflow.batch."; only the package owning it may set it
+one key allowed: workflow: invalid spec: job for "ping": label "workflow.batch.index" uses the reserved prefix "workflow.batch."; only the package owning it may set it
+prefix allowed: true
+```
+
+Allowing one key leaves its siblings refused: the second enqueue fails on `workflow.batch.index`, the next key in sorted order. Keep the allowed context local to the one call; a context that allows a prefix and is then passed on to request handling lets any label under it through.
+
 ## Try it
 
 ```sh
@@ -45,7 +75,7 @@ cd examples
 go run ./capabilities
 ```
 
-The last three lines are the ones above.
+The last six lines are the ones above: three from the prefix checks, three from the enqueues.
 
 ## Source labels
 

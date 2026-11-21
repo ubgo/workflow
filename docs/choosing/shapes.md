@@ -1,0 +1,53 @@
+# Choose the shape of the work
+
+Before you pick options, pick the shape: one job, a workflow of steps, a chain, child runs, a batch, a schedule, a virtual object, a state machine, a saga, or events that start runs. Each is built from the same runs and steps, so they mix freely, but each answers a different question about what is retried, what holds state and who decides what runs next. This page helps you pick the shape for each piece of work; [Choose a method](methods.md) then picks the options inside it.
+
+## Job, workflow, chain, children or batch
+
+| Shape | Use it for | What is retried and tracked | Drivers | Guide | Example |
+|---|---|---|---|---|---|
+| A job: `Enqueue` of a one-step workflow, or a [function by name](../jobs/functions.md#step-1-define-the-function) (`workflow.NewFunc`) | One piece of work with one input: send this email, resize this image | The run: one status, the step's retries | every driver | [Enqueue a job](../jobs/enqueue.md#enqueue-a-job) | [quickstart](../../examples/quickstart/), [functions](../../examples/functions/) |
+| A closure: `workflow.EnqueueClosure` | Tiny in-process work that captures local variables (warm a cache after a deploy) | As a job, but only in this process | memory only (`CapClosure`) | [Closures](../jobs/closures.md#step-1-enqueue-a-closure) | [closures](../../examples/closures/) |
+| A workflow with steps (`After`) | A process whose shape you know when you write the code: charge, then receipt and shipping in parallel, then notify | Each step on its own; outputs pass to the steps after it; one run, one status | every driver | [Steps that depend on other steps](../workflows/steps.md#steps-that-depend-on-other-steps) | [first-workflow](../../examples/first-workflow/) |
+| A chain: `Job.Chain` | A sequence decided when the job is enqueued, or changed while it runs (`PrependToChain`, `AppendToChain`) | Each job is its own run; the next is enqueued when the one before succeeds | `CapChain`: memory, sqlstore, Redis; Hatchet refuses | [Chains of jobs](../workflows/chains.md#step-1-enqueue-a-job-with-a-chain) | [chain-edits](../../examples/chain-edits/) |
+| Child runs: `workflow.Spawn`, `workflow.AwaitChildren` | Work a step discovers at run time (each image of an album) that should run on any free worker with its own retries | Each child is a run; a retried parent step never starts its children twice | needs the Journal plugin; `AwaitChildren` also `CapSnooze` and `CapResult` (memory, sqlstore, Redis) | [Child runs](../workflows/children.md#start-children-with-spawn) | [flow-children](../../examples/flow-children/) |
+| A batch: `batch.New(client, store).Dispatch` | A group of independent jobs with one outcome: `Then` when all succeeded, `Catch` on the first failure, `Finally` when all ended; progress and cancel | Each job is a run; the batch tracks one run per job | every driver; a durable store for a batch that outlives its process | [Dispatch a batch](../batches/batches.md#dispatch-a-batch) | [batches](../../examples/batches/) |
+| `workflow.RunInline` | Running a workflow once in the caller's goroutine: a CLI import, a one-off backfill, a unit test | Nothing is queued or stored | no driver | [Run a workflow inline](../jobs/run-inline.md#step-1-run-it) | [run-inline](../../examples/run-inline/) |
+
+- **If the steps and their order are known when you write the code**, use one workflow: the outputs flow from step to step and the run has one status.
+- **If the next job depends on data known at enqueue time, or a step may add work after it**, use a chain; on Hatchet use child runs instead.
+- **If a step discovers N pieces of work and must continue once they are done**, use `AwaitChildren`; if it only starts them and moves on, `Spawn`.
+- **If the app (not a step) starts N jobs and wants one callback**, use a batch. A batch refuses a job with a `Chain`.
+- **If nothing needs a queue at all**, call `RunInline`.
+
+## Schedule, object, state machine, saga or events
+
+| Shape | Use it for | Where its state lives | Drivers | Guide | Example |
+|---|---|---|---|---|---|
+| A schedule: `Workflow.Cron`, `Client.Schedule` | Work that repeats | The schedule; each tick is a run | every driver with `CapCron`; see [Choose a schedule tool](schedules.md) | [Cron schedules](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
+| A virtual object: `workflow.DefineObject` | An entity per key whose calls must not overlap and see the last call's state: a cart, a balance, device settings | One record per key in a `JournalStore`; calls run one at a time per key | `CapConcurrencyKey` with Go keys: memory, sqlstore, Redis; Hatchet refuses at `Register` | [Virtual objects](../workflows/objects.md#define-an-object) | [virtual-objects](../../examples/virtual-objects/) |
+| A state machine: `workflow.DefineMachine` | An entity per key whose valid events depend on its state, living for days or forever, with timers per state, nested or parallel states and a log | One record per key in a `JournalStore`; each event is a run, applied once | as objects; timers also need `CapDelayedStart` and `CapIdempotencyKey` | [State machines](../workflows/state-machines.md#define-the-machine) | [state-machine](../../examples/state-machine/), [machine-dsl](../../examples/machine-dsl/) |
+| A saga: `workflow.NewSaga` in a step, or a compensation step with a trigger rule | Several remote changes that stand or fall together (book car, flight, hotel; undo newest first) | The journal: every action and compensation runs once per run | every driver, with the Journal plugin; a durable `JournalStore` to survive a crash | [Sagas](../workflows/sagas.md#do-then-abort) | [flow-patterns](../../examples/flow-patterns/) |
+| Events: `events.New(client)` with subscriptions | One thing that happened starts several independent reactions (a receipt, a CRM update), or a webhook or CloudEvent starts a run | Each reaction is a run; dedup rides on idempotency keys | every driver (`events.New` refuses a client without `CapIdempotencyKey` unless `AllowDuplicates`) | [Publish and subscribe](../events/publish-subscribe.md#publish-an-event) | [events-webhooks](../../examples/events-webhooks/) |
+| Choreography: `events.WithCorrelation()` | Services owned apart that react to events and publish their own, with no code holding the whole flow; `events.Trail` lists one chain | The runs, linked by correlation and causation labels | every driver | [Choreography](../events/choreography.md#turn-on-correlation) | [saga-choreography](../../examples/saga-choreography/) |
+
+- **If one team owns the whole flow and the order of compensations matters**, use a saga (orchestration). **If services are owned apart and should not know each other**, use choreography, and `Trail` to see a chain.
+- **If an entity's calls must be serial but any call is valid at any time**, use a virtual object. **If what an event may do depends on the state it arrives in**, use a state machine.
+- **If only one workflow ever reacts to a thing that happened**, a plain `Enqueue` is simpler than a bus. **If the event must cross between apps that do not share a client**, use a broker (SQS, NATS, Kafka): the bus delivers within one app's client.
+- **If a process has a start and an end that one run carries through**, keep it a workflow, even when it waits days for a signal ([Choose how a run waits](waiting.md)).
+
+## Pitfalls
+
+- A closure is lost on a restart or a crash and never runs on another machine; the SQL, Redis and Hatchet drivers refuse `EnqueueClosure`. Anything that must survive is a function by name.
+- `Spawn` and `AwaitChildren` memoise the children they started, so the client needs the Journal plugin; without a durable `JournalStore` a restart forgets which children a step started.
+- `AwaitChildren` refuses, before starting any child, on a parent driver without `CapSnooze` (Hatchet), because every look at an unfinished child would spend an attempt.
+- `batch.Dispatch` refuses a job with a `Chain`, and a batch whose `Manager` was never `Attach`ed never fires its callbacks.
+- Objects and state machines are refused by Hatchet at `Register`: their per-key lane is a concurrency key computed in Go.
+- State-machine actions run at least once: an action that calls out needs `m.IdempotencyKey(name)`. Renaming or removing a state strands every instance in it.
+- Events are as durable as the client's runs: on the memory driver they die with the process, and `Publish` is not part of your database transaction. Use [transactional enqueue or the outbox](methods.md#enqueue-enqueuetx-or-the-outbox) when the event must not be lost between commit and publish.
+- Event dedup lasts while the run is unfinished; a republish after it ended starts a new run, and a message without an `ID` is never deduplicated.
+
+## Related
+
+- [Choose a method](methods.md), [Choose how a run waits](waiting.md), [Choose a schedule tool](schedules.md)
+- [Chains, steps and batches](../workflows/chains.md#chains-steps-and-batches), [A machine, workflow steps or an object?](../workflows/state-machines.md#a-machine-workflow-steps-or-an-object), [Choreography or an orchestrated saga](../events/choreography.md#choreography-or-an-orchestrated-saga)

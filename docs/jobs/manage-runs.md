@@ -19,7 +19,7 @@ page, err := c.Runs(ctx, workflow.RunQuery{
 	Workflow: "fulfil-order",
 	Statuses: []workflow.Status{workflow.StatusFailed},
 	Labels:   map[string]string{"tenant": "acme"},
-	Limit:    50,
+	Limit:    50, // one page; pass page.Next as Cursor for the next
 })
 if err != nil {
 	return err
@@ -121,23 +121,58 @@ The drivers match payloads after their own filters, reading on until the page is
 
 `Retry(ref)` re-opens a failed run. The steps that succeeded keep their outputs and do not run again; the step that failed, and any branch its failure cancelled, start again with fresh attempt counts. A charge that already went through is not charged twice because shipping failed.
 
+An app holds a `workflow.Client`, not a driver type, so it reaches `Retry` through `workflow.RunRetrier`. Check the capability as well as the assertion: every wrapper in the library has the method and forwards it, so the assertion alone succeeds on a wrapper whose inner client cannot retry, and the call then fails with an `UnsupportedError`. `Capabilities()` tells you up front.
+
 <!-- snippet: examples/manage-runs/main.go#retry -->
 ```go
+retrier, ok := cl.(workflow.RunRetrier)
+if !ok || !cl.Capabilities().Has(workflow.CapRetryRun) {
+	return errors.New("this client cannot retry runs")
+}
 warehouseDown.Store(false) // the outage is over
-ref, err := c.Retry(ctx, failed)
+ref, err := retrier.Retry(ctx, failed)
 if err != nil {
 	return err
 }
 ```
 
-The run keeps its `RunRef` and goes back to `queued`. When it ends again, run-finished observers see a second event for it, which they already tolerate (delivery is at least once). Its idempotency key is taken again; if another unfinished run took it meanwhile, `Retry` returns `workflow.ErrDuplicate`. Only a `failed` run can be retried; any other status returns `workflow.ErrWrongState`.
+```text
+retried run-2: succeeded; charge ran 1 time(s), ship 2
+```
+
+The run keeps its `RunRef` and goes back to `queued`. When it ends again, run-finished observers see a second event for it, which they already tolerate (delivery is at least once). Its idempotency key is taken again; if another unfinished run took it meanwhile, `Retry` returns `workflow.ErrDuplicate`. Only a `failed` run can be retried; any other status returns `workflow.ErrWrongState`:
+
+<!-- snippet: examples/manage-runs/main.go#retry-again -->
+```go
+_, err = retrier.Retry(ctx, ref) // it succeeded: only a failed run re-opens
+fmt.Println("retry a succeeded run: ErrWrongState", errors.Is(err, workflow.ErrWrongState))
+```
+
+```text
+retry a succeeded run: ErrWrongState true
+```
 
 ## Re-run a failed run from an earlier step
 
 `Retry` always resumes at the step that failed. When the cause was upstream (a transform step that succeeded with bad output, fixed and deployed since; a source corrected by hand), re-run from that step instead with `workflow.RunResetter`:
 
+<!-- snippet: examples/manage-runs/main.go#reset -->
 ```go
-ref, err := c.(workflow.RunResetter).ResetRun(ctx, failed, "transform")
+if !workflow.Supports(cl, workflow.OpResetRun) { // no capability bit: ask Supports
+	return errors.New("this client cannot reset runs")
+}
+resetter := cl.(workflow.RunResetter)
+fmt.Println("steps that run again:", workflow.StepsFrom(order, "charge"))
+warehouseDown.Store(false)
+again, err := resetter.ResetRun(ctx, broken, "charge") // not only "ship", the step that failed
+if err != nil {
+	return err // ErrWrongState unless the run failed; ErrInvalid for an unknown step
+}
+```
+
+```text
+steps that run again: [charge ship]
+reset run-16 from charge: succeeded, same ref true; charge ran 1 more time(s)
 ```
 
 `ResetRun(ref, step)` drops the outputs of `step` and of every step downstream of it (`workflow.StepsFrom(wf, step)` lists them), keeps the outputs of the other steps that succeeded, and re-opens the run exactly as `Retry` does: the same `RunRef`, back to `queued`, fresh attempt counts for every step that runs again, its idempotency key taken again. A wait step that runs again waits for a new event. Only a `failed` run can be reset (`workflow.ErrWrongState` otherwise), and a step the workflow does not have returns `workflow.ErrInvalid`. The memory, SQL and Redis drivers implement it; the SQL and Redis drivers need the workflow registered on the client that calls it, to know which steps are downstream. `workflow.Use` forwards it, and a wrapper whose inner client lacks it refuses with an `UnsupportedError`.
@@ -188,28 +223,48 @@ The memory, SQL and Redis drivers implement both; the SQL and Redis drivers need
 
 ## Step 3: forget a finished run
 
-`Delete(ref)` forgets a terminal run: afterwards `Status` returns `workflow.ErrNotFound` and `Runs` no longer lists it. An unfinished run returns `ErrWrongState`; cancel it first.
+`Delete(ref)` forgets a terminal run: afterwards `Status` returns `workflow.ErrNotFound` and `Runs` no longer lists it. An unfinished run returns `ErrWrongState`; cancel it first. It lives on `workflow.RunDeleter`, gated by `workflow.CapDeleteRun` (Hatchet has no run delete, so it lacks both):
 
 <!-- snippet: examples/manage-runs/main.go#delete -->
 ```go
-err = c.Delete(ctx, ref)
-_, statusErr := c.Status(ctx, ref)
+deleter, ok := cl.(workflow.RunDeleter)
+if !ok || !cl.Capabilities().Has(workflow.CapDeleteRun) {
+	return errors.New("this client cannot delete runs")
+}
+err = deleter.Delete(ctx, ref)
+_, statusErr := cl.Status(ctx, ref)
 fmt.Println("deleted:", err == nil, "then Status is ErrNotFound:", errors.Is(statusErr, workflow.ErrNotFound))
+```
+
+```text
+deleted: true then Status is ErrNotFound: true
 ```
 
 To forget many, page through `Runs` and delete each, or use the SQL driver's retention, which prunes finished runs by age.
 
 ## Step 4: cancel every waiting run
 
-`CancelAll(query)` cancels every run that matches and returns how many. With no `Statuses` it takes only runs not yet started, `scheduled` and `queued`; running and waiting runs are cancelled only when you list their status. A terminal status, a `Limit` or a `Cursor` is refused, since a bulk cancel covers every match. Each run is cancelled exactly as `Cancel` would: its key released, its run-finished event delivered.
+`CancelAll(query)` cancels every run that matches and returns how many. With no `Statuses` it takes only runs not yet started, `scheduled` and `queued`; running and waiting runs are cancelled only when you list their status. A terminal status, a `Limit` or a `Cursor` is refused, since a bulk cancel covers every match: `workflow.ValidateCancelQuery` is that check, which every driver runs, and you can run it first to reject a bad filter from an operator form before calling the driver. Each run is cancelled exactly as `Cancel` would: its key released, its run-finished event delivered. The interface is `workflow.BulkCanceller`, gated by `workflow.CapCancelAll`:
 
 <!-- snippet: examples/manage-runs/main.go#cancel-all -->
 ```go
-n, err := c.CancelAll(ctx, workflow.RunQuery{Workflow: "fulfil-order"}) // runs not yet started
+bulk, ok := cl.(workflow.BulkCanceller)
+if !ok || !cl.Capabilities().Has(workflow.CapCancelAll) {
+	return errors.New("this client cannot cancel in bulk")
+}
+q := workflow.RunQuery{Workflow: "fulfil-order"} // no Statuses: runs not yet started
+if err := workflow.ValidateCancelQuery(q); err != nil {
+	return err // a terminal status, a Limit or a Cursor
+}
+n, err := bulk.CancelAll(ctx, q)
 if err != nil {
 	return err
 }
 fmt.Println("cancelled waiting runs:", n)
+```
+
+```text
+cancelled waiting runs: 2
 ```
 
 ## Error history
@@ -305,6 +360,8 @@ A pause holds a whole workflow or queue. To hold one run (an import that looks w
 <!-- snippet: examples/run-control/main.go#suspend -->
 ```go
 journal := workflow.NewMemoryJournal() // a durable JournalStore makes the flag fleet-wide
+// The second argument of Suspension is how often a parked step looks
+// at its flag again.
 c, err := workflow.Use(memory.New(), workflow.Journal(journal), workflow.Suspension(journal, time.Millisecond))
 if err != nil {
 	return err
@@ -337,18 +394,28 @@ An operator can take one run off its planned path without changing the workflow,
 
 For example, hold an import that looks wrong, let it go on, and once its transform fails because of a mapping bug, deploy the fix and redo from the transform; the fetch that succeeded is not repeated:
 
+<!-- snippet: examples/run-control/main.go#detour -->
 ```go
 if err := workflow.SuspendRun(ctx, journal, ref); err != nil { // hold
 	return err
 }
-// ... the source checks out
+close(gate) // fetch ends; transform parks instead of running
+// The source checks out: let the run go on.
 if err := workflow.ResumeRun(ctx, journal, ref); err != nil {
 	return err
 }
-// ... the run fails in transform; the fix is deployed
+if err := waitStatus(ctx, c, ref, workflow.StatusFailed); err != nil { // the mapping bug
+	return err
+}
+mappingFixed.Store(true) // the fix is deployed
 if _, err := c.(workflow.RunResetter).ResetRun(ctx, ref, "transform"); err != nil {
 	return err
 }
+```
+
+```text
+detour:
+  held, resumed, failed in transform, reset from transform: succeeded; fetch ran 1 time(s)
 ```
 
 A detour that jumps ahead to a later step, or back from a succeeded run, is not built: `ResetRun` re-opens failed runs only.
@@ -376,11 +443,41 @@ With either bound set, only runs enqueued with a `RunAt` match; a zero bound is 
 
 ## Reschedule a delayed run
 
-`RunRescheduler.Reschedule(ctx, ref, at)` moves a run that has not started to a new time. It keeps the run's `RunRef`, payload, labels and idempotency key, and `RunInfo.RunAt` reads the new time, so nothing that holds the ref has to change:
+`RunRescheduler.Reschedule(ctx, ref, at)` moves a run that has not started to a new time. It keeps the run's `RunRef`, payload, labels and idempotency key, and `RunInfo.RunAt` reads the new time, so nothing that holds the ref has to change. It has no capability bit, so `workflow.Supports(c, workflow.OpReschedule)` is the check (a bare type assertion succeeds on every wrapper, which answers for what it wraps only through `Supports`); code that must run on any client falls back to cancelling the run and enqueuing it again:
+
+<!-- snippet: examples/run-reschedule/main.go#move-run -->
+```go
+// moveRun moves a delayed run to at. A client that really reschedules
+// (workflow.Supports answers for what a wrapper wraps, where a bare type
+// assertion would succeed on any wrapper) keeps the run's ref, labels and
+// idempotency key; on any other client the
+// fallback cancels the run and enqueues job again with the new start,
+// which gives the run a new ref. The fallback's status check and cancel
+// are two calls, so a run that starts between them is cancelled midway:
+// that race is why the driver's own Reschedule is preferred.
+func moveRun(ctx context.Context, c workflow.Client, ref workflow.RunRef, job workflow.Job, at time.Time) (workflow.RunRef, error) {
+	if workflow.Supports(c, workflow.OpReschedule) {
+		return c.(workflow.RunRescheduler).Reschedule(ctx, ref, at) // ErrWrongState once the run has started
+	}
+	st, err := c.Status(ctx, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if st != workflow.StatusScheduled {
+		return workflow.RunRef{}, fmt.Errorf("move run %s: it is %s: %w", ref.RunID, st, workflow.ErrWrongState)
+	}
+	if err := c.Cancel(ctx, ref); err != nil {
+		return workflow.RunRef{}, err
+	}
+	job.RunAt = at
+	return c.Enqueue(ctx, job)
+}
+```
 
 <!-- snippet: examples/run-reschedule/main.go#reschedule -->
 ```go
-moved, err := c.Reschedule(ctx, refs["r-2h"], clk.Now().Add(45*time.Minute))
+reminder := workflow.Job{Workflow: "send-reminder", Labels: map[string]string{"name": "r-2h"}}
+moved, err := moveRun(ctx, c, refs["r-2h"], reminder, clk.Now().Add(45*time.Minute)) // inside the next hour, so the listing shows it
 if err != nil {
 	return err
 }
@@ -395,7 +492,7 @@ due in the next hour:
   r-30m due at +30m0s, scheduled
 ```
 
-Only a run in `StatusScheduled` can move. Any other status returns `ErrWrongState`, since a run that has started or ended has no start time left to change, and an unknown ref returns `ErrNotFound`. An `at` in the past, or zero, means now. On a client without the interface, the fallback is `Cancel` plus a new `Enqueue` with the new `RunAt`, which gives the run a new ref.
+Only a run in `StatusScheduled` can move. Any other status returns `ErrWrongState`, since a run that has started or ended has no start time left to change, and an unknown ref returns `ErrNotFound`. An `at` in the past, or zero, means now. On a client without the interface, the fallback in `moveRun` is `Cancel` plus a new `Enqueue` with the new `RunAt`, which gives the run a new ref; the example's `TestMoveRunFallback` drives that path through a client that hides the interface.
 
 ## Cancel one step
 
@@ -414,6 +511,8 @@ For a step with an attempt running, the attempt's `ctx` is cancelled with the ca
 
 <!-- snippet: examples/run-reschedule/main.go#fallback -->
 ```go
+// fetchPrices hangs on the price feed and falls back to cached prices
+// when an operator withdraws it.
 fetchPrices := func(ctx context.Context, _ []byte) ([]byte, error) {
 	started <- "fetch"
 	<-ctx.Done() // the price feed is hanging
@@ -446,14 +545,20 @@ go run ./manage-runs
 ```text
 failed: run-2 at step "ship": memory: step "ship" failed after 1 attempt(s): warehouse API: 503
 retried run-2: succeeded; charge ran 1 time(s), ship 2
+retry a succeeded run: ErrWrongState true
 deleted: true then Status is ErrNotFound: true
 cancelled waiting runs: 2
 while paused: queued
 after Resume: succeeded
+steps that run again: [charge ship]
+reset run-16 from charge: succeeded, same ref true; charge ran 1 more time(s)
 ```
+
+Every line comes from one run of the program: a failed run listed with its step and error, retried from that step (`charge` ran once in all), refused a second retry once it succeeded, deleted, two delayed runs cancelled in bulk, a paused workflow holding a new run in `queued` until `Resume`, and a failed run reset from `charge`, which ran again along with every step after it. `go run ./run-reschedule` prints the due-time, reschedule and cancel-step lines shown in those sections.
 
 ## Pitfalls
 
+- **A type assertion is not a capability check.** Wrappers have every optional method and forward it, so `cl.(workflow.RunRetrier)` succeeds on a wrapper whose inner client cannot retry; the call then returns an `UnsupportedError`. Check `Capabilities().Has` for the interfaces that have a bit (`CapRetryRun`, `CapDeleteRun`, `CapCancelAll`, `CapForceRun`, `CapPauseWorkflow`), and `workflow.Supports(c, op)` for those that have none (`OpReschedule`, `OpCancelStep`, `OpResetRun`, `OpForkRun`, `OpEditRun`): it asks the wrapper what the client underneath really does.
 - A step that `ResetRun` runs again makes its side effects again, and a chain edit it made (`PrependToChain`, `AppendToChain`) is made again. With `workflow.JournalKeepFailed`, its `Memo` results are kept and returned again; leave that option off when the point of the reset is to recompute.
 
 - **A label search on the SQL driver misses runs that were never indexed.** Runs written before migration 005, or by a client older than it, are found only after `IndexLabels` has run. `Migrate` runs it; a team applying `MigrationScripts` with another tool must call it.

@@ -4,12 +4,16 @@
 // onto the callbacks, batch IDs of the app's own, and a Finally whose
 // enqueue failed and is retried.
 //
-// hatchet.go dispatches a batch on the Hatchet driver through the batch
-// coordinator; it runs only when HATCHET_CLIENT_TOKEN is set.
+// groups.go starts batches through a client that implements
+// batch.GroupRunner, and shows the Hatchet driver's bulk-trigger chunk
+// limits refused before anything connects. hatchet.go dispatches a batch
+// on the Hatchet driver through the batch coordinator; it runs only when
+// HATCHET_CLIENT_TOKEN is set.
 //
-// It is the program behind docs/batches/batches.md and
-// docs/batches/completion.md: the guides copy its regions (marked
-// "snippet:") and task docs:snippets fails when they drift.
+// It is the program behind docs/batches/batches.md,
+// docs/batches/completion.md and docs/batches/native-groups.md: the guides
+// copy its regions (marked "snippet:") and task docs:snippets fails when
+// they drift.
 package main
 
 import (
@@ -29,16 +33,48 @@ import (
 	"github.com/ubgo/workflow/middleware"
 )
 
-// storePoll is how often the program re-reads the batch store while it
-// waits for a callback's failed enqueue to be recorded.
-const storePoll = 5 * time.Millisecond
+const (
+	// storePoll is how often the program re-reads the batch store while it
+	// waits for a callback's failed enqueue to be recorded.
+	storePoll = 5 * time.Millisecond
 
+	// callbackBuffer is room for every callback line the program waits
+	// for, so a callback run never blocks on the channel while the program
+	// is still dispatching.
+	callbackBuffer = 16
+)
+
+// Workflow names: the batch's job and the three callbacks. The guide
+// regions spell them out as literals so they read on their own.
+const (
+	wfResize  = "resize"
+	wfThen    = "then"
+	wfCatch   = "catch"
+	wfFinally = "finally"
+)
+
+// labelTenant is the batch label the callbacks receive a copy of.
+const labelTenant = "tenant"
+
+// The payloads the resize job treats specially; any other payload
+// succeeds at once. Each is a JSON string, as the job receives it.
+const (
+	imgBroken = `"broken"` // fails for good
+	imgSlow   = `"slow"`   // runs until the batch cancels it
+)
+
+// errBroken is the permanent error a broken image fails its job with.
 var errBroken = errors.New("image is broken")
 
+// main runs the example and exits non-zero on error.
 func main() {
 	ctx := context.Background()
 	if err := run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "batches:", err)
+		os.Exit(1)
+	}
+	if err := runGroups(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "batches with a group runner:", err)
 		os.Exit(1)
 	}
 	if os.Getenv(envToken) != "" {
@@ -60,14 +96,14 @@ func run(ctx context.Context) error {
 	c := memory.New()
 	client := middleware.WrapClient(c, func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
-			if job.Workflow == "finally" && job.Labels["tenant"] == "globex" && finallyFailed.CompareAndSwap(false, true) {
+			if job.Workflow == wfFinally && job.Labels[labelTenant] == "globex" && finallyFailed.CompareAndSwap(false, true) {
 				return workflow.RunRef{}, errors.New("engine unavailable")
 			}
 			return next(ctx, job)
 		}
 	})
 
-	callbacks := make(chan string, 16)
+	callbacks := make(chan string, callbackBuffer)
 	if err := registerWorkflows(c, callbacks); err != nil {
 		return err
 	}
@@ -75,13 +111,17 @@ func run(ctx context.Context) error {
 	// snippet:manager
 	seq := 0
 	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	// snippet:memstore
 	store := batch.NewMemoryStore()
+	// snippet:end
 	m := batch.New(client, store,
 		batch.WithClock(clk),
+		// snippet:idfunc
 		batch.WithIDFunc(func() (batch.ID, error) { // the default is 128 random bits as hex
 			seq++
 			return batch.ID("thumbs-" + strconv.Itoa(seq)), nil
 		}),
+		// snippet:end
 		batch.WithManualCallbackRetry(), // this program calls RetryCallbacks itself
 	)
 	if err := m.Attach(ctx); err != nil { // before Start: it registers the run-finished hook
@@ -92,6 +132,7 @@ func run(ctx context.Context) error {
 	}
 	// snippet:end
 
+	// await prints the next n callback lines, sorted.
 	await := func(n int) {
 		var got []string
 		for range n {
@@ -122,29 +163,37 @@ func run(ctx context.Context) error {
 	}
 	// snippet:end
 	fmt.Println("dispatched", id)
-	await(2)
+	await(2) // Then and Finally
+	// snippet:progress
+	done, err := m.Progress(ctx, id) // a snapshot of the batch's counts
+	if err != nil {
+		return err
+	}
+	fmt.Printf("progress %s: total=%d pending=%d succeeded=%d failed=%d processed=%d (%d%%) finished=%v\n",
+		done.ID, done.Total, done.Pending, done.Succeeded, done.Failed, done.Processed(), done.Percent(), done.Finished)
+	// snippet:end
 
 	fmt.Println("-- a job fails")
 	_, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
-		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"slow"`)}, {Workflow: "resize", Payload: []byte(`"broken"`)}},
-		Then:    "then",
-		Catch:   "catch",
-		Finally: "finally",
-		Labels:  map[string]string{"tenant": "acme"},
+		Jobs:    []workflow.Job{{Workflow: wfResize, Payload: []byte(imgSlow)}, {Workflow: wfResize, Payload: []byte(imgBroken)}},
+		Then:    wfThen,
+		Catch:   wfCatch,
+		Finally: wfFinally,
+		Labels:  map[string]string{labelTenant: "acme"},
 	})
 	if err != nil {
 		return err
 	}
-	await(2)
+	await(2) // Catch and Finally
 
 	fmt.Println("-- the app cancels")
 	id, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
-		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"slow"`)}, {Workflow: "resize", Payload: []byte(`"slow"`)}},
-		Then:    "then",
-		Finally: "finally",
-		Labels:  map[string]string{"tenant": "acme"},
+		Jobs:    []workflow.Job{{Workflow: wfResize, Payload: []byte(imgSlow)}, {Workflow: wfResize, Payload: []byte(imgSlow)}},
+		Then:    wfThen,
+		Finally: wfFinally,
+		Labels:  map[string]string{labelTenant: "acme"},
 	})
 	if err != nil {
 		return err
@@ -159,14 +208,14 @@ func run(ctx context.Context) error {
 		return err
 	}
 	// snippet:end
-	await(1)
+	await(1) // Finally only: a cancelled batch never runs Then
 
 	fmt.Println("-- a Finally that failed to enqueue")
 	id, err = m.Dispatch(ctx, batch.Batch{
 		Name:    "thumbnails",
-		Jobs:    []workflow.Job{{Workflow: "resize", Payload: []byte(`"a.png"`)}},
-		Finally: "finally",
-		Labels:  map[string]string{"tenant": "globex"},
+		Jobs:    []workflow.Job{{Workflow: wfResize, Payload: []byte(`"a.png"`)}},
+		Finally: wfFinally,
+		Labels:  map[string]string{labelTenant: "globex"},
 	})
 	if err != nil {
 		return err
@@ -187,7 +236,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	// snippet:end
-	await(1)
+	await(1) // the retried Finally
 
 	fmt.Println("-- a reserved label")
 	// snippet:reserved
@@ -195,6 +244,13 @@ func run(ctx context.Context) error {
 		Jobs: []workflow.Job{{Workflow: "resize", Labels: map[string]string{batch.LabelBatch: "mine"}}},
 	})
 	fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid))
+	// snippet:end
+
+	fmt.Println("-- an empty batch ID")
+	// snippet:empty-id
+	blank := batch.New(client, store, batch.WithIDFunc(func() (batch.ID, error) { return "", nil }))
+	_, err = blank.Dispatch(ctx, batch.Batch{Jobs: []workflow.Job{{Workflow: "resize"}}})
+	fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid)) // nothing was saved or enqueued
 	// snippet:end
 	return nil
 }
@@ -222,12 +278,12 @@ func waitFailedCallback(ctx context.Context, store batch.Store, id batch.ID) err
 // callbacks. Each callback reports what it received on callbacks.
 func registerWorkflows(c *memory.Client, callbacks chan<- string) error {
 	if err := c.Register(workflow.Workflow{
-		Name: "resize",
+		Name: wfResize,
 		Steps: []workflow.Step{{Name: "run", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 			switch string(in) {
-			case `"broken"`:
+			case imgBroken:
 				return nil, workflow.Permanent(errBroken)
-			case `"slow"`:
+			case imgSlow:
 				<-ctx.Done() // runs until the batch cancels it
 				return nil, ctx.Err()
 			}
@@ -236,7 +292,7 @@ func registerWorkflows(c *memory.Client, callbacks chan<- string) error {
 	}); err != nil {
 		return err
 	}
-	for _, kind := range []string{"then", "catch", "finally"} {
+	for _, kind := range []string{wfThen, wfCatch, wfFinally} {
 		// snippet:callback
 		cb := workflow.Workflow{
 			Name: kind,

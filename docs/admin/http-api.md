@@ -6,7 +6,7 @@
 
 - An `*admin.Admin` over your client ([Admin operations](operations.md)).
 - Your app's own login: a session cookie, a bearer token or an API key. The handler never authenticates anyone itself.
-- The runnable program for this page is [examples/admin](../../examples/admin/).
+- The runnable programs for this page are [examples/admin](../../examples/admin/) (a login with two roles) and [examples/admin-routes](../../examples/admin-routes/), which calls every route once and makes the handler answer each error code.
 
 ## Step 1: say who may do what
 
@@ -80,6 +80,7 @@ What happens to each request, in order:
 | `POST /runs/delete` | `runs.delete_all` | Forget every finished run a filter body matches; an empty filter is a 400; `dry_run` and `max` as below; needs `CapRunQuery` and `CapDeleteRun` |
 | `POST /runs/{id}/reschedule` | `runs.reschedule` | Body `{"at": "<RFC 3339>"}`: move a delayed run that has not started; returns `{"ref": ...}`; 409 when the run is not delayed; the time reaches `Authorize` as `Resource.At` |
 | `POST /runs/{id}/steps/{step}/cancel` | `runs.cancel_step` | Withdraw one step of a run; the step reaches `Authorize` as `Resource.Step` |
+| `POST /runs/{id}/edit` | `runs.edit` | Body `{"payload": <JSON>, "priority": n, "run_at": "<RFC 3339>"}`, each optional (a field left out is not changed): change a delayed run that has not started; returns `{"ref": ...}`; 409 for a run that is not delayed, 400 for an edit that changes nothing. The change reaches `Authorize` as `Resource.Edit`, so a role may move a run and not change its payload ([Edit a run before it starts](../jobs/edit-runs.md)) |
 | `POST /runs/{id}/reset` | `runs.reset` | Body `{"step": "...", "succeeded": true}` (`succeeded` optional): re-run a failed run in place from `step`, the steps before it keeping their outputs; with `succeeded` also a run that succeeded. Returns `{"ref": ...}`, the same run; 409 for a run in another state, 400 for a step the workflow does not have. `Authorize` sees `Resource.Step` and `Resource.Reset`, so a role may reset failed runs and not redo succeeded ones ([Manage runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step)) |
 | `POST /runs/{id}/fork` | `runs.fork` | Body `{"step": "...", "idempotency_key": "...", "labels": {...}}` (key and labels optional): start a new run from a finished one at `step`; the original is not changed. Returns `{"ref": ...}`, the new run, with `"duplicate": true` when an unfinished run held the key and `ref` names it (nothing started); 409 for an unfinished run, 400 for a reserved label. `Authorize` sees `Resource.Step` and `Resource.Fork` ([Manage runs › Fork a run into a new run](../jobs/manage-runs.md#fork-a-run-into-a-new-run)) |
 | `POST /signals/waiting` | `signals.waiting` | Body `{"name": "...", "key": "...", "payload": <JSON>}` (key and payload optional): deliver the event only to the runs waiting for it now; returns `{"resumed": n}`, zero included. `Authorize` sees `Resource.Event` ([Signals › Deliver only to runs waiting now](../workflows/signals.md#deliver-only-to-runs-waiting-now)) |
@@ -125,6 +126,61 @@ Errors are `{"error": {"code": "...", "message": "..."}}`:
 | 501 | `unsupported` | The client lacks the operation (`workflow.ErrUnsupported`) |
 | 500 | `internal` | Anything else; the detail goes to `admin.WithLogger`, never to the caller |
 
+## Step 3: handle the error codes
+
+The codes are the constants `admin.CodeInvalid`, `CodeUnauthorized`, `CodeForbidden`, `CodeNotFound`, `CodeConflict`, `CodeMediaType`, `CodeUnsupported` and `CodeInternal`. They are stable, so a dashboard or a script switches on the code and shows the message to a person:
+
+<!-- snippet: examples/admin-routes/main.go#codes -->
+```go
+// apiError is the body of every error answer: {"error": {"code", "message"}}.
+type apiError struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+// nextStep says what a client of the API does about each error code. The
+// codes are stable, so a client switches on them rather than on the
+// message, which is for people.
+func nextStep(code string) string {
+	switch code {
+	case admin.CodeInvalid:
+		return "fix the request"
+	case admin.CodeUnauthorized:
+		return "log in again"
+	case admin.CodeForbidden:
+		return "ask for a role that allows it"
+	case admin.CodeNotFound:
+		return "refresh the list: the run or schedule is gone"
+	case admin.CodeConflict:
+		return "reload the run: its state changed"
+	case admin.CodeMediaType:
+		return "send Content-Type: application/json"
+	case admin.CodeUnsupported:
+		return "hide the button: the server cannot do it"
+	case admin.CodeInternal:
+		return "try again later: the server logged the cause"
+	}
+	return "unknown code " + code
+}
+```
+
+[`examples/admin-routes`](../../examples/admin-routes/) makes the handler answer each one: an empty bulk-delete filter, no token, a viewer's retry, a run that does not exist, a retry of a run that succeeded, a write without the JSON content type, and, on a second handler with no metrics source and an output store that is down, `/metrics` and a run's output:
+
+```text
+400 POST /runs/delete  invalid: fix the request
+401 GET /failures  unauthorized: log in again
+403 POST /runs/run-6/retry  forbidden: ask for a role that allows it
+404 GET /runs/no-such-run  not_found: refresh the list: the run or schedule is gone
+409 POST /runs/run-3/retry  conflict: reload the run: its state changed
+415 POST /runs/run-6/retry  unsupported_media_type: send Content-Type: application/json
+501 GET /metrics  unsupported: hide the button: the server cannot do it
+500 GET /runs/run-6/output  internal: try again later: the server logged the cause
+```
+
+The 500 says nothing of the cause; the handler logs it to `admin.WithLogger` and an `admin.WithAudit` entry carries it in `Err`.
+
 ## What is left out
 
 Payloads are not in run responses unless the handler is built with `admin.WithPayloads()`, and neither are a run's result (`output`) and its progress `data`, which are app data in the same way: they can carry personal data, and an admin screen is seen by more people than the code that wrote them. Labels and error texts are included. Responses carry `Cache-Control: no-store`.
@@ -148,6 +204,80 @@ admin POST /resume emails: 200
 resolved queue_depth queue=emails depth=0 (max 2)
 ```
 
+Every route once, with a summary of each answer, then each error code. The handler is built with captured output and run-end history, so `/runs/{id}/output` and `/metrics` answer:
+
+<!-- snippet: examples/admin-routes/main.go#mount -->
+```go
+adm := admin.New(f.c,
+	admin.WithClock(clk),    // queue waits measured on the app's clock
+	admin.WithOutputs(outs), // GET /runs/{id}/output
+	admin.WithMetrics(mm),   // GET /metrics
+)
+srv := httptest.NewServer(http.StripPrefix("/admin", admin.NewHandler(adm, auth)))
+```
+
+```sh
+go run ./admin-routes
+```
+
+```text
+-- read
+200 GET /capabilities  25 operations, output=true metrics=true
+200 GET /runs?workflow=etl&count=1&limit=1  1 run on this page, total 2, pages 2
+200 GET /runs?label=team=data*  2 runs with a team label starting data
+200 GET /runs/run-3  etl failed, failed step transform
+200 GET /failures  3 failed runs
+200 GET /discarded  1 discarded run of cleanup
+200 GET /runs/run-6/output  2 attempts captured, last: step transform, error "transform: bad date in row 7"
+-- act on many runs
+200 POST /runs/cancel  matched 4, done 0, dry run true
+200 POST /runs/retry  matched 2, done 0, dry run true
+200 POST /runs/delete  matched 1, done 1, dry run false, more match true
+-- act on one run
+200 POST /runs/run-12/retry  ref run-12
+200 POST /runs/run-23/cancel  ok true
+200 DELETE /runs/run-9  ok true
+200 POST /runs/run-25/steps/await/cancel  ok true
+200 POST /runs/run-3/reset  ref run-3
+200 POST /runs/run-3/fork  ref run-36
+200 POST /runs/run-27/complete  ok true
+200 POST /signals/waiting  resumed 1
+-- pauses and queues
+200 POST /pause  ok true
+200 GET /pauses  1 active, queue emails
+200 POST /resume  ok true
+200 GET /queues  2 queues: default workers 2, emails workers 1
+-- schedules
+200 GET /schedules  1 schedule, next fire 2026-10-15T02:00:00Z
+200 GET /schedules/schedule-1  nightly-report "0 2 * * *" in UTC, paused false
+200 POST /schedules/schedule-1/pause  ok true
+200 POST /schedules/schedule-1/resume  ok true
+200 POST /schedules/schedule-1/trigger  ref run-41
+-- a delayed run
+200 GET /runs/delayed-44?scheduled=1  scheduled, due 2026-10-14T10:00:00Z
+200 POST /runs/delayed-44/reschedule?scheduled=1  ref delayed-44
+200 POST /runs/delayed-44/edit?scheduled=1  ref delayed-44
+200 POST /runs/delayed-44/fail?scheduled=1  ok true
+-- charts, system and the UI
+200 GET /metrics?from=2026-10-14T09:00:00Z&to=2026-10-14T09:10:00Z&step=5m  2 points, first: succeeded 8 failed 5 cancelled 1 discarded 1
+200 GET /nodes  worker-1, 2 workers
+200 GET /health  live true ready true, 1 checks
+302 GET / -> ui/
+302 GET /ui -> ui/
+200 GET /ui/
+-- error codes
+400 POST /runs/delete  invalid: fix the request
+401 GET /failures  unauthorized: log in again
+403 POST /runs/run-6/retry  forbidden: ask for a role that allows it
+404 GET /runs/no-such-run  not_found: refresh the list: the run or schedule is gone
+409 POST /runs/run-3/retry  conflict: reload the run: its state changed
+415 POST /runs/run-6/retry  unsupported_media_type: send Content-Type: application/json
+501 GET /metrics  unsupported: hide the button: the server cannot do it
+500 GET /runs/run-6/output  internal: try again later: the server logged the cause
+```
+
+The delayed run's routes carry `?scheduled=1`: until it starts, its ID is a `ScheduledID`.
+
 ## Pitfalls
 
 - **Identify is your login, not a password check of its own.** Compare tokens with `crypto/subtle` or look them up by hash; the example's map lookup stands in for a session store.
@@ -157,6 +287,8 @@ resolved queue_depth queue=emails depth=0 (max 2)
 - **Mount it behind TLS and your usual rate limits.** The handler adds none of its own.
 - **Bulk actions are writes, previews are not free.** A dry run lists up to the bound of runs; a role that may preview but not act is an `Authorize` that allows `runs.retry_all` and `runs.delete_all` only with `Resource.DryRun`.
 - **`/health` is not a probe.** It needs the admin login and answers 200 whatever the verdict; give your orchestrator its own route on `workflow.CheckHealth` ([Nodes and health](../operations/nodes.md#health-and-readiness-probes)).
+- **A delayed run's ID is a `ScheduledID` until it starts.** The routes on one run take it with `?scheduled=1`; without it the ID is read as a run ID and the answer is 404.
+- **The edit body's payload is JSON.** `POST /runs/{id}/edit` sets the payload to the JSON value given, so a payload that is not JSON cannot be set over HTTP; use `Admin.EditRun` from Go.
 - **`/queues` reads pages of runs.** Poll it from a dashboard at most every few seconds; see [Admin operations › Pitfalls](operations.md#pitfalls).
 
 ## Related
@@ -164,4 +296,4 @@ resolved queue_depth queue=emails depth=0 (max 2)
 - [Admin operations](operations.md): the same operations from Go.
 - [Queue alerts](alerts.md).
 - [Per-tenant dashboard](tenants.md): `WithTenantScope`, one tenant per caller.
-- Example: [examples/admin](../../examples/admin/)
+- Examples: [examples/admin](../../examples/admin/), [examples/admin-routes](../../examples/admin-routes/) (every route and error code).

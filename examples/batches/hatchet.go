@@ -15,6 +15,11 @@ import (
 // run-finished poll and a warm local engine need seconds, not minutes.
 const finallyTimeout = 2 * time.Minute
 
+// hatchetJobs is the size of the live batch: enough child runs for the
+// coordinator to start them in a loop, few enough for a local engine to
+// finish within seconds.
+const hatchetJobs = 50
+
 // envToken turns the Hatchet part on. The Hatchet SDK reads it, and
 // HATCHET_CLIENT_HOST_PORT and HATCHET_CLIENT_TLS_STRATEGY, itself.
 const envToken = "HATCHET_CLIENT_TOKEN"
@@ -47,8 +52,8 @@ func runHatchet(ctx context.Context) error {
 
 	done := make(chan batch.Progress, 1)
 	for _, wf := range []workflow.Workflow{
-		{Name: prefix + "resize", Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}}},
-		{Name: prefix + "finally", Steps: []workflow.Step{{Name: "run", Run: workflow.Define(func(_ context.Context, p batch.Progress) (string, error) {
+		{Name: prefix + wfResize, Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}}},
+		{Name: prefix + wfFinally, Steps: []workflow.Step{{Name: "run", Run: workflow.Define(func(_ context.Context, p batch.Progress) (string, error) {
 			done <- p
 			return "", nil
 		})}}},
@@ -61,11 +66,11 @@ func runHatchet(ctx context.Context) error {
 		return err
 	}
 
-	jobs := make([]workflow.Job, 50)
+	jobs := make([]workflow.Job, hatchetJobs)
 	for i := range jobs {
-		jobs[i] = workflow.Job{Workflow: prefix + "resize"}
+		jobs[i] = workflow.Job{Workflow: prefix + wfResize}
 	}
-	id, err := m.Dispatch(ctx, batch.Batch{Name: "thumbnails", Jobs: jobs, Finally: prefix + "finally"})
+	id, err := m.Dispatch(ctx, batch.Batch{Name: "thumbnails", Jobs: jobs, Finally: prefix + wfFinally})
 	if err != nil {
 		return err
 	}

@@ -93,7 +93,29 @@ type SyncArgs struct {
 }
 ```
 
-`middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]())` then keys a job by its workflow and its `shop_id` alone, so two syncs of one shop with different cursors are the same job. A field's name is its `json` tag (the part before a comma), else its Go name, as `encoding/json` does; unexported fields are skipped. A `T` that is not a struct, or has no tagged field, makes the whole payload count, the same as no option. The tag name is `middleware.UniqueTag`.
+`middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]())` then keys a job by its workflow and its `shop_id` alone, so two syncs of one shop with different cursors are the same job. The key function is an ordinary `func(workflow.Job) string`, so it can be checked on its own before it goes into `Unique`, `UniqueUntilFinished` or `UniqueWith`:
+
+<!-- snippet: examples/unique-states/main.go#tagged-key -->
+```go
+by := middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]())
+jobs := make([]workflow.Job, 0, 3) // one per payload below
+for _, args := range []SyncArgs{{ShopID: "s-1", Cursor: "a"}, {ShopID: "s-1", Cursor: "b"}, {ShopID: "s-2", Cursor: "a"}} {
+	job, err := workflow.JobOf("sync-shop", args)
+	if err != nil {
+		return err
+	}
+	jobs = append(jobs, job)
+}
+fmt.Println("  s-1 with two cursors, same key:", by(jobs[0]) == by(jobs[1]))
+fmt.Println("  s-1 and s-2, same key:", by(jobs[0]) == by(jobs[2]))
+```
+
+```text
+  s-1 with two cursors, same key: true
+  s-1 and s-2, same key: false
+```
+
+It goes into the middleware as any key function does: `UniqueWith(middleware.UniqueConfig{By: by, ...})` in [Unique while the run waits to start](#unique-while-the-run-waits-to-start) below uses exactly this one. A field's name is its `json` tag (the part before a comma), else its Go name, as `encoding/json` does; unexported fields are skipped. A `T` that is not a struct, or has no tagged field, makes the whole payload count, the same as no option. The tag name is `middleware.UniqueTag`.
 
 ## Unique while the run waits to start
 
@@ -196,8 +218,8 @@ A digest mail is scheduled for tonight; each new comment enqueues it again with 
 mw, err := middleware.UniqueWith(middleware.UniqueConfig{
 	By:      func(j workflow.Job) string { return "digest:" + j.Labels["user"] },
 	Store:   middleware.NewMemoryUnique(clock.Real{}),
-	TTL:     24 * time.Hour,
-	Client:  mc, // implements workflow.RunEditor
+	TTL:     24 * time.Hour, // one digest per user per day
+	Client:  mc,             // implements workflow.RunEditor
 	Replace: true,
 })
 if err != nil {
@@ -271,6 +293,32 @@ process A: accepted
 process B, same user: refused (ErrDuplicate)
 expired locks pruned: 1
 process B, after expiry: accepted
+```
+
+The finer controls (tagged fields, `States`, `ReturnExisting`) are in a second program:
+
+```sh
+cd examples
+go run ./unique-states
+```
+
+```text
+key from tagged fields:
+  s-1 with two cursors, same key: true
+  s-1 and s-2, same key: false
+unique while waiting to start:
+  s-1 in an hour: accepted
+  s-1 now, other cursor, first one scheduled: refused (ErrDuplicate)
+  s-2 now: accepted
+  started {"shop_id":"s-2","cursor":""}
+  started {"shop_id":"s-1","cursor":"a"}
+  s-1 again, first one running: accepted
+  started {"shop_id":"s-1","cursor":"c"}
+return the existing run:
+  first: same run true, duplicate false (reported true)
+  second: same run true, duplicate true (reported true)
+  key first: duplicate false
+  key second: duplicate true
 ```
 
 ## Pitfalls

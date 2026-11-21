@@ -55,7 +55,7 @@ The stores that apps use without the queue have their own lists, under their own
 
 | Store | Owner constant | Migrations | Applied by |
 |---|---|---|---|
-| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version` | `Client.Migrate` |
+| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version`, `011_fair_turns` | `Client.Migrate` |
 | `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
 | `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
 | `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
@@ -81,7 +81,39 @@ if err := locks.Migrate(ctx); err != nil { // its own list: only the lock table
 }
 ```
 
-The ledger then holds the unique store's rows only. The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
+The ledger then holds the unique store's rows only.
+
+Every ledger row is keyed by its owner and name, so a tool of your own (or a check in your deploy pipeline) can tell the lists apart with the owner constants. `MigrationScripts` returns the lists `Client.Migrate` applies, each script carrying its `Owner`; the outbox has its own `outbox.MigrationScripts`:
+
+<!-- snippet: examples/migrations-export/main.go#owners -->
+```go
+queue, err := sqlstore.MigrationScripts(sqlb.SQLiteDialect{}) // what Client.Migrate applies
+if err != nil {
+	return err
+}
+box, err := outbox.MigrationScripts(sqlb.SQLiteDialect{}) // what Outbox.Migrate applies
+if err != nil {
+	return err
+}
+inClient := map[string]int{}
+for _, m := range queue {
+	inClient[m.Owner]++ // the ledger keys every row by (Owner, Name)
+}
+fmt.Println("migrations per owner:")
+for _, owner := range []string{sqlstore.MigrationOwner, sqlstore.UniqueMigrationOwner, sqlstore.DebounceMigrationOwner, outbox.MigrationOwner} {
+	fmt.Printf("  %s: %d in Client.Migrate\n", owner, inClient[owner])
+}
+fmt.Printf("  %s: %d in Outbox.Migrate\n", outbox.MigrationOwner, len(box))
+```
+
+```text
+migrations per owner:
+  ubgo/workflow/sqlstore: 11 in Client.Migrate
+  ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
+  ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 1 in Outbox.Migrate
+``` The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
 
 ## Rolling back the code
 
@@ -111,7 +143,7 @@ scripts, err := sqlstore.MigrationScripts(sqlb.PostgresDialect{},
 if err != nil {
 	return err
 }
-if err := os.MkdirAll(dir, 0o755); err != nil {
+if err := os.MkdirAll(dir, 0o755); err != nil { // rwxr-xr-x: anyone may read the scripts
 	return err
 }
 for i, m := range scripts {
@@ -119,7 +151,7 @@ for i, m := range scripts {
 	// so a later release's new migrations are the only ones it applies.
 	name := fmt.Sprintf("%03d_%s_%s.sql", i+1, strings.ReplaceAll(m.Owner, "/", "_"), m.Name)
 	body := "-- owner: " + m.Owner + "\n-- name: " + m.Name + "\n" + strings.Join(m.Statements, ";\n\n") + ";\n"
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil { // rw-r--r--
 		return err
 	}
 	fmt.Println("wrote", name)
@@ -231,6 +263,12 @@ started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique
   ubgo/workflow/sqlstore/unique 002_unique_holder
+migrations per owner:
+  ubgo/workflow/sqlstore: 11 in Client.Migrate
+  ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
+  ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 1 in Outbox.Migrate
 refused, unknown migrations: [099_from_the_future]
 Start refused too: sqlstore: the database schema is newer than this code
 postgres: CREATE TABLE IF NOT EXISTS "jobs"."wf_runs"

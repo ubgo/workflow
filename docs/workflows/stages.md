@@ -107,9 +107,43 @@ export := workflow.Workflow{Name: "export", Steps: []workflow.Step{{
 
 `After` is the soft deadline for every step; `For` returns one per step (zero means none for that step). `middleware.SoftExpired(ctx)` reports the same thing for a handler that checks between units of work. Outside `SoftTimeout`, `SoftDone` returns nil, which blocks for ever in a `select`, so a handler can watch it unconditionally. `middleware.Stuck` reports long attempts to an outside callback; `SoftTimeout` tells the attempt itself.
 
+## Try it
+
+```sh
+cd examples
+go run ./flow-stages
+```
+
+```text
+stages:
+  merge after both fetches: true
+  publishing after merge: true
+  run result: {"publish-web":"publish-web","publish-feed":"publish-feed"}
+when:
+  "icon.png" -> "icon.png"
+  "poster-large.png" -> resized "poster-large.png"
+milestone:
+  before payment the run has ended: false
+  after payment: {"pay":null,"ship":"shipped"}
+soft timeout:
+  step returned before its hard timeout: true
+```
+
+`merge` started only after both fetches ended and both publishes only after `merge`; the run's result is the object of its two last steps. The short file name skipped `resize` and reached `store` unchanged. `ship` waited, without failing, until `pay` set the state, and the export returned its partial count before the 50 ms timeout.
+
 ## Pitfalls
 
 - `When` passes on the step's input, not its parents' outputs one by one: a step with several parents passes on the JSON object keyed by their names, so its children see a different shape than if it had run. Give a conditional step one parent when its output shape matters.
 - A `Milestone` waits by snoozing. On a driver without `workflow.CapSnooze` every look spends an attempt, so the step can fail before the state arrives; use `Skip` or a generous retry policy there.
 - Drivers time `Step.Timeout` on their own clock, not as a ctx deadline, so `SoftTimeout` cannot read the hard timeout. Set `After` or `For` below the step's `Timeout`, or the soft deadline never comes first.
 - `Stages` only sets `After`. A failed step in one stage stops the later stages the way any failed parent does.
+
+## Related
+
+- [Workflows and steps](steps.md): steps, `After` and step input.
+- [Branching](branching.md): pick one of several paths with `Choice`.
+- [Memoise work inside a step](memoisation.md): `Memo`, `MapEach` and run data, which `Milestone` reads.
+- [Trigger rules](trigger-rules.md): steps that run when their parents fail or are skipped.
+- [Step middleware](../middleware/step-middleware.md): `SoftTimeout` beside the other step wrappers.
+- [Timeouts](../jobs/timeouts.md): the hard `Step.Timeout`.
+- Example: [examples/flow-stages](../../examples/flow-stages/)

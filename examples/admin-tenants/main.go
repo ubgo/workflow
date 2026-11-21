@@ -2,8 +2,9 @@
 // each confined to its own tenant with admin.WithTenantScope: a
 // customer's run list holds only its runs, another tenant's run answers
 // 404, a filter naming another tenant and the system-wide routes answer
-// 403, a bulk cancel touches only the caller's runs, and an operator
-// given admin.AllTenants sees everything.
+// 403, an Authorize that reads admin.TenantFrom lets a customer cancel
+// but not delete, a bulk cancel touches only the caller's runs, and an
+// operator given admin.AllTenants sees everything.
 //
 // It is the program behind docs/admin/tenants.md: the guide copies its
 // regions (marked "snippet:") and task docs:snippets fails when they
@@ -27,6 +28,7 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "admin-tenants:", err)
@@ -49,6 +51,8 @@ var tokens = map[string]user{
 	"t-ops":    {"oz", ""},
 }
 
+// auth identifies a request's user by its bearer token and checks each
+// action with authorize.
 var auth = admin.Auth[user]{
 	Identify: func(r *http.Request) (user, error) {
 		u, ok := tokens[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
@@ -57,7 +61,7 @@ var auth = admin.Auth[user]{
 		}
 		return u, nil
 	},
-	Authorize: func(context.Context, admin.Request[user]) error { return nil },
+	Authorize: authorize,
 }
 
 // scope confines a customer to its tenant and lets an operator see all.
@@ -69,6 +73,29 @@ var scope = admin.WithTenantScope(func(_ *http.Request, u user) (string, error) 
 })
 
 // snippet:end
+
+// snippet:authorize
+// authorize lets a customer's users read their tenant's runs and cancel
+// them, and nothing else; an operator may do anything. The scope has
+// already confined the request to the tenant: TenantFrom says which one,
+// and false for an operator given AllTenants.
+func authorize(_ context.Context, req admin.Request[user]) error {
+	tenant, scoped := admin.TenantFrom(req.HTTP.Context())
+	if !scoped || req.Action.ReadOnly() {
+		return nil
+	}
+	switch req.Action {
+	case admin.ActionCancelRun, admin.ActionCancelRuns:
+		return nil
+	}
+	return fmt.Errorf("%s users may not %s", tenant, req.Action)
+}
+
+// snippet:end
+
+// pollInterval is how often waitWaiting re-reads the run list: the
+// in-memory driver parks these runs within milliseconds.
+const pollInterval = 5 * time.Millisecond
 
 // export waits for an event, so its runs stay open while the program
 // calls the API.
@@ -89,14 +116,15 @@ func run(ctx context.Context) error {
 		return err
 	}
 	refs := map[string]workflow.RunRef{}
-	for _, t := range []string{"acme", "acme", "globex"} {
+	tenants := []string{"acme", "acme", "globex"} // one run per entry
+	for _, t := range tenants {
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "export", Tenant: t})
 		if err != nil {
 			return err
 		}
 		refs[t] = ref
 	}
-	if err := waitWaiting(ctx, c, 3); err != nil {
+	if err := waitWaiting(ctx, c, len(tenants)); err != nil {
 		return err
 	}
 
@@ -106,6 +134,8 @@ func run(ctx context.Context) error {
 	// snippet:end
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
+	// call sends one admin API request as the user of token and returns
+	// the status code and the trimmed body.
 	call := func(method, path, token, body string) (int, string) {
 		req, _ := http.NewRequestWithContext(ctx, method, srv.URL+path, strings.NewReader(body))
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -122,8 +152,10 @@ func run(ctx context.Context) error {
 		}
 		return resp.StatusCode, strings.TrimSpace(string(b))
 	}
+	// listed lists runs as the user of token and returns the status code
+	// and the tenant of each run listed, comma-separated.
 	listed := func(token string) (int, string) {
-		code, body := call("GET", "/admin/runs", token, "")
+		code, body := call(http.MethodGet, "/admin/runs", token, "")
 		var page struct {
 			Runs []struct {
 				Tenant string `json:"tenant"`
@@ -140,13 +172,13 @@ func run(ctx context.Context) error {
 	fmt.Println("-- A customer sees its own tenant")
 	code, ts := listed("t-acme")
 	fmt.Printf("acme GET /runs: %d, tenants %s\n", code, ts)
-	code, _ = call("GET", "/admin/runs/"+string(refs["globex"].RunID), "t-acme", "")
+	code, _ = call(http.MethodGet, "/admin/runs/"+string(refs["globex"].RunID), "t-acme", "")
 	fmt.Println("acme GET globex's run:", code)
-	code, _ = call("GET", "/admin/runs?tenant=globex", "t-acme", "")
+	code, _ = call(http.MethodGet, "/admin/runs?tenant=globex", "t-acme", "")
 	fmt.Println("acme GET /runs?tenant=globex:", code)
-	code, _ = call("GET", "/admin/queues", "t-acme", "")
+	code, _ = call(http.MethodGet, "/admin/queues", "t-acme", "")
 	fmt.Println("acme GET /queues:", code)
-	_, body := call("GET", "/admin/capabilities", "t-acme", "")
+	_, body := call(http.MethodGet, "/admin/capabilities", "t-acme", "")
 	var caps struct {
 		Tenant string `json:"tenant"`
 	}
@@ -155,8 +187,10 @@ func run(ctx context.Context) error {
 	}
 	fmt.Println("acme GET /capabilities: tenant", caps.Tenant)
 
+	code, body = call(http.MethodDelete, "/admin/runs/"+string(refs["acme"].RunID), "t-acme", "")
+	fmt.Println("acme DELETE its own run:", code, body)
 	fmt.Println("-- A bulk action stays in the tenant")
-	code, body = call("POST", "/admin/runs/cancel", "t-acme", `{"workflow":"export","statuses":["waiting"]}`)
+	code, body = call(http.MethodPost, "/admin/runs/cancel", "t-acme", `{"workflow":"export","statuses":["waiting"]}`)
 	fmt.Println("acme POST /runs/cancel:", code, body)
 	st, err := c.Status(ctx, refs["globex"])
 	if err != nil {
@@ -167,7 +201,7 @@ func run(ctx context.Context) error {
 	fmt.Println("-- An operator sees every tenant")
 	code, ts = listed("t-ops")
 	fmt.Printf("ops GET /runs: %d, tenants %s\n", code, ts)
-	code, _ = call("GET", "/admin/queues", "t-ops", "")
+	code, _ = call(http.MethodGet, "/admin/queues", "t-ops", "")
 	fmt.Println("ops GET /queues:", code)
 	return nil
 }
@@ -182,7 +216,7 @@ func waitWaiting(ctx context.Context, c *memory.Client, n int) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(5 * time.Millisecond):
+		case <-time.After(pollInterval):
 		}
 	}
 }

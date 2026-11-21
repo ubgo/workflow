@@ -106,7 +106,7 @@ if err != nil {
 	return err
 }
 t := monday
-for range 3 {
+for range 3 { // the next three fires
 	t = s.Next(t, ny) // strictly after t, evaluated in New York
 	fmt.Println(" ", t.Format(layout))
 }
@@ -118,8 +118,8 @@ When both the day of month and the day of week are restricted (neither field sta
 
 <!-- snippet: examples/cron-schedules/main.go#vixie -->
 ```go
-both, _ := cron.Parse("0 0 1 * MON") // day of month AND day of week restricted
-fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10)
+both, _ := cron.Parse("0 0 1 * MON")                                 // day of month AND day of week restricted
+fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10) // at most 10 in a month
 var days []string
 for _, f := range fires {
 	days = append(days, f.Format("Mon 2 Jan"))
@@ -263,8 +263,8 @@ A `cron.Calendar` writes the fire times as lists of field values instead of a cr
 <!-- snippet: examples/schedule-specs/main.go#calendar -->
 ```go
 spec := cron.Calendar{
-	Hour:      []int{9},
-	Minute:    []int{0, 30},
+	Hour:      []int{9},     // at nine
+	Minute:    []int{0, 30}, // on the hour and half past
 	DayOfWeek: []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday},
 }
 expr, err := spec.Expr() // "0,30 9 * * 1-5", a plain cron string every driver takes
@@ -293,6 +293,7 @@ if pe, ok := errors.AsType[*cron.ParseError](err); ok {
 
 <!-- snippet: examples/cron-schedules/main.go#dialect -->
 ```go
+// withQuarter reads the @quarter-hour macro and hands everything else to cron.Parse.
 withQuarter := func(expr string) (cron.Schedule, error) {
 	if expr == "@quarter-hour" {
 		expr = "*/15 * * * *"
@@ -308,9 +309,133 @@ A parser must return a `cron.Schedule` whose `Next` never returns a time at or b
 
 On the SQL driver, schedules are rows with their next fire time, and every client registered for the workflow competes to fire them. A tick is fired by moving the schedule's next fire time on from the value that client read and inserting a (schedule, fire time) row, in one transaction: the client that wins enqueues the run, any other fails and enqueues nothing. A tick therefore runs once across any number of processes sharing the database, with no leader election. The memory driver is one process, so the question does not arise; on Hatchet the engine fires crons.
 
+Nothing is needed beyond the usual start-up: every process registers the same workflows, cron included, and starts. The [postgres-cluster](../../examples/postgres-cluster/) program declares an hourly cron:
+
+<!-- snippet: examples/postgres-cluster/main.go#workflows -->
+```go
+workflows := []workflow.Workflow{
+	{Name: "resize", Steps: []workflow.Step{{Name: "only", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		ran.hit(ctx)
+		return in, nil
+	}}}},
+	{Name: "hourly-report", Cron: []string{"0 * * * *"}, Steps: []workflow.Step{{Name: "only", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		ticks <- clk.Now()
+		return nil, nil
+	}}}},
+}
+```
+
+and starts three clients on one database (SQLite by default, Postgres with `PG_DSN`), sharing one fake clock so the program decides when 10:00 comes:
+
+<!-- snippet: examples/postgres-cluster/main.go#workers -->
+```go
+// Every process runs the same start-up: Migrate (safe to run from all of
+// them at once; the engine's lock serialises it), Register, Start.
+startCtx, stopAll := context.WithCancel(ctx)
+defer stopAll()
+clients := make([]*sqlstore.Client, workers)
+for i := range clients {
+	c, err := sqlstore.New(db, dialect,
+		sqlstore.WithTablePrefix(prefix),
+		sqlstore.WithClock(clk),
+		sqlstore.WithPollInterval(pollInterval), // 20ms so the demo is quick; the default is 1s
+	)
+	if err != nil {
+		return err
+	}
+	if err := c.Migrate(ctx); err != nil {
+		return err
+	}
+	for _, wf := range workflows {
+		if err := c.Register(wf); err != nil {
+			return err
+		}
+	}
+	if err := c.Start(startCtx); err != nil {
+		return err
+	}
+	clients[i] = c
+}
+```
+
+When the clock passes 10:00 all three see the tick due; one fires it, and nothing fires a second time:
+
+```sh
+cd examples
+go run ./postgres-cluster
+```
+
+```text
+30 jobs, 30 ran exactly once
+hourly-report fired at 10:00
+fired once across 3 workers
+stopped; Enqueue now fails with workflow: client not started
+```
+
+To fire crons on one chosen node only, see [the SQL driver › Clocks, skew and one fire node](../drivers/sqlstore.md#clocks-skew-and-one-fire-node).
+
 ## Which tick a run is for
 
-A run that a schedule fired knows the tick it stands for. Drivers with `workflow.CapTickTime` (the memory, SQL, Redis and Hatchet drivers) put it on every fired run as the reserved label `workflow.LabelTickAt`, in UTC, and a step reads it with `StepInfo.TickAt()` (or `workflow.TickTime(labels)` from a run's labels). Use it instead of the clock when the job is about a period: a daily report that starts late, or a misfire catch-up firing three missed days in a row, still knows which day each run is for. A manual trigger (`ScheduleTriggerer`) carries the driver's clock at the trigger. A run enqueued by hand has no tick, and `TickAt` reports false.
+A run that a schedule fired knows the tick it stands for. Drivers with `workflow.CapTickTime` (the memory, SQL, Redis and Hatchet drivers) put it on every fired run as the reserved label `workflow.LabelTickAt`, in UTC. Use it instead of the clock when the job is about a period: a report that starts late, or a misfire catch-up firing three missed hours in a row, still knows which hour each run is for.
+
+A step reads it with `StepInfo.TickAt()`, which reports false for a run no schedule fired:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#period -->
+```go
+func period(ctx context.Context) (from, to time.Time, ok bool) {
+	info, _ := workflow.StepInfoFrom(ctx)
+	tick, ok := info.TickAt() // the tick the schedule fired this run for, in UTC
+	if !ok {
+		return time.Time{}, time.Time{}, false // enqueued by hand: no tick
+	}
+	return tick.Add(-time.Hour), tick, true
+}
+```
+
+Code that holds a run's labels instead of a step context (a run listing, a run-finished hook) reads it with `workflow.TickTime(labels)`:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#labels -->
+```go
+var ticks []string
+for _, r := range page.Runs {
+	if at, ok := workflow.TickTime(r.Labels); ok { // the tick from a run's labels
+		ticks = append(ticks, at.In(loc).Format(hourFormat))
+	}
+}
+```
+
+To unit-test such a step without a driver, build the labels a driver would set with `workflow.FiredLabelsAt(labels, scheduleID, name, tick)` and put them in the context with `workflow.WithStepInfo`:
+
+<!-- snippet: examples/schedule-keep-runs/main_test.go#test -->
+```go
+tick := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
+labels := workflow.FiredLabelsAt(nil, "sched-1", "hourly-import", tick) // what the driver sets
+ctx := workflow.WithStepInfo(context.Background(), workflow.StepInfo{Labels: labels})
+from, to, ok := period(ctx)
+if !ok || !from.Equal(tick.Add(-time.Hour)) || !to.Equal(tick) {
+	t.Fatalf("period = %v, %v, %v; want the hour ending at %v", from, to, ok, tick)
+}
+```
+
+In the [schedule-keep-runs](../../examples/schedule-keep-runs/) program the process is down from 10:30 to 13:30, and the three missed ticks fire together at 13:30; each run still imports its own hour:
+
+```text
+-- after a three-hour outage
+  tick 11:00, run at 13:30: orders 10:00-11:00, rows 7-9
+  tick 12:00, run at 13:30: orders 11:00-12:00, rows 10-12
+  tick 13:00, run at 13:30: orders 12:00-13:00, rows 13-15
+```
+
+What the label holds for each way a run can start:
+
+| Run started by | `TickAt` |
+|---|---|
+| A cron tick, on time or caught up after a misfire | that tick |
+| `ScheduleTriggerer.TriggerSchedule` (trigger now) | the driver's clock at the trigger |
+| [`workflow.Backfill`](backfill.md) | the backfilled tick |
+| `Client.Enqueue` by hand | none: `ok` is false |
+
+A driver without `CapTickTime` sets no label, so check the capability when the step depends on it.
 
 ## Try it
 
@@ -393,3 +518,5 @@ on a workflow:
 - [Run a job later](../jobs/delays.md) for a one-off delayed run
 - [The test fake](../testing/fake.md) (`AssertScheduled`)
 - Example: [`examples/cron-schedules`](../../examples/cron-schedules)
+- Example: [examples/schedule-keep-runs](../../examples/schedule-keep-runs/) (the tick a run is for); [examples/postgres-cluster](../../examples/postgres-cluster/) (one fire per tick across three workers)
+- [Latest-only runs](latest-only.md): skip the older runs of a catch-up

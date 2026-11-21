@@ -90,7 +90,7 @@ Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger 
 | Hatchet worker name | `ubgo-workflow` (`hatchet.DefaultWorkerName`) unless `Config.WorkerName`; with `Config.Queues`, one worker per queue named `<WorkerName>-<queue>` | Hatchet's dashboard |
 | Postgres wake-up channel | `ubgo_workflow_<prefix>wake`, or `ubgo_workflow_<schema>_<prefix>wake` with `WithSchema`; a name over 63 bytes is hashed to `ubgo_workflow_<32 hex>` | `sqlstore.WithNotifier` (`pgnotify`), shared by the clients of one set of tables |
 | Tick skip reason for overlap | `overlap` (`workflow.TickReasonOverlap`) | `Tick.Reason` of a tick `OverlapSkip` held back |
-| Sentry tags and context | `workflow.name`, `workflow.step`, `workflow.status`, `workflow.final` (`sentry.TagWorkflow`, `TagStep`, `TagStatus`, `TagFinal`); opted-in labels as `workflow.label.<key>` (`TagLabelPrefix`); the context `workflow` (`ContextName`) with run ID, scheduled ID, attempt and time | Events of `sentry.Reporter` |
+| Sentry tags and context | `workflow.name`, `workflow.step`, `workflow.status`, `workflow.final` (`sentry.TagWorkflow`, `TagStep`, `TagStatus`, `TagFinal`); opted-in labels as `workflow.label.<key>` (`TagLabelPrefix`); the context `workflow` (`ContextName`) with run ID, scheduled ID, attempt and time | Events of `sentry.Reporter`; set up in [Report to Sentry](../observability/failure-alerts.md#report-to-sentry), labels opted in with `sentry.WithLabels` |
 | Default queue | `default` (`workflow.DefaultQueue`) | The queue of a workflow and job that name none |
 | Hatchet batch coordinator | The engine workflow `ubgo-workflow-batch-coordinator` | Registered by every Hatchet client with the coordinator on |
 | Function runs | The workflow is the `Func`'s own name, with one step `func` (`workflow.FuncStep`) | `RunInfo`, `RunEvent`, `StepInfo` of a run of a `Func` |
@@ -111,34 +111,35 @@ Under `WithSchema` the recorded owner is `<owner>@<schema>`, because the ledger 
 
 ## Metrics
 
-The `otel` package records under the instrumentation scope `github.com/ubgo/workflow/otel` (`otel.ScopeName`).
+The `otel` package records under the instrumentation scope `github.com/ubgo/workflow/otel` (`otel.ScopeName`). The Guide column links the section that turns each one on.
 
-| Metric | Constant | Type and unit | What it counts |
+| Metric | Constant | Type and unit | What it counts | Guide |
+|---|---|---|---|---|
+| `workflow.step.duration` | `otel.MetricStepDuration` | Histogram, `s` | The duration of each step attempt | [Metrics](../observability/opentelemetry.md#metrics) |
+| `workflow.step.outcomes` | `otel.MetricStepOutcomes` | Counter, `{attempt}` | Step attempts by outcome | [Metrics](../observability/opentelemetry.md#metrics) |
+| `workflow.enqueue.count` | `otel.MetricEnqueueCount` | Counter, `{job}` | Enqueues by outcome | [Metrics](../observability/opentelemetry.md#metrics) |
+| `workflow.queue.wait` | `otel.MetricQueueWait` | Histogram, `s` | How long each step attempt waited for a worker, from `StepInfo.ReadyAt` to its start (buckets `otel.QueueWaitBuckets()`, 5 ms to 1 h); no sample when the driver sets no `ReadyAt` | [Queue wait and queue depth](../observability/opentelemetry.md#queue-wait-and-queue-depth) |
+| `workflow.runs.finished` | `otel.MetricRunsFinished` | Counter, `{run}` | Run ends by `workflow.name` and `workflow.run.status`, recorded by the observer `Instrumentation.RunFinished()` returns; delivery is at least once, so a redelivered end counts again | [Count run ends](../observability/opentelemetry.md#count-run-ends) |
+| `workflow.queue.depth` | `otel.MetricQueueDepth` | Observable gauge, `{run}` | Runs waiting per queue, read at each collection through `Instrumentation.ObserveQueueDepth(fn)` (for example `admin.Admin.QueueDepths`) | [Queue wait and queue depth](../observability/opentelemetry.md#queue-wait-and-queue-depth) |
+
+Spans are named `workflow.step <workflow>/<step>` per step attempt and `workflow.enqueue <workflow>` per enqueue, unless renamed with `WithStepSpanName` and `WithEnqueueSpanName` ([Span names](../observability/opentelemetry.md#span-names)). The step metrics carry `workflow.name`, `workflow.step`, `workflow.queue` and `workflow.outcome`, the enqueue counter `workflow.name` and `workflow.outcome`, plus `workflow.queue` when `Job.Queue` is set; run IDs never become metric attributes. The attributes:
+
+| Attribute | Constant | Value | Guide |
 |---|---|---|---|
-| `workflow.step.duration` | `otel.MetricStepDuration` | Histogram, `s` | The duration of each step attempt |
-| `workflow.step.outcomes` | `otel.MetricStepOutcomes` | Counter, `{attempt}` | Step attempts by outcome |
-| `workflow.enqueue.count` | `otel.MetricEnqueueCount` | Counter, `{job}` | Enqueues by outcome |
-| `workflow.queue.wait` | `otel.MetricQueueWait` | Histogram, `s` | How long each step attempt waited for a worker, from `StepInfo.ReadyAt` to its start (buckets `otel.QueueWaitBuckets()`, 5 ms to 1 h); no sample when the driver sets no `ReadyAt` |
-| `workflow.runs.finished` | `otel.MetricRunsFinished` | Counter, `{run}` | Run ends by `workflow.name` and `workflow.run.status`, recorded by the observer `Instrumentation.RunFinished()` returns; delivery is at least once, so a redelivered end counts again |
-| `workflow.queue.depth` | `otel.MetricQueueDepth` | Observable gauge, `{run}` | Runs waiting per queue, read at each collection through `Instrumentation.ObserveQueueDepth(fn)` (for example `admin.Admin.QueueDepths`) |
-
-Spans are named `workflow.step <workflow>/<step>` per step attempt and `workflow.enqueue <workflow>` per enqueue, unless renamed with `WithStepSpanName` and `WithEnqueueSpanName`. The step metrics carry `workflow.name`, `workflow.step`, `workflow.queue` and `workflow.outcome`, the enqueue counter `workflow.name` and `workflow.outcome`, plus `workflow.queue` when `Job.Queue` is set; run IDs never become metric attributes. The attributes:
-
-| Attribute | Constant | Value |
-|---|---|---|
-| `workflow.name` | `otel.AttrWorkflow` | The workflow name |
-| `workflow.step` | `otel.AttrStep` | The step name |
-| `workflow.run_id` | `otel.AttrRunID` | The run ID |
-| `workflow.attempt` | `otel.AttrAttempt` | The attempt number |
-| `workflow.queue` | `otel.AttrQueue` | The queue a step ran on (`StepInfo.Queue`); on the enqueue span and counter only when `Job.Queue` is set, since the workflow's own queue is resolved later by the driver |
-| `workflow.outcome` | `otel.AttrOutcome` | `ok`, `error`, `permanent`, `cancelled` or `discarded` (`otel.OutcomeOK`, `OutcomeError`, `OutcomePermanent`, `OutcomeCancelled`, `OutcomeDiscarded`) |
-| `workflow.run.status` | `otel.AttrRunStatus` | On `workflow.runs.finished`: `succeeded`, `failed`, `cancelled`, or `discarded` on a driver with `CapRunStates` |
-| `workflow.tenant` | `otel.AttrTenant` | `Job.Tenant` (`StepInfo.Tenant`), on step and enqueue spans only with `WithTenant` |
-| `workflow.label.<key>` | `otel.LabelAttributePrefix` | A job label, only on opt-in: on spans with `WithLabelFilter` or `WithAllLabels`, on metrics with `WithMetricLabels`, one key at a time |
+| `workflow.name` | `otel.AttrWorkflow` | The workflow name | [Add tracing and metrics](../observability/opentelemetry.md#add-tracing-and-metrics) |
+| `workflow.step` | `otel.AttrStep` | The step name | [Add tracing and metrics](../observability/opentelemetry.md#add-tracing-and-metrics) |
+| `workflow.run_id` | `otel.AttrRunID` | The run ID | [Add tracing and metrics](../observability/opentelemetry.md#add-tracing-and-metrics) |
+| `workflow.attempt` | `otel.AttrAttempt` | The attempt number | [Add tracing and metrics](../observability/opentelemetry.md#add-tracing-and-metrics) |
+| `workflow.queue` | `otel.AttrQueue` | The queue a step ran on (`StepInfo.Queue`); on the enqueue span and counter only when `Job.Queue` is set, since the workflow's own queue is resolved later by the driver | [Metrics](../observability/opentelemetry.md#metrics) |
+| `workflow.outcome` | `otel.AttrOutcome` | `ok`, `error`, `permanent`, `cancelled` or `discarded` (`otel.OutcomeOK`, `OutcomeError`, `OutcomePermanent`, `OutcomeCancelled`, `OutcomeDiscarded`) | [Metrics](../observability/opentelemetry.md#metrics) |
+| `workflow.run.status` | `otel.AttrRunStatus` | On `workflow.runs.finished`: `succeeded`, `failed`, `cancelled`, or `discarded` on a driver with `CapRunStates` | [Count run ends](../observability/opentelemetry.md#count-run-ends) |
+| `workflow.tenant` | `otel.AttrTenant` | `Job.Tenant` (`StepInfo.Tenant`), on step and enqueue spans only with `WithTenant` | [Tenants](../jobs/tenants.md#read-the-tenant-where-the-run-is) |
+| `workflow.label.<key>` | `otel.LabelAttributePrefix` | A job label, only on opt-in: on spans with `WithLabelFilter` or `WithAllLabels`, on metrics with `WithMetricLabels`, one key at a time | [Job labels on spans](../observability/opentelemetry.md#job-labels-on-spans), [Metrics](../observability/opentelemetry.md#metrics) |
 
 ## Related
 
 - [Labels](../concepts/labels.md): what labels are for and how they travel.
 - [Migrations](../operations/migrations.md): the ledger, `MigrationScripts` and running `Migrate` in a deploy.
 - [OpenTelemetry](../observability/opentelemetry.md): wiring the spans and metrics.
+- [Failure alerts and error reporting](../observability/failure-alerts.md#report-to-sentry): the Sentry reporter that sets the tags and context above.
 - [Feature index](features.md).

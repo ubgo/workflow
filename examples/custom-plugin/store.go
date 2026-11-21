@@ -15,7 +15,10 @@ import (
 // Redis gives both (SET key value NX PX ttl, and a compare-and-delete
 // script); so does a SQL table with a primary key.
 type KV interface {
+	// SetNX stores value under key for ttl unless a live value is there,
+	// and reports whether it did.
 	SetNX(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
+	// DeleteIfEquals deletes key only while it still holds value.
 	DeleteIfEquals(ctx context.Context, key, value string) error
 }
 
@@ -28,12 +31,17 @@ type kvUnique struct {
 	prefix string
 }
 
+// kvUnique must keep satisfying the interface middleware.Unique takes.
 var _ middleware.UniqueStore = kvUnique{}
 
+// Acquire implements middleware.UniqueStore: one atomic SetNX of the
+// prefixed key with the owner as its value.
 func (s kvUnique) Acquire(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
 	return s.kv.SetNX(ctx, s.prefix+key, owner, ttl)
 }
 
+// Release implements middleware.UniqueStore: it deletes the lock only if
+// owner still holds it.
 func (s kvUnique) Release(ctx context.Context, key, owner string) error {
 	return s.kv.DeleteIfEquals(ctx, s.prefix+key, owner)
 }
@@ -48,13 +56,17 @@ type memKV struct {
 	m   map[string]memEntry
 }
 
+// memEntry is one stored value and the instant it stops counting.
 type memEntry struct {
 	value   string
 	expires time.Time
 }
 
+// newMemKV returns an empty memKV that reads expiry times from clk.
 func newMemKV(clk clock.Clock) *memKV { return &memKV{clk: clk, m: map[string]memEntry{}} }
 
+// SetNX implements KV: it stores value unless the key holds a value that
+// has not expired yet.
 func (k *memKV) SetNX(_ context.Context, key, value string, ttl time.Duration) (bool, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -66,6 +78,7 @@ func (k *memKV) SetNX(_ context.Context, key, value string, ttl time.Duration) (
 	return true, nil
 }
 
+// DeleteIfEquals implements KV: it deletes the key only while it holds value.
 func (k *memKV) DeleteIfEquals(_ context.Context, key, value string) error {
 	k.mu.Lock()
 	defer k.mu.Unlock()

@@ -6,8 +6,8 @@ A revenue report should run when its input tables have new data, not at a guesse
 
 - A `Datasets` sits on an [`events.Bus`](publish-subscribe.md) and starts trigger runs on the bus's client, so deduplication rides on the client's idempotency keys: `events.New` refuses a client without `workflow.CapIdempotencyKey` unless you pass `events.AllowDuplicates()`. Every driver declares the capability.
 - Triggers are code, registered at boot in every process that announces versions, as workflows and bus subscriptions are.
-- Trigger state and lineage live in an `events.LineageStore`. The default, `events.MemoryLineage`, is in-process; processes that announce versions of the same datasets need one shared store, `sqlstore.LineageStore` or `redis.LineageStore` (see [Share the store](#share-the-store-between-processes)).
-- The example is [`examples/datasets`](../../examples/datasets). Run it with `go run ./datasets` from `examples/`.
+- Trigger state and lineage live in an `events.LineageStore`. The default, `events.MemoryLineage`, is in-process; processes that announce versions of the same datasets need one shared store, `sqlstore.LineageStore` or `redis.LineageStore` (see [Share the store between processes](#share-the-store-between-processes)).
+- The example is [`examples/datasets`](../../examples/datasets), on the in-memory driver. Run it with `go run ./datasets` from `examples/`. The stores are shown by [`examples/datasets-shared`](../../examples/datasets-shared): `MemoryLineage` on its own, and two processes sharing `sqlstore.LineageStore` on a SQLite file (`go run ./datasets-shared`).
 
 ## Start a workflow when a dataset changes
 
@@ -90,22 +90,85 @@ for _, r := range reads {
 
 Each `events.Lineage` record has a `Kind` (`events.LineageProduced` or `events.LineageConsumed`), the `Dataset` and `Version`, the producer's `Meta`, the `Run`, `Workflow` and `Step` (no step on a consumed record; no run when the driver hands out only a `ScheduledID` for a delayed run), the consuming `Trigger` and the time `At`. `Outputs` and `Inputs` refuse an empty run ID with `ErrInvalid`.
 
-## Share the store between processes
+## Keep lineage in memory for one process and for tests
 
-A trigger's decision is a function of the store alone: the newest produced version of each dataset against the version the trigger consumed last. Nothing is kept in the process, so a restart or another process sharing the store decides the same way. `events.MemoryLineage` is right for tests and a single process; it is lost on restart and grows by one record per new version and per trigger run. With several processes (web replicas announcing uploads, workers announcing loads), give every `Datasets` one durable store with `events.WithLineage`:
+`events.NewMemoryLineage()` returns an `*events.MemoryLineage`, the store `NewDatasets` uses when no `events.WithLineage` is given. It keeps the records in a slice guarded by a mutex: right for tests and a single process, lost on restart, and it grows by one record per new version and per trigger run. It follows the same `Record` and `Find` rules as the durable stores, so a test against it exercises your lineage code the way production runs it:
 
-- `sqlstore.LineageStore` on SQLite, Postgres or MySQL: an append-only table `<prefix>lineage`. Build it with `sqlstore.NewLineageStore(db, dialect, opts...)` over any `*sql.DB` (an app on Hatchet or Redis with a database works too) or take `Client.LineageStore()`, and call its own `Migrate` once: `Client.Migrate` does not create this table.
-- `redis.LineageStore`: records and their indexes under the prefix, `redis.NewLineageStore(rdb, prefix)` or `Client.LineageStore()`.
-
+<!-- snippet: examples/datasets-shared/main.go#memory-lineage -->
 ```go
-lineage := client.LineageStore() // a *sqlstore.Client; or sqlstore.NewLineageStore(db, dialect)
-if err := lineage.Migrate(ctx); err != nil {
+store := events.NewMemoryLineage() // in-process; what NewDatasets uses without WithLineage
+v09 := events.Lineage{Kind: events.LineageProduced, Dataset: orders, Version: "2026-11-20T09",
+	Workflow: "load-orders", Step: "write", Meta: map[string]string{"rows": "1200"}, At: t0}
+v10 := v09
+v10.Version, v10.At = "2026-11-20T10", t0.Add(time.Hour)
+for _, l := range []events.Lineage{v09, v09, v10} { // the second v09 is the same fact: ignored
+	if err := store.Record(ctx, l); err != nil {
+		return err
+	}
+}
+all, err := events.Producers(ctx, store, orders) // newest first
+if err != nil {
 	return err
 }
-ds, err := events.NewDatasets(bus, events.WithLineage(lineage))
+newest, err := store.Find(ctx, events.LineageQuery{Kind: events.LineageProduced, Dataset: orders, Limit: 1})
+if err != nil {
+	return err
+}
+_, refused := store.Find(ctx, events.LineageQuery{Limit: -1})
 ```
 
-Both keep `MemoryLineage`'s rules across processes: a record already saved by any process is ignored (a unique hash of the identifying fields on SQL, one script on Redis), and `Find` orders by `At` to the nanosecond, ties in reverse order of recording, with indexes for the lookups `Datasets` makes on every update (a dataset's newest produced version, a trigger's last consumed version of a dataset) and for `Outputs` and `Inputs`. Two processes that announce the last dataset of an all-of trigger at the same moment may both decide to fire; the run's idempotency key, a hash of the trigger and the versions, makes the client start it once, as long as the clients share one backend that honours idempotency keys across processes (sqlstore on one database, Redis on one prefix).
+```text
+memory lineage:
+  records: 2, newest: 2026-11-20T10, negative Limit is ErrInvalid: true
+```
+
+The second `Record` of the same fact (same `Kind`, `Dataset`, `Version`, `Run`, `Workflow`, `Step` and `Trigger`) is ignored and the first one's `Meta` and `At` are kept; `Find` returns copies newest first by `At`, ties in reverse order of recording, cut to `Limit`; a negative `Limit` is refused with `ErrInvalid`. Pass one to `events.WithLineage` in a test to read what a `Datasets` recorded, or record records by hand to test code that reads lineage, as above.
+
+## Share the store between processes
+
+A trigger's decision is a function of the store alone: the newest produced version of each dataset against the version the trigger consumed last. Nothing is kept in the process, so a restart or another process sharing the store decides the same way. With several processes (web replicas announcing uploads, workers announcing loads), give every `Datasets` one durable store with `events.WithLineage`:
+
+- `sqlstore.LineageStore` on SQLite, Postgres or MySQL: an append-only table `<prefix>lineage`. Take `Client.LineageStore()` from a SQL client, or build it with `sqlstore.NewLineageStore(db, dialect, opts...)` over any `*sql.DB` (an app on Hatchet or Redis with a database works too; of the options, `WithTablePrefix`, `WithSchema`, `WithTxAttempts` and `WithErrorClassifier` apply). Call its own `Migrate` once: `Client.Migrate` does not create this table. Its migrations are a list of their own under the ledger owner `sqlstore.LineageMigrationOwner`, and `MigrationScripts()` returns them as SQL text for a team whose DDL goes through its own pipeline.
+- `redis.LineageStore`: records and their indexes under the prefix, `redis.NewLineageStore(rdb, prefix)` or `Client.LineageStore()`.
+
+The example runs two processes, each its own connection pool and SQL client over one SQLite file. The first takes the store from its client and migrates it; the second builds one over its own `*sql.DB`:
+
+<!-- snippet: examples/datasets-shared/main.go#shared-store -->
+```go
+la := a.c.LineageStore() // the lineage table in the client's database and prefix
+if err := la.Migrate(ctx); err != nil {
+	return err // Client.Migrate does not create this table: the store's own Migrate does
+}
+lb, err := sqlstore.NewLineageStore(b.db, sqlb.SQLiteDialect{}) // any *sql.DB, no Client needed
+if err != nil {
+	return err
+}
+dsA, err := a.datasets(la) // events.NewDatasets(bus, events.WithLineage(la)) plus the trigger
+if err != nil {
+	return err
+}
+dsB, err := b.datasets(lb)
+if err != nil {
+	return err
+}
+```
+
+Both announce `warehouse.orders`, outside a step, and wait for each run before the next announcement:
+
+```text
+shared SQL lineage store:
+  process A announces 2026-11-20T09: started audit
+  process B announces 2026-11-20T09: started nothing
+  process B announces 2026-11-20T10: started audit
+  audit runs recorded in the shared store: 2
+a MemoryLineage per process:
+  process A announces 2026-11-20T11: started audit
+  process B announces 2026-11-20T11: started audit
+```
+
+Process B found the 09 version already consumed by the trigger in A, so it started nothing, though A's run had finished and freed its idempotency key. With a `MemoryLineage` each, B could not see that and started a second audit for the same version.
+
+Both durable stores keep `MemoryLineage`'s rules across processes: a record already saved by any process is ignored (a unique hash of the identifying fields on SQL, one script on Redis), and `Find` orders by `At` to the nanosecond, ties in reverse order of recording, with indexes for the lookups `Datasets` makes on every update (a dataset's newest produced version, a trigger's last consumed version of a dataset) and for `Outputs` and `Inputs`. Two processes that announce the last dataset of an all-of trigger at the same moment may both decide to fire; the run's idempotency key, a hash of the trigger and the versions, makes the client start it once, as long as the clients share one backend that honours idempotency keys across processes (sqlstore on one database, Redis on one prefix).
 
 To keep lineage elsewhere, implement `events.LineageStore`. The interface has two methods:
 
@@ -138,6 +201,14 @@ lineage:
 
 The orders loader's retry announced its version again and started nothing, and the second orders version started the audit but not the report, because exchange rates had not changed since the report's run.
 
+The stores:
+
+```sh
+go run ./datasets-shared
+```
+
+It prints the `memory lineage:` line and the two-process sections shown in [Keep lineage in memory](#keep-lineage-in-memory-for-one-process-and-for-tests) and [Share the store between processes](#share-the-store-between-processes).
+
 ## Pitfalls
 
 - **Each process keeps its own `MemoryLineage`.** Two processes with the default store each think a version is new and each start the trigger once; give them one shared store, `sqlstore.LineageStore` or `redis.LineageStore`.
@@ -151,4 +222,4 @@ The orders loader's retry announced its version again and started nothing, and t
 
 - [Publish and subscribe](publish-subscribe.md), [Inbound webhooks](webhooks.md)
 - [Partitioned runs](../workflows/partitions.md), [Idempotency keys](../jobs/idempotency.md)
-- Example: [examples/datasets](../../examples/datasets/)
+- Examples: [examples/datasets](../../examples/datasets/), [examples/datasets-shared](../../examples/datasets-shared/)

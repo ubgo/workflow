@@ -20,8 +20,12 @@ nondeterminism:
   the run ended failed: memory: step "orchestrate" failed after 1 attempt(s): workflow: replay: call 0 is step store-credit, but the history has step refund-card
   position 0: recorded "step refund-card", the code called "step store-credit"; permanent true
   matches ErrNondeterminism: true
+child and pay day:
+  invoice child returned "INV-s-9"
+  result: paid "INV-s-9" at 2026-03-31T17:00:00Z
+  the body ran 3 times; the invoice child ran 1
 journal:
-  runs holding history after both runs finished: 0
+  runs holding history after every run finished: 0
 ```
 
 ## The code
@@ -42,6 +46,8 @@ The refund as one replayed function:
 
 <!-- snippet: examples/flow-replay/main.go#refund -->
 ```go
+// refund is the whole refund as one function: each wake runs it from
+// the top, and the recorded calls return without running again.
 refund := func(rc *workflow.ReplayCtx, in []byte) ([]byte, error) {
 	calls.add("body")
 	var o order
@@ -134,6 +140,7 @@ Code that branches on a value it did not record:
 
 <!-- snippet: examples/flow-replay/main.go#drift -->
 ```go
+// drift records one call whose name depends on an unrecorded flag.
 drift := func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
 	step := "refund-card"
 	if creditFirst.Load() { // wrong: read again on every run, never recorded
@@ -142,7 +149,7 @@ drift := func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
 	if _, err := workflow.ReplayStep(rc, step, func(ctx context.Context) (bool, error) { return true, nil }); err != nil {
 		return nil, err
 	}
-	return nil, rc.Sleep("close-after", 24*time.Hour)
+	return nil, rc.Sleep("close-after", 24*time.Hour) // a day, as in the refund
 }
 ```
 

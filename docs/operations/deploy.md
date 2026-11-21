@@ -182,7 +182,16 @@ for _, c := range clients {
 }
 ```
 
-A step handed back this way is not a failure. On a driver with `workflow.CapShutdownRequeue` the next worker runs it with the same `StepInfo.Attempt`, and it is counted neither in `RunInfo.Attempts`, nor against the retry limit, nor in the [error history](../jobs/manage-runs.md#error-history), so a deploy never uses up a job's retries. In the example the step has no retries at all, and the run still succeeds after worker A is stopped mid-step:
+A step handed back this way is not a failure. Ask the client (here `a`, a SQL worker from [`examples/graceful-drain-report`](../../examples/graceful-drain-report)) whether it does this before relying on it:
+
+<!-- snippet: examples/graceful-drain-report/main.go#caps -->
+```go
+caps := a.Capabilities()
+fmt.Printf("sql: drain report %t, requeue on a clean stop %t\n",
+	caps.Has(workflow.CapDrainReport), caps.Has(workflow.CapShutdownRequeue))
+```
+
+On a driver with `workflow.CapShutdownRequeue` (sqlstore and Redis) the next worker runs it with the same `StepInfo.Attempt`, and it is counted neither in `RunInfo.Attempts`, nor against the retry limit, nor in the [error history](../jobs/manage-runs.md#error-history), so a deploy never uses up a job's retries. In the example the step has no retries at all, and the run still succeeds after worker A is stopped mid-step:
 
 ```text
 web enqueued true status queued
@@ -222,6 +231,32 @@ hook := workflow.ShutdownHookReport(c, grace, printReport("memory"))
 err = hook(ctx)
 ```
 
+The callback receives the report and `detailed`, which is false when the client has no `CapDrainReport`: the report is then unknown, not clean. A deploy script's callback logs one line and each cut-off attempt:
+
+<!-- snippet: examples/graceful-drain-report/main.go#report -->
+```go
+func printReport(label string) func(workflow.DrainReport, bool) {
+	// next says what becomes of a cut-off attempt; DrainDisposition is a
+	// closed set, so every value has an entry.
+	next := map[workflow.DrainDisposition]string{
+		workflow.DrainRequeued:    "another worker runs it as the same attempt",
+		workflow.DrainCancelled:   "the run is cancelled",
+		workflow.DrainEngineOwned: "the engine decides",
+	}
+	return func(r workflow.DrainReport, detailed bool) {
+		if !detailed { // no CapDrainReport: the report is unknown, not clean
+			fmt.Printf("%s: the driver cannot say what a drain cut off\n", label)
+			return
+		}
+		fmt.Printf("%s: finished steps=%d runs=%d, clean=%t, cut off %d attempt(s) in %d run(s)\n",
+			label, r.FinishedSteps, r.FinishedRuns, r.Clean(), len(r.Cut), r.CutRuns())
+		for _, c := range r.Cut {
+			fmt.Printf("  cut: %s/%s attempt %d -> %s: %s\n", c.Workflow, c.Step, c.Attempt, c.Disposition, next[c.Disposition])
+		}
+	}
+}
+```
+
 A `DrainReport` has three parts. `FinishedSteps` counts attempts that returned after the drain began and before its deadline. `FinishedRuns` counts runs that reached a terminal status from the drain's start until the client stopped (a driver that cannot see runs end leaves it 0). `Cut` lists each attempt still running at the deadline with its run, workflow, step and attempt number, and a `Disposition` saying what became of it:
 
 | Disposition | Meaning | Drivers |
@@ -230,18 +265,43 @@ A `DrainReport` has three parts. `FinishedSteps` counts attempts that returned a
 | `cancelled` | Nothing outlives the process, so the run became `cancelled` | memory |
 | `engine` | The engine, not this client, decides what happens to the attempt; the driver cannot say more without lying | Hatchet |
 
-`report.Clean()` is true when nothing was cut off, `report.CutRuns()` counts the distinct runs cut off, and the error `Drain` returns is the context's error only when something was cut (`workflow.DrainOutcome` is that one rule, so drivers cannot disagree). A second `DrainWithReport` call returns the first call's report.
+`report.Clean()` is true when nothing was cut off, `report.CutRuns()` counts the distinct runs cut off (one run can have several attempts running at once), and the error `Drain` returns is the context's error only when something was cut (`workflow.DrainOutcome` is that one rule, so drivers cannot disagree). A second `DrainWithReport` call returns the first call's report.
 
-The example drains twice, with a step that never finishes inside the grace. On memory the cut run is cancelled; on SQLite the attempt is requeued and a second worker runs it as attempt 1 again, then the run succeeds:
+Without the hook, the same drain takes three calls. A client that declares `CapDrainReport` implements `workflow.ReportingDrainer`, whose `DrainWithReport` behaves exactly as `Drain` and also returns the report; `workflow.DrainContext` puts the grace period on the ctx:
+
+<!-- snippet: examples/graceful-drain-report/main.go#drain-with-report -->
+```go
+// What ShutdownHookReport does, by hand: a grace period on the ctx,
+// then DrainWithReport when the client is a ReportingDrainer.
+dctx, cancel := workflow.DrainContext(ctx, grace) // zero or less: no waiting at all
+var report workflow.DrainReport
+rd, detailed := any(a).(workflow.ReportingDrainer)
+if detailed {
+	report, err = rd.DrainWithReport(dctx)
+} else {
+	err = a.Drain(dctx) // it still drains; the report stays unknown
+}
+cancel()
+printReport("sql")(report, detailed)
+// Drain's error is DrainOutcome: nil when nothing was cut off, else the ctx's error.
+fmt.Println("sql: drain error is the deadline:", errors.Is(err, context.DeadlineExceeded),
+	"same as DrainOutcome:", err == workflow.DrainOutcome(report, context.DeadlineExceeded))
+```
+
+A driver of your own builds its report with `workflow.DrainTracker`, the bookkeeping every built-in driver embeds (see [Writing a driver](../extending/writing-a-driver.md)).
+
+The example drains twice, with a step that never finishes inside the grace. On memory the cut run is cancelled; on SQLite the attempt is requeued and a second worker runs it as attempt 1 again, then the run succeeds. Run it with `go run ./graceful-drain-report` from `examples/`:
 
 ```text
-memory: detailed=true finished steps=0 runs=0, cut off 1
-  cut: thumbnail/resize attempt 1 -> cancelled
+memory: finished steps=0 runs=0, clean=false, cut off 1 attempt(s) in 1 run(s)
+  cut: thumbnail/resize attempt 1 -> cancelled: the run is cancelled
 memory: drain error is a deadline: true
 memory: cut run status: cancelled
 sql: worker A runs attempt 1
-sql: detailed=true finished steps=0 runs=0, cut off 1
-  cut: thumbnail/resize attempt 1 -> requeued
+sql: drain report true, requeue on a clean stop true
+sql: finished steps=0 runs=0, clean=false, cut off 1 attempt(s) in 1 run(s)
+  cut: thumbnail/resize attempt 1 -> requeued: another worker runs it as the same attempt
+sql: drain error is the deadline: true same as DrainOutcome: true
 sql: worker B runs attempt 1
 sql: run finished: succeeded
 ```

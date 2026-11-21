@@ -23,6 +23,8 @@ result:
   {"file":"orders.csv","rows":3000}
   decoded: orders.csv, 3000 rows
   checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
+  RunInfo.Output is the same: true
+  RunOutput gives the same: true
   pay: ended failed: memory: step "charge" failed after 1 attempt(s): card declined
   Result of a failed run: ErrWrongState true
 tenants:

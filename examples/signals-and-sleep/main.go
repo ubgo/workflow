@@ -1,7 +1,9 @@
 // Command signals-and-sleep builds workflows of several steps: a step that
 // waits for an event matched to its run, a durable sleep, a wait that
 // gives up after a timeout, parallel steps joined by a later one, a step
-// timeout, and a handler that runs when a run fails.
+// timeout, and a handler that runs when a run fails. It then resolves
+// the key a wait step waits on, and calls a typed Define handler and a
+// handler reading its StepInfo directly, as a unit test would.
 //
 // It runs on the in-memory driver with a fake clock, so "sleep a day" and
 // "wait three days" pass when the program moves the clock. It is the
@@ -29,6 +31,24 @@ var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 // layout prints a fake-clock time.
 const layout = "Mon 15:04"
 
+// The fake-clock moves, each equal to a duration a snippet spells out, so
+// the program crosses exactly that wait.
+const (
+	coolOff         = 24 * time.Hour   // the order's cool-off Sleep
+	approvalTimeout = 72 * time.Hour   // the approval wait's Timeout
+	stepTimeout     = 30 * time.Second // the export workflow's Timeout
+)
+
+const (
+	// eventBuffer holds the steps' lines and the run ends until the
+	// program reads them, so no step or observer blocks.
+	eventBuffer = 16
+	// untilTries and untilPoll bound the wait for a run's status: five
+	// thousand looks a millisecond apart, about five seconds.
+	untilTries = 5000
+	untilPoll  = time.Millisecond
+)
+
 // order is the payload of the "order" workflow.
 type order struct {
 	ID    string
@@ -52,6 +72,7 @@ type quoteIn struct {
 
 // snippet:end
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "signals-and-sleep:", err)
@@ -62,8 +83,8 @@ func main() {
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
-	lines := make(chan string, 16)
-	finished := make(chan workflow.RunEvent, 16)
+	lines := make(chan string, eventBuffer)
+	finished := make(chan workflow.RunEvent, eventBuffer)
 
 	c := memory.New(memory.WithClock(clk))
 	if err := c.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { finished <- ev }); err != nil {
@@ -113,8 +134,8 @@ func run(ctx context.Context) error {
 			Name: "await-approval",
 			Wait: &workflow.WaitSpec{
 				Event:   "expense.approved",
-				Key:     "finance", // a fixed key: every run waits for the same one
-				Timeout: 72 * time.Hour,
+				Key:     "finance",      // a fixed key: every run waits for the same one
+				Timeout: 72 * time.Hour, // three days, then the run fails
 			},
 		}},
 		// OnFailure runs once when a run fails for good, with the input of
@@ -180,11 +201,11 @@ func run(ctx context.Context) error {
 	}
 	// until polls the run's status: a step moves on its own goroutine.
 	until := func(ref workflow.RunRef, want workflow.Status) error {
-		for range 5000 {
+		for range untilTries {
 			if status(ref) == want {
 				return nil
 			}
-			time.Sleep(time.Millisecond)
+			time.Sleep(untilPoll)
 		}
 		return fmt.Errorf("run %s never reached %s", ref.RunID, want)
 	}
@@ -225,7 +246,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	fmt.Printf("  paid A-2 at %s: A-2 %s (sleeping), A-1 %s\n", clk.Now().Format(layout), status(refs["A-2"]), status(refs["A-1"]))
-	clk.Advance(24 * time.Hour)
+	clk.Advance(coolOff)
 	fmt.Println(" ", <-lines)
 	<-finished
 	fmt.Printf("  A-2 %s, A-1 still %s\n", status(refs["A-2"]), status(refs["A-1"]))
@@ -236,7 +257,7 @@ func run(ctx context.Context) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil {
 		return err
 	}
-	clk.Advance(24 * time.Hour)
+	clk.Advance(coolOff)
 	fmt.Println(" ", <-lines)
 	<-finished
 
@@ -247,7 +268,7 @@ func run(ctx context.Context) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the wait armed its 72h timeout
 		return err
 	}
-	clk.Advance(72 * time.Hour)
+	clk.Advance(approvalTimeout)
 	fmt.Println(" ", <-lines)
 	ev := <-finished
 	fmt.Printf("  run %s, deadline exceeded %t\n", ev.Status, errors.Is(ev.Err, context.DeadlineExceeded))
@@ -266,11 +287,17 @@ func run(ctx context.Context) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the attempt armed its 30s timeout
 		return err
 	}
-	clk.Advance(30 * time.Second)
+	clk.Advance(stepTimeout)
 	ev = <-finished
 	fmt.Printf("  run %s: %v\n", ev.Status, ev.Err)
 
-	return refusals(ctx)
+	if err := refusals(ctx); err != nil {
+		return err
+	}
+	if err := waitKeys(*orderFlow.Steps[1].Wait, *approval.Steps[0].Wait); err != nil {
+		return err
+	}
+	return callHandlers(ctx)
 }
 
 // refusals shows the per-run key form each driver refuses: the memory
@@ -295,6 +322,73 @@ func refusals(ctx context.Context) error {
 	fmt.Println("  memory:", m.Start(ctx))
 	m.Stop()
 	fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
+	// snippet:end
+	return nil
+}
+
+// waitKeys asks two wait steps of the program which key a run waits on:
+// the order's KeyFrom derives it from the run's job, the approval's Key is
+// fixed. It is what a driver does when a wait step begins.
+func waitKeys(byLabel, fixed workflow.WaitSpec) error {
+	fmt.Println("wait keys:")
+	// snippet:resolve-key
+	job := workflow.Job{Workflow: "order", Labels: map[string]string{"order": "A-7"}}
+	perRun, err := byLabel.ResolveKey(job) // KeyFrom: this run's own key
+	if err != nil {
+		return err
+	}
+	shared, err := fixed.ResolveKey(job) // Key: the same for every run
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  order A-7 waits on %q, every approval on %q\n", perRun, shared)
+	byExpr := workflow.WaitSpec{Event: "payment.succeeded", KeyFrom: workflow.KeyExpr("input.ID")}
+	_, err = byExpr.ResolveKey(job)
+	fmt.Println("  an expression is the engine's to evaluate:", errors.Is(err, workflow.ErrUnsupported))
+	// snippet:end
+	return nil
+}
+
+// callHandlers calls handlers directly, as a unit test of one handler
+// would: Define decoding typed input, and a handler reading the StepInfo
+// a driver (here WithStepInfo) put on its ctx.
+func callHandlers(ctx context.Context) error {
+	fmt.Println("call a handler directly:")
+	// snippet:define
+	type greeting struct{ Name string }
+	greet := workflow.Define(func(ctx context.Context, in greeting) (string, error) {
+		return "hello " + in.Name, nil
+	})
+	out, err := greet(ctx, []byte(`{"Name":"Ada"}`))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  typed: %s\n", out)
+	out, err = greet(ctx, nil) // empty input decodes to the zero greeting
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  empty input: %s\n", out)
+	_, err = greet(ctx, []byte(`not json`))
+	fmt.Println("  bad input is permanent:", workflow.IsPermanent(err))
+	// snippet:end
+
+	// snippet:step-info
+	report := func(ctx context.Context, _ []byte) ([]byte, error) {
+		info, ok := workflow.StepInfoFrom(ctx)
+		if !ok {
+			return nil, workflow.Permanent(errors.New("not called from a step"))
+		}
+		return fmt.Appendf(nil, "%s/%s, run %s, attempt %d", info.Workflow, info.Step, info.RunID, info.Attempt), nil
+	}
+	_, err = report(ctx, nil)
+	fmt.Println("  outside a step:", err)
+	stepCtx := workflow.WithStepInfo(ctx, workflow.StepInfo{Workflow: "report", Step: "send", RunID: "run-1", Attempt: 2})
+	out, err = report(stepCtx, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  inside a step: %s\n", out)
 	// snippet:end
 	return nil
 }

@@ -1,6 +1,6 @@
 # workflow-json
 
-A workflow whose definition is data. A JSON document names the steps, their order, a wait for an event, retries and timeouts, and the Go handlers the steps run, by name. The program registers those handlers in a `dsl.Registry`, loads the document with `dsl.Load`, registers the result on the in-memory driver like any workflow written in Go, and runs two orders through it: each waits for the payment of its own order (the wait's key comes from the `order` label), then ships. It then shows a definition naming a handler nobody registered being refused with its JSON path, and a `Marshal` and `Parse` round trip.
+A workflow whose definition is data. It first checks a document with a misspelled field with `dsl.Parse`, which names the field by its JSON path. A JSON document names the steps, their order, a wait for an event, retries and timeouts, and the Go handlers the steps run, by name. The program registers those handlers in a `dsl.Registry`, loads the document with `dsl.Load`, registers the result on the in-memory driver like any workflow written in Go, and runs two orders through it: each waits for the payment of its own order (the wait's key comes from the `order` label), then ships. It then shows a definition naming a handler nobody registered being refused with its JSON path, and a `Marshal` and `Parse` round trip.
 
 ```sh
 cd examples
@@ -8,6 +8,7 @@ go run ./workflow-json
 ```
 
 ```text
+checked: steps[0].handlr: unknown field (known: after, handler, name, retry, sleep, timeout, wait)
 loaded "order": reserve (run) await-payment (wait) ship (run)
 both orders waiting for payment
 A-1: "shipped A-1, paid 40"

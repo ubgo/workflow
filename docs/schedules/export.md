@@ -82,7 +82,30 @@ Each time of day is a trigger; times an equal gap apart (every 15 minutes from 0
 
 ## launchd
 
-`schedexport.Launchd` writes a property list with one `StartCalendarInterval` entry per combination of the restricted fields. launchd has no zone setting, so `LaunchdOptions.Zone` names the Mac's zone and the schedule's `Location` must be the same. Seconds, years, `Active` and windows have no place in a plist and are refused, and so is a schedule that needs more than 1000 entries.
+`schedexport.Launchd` writes a property list with one `StartCalendarInterval` entry per combination of the restricted fields. launchd has no zone setting, so `LaunchdOptions.Zone` names the Mac's zone and the schedule's `Location` must be the same:
+
+<!-- snippet: examples/schedule-export/main.go#launchd -->
+```go
+f, err := schedexport.Launchd(report, app, schedexport.LaunchdOptions{
+	Zone: berlin, // the zone the Mac runs in; it must be the schedule's
+})
+if err != nil {
+	return err
+}
+```
+
+The weekday schedule becomes five entries, Monday to Friday at 03:00:
+
+```text
+launchd:
+  Weekday=1 Hour=3 Minute=0
+  Weekday=2 Hour=3 Minute=0
+  Weekday=3 Hour=3 Minute=0
+  Weekday=4 Hour=3 Minute=0
+  Weekday=5 Hour=3 Minute=0
+```
+
+The misfire policy must be zero (launchd starts one run on wake for the ticks a sleeping Mac missed, and none for a Mac that was off, which no policy describes) and `Overlap` must be `OverlapSkip`. Seconds, years, `Active` and windows have no place in a plist and are refused, and so is a schedule that needs more than 1000 entries. Load it with `launchctl bootstrap gui/<uid> <file>`.
 
 ## Hand the next fire to the OS
 
@@ -100,7 +123,40 @@ if err != nil {
 }
 ```
 
-The systemd and Task Scheduler forms write the instant in UTC, so they need no zone. launchd has no one-shot date: its entry fires again on the same date a year later, so the app replaces the plist each time it runs, which a handoff does anyway. A schedule that never fires again returns `schedexport.ErrNoNextFire`; uninstall the file then.
+The systemd and Task Scheduler forms write the instant in UTC, so they need no zone:
+
+<!-- snippet: examples/schedule-export/main.go#handoff-utc -->
+```go
+units, err := schedexport.SystemdTimerNextFire(report, app, clk) // a one-shot .timer, then its .service
+if err != nil {
+	return err
+}
+task, err := schedexport.TaskSchedulerNextFire(report, app, clk) // one TimeTrigger
+if err != nil {
+	return err
+}
+```
+
+```text
+  OnCalendar=2026-01-06 02:00:00 UTC
+  <StartBoundary>2026-01-06T02:00:00Z</StartBoundary>
+```
+
+The clock reads Monday 10:00 UTC, so the next weekday 03:00 in Berlin is Tuesday 02:00 UTC; the launchd form above writes the same instant as 21:00 on Monday on a New York Mac. `SystemdTimerNextFire` maps the misfire policy to `Persistent=` as `SystemdTimer` does but checks no overlap, since one fire has no previous run of its own; `TaskSchedulerNextFire` maps both policies as `TaskScheduler` does.
+
+launchd has no one-shot date: its entry fires again on the same date a year later, so the app replaces the plist each time it runs, which a handoff does anyway.
+
+A schedule that never fires again (its `Active` period or year field is over, or no tick passes its windows) returns an error matching `schedexport.ErrNoNextFire`. There is nothing to hand over, so uninstall the file:
+
+<!-- snippet: examples/schedule-export/main.go#no-next-fire -->
+```go
+ended := report
+ended.Active = workflow.Active{Until: monday} // the campaign ended this morning
+_, err = schedexport.SystemdTimerNextFire(ended, app, clk)
+if errors.Is(err, schedexport.ErrNoNextFire) {
+	fmt.Println("  no next fire: uninstall the timer") // nothing to hand over
+}
+```
 
 ## What each format refuses
 
@@ -109,7 +165,7 @@ Refusals are typed, so an app can fall back (another format, or a schedule writt
 <!-- snippet: examples/schedule-export/main.go#refusals -->
 ```go
 backfill := report
-backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7}
+backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7} // replay up to a week of missed ticks
 _, err := schedexport.CronJob(backfill, app, schedexport.CronJobOptions{Image: "app"})
 var ne *schedexport.NotExpressibleError
 if errors.As(err, &ne) {
@@ -141,7 +197,7 @@ cd examples
 go run ./schedule-export
 ```
 
-The program prints every file in full; the refusals and the year field come last:
+The program prints every file in full, then the launchd entries and the three handoffs shown above; the refusals and the year field come last:
 
 ```text
 refusals:

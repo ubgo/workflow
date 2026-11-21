@@ -23,6 +23,22 @@ import (
 	"github.com/ubgo/workflow/cron"
 )
 
+const (
+	// secondsShown is how many fires of the seconds dialect are listed:
+	// the three a minute holds at */20.
+	secondsShown = 3
+	// localTicks is how many minutes the local cron runs for: enough to
+	// show it fires once per tick.
+	localTicks = 3
+	// tickBuffer is the room of the channel the local cron's job sends
+	// on: more than localTicks, so the job never blocks.
+	tickBuffer = 8
+	// tickTimeout is how long localCron waits for one fire before giving
+	// up; it fires at once on the fake clock, so this only catches a hang.
+	tickTimeout = 5 * time.Second
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-specs:", err)
@@ -51,8 +67,8 @@ func calendar() error {
 	fmt.Println("calendar:")
 	// snippet:calendar
 	spec := cron.Calendar{
-		Hour:      []int{9},
-		Minute:    []int{0, 30},
+		Hour:      []int{9},     // at nine
+		Minute:    []int{0, 30}, // on the hour and half past
 		DayOfWeek: []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday},
 	}
 	expr, err := spec.Expr() // "0,30 9 * * 1-5", a plain cron string every driver takes
@@ -61,6 +77,7 @@ func calendar() error {
 	}
 	// snippet:end
 	fmt.Printf("  %s\n", expr)
+	// Friday the 13th sets both day fields, which cron would OR: refused.
 	_, err = cron.Calendar{DayOfMonth: []int{13}, DayOfWeek: []time.Weekday{time.Friday}}.Expr()
 	fmt.Printf("  ErrCalendar=%t\n", errors.Is(err, cron.ErrCalendar))
 	return nil
@@ -75,7 +92,7 @@ func seconds() error {
 		return err
 	}
 	// snippet:end
-	for _, t := range s.Between(monday, monday.Add(time.Minute), time.UTC, 3) {
+	for _, t := range s.Between(monday, monday.Add(time.Minute), time.UTC, secondsShown) {
 		fmt.Printf("  %s\n", t.Format("15:04:05"))
 	}
 	return nil
@@ -114,7 +131,8 @@ func nextRuns() error {
 		Schedule: s,
 		Location: berlin,
 		After:    time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC), // the caller's clock; Berlin leaves summer time on the 25th
-		Count:    3,
+		// The next three fires, across the change to winter time.
+		Count: 3,
 	})
 	for _, r := range runs {
 		fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
@@ -135,7 +153,7 @@ func active() error {
 		From:  time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 		Until: time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC), // exclusive
 	}
-	runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign})
+	runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign}) // asks for 10, the period holds 3
 	// snippet:end
 	for _, r := range runs {
 		fmt.Printf("  %s\n", r.Local.Format("Mon 2 Jan 15:04"))
@@ -183,8 +201,11 @@ func storeJSON() error {
 	// snippet:end
 	fmt.Printf("  %s\n", data)
 	fmt.Printf("  back: %s %s %s\n", back.Name, back.Cron, back.Location)
-	_, err = workflow.UnmarshalSchedule([]byte(`{"v":2,"name":"x"}`), nil)
+	// snippet:json-read
+	stored := []byte(`{"v":2,"name":"x"}`)           // written by a newer release
+	_, err = workflow.UnmarshalSchedule(stored, nil) // nil loads zones with cron.LoadZone
 	fmt.Printf("  v2 ErrScheduleJSON=%t\n", errors.Is(err, workflow.ErrScheduleJSON))
+	// snippet:end
 	return nil
 }
 
@@ -192,7 +213,7 @@ func storeJSON() error {
 func localCron(ctx context.Context) error {
 	fmt.Println("local cron:")
 	clk := clock.NewFake(monday)
-	ran := make(chan time.Time, 8)
+	ran := make(chan time.Time, tickBuffer)
 	// snippet:localcron
 	lc := workflow.NewLocalCron(
 		workflow.WithLocalCronClock(clk),
@@ -213,7 +234,7 @@ func localCron(ctx context.Context) error {
 		cancel()
 		return err
 	}
-	for range 3 {
+	for range localTicks {
 		if err := clk.BlockUntil(ctx, 1); err != nil {
 			cancel()
 			return err
@@ -222,7 +243,7 @@ func localCron(ctx context.Context) error {
 		select {
 		case at := <-ran:
 			fmt.Printf("  ran for %s\n", at.Format("15:04"))
-		case <-time.After(5 * time.Second):
+		case <-time.After(tickTimeout):
 			cancel()
 			return errors.New("the local cron did not run")
 		}

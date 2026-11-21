@@ -1,6 +1,6 @@
 # schedule-export
 
-One schedule, 03:00 on weekdays in Berlin, written as files other schedulers run: a Kubernetes CronJob, a systemd timer and its service, a Windows Task Scheduler task, and the launchd plist a desktop app leaves behind for its next fire. Then what the formats refuse, and a seven-field cron with a year that stops after its last year. Everything goes to standard output; nothing is installed.
+One schedule, 03:00 on weekdays in Berlin, written as files other schedulers run: a Kubernetes CronJob, a systemd timer and its service, a Windows Task Scheduler task, a launchd plist, and the one-shot files (launchd, systemd, Task Scheduler) a desktop app leaves behind for its next fire. Then what the formats refuse, and a seven-field cron with a year that stops after its last year. Everything goes to standard output; nothing is installed.
 
 ```sh
 cd examples
@@ -84,6 +84,18 @@ if err != nil {
 }
 ```
 
+The repeating launchd plist, one entry per weekday:
+
+<!-- snippet: examples/schedule-export/main.go#launchd -->
+```go
+f, err := schedexport.Launchd(report, app, schedexport.LaunchdOptions{
+	Zone: berlin, // the zone the Mac runs in; it must be the schedule's
+})
+if err != nil {
+	return err
+}
+```
+
 The next fire handed to launchd, on the Mac's zone:
 
 <!-- snippet: examples/schedule-export/main.go#handoff -->
@@ -98,12 +110,38 @@ if err != nil {
 }
 ```
 
+The same handoff for systemd and Task Scheduler, written as a UTC instant:
+
+<!-- snippet: examples/schedule-export/main.go#handoff-utc -->
+```go
+units, err := schedexport.SystemdTimerNextFire(report, app, clk) // a one-shot .timer, then its .service
+if err != nil {
+	return err
+}
+task, err := schedexport.TaskSchedulerNextFire(report, app, clk) // one TimeTrigger
+if err != nil {
+	return err
+}
+```
+
+A schedule that never fires again has nothing to hand over:
+
+<!-- snippet: examples/schedule-export/main.go#no-next-fire -->
+```go
+ended := report
+ended.Active = workflow.Active{Until: monday} // the campaign ended this morning
+_, err = schedexport.SystemdTimerNextFire(ended, app, clk)
+if errors.Is(err, schedexport.ErrNoNextFire) {
+	fmt.Println("  no next fire: uninstall the timer") // nothing to hand over
+}
+```
+
 A refusal names the format and the field:
 
 <!-- snippet: examples/schedule-export/main.go#refusals -->
 ```go
 backfill := report
-backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7}
+backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7} // replay up to a week of missed ticks
 _, err := schedexport.CronJob(backfill, app, schedexport.CronJobOptions{Image: "app"})
 var ne *schedexport.NotExpressibleError
 if errors.As(err, &ne) {

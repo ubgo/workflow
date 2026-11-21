@@ -23,8 +23,10 @@ import (
 	driversqlite "github.com/ubgo/sqlb/contrib/driver-sqlite"
 	"github.com/ubgo/workflow"
 	"github.com/ubgo/workflow/sqlstore"
+	"github.com/ubgo/workflow/sqlstore/outbox"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "migrations-export:", err)
@@ -40,11 +42,14 @@ func run(ctx context.Context) (err error) {
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
 
+	// steps are the program's parts in the order the guide shows them; each
+	// works on its own database file in dir.
 	steps := []func() error{
 		func() error { return migrateAndList(ctx, filepath.Join(dir, "app.db")) },
 		func() error { return export(filepath.Join(dir, "sql")) },
 		func() error { return applyYourself(ctx, filepath.Join(dir, "tool.db")) },
 		func() error { return uniqueOnly(ctx, filepath.Join(dir, "locks.db")) },
+		owners,
 		func() error { return tooNew(ctx, filepath.Join(dir, "app.db")) },
 		func() error { return schemaOption(filepath.Join(dir, "app.db")) },
 	}
@@ -93,7 +98,7 @@ func export(dir string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil { // rwxr-xr-x: anyone may read the scripts
 		return err
 	}
 	for i, m := range scripts {
@@ -101,7 +106,7 @@ func export(dir string) error {
 		// so a later release's new migrations are the only ones it applies.
 		name := fmt.Sprintf("%03d_%s_%s.sql", i+1, strings.ReplaceAll(m.Owner, "/", "_"), m.Name)
 		body := "-- owner: " + m.Owner + "\n-- name: " + m.Name + "\n" + strings.Join(m.Statements, ";\n\n") + ";\n"
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil { // rw-r--r--
 			return err
 		}
 		fmt.Println("wrote", name)
@@ -169,6 +174,31 @@ func uniqueOnly(ctx context.Context, path string) (err error) {
 	// snippet:end
 	fmt.Println("ledger after UniqueStore.Migrate:")
 	return printLedger(ctx, db, "wf_")
+}
+
+// owners counts each store's migrations by its owner constant: which lists
+// Client.Migrate applies, and the outbox's, which only Outbox.Migrate does.
+func owners() error {
+	// snippet:owners
+	queue, err := sqlstore.MigrationScripts(sqlb.SQLiteDialect{}) // what Client.Migrate applies
+	if err != nil {
+		return err
+	}
+	box, err := outbox.MigrationScripts(sqlb.SQLiteDialect{}) // what Outbox.Migrate applies
+	if err != nil {
+		return err
+	}
+	inClient := map[string]int{}
+	for _, m := range queue {
+		inClient[m.Owner]++ // the ledger keys every row by (Owner, Name)
+	}
+	fmt.Println("migrations per owner:")
+	for _, owner := range []string{sqlstore.MigrationOwner, sqlstore.UniqueMigrationOwner, sqlstore.DebounceMigrationOwner, outbox.MigrationOwner} {
+		fmt.Printf("  %s: %d in Client.Migrate\n", owner, inClient[owner])
+	}
+	fmt.Printf("  %s: %d in Outbox.Migrate\n", outbox.MigrationOwner, len(box))
+	// snippet:end
+	return nil
 }
 
 // tooNew records a migration this code has never heard of, as a newer

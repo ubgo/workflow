@@ -6,7 +6,7 @@ By default `Dispatch` enqueues a batch's jobs one at a time: a 10,000-job batch 
 
 - A batch `Manager` ([batches](batches.md)) on a client that implements `batch.GroupRunner` or `batch.GroupSpawner`; the Hatchet driver implements both.
 - Only eligible batches take these paths: no job with `RunAt` or an `IdempotencyKey`, since those need `Enqueue`'s own handling. Any other batch is enqueued one job at a time.
-- The runnable program for this page is [examples/batches](../../examples/batches/); its Hatchet part runs when `HATCHET_CLIENT_TOKEN` is set.
+- The runnable program for this page is [examples/batches](../../examples/batches/): `groups.go` runs a `GroupRunner` on the memory driver and checks the Hatchet chunk limits with no engine, and `hatchet.go` runs the coordinator when `HATCHET_CLIENT_TOKEN` is set.
 
 ## Native group runs
 
@@ -14,9 +14,104 @@ By default `Dispatch` enqueues a batch's jobs one at a time: a 10,000-job batch 
 
 An error wrapping `workflow.ErrUnsupported`, returned before anything started, makes `Dispatch` fall back to one `Enqueue` per job. Any other error means the group did not fully start; the refs of the children that did start are kept and `Dispatch` cancels the batch, which cancels them.
 
+### Step 1: implement `GroupRunner` on a client
+
+The example's client embeds the memory driver and adds `RunGroup`. It loops over `Enqueue` where a real driver would make one engine call per chunk, and counts its calls so the output shows which path a batch took. Embedding keeps the driver's run-finished hook, so the batch hears of each child's end as for an enqueued job:
+
+<!-- snippet: examples/batches/groups.go#group-runner -->
+```go
+// groupClient is a driver that can start a whole batch in one call: it
+// implements batch.GroupRunner, so Manager.Dispatch hands it every
+// eligible batch at once. A real driver makes one engine call per chunk
+// (Hatchet's RunGroup is one bulk trigger per 1000 runs); this one loops
+// over Enqueue and counts the calls, so the output can show which path a
+// batch took. Embedding *memory.Client keeps the run-finished hook, so
+// the batch hears of every child's end as for an enqueued job.
+type groupClient struct {
+	*memory.Client
+	groups atomic.Int32 // RunGroup calls
+}
+
+// RunGroup starts jobs and returns one RunRef per job, in order. Each job
+// keeps its labels, which carry the batch labels the batch needs.
+func (g *groupClient) RunGroup(ctx context.Context, group string, jobs []workflow.Job) ([]workflow.RunRef, error) {
+	g.groups.Add(1)
+	refs := make([]workflow.RunRef, len(jobs))
+	for i, job := range jobs {
+		ref, err := g.Client.Enqueue(ctx, job)
+		if err != nil {
+			return refs, fmt.Errorf("group %s job %d: %w", group, i, err) // the refs so far let Dispatch cancel what started
+		}
+		refs[i] = ref
+	}
+	return refs, nil
+}
+```
+
+### Step 2: dispatch as usual
+
+Nothing in the app's code changes. `Dispatch` sees that the client implements `GroupRunner` and that every job is eligible, sets `State.Grouped` and starts the whole batch in one call:
+
+<!-- snippet: examples/batches/groups.go#group-dispatch -->
+```go
+id, err := m.Dispatch(ctx, batch.Batch{Jobs: jobs, Finally: "group-finally"}) // eligible: one RunGroup call
+if err != nil {
+	return err
+}
+st, err := store.Get(ctx, id)
+if err != nil {
+	return err
+}
+fmt.Printf("%s: grouped=%v, RunGroup calls=%d\n", id, st.Grouped, g.groups.Load())
+```
+
+It prints `group-1: grouped=true, RunGroup calls=1`. One job with an `IdempotencyKey` (or a `RunAt`) makes the batch ineligible, and `Dispatch` enqueues every job of it one at a time; the count stays at one:
+
+<!-- snippet: examples/batches/groups.go#group-ineligible -->
+```go
+keyed := append([]workflow.Job{{Workflow: "resize", IdempotencyKey: "resize:cover"}}, jobs[1:]...)
+id, err = m.Dispatch(ctx, batch.Batch{Jobs: keyed, Finally: "group-finally"}) // one key: one Enqueue per job
+if err != nil {
+	return err
+}
+st, err = store.Get(ctx, id)
+if err != nil {
+	return err
+}
+fmt.Printf("%s: grouped=%v, RunGroup calls=%d\n", id, st.Grouped, g.groups.Load())
+```
+
+It prints `group-2: grouped=false, RunGroup calls=1`. Both batches reach `Finally` with every job succeeded.
+
 `hatchet.Client.RunGroup` implements it as Hatchet bulk triggers: one `RunMany` call per chunk of jobs of the same workflow, so a batch of N jobs costs about N/1000 calls instead of N. Each run carries exactly what `Enqueue` stamps (input envelope, labels, idempotency metadata, priority). A chunk is at most `hatchet.Config.GroupChunkRuns` runs (default and maximum `hatchet.DefaultGroupChunkRuns`, 1000) and at most `GroupChunkBytes` of JSON input and metadata (default and maximum `hatchet.DefaultGroupChunkBytes`, 2 MiB), so the SDK never splits a chunk again and a failed chunk maps back to its jobs; [Hatchet tunings](../operations/tuning.md#hatchet-tunings) covers when to lower them. Every job is checked before anything starts.
 
 Nothing is needed to turn it on: a batch dispatched on the Hatchet client with eligible jobs uses it.
+
+### Step 3: size the Hatchet chunks
+
+The defaults fit an engine with the default 4 MiB gRPC message. For an engine with a lower limit, lower the chunk sizes in `hatchet.Config`; the client is still a `GroupRunner`:
+
+<!-- snippet: examples/batches/groups.go#chunks -->
+```go
+bulk := hatchet.New(hatchet.Config{
+	WorkerName:      "thumbnails",
+	GroupChunkRuns:  chunkRuns,  // runs per bulk trigger; at most hatchet.DefaultGroupChunkRuns (1000)
+	GroupChunkBytes: chunkBytes, // JSON input and metadata per bulk trigger; at most hatchet.DefaultGroupChunkBytes (2 MiB)
+})
+var _ batch.GroupRunner = bulk // Dispatch on bulk starts an eligible batch with RunGroup
+```
+
+The defaults are also the ceilings. `Start` refuses a larger value with `workflow.ErrInvalid` before it connects, so a misconfiguration fails at boot rather than at the first big batch:
+
+<!-- snippet: examples/batches/groups.go#chunk-ceiling -->
+```go
+// Twice the ceiling: refused before it connects to any engine.
+tooBig := hatchet.New(hatchet.Config{GroupChunkRuns: 2 * hatchet.DefaultGroupChunkRuns})
+err = tooBig.Start(ctx)
+fmt.Println("over the ceiling refused:", errors.Is(err, workflow.ErrInvalid))
+```
+
+It prints `over the ceiling refused: true` with no engine running. A single job larger than `GroupChunkBytes` is not refused; it goes in a chunk of its own.
 
 ## The Hatchet batch coordinator
 
@@ -56,8 +151,29 @@ The coordinator trigger is idempotent per batch, so a resumed dispatch that call
 
 ## Try it
 
+The group runner and the chunk limits need no engine:
+
 ```sh
 cd examples
+go run ./batches
+```
+
+After the lines of [Batches](batches.md#try-it), it prints:
+
+```text
+-- a client that starts a group in one call
+group-1: grouped=true, RunGroup calls=1
+group-1: finally succeeded=3 of 3
+group-2: grouped=false, RunGroup calls=1
+group-2: finally succeeded=3 of 3
+-- Hatchet bulk-trigger chunks
+chunks of at most 500 runs and 1048576 bytes
+over the ceiling refused: true
+```
+
+`go test ./batches` checks these lines in `TestGroups`. The coordinator needs a live engine:
+
+```sh
 HATCHET_CLIENT_TOKEN=... HATCHET_CLIENT_HOST_PORT=localhost:7004 HATCHET_CLIENT_TLS_STRATEGY=none go run ./batches
 ```
 
@@ -73,6 +189,8 @@ Without the token the Hatchet part does not run, and `go test ./batches` skips i
 
 ## Pitfalls
 
+- **One ref per job, in order.** `Dispatch` treats a `RunGroup` that returns no error but a different number of refs as a failed group and cancels the batch. When a group fails part-way, return one entry per job with a zero ref for each job that did not start: `Dispatch` keeps the refs it can place and cancels those children. Nil refs, or any other length, make it record every job as cancelled without a ref, so a child that did start is never cancelled on the engine and runs on unseen by the batch.
+- **Decline only before starting.** `ErrUnsupported` means "nothing started, enqueue them instead". Returned after some children started, it makes `Dispatch` enqueue every job again, so those jobs run twice.
 - **Wrappers hide the group paths.** `middleware.WrapClient`, `middleware.WithCodec` and `workflow.Use` embed `workflow.Client`, so a batch dispatched through them enqueues each job through the wrapper. That is deliberate (a codec is never bypassed), but it also means no bulk trigger and no coordinator; build the Manager on the driver's own client when the jobs need neither.
 - **Set `BatchCoordinator` alike everywhere.** Every process sharing a batch store should set it the same way, so a resumed dispatch finds the coordinator; a process with it off cannot run the coordinator's task.
 - **A coordinated batch's jobs have no refs.** `Progress` counts them as usual, but `State.Jobs[i].Ref` stays zero; look children up on the engine by the `workflow.batch.id` label.

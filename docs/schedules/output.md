@@ -149,6 +149,50 @@ admin sees 2 attempts
 
 `OutputLimits{PerRun, Bytes}` keeps the newest 20 attempts per run and 64 KiB of text per attempt by default (`DefaultOutputPerRun`, `DefaultOutputBytes`), the same bounds as the admin's in-memory store; longer text is cut on a character boundary and marked `Truncated`. A client deletes a run's output with the run (`Delete`, retention); a store used without a client bounds its table with `PruneBefore(ctx, t)`. Output captured outside a driver, with no run to file it under, is refused with `sqlstore.ErrOutputNoRun`.
 
+## Try it
+
+The file and mail sinks, on the memory driver with a fake clock over two nights:
+
+```sh
+cd examples
+go run ./task-output
+```
+
+```text
+night 1: succeeded
+night 2: failed
+--- nightly-report.log
+== 2026-01-05T02:00:00Z nightly-report/export attempt 1 [run-2] ok
+2026-01-05T02:00:00Z INFO exporting orders night=1
+result: {"rows":42}
+== 2026-01-06T02:00:00Z nightly-report/export attempt 1 [run-5] error: export refused
+2026-01-06T02:00:00Z INFO exporting orders night=2
+2026-01-06T02:00:00Z ERROR warehouse API refused the export status=503
+--- mail
+To: ops@example.com
+Subject: nightly-report failed
+
+== 2026-01-06T02:00:00Z nightly-report/export attempt 1 [run-5] error: export refused
+2026-01-06T02:00:00Z INFO exporting orders night=2
+2026-01-06T02:00:00Z ERROR warehouse API refused the export status=503
+```
+
+The file gets both nights, the first with its result (`CaptureResult`); the mail sink gets only the failed night. The database store, on SQLite, with a step that fails once and succeeds on its retry:
+
+```sh
+cd examples
+go run ./output-store
+```
+
+```text
+run succeeded
+fetch attempt 1 error="feed timed out" logged fetching feed: true
+fetch attempt 2 error="" logged fetching feed: true
+admin sees 2 attempts
+```
+
+Each attempt is stored on its own, so the admin shows both. `go test ./task-output ./output-store` checks every line.
+
 ## Options
 
 | Option | Effect |

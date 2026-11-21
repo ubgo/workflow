@@ -1,6 +1,6 @@
 # signals-and-sleep
 
-Workflows of several steps: a wait for an event matched to its run, a durable sleep, a wait that gives up after a timeout and runs `OnFailure`, two parallel steps joined by a third, a step timeout, and the per-run key form each driver refuses. It runs on the in-memory driver with a fake clock that starts on Monday at 09:00 UTC, so a day's sleep and a three-day wait pass when the program moves the clock.
+Workflows of several steps: a wait for an event matched to its run, a durable sleep, a wait that gives up after a timeout and runs `OnFailure`, two parallel steps joined by a third, a step timeout, the per-run key form each driver refuses, the key a wait step resolves, and handlers called directly (a typed `Define` handler and one reading its `StepInfo`). It runs on the in-memory driver with a fake clock that starts on Monday at 09:00 UTC, so a day's sleep and a three-day wait pass when the program moves the clock.
 
 ```sh
 cd examples
@@ -24,6 +24,15 @@ step timeout:
 refusals:
   memory: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow order, step await-payment
   hatchet: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: workflow order step await-payment: Hatchet has no API that evaluates a CEL expression to a string for the driver; use workflow.KeyFunc
+wait keys:
+  order A-7 waits on "A-7", every approval on "finance"
+  an expression is the engine's to evaluate: true
+call a handler directly:
+  typed: "hello Ada"
+  empty input: "hello "
+  bad input is permanent: true
+  outside a step: not called from a step
+  inside a step: report/send, run run-1, attempt 2
 ```
 
 ## The code
@@ -109,8 +118,8 @@ approval := workflow.Workflow{
 		Name: "await-approval",
 		Wait: &workflow.WaitSpec{
 			Event:   "expense.approved",
-			Key:     "finance", // a fixed key: every run waits for the same one
-			Timeout: 72 * time.Hour,
+			Key:     "finance",      // a fixed key: every run waits for the same one
+			Timeout: 72 * time.Hour, // three days, then the run fails
 		},
 	}},
 	// OnFailure runs once when a run fails for good, with the input of
@@ -194,6 +203,68 @@ if err := m.Register(byExpr); err != nil { // accepted here; Start validates the
 fmt.Println("  memory:", m.Start(ctx))
 m.Stop()
 fmt.Println("  hatchet:", hatchet.New(hatchet.Config{}).Register(byExpr))
+```
+
+The key a wait step waits on, as a driver resolves it when the step begins:
+
+<!-- snippet: examples/signals-and-sleep/main.go#resolve-key -->
+```go
+job := workflow.Job{Workflow: "order", Labels: map[string]string{"order": "A-7"}}
+perRun, err := byLabel.ResolveKey(job) // KeyFrom: this run's own key
+if err != nil {
+	return err
+}
+shared, err := fixed.ResolveKey(job) // Key: the same for every run
+if err != nil {
+	return err
+}
+fmt.Printf("  order A-7 waits on %q, every approval on %q\n", perRun, shared)
+byExpr := workflow.WaitSpec{Event: "payment.succeeded", KeyFrom: workflow.KeyExpr("input.ID")}
+_, err = byExpr.ResolveKey(job)
+fmt.Println("  an expression is the engine's to evaluate:", errors.Is(err, workflow.ErrUnsupported))
+```
+
+A typed handler, called directly:
+
+<!-- snippet: examples/signals-and-sleep/main.go#define -->
+```go
+type greeting struct{ Name string }
+greet := workflow.Define(func(ctx context.Context, in greeting) (string, error) {
+	return "hello " + in.Name, nil
+})
+out, err := greet(ctx, []byte(`{"Name":"Ada"}`))
+if err != nil {
+	return err
+}
+fmt.Printf("  typed: %s\n", out)
+out, err = greet(ctx, nil) // empty input decodes to the zero greeting
+if err != nil {
+	return err
+}
+fmt.Printf("  empty input: %s\n", out)
+_, err = greet(ctx, []byte(`not json`))
+fmt.Println("  bad input is permanent:", workflow.IsPermanent(err))
+```
+
+A handler reading the `StepInfo` a driver puts on its ctx, and the same handler outside a step:
+
+<!-- snippet: examples/signals-and-sleep/main.go#step-info -->
+```go
+report := func(ctx context.Context, _ []byte) ([]byte, error) {
+	info, ok := workflow.StepInfoFrom(ctx)
+	if !ok {
+		return nil, workflow.Permanent(errors.New("not called from a step"))
+	}
+	return fmt.Appendf(nil, "%s/%s, run %s, attempt %d", info.Workflow, info.Step, info.RunID, info.Attempt), nil
+}
+_, err = report(ctx, nil)
+fmt.Println("  outside a step:", err)
+stepCtx := workflow.WithStepInfo(ctx, workflow.StepInfo{Workflow: "report", Step: "send", RunID: "run-1", Attempt: 2})
+out, err = report(stepCtx, nil)
+if err != nil {
+	return err
+}
+fmt.Printf("  inside a step: %s\n", out)
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

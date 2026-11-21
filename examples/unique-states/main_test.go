@@ -13,7 +13,10 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `unique while waiting to start:
+	want := `key from tagged fields:
+  s-1 with two cursors, same key: true
+  s-1 and s-2, same key: false
+unique while waiting to start:
   s-1 in an hour: accepted
   s-1 now, other cursor, first one scheduled: refused (ErrDuplicate)
   s-2 now: accepted
