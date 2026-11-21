@@ -13,14 +13,7 @@ The backend suites skip without their server; [Tasks while you work](#tasks-whil
 ## Before you start
 
 - Go 1.26 (the `go.work` version; `task gomin` fetches the older toolchains it needs by itself), [Task](https://taskfile.dev) v3, and Docker for the suites that start a throwaway database, Redis or Hatchet.
-- `testlock` on your `PATH`. The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test`, `redis:test`, `sqlstore:test`, `recorder:test` and the live suites) wrap their command in `testlock`, a machine-wide lock the maintainers use so two suites never run at once on one machine. The tool is not part of this repository; when you do not have it, a pass-through script is enough:
-
-```sh
-mkdir -p ~/.local/bin
-printf '#!/bin/sh\nexec "$@"\n' > ~/.local/bin/testlock
-chmod +x ~/.local/bin/testlock
-```
-
+- Nothing for locking. The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test`, `redis:test`, `sqlstore:test`, `recorder:test` and the live suites) wrap their command in `testlock` when it is on your `PATH`: a machine-wide lock the maintainers use so two suites never run at once on one machine. It is not part of this repository; without it the commands run directly (the Taskfiles' `LOCK` variable).
 - The `ds` CLI for `docs:drift` (`go install github.com/ubgo/docsync/cli/cmd/ds@latest`).
 
 ## Tasks while you work
@@ -127,7 +120,7 @@ Describe what changed and why. The repository history is read by people deciding
 - `task fmt` rewrites files in place; `fmt:check` only reports. A gate failure on `fmt:check` is fixed by `task fmt`, not by hand.
 - `docs:snippets:sync` rewrites every block that copies a changed region, in any guide. Renaming or changing the meaning of a region another guide copies changes that guide too: grep `docs/` for `snippet: examples/<name>/` first.
 - The live tasks start and remove Docker containers on fixed local ports (Redis 36379, MySQL 33072, Postgres 35432); a server already on that port makes the start fail.
-- Without `testlock` on `PATH` every heavy task fails with `testlock: command not found`; see [Before you start](#before-you-start).
+- Without `testlock` on `PATH` two heavy tasks started at once on one machine run side by side and compete for CPU and the fixed container ports; start them one after the other.
 
 ## Related
 

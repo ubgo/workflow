@@ -170,3 +170,34 @@ func TestNewLeaderElectorRefuses(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkerOnlyNeverLeads: a WithoutScheduler client given
+// WithLeaderElection never takes the role, even when it starts first, so
+// the full node beside it leads and fires the cron tick. Before the fix
+// the worker won the election and no client fired anything.
+func TestWorkerOnlyNeverLeads(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			clk := clock.NewFake(start)
+			var runs atomic.Int64
+			wf := workflow.Workflow{Name: "tick", Cron: []string{"* * * * *"}, Steps: []workflow.Step{{Name: "a",
+				Run: func(context.Context, []byte) ([]byte, error) { runs.Add(1); return nil, nil }}}}
+			lease := sqlstore.LeaderLease(time.Hour) // a role once taken stays taken for the whole test
+			worker := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithoutScheduler(), sqlstore.WithLeaderElection("worker", lease))
+			startWith(t, worker, wf)
+			time.Sleep(20 * testPoll) // the worker has had every chance to campaign alone
+			if worker.IsLeader() {
+				t.Fatal("a WithoutScheduler client leads the scheduler role")
+			}
+			full := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithLeaderElection("full", lease))
+			startWith(t, full, wf)
+			waitFor(t, 10*time.Second, "the full node to lead", full.IsLeader)
+			clk.Advance(time.Minute)
+			waitFor(t, 10*time.Second, "the leader's cron fire", func() bool { return runs.Load() >= 1 })
+			if worker.IsLeader() {
+				t.Fatal("the worker-only client leads after the full node took the role")
+			}
+		})
+	}
+}

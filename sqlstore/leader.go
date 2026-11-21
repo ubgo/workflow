@@ -260,6 +260,12 @@ func WithElector(e Elector) Option {
 // workflow.DefaultNodeID()), on the client's lease clock and WithLeaseSkew.
 // The client campaigns from Start and resigns when it stops. opts tune
 // the elector (LeaderLease); its tables follow the client's.
+//
+// A WithoutScheduler client never campaigns: it could not fire a tick if
+// it led, so holding the role would stop every client from firing (the
+// way Oban's peer: false keeps a node out of leadership). Its IsLeader is
+// always false, the leader among the clients that may fire runs the
+// housekeeping, and the option can stay in a config shared by every node.
 func WithLeaderElection(node string, opts ...LeaderOption) Option {
 	return func(cl *Client) {
 		cl.leaderNode = node
@@ -277,10 +283,21 @@ func (c *Client) IsLeader() bool {
 	return c.elector.IsLeader()
 }
 
+// neverLeader is the Elector of a WithoutScheduler client given
+// WithLeaderElection: it never campaigns, so it never leads.
+type neverLeader struct{}
+
+// IsLeader is always false.
+func (neverLeader) IsLeader() bool { return false }
+
 // buildLeader makes WithLeaderElection's elector once the client's options
 // are known.
 func (c *Client) buildLeader() {
 	if !c.leaderOn {
+		return
+	}
+	if c.noScheduler {
+		c.elector = neverLeader{} // a worker-only node never stands
 		return
 	}
 	node := c.leaderNode

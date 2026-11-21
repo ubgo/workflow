@@ -16,6 +16,13 @@ env:
 # The Hatchet driver's own tasks, runnable from the root as hatchet:<task>
 # (hatchet:test:live runs the conformance suite against the shared stack's
 # Hatchet engine).
+vars:
+  # LOCK prefixes the heavy commands: `testlock` (the machine-wide lock the
+  # maintainers use so two suites never run at once on one machine) when it
+  # is on PATH, otherwise empty, so the command runs directly.
+  LOCK:
+    sh: 'command -v testlock >/dev/null 2>&1 && echo testlock || true'
+
 includes:
   hatchet:
     taskfile: ./hatchet/Taskfile.yml
@@ -32,8 +39,9 @@ includes:
     dir: ./recorder
 
 # The heavy tasks (test, vet, check) run under the machine-wide `testlock`
-# (~/.local/bin), so two suites never run at once on this machine; a nested
-# call passes straight through. Each public task takes the lock and runs its
+# when it is on PATH (the LOCK var above), so two suites never run at once
+# on this machine; a nested call passes straight through. Without it the
+# command runs directly. Each public task takes the lock and runs its
 # internal :run twin. Every module in go.work is covered: `go list -m` lists
 # the workspace modules and each gets a /... pattern.
 
@@ -44,7 +52,7 @@ tasks:
 
   test:
     desc: Run the tests of every module in go.work with the race detector (the Hatchet live suite skips without a token; see hatchet:test:live)
-    cmds: ['testlock task test:run']
+    cmds: ['{{.LOCK}} task test:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # -race because the drivers and the fake clock are concurrent code.
@@ -57,7 +65,7 @@ tasks:
 
   vet:
     desc: Run go vet over every module in go.work
-    cmds: ['testlock task vet:run']
+    cmds: ['{{.LOCK}} task vet:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   vet:run:
@@ -73,7 +81,7 @@ tasks:
 
   gomin:
     desc: Vet every module, test files included, under the Go toolchain its go.mod declares (core, sqlstore and its pgnotify, pgxtx and enginetest modules, admin, redis and cli go 1.24.0, otel, otel/sdktest and sentry go 1.25.0, hatchet, bench and examples go 1.26.0), so a stated minimum is proven rather than claimed; downloads a missing toolchain once
-    cmds: ['testlock task gomin:run']
+    cmds: ['{{.LOCK}} task gomin:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # go.work declares the highest version (1.26.0), which an older toolchain
@@ -108,7 +116,7 @@ tasks:
 
   check:
     desc: The gate - gofmt check, vet, race tests of every module (the examples module included), the Go minimum per module, the dependency rule (deps:check), then the doc checks (wrap, links, snippets, words, drift)
-    cmds: ['testlock task check:run']
+    cmds: ['{{.LOCK}} task check:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   check:run:
@@ -131,7 +139,7 @@ tasks:
   # only on the code.
   redis:test:
     desc: Redis driver race tests against a throwaway Redis (compose.yml redis profile), each test under its own key prefix; WFTEST_REDIS_URL set to a URL runs against that Redis instead and starts nothing
-    cmds: ['testlock task redis:test:run']
+    cmds: ['{{.LOCK}} task redis:test:run']
 
   # Called through testlock by the public task above; no desc keeps it off
   # task --list. The defer is registered BEFORE the profile starts. With
@@ -156,7 +164,7 @@ tasks:
   # Not part of check: benchmarks measure, they do not gate, and a run
   # takes minutes against several services. Run it on a quiet machine.
   bench:
-    desc: Run the benchmarks (memory, sqlstore on SQLite, Postgres and Postgres with LISTEN/NOTIFY, Redis, Hatchet) one system at a time and print a results table; REDIS_ADDR overrides the Redis address; see docs/reference/benchmarks.md
+    desc: Run the benchmarks (memory, sqlstore on SQLite, Postgres and Postgres with LISTEN/NOTIFY, Redis, Hatchet) one system at a time and print a results table; STACK_ENV (required) is the local stack's .env path, or empty to take HATCHET_CLIENT_TOKEN and REDIS_PASSWORD from the environment; REDIS_ADDR overrides the Redis address; see docs/reference/benchmarks.md
     dir: bench
     cmds: ['sh ./run.sh {{.CLI_ARGS}}']
 
@@ -179,7 +187,7 @@ tasks:
 
   examples:test:
     desc: Vet and test the examples module (every program under examples/ and the doc checkers); task test covers it too, this runs it alone
-    cmds: ['testlock task examples:test:run']
+    cmds: ['{{.LOCK}} task examples:test:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   examples:test:run:

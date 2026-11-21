@@ -347,6 +347,7 @@ A recorder never fails a run: when a history write fails (the store is down, a w
 | `OpAddEvent` | `add-event` | A step event (`workflow.RecordEvent`) |
 | `OpFinishRun` | `finish-run` | The run ended (run-finished observer) |
 | `OpReadResult` | `read-result` | Reading a succeeded run's result with [`WithResultReader`](ds:block?id=rec-withresultreader-wrjsqy26) failed; the end is still written, without the result |
+| `OpSetOutcome` | `set-outcome` | A step's `workflow.SetOutcome`; the error (a store panic turned into one) also goes back to the step |
 
 The example's hook (in the `recorder` snippet above) collects the ops. It then takes the store down for maintenance and runs the workflow again: every write fails, the hook hears of each, and the run still succeeds on the driver:
 
@@ -771,8 +772,8 @@ Every case passes; `prune_two_stages` and `prune_archive_failure` skip, because 
 - A delayed run is recorded under its `ScheduledID` at enqueue and under its `RunID` once it starts; the two records are joined by the first write that carries both IDs (its run-finished event, or a Reconciler pass). Until then a listing can show both.
 - On a driver without `workflow.CapRunFinished` (Hatchet), a run end can be missed: run the Reconciler.
 - The recorder's history is not the driver's: [`admin.WithRunQuerier`](ds:block?id=admin-withrunquerier-g356xuy3) shows the recorder, while a retry or a cancel acts on the client. A run the engine already pruned can be shown but no longer retried.
-- **An archive sees a run at least once.** The SQL store deletes a batch after `Archive` returned; a prune stopped between the two (its context cancelled, the database gone) archives the batch again next time. Key what the archive writes by the run, so a second copy replaces the first.
-- **A failed `SetOutcome` is not reported to the hook.** `workflow.SetOutcome` returns the store's error to the step that called it; the `WriteOp` list has no outcome write.
+- **`sqlrecorder`'s archive sees a run at least once; `MemoryStore`'s exactly once.** Cancelling a prune no longer repeats a batch: once `Archive` accepted it, its delete runs even after the context is cancelled (bounded at 30 seconds). A batch still comes again when the process dies or the delete fails between `Archive` returning and the delete committing, or when two processes prune the same tables at once, because an outside archive and the database cannot commit together. A repeat carries the same records (same `RunRef` and `Key`), so key what the archive writes by the run and a second copy replaces the first. `MemoryStore` runs one prune at a time and deletes what `Archive` accepted at once, so it hands each run over once.
+- **A failed `SetOutcome` is reported twice, on purpose.** The hook hears it as `OpSetOutcome`, and `workflow.SetOutcome` also returns the error to the step that called it, which asked for the outcome to be kept; a store panic there becomes that error, as on every other write.
 - **A `Redactor` must not change the slice it gets.** Return a new one; the body it was handed is the step's own input or output.
 - **The backfill window must outlast an outage.** A run that started and ended while the store was down for longer than `WithBackfillWindow` is never listed again, so it never gets a record.
 - `RecordEvent` and the recorder's writes run on the step's goroutine: a slow store slows steps, up to [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw) ([5 seconds](ds:block?id=rec-defaultwritetimeout-wbngg5vx) by default) per write.

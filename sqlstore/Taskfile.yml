@@ -5,7 +5,7 @@ version: '3'
 # runs PKGS: the sqlstore, enginetest, pgnotify and pgxtx modules. SQLite tests need nothing; the Postgres tests run
 # against a throwaway Postgres from compose.yml (test:pg) or the host's
 # Postgres.app (test:pg:host, the Mac), in a dedicated database,
-# ubgo_workflow_test, each test in its own table prefix. Heavy runs take the machine-wide testlock.
+# ubgo_workflow_test, each test in its own table prefix. Heavy runs take the machine-wide testlock when it is on PATH (LOCK).
 # Runs with a second engine get -timeout 60m. The SQLite conformance suites
 # run in shares, one test binary each (enginetest/shards, run in parallel by
 # go test), so the SQLite half takes about 5 minutes under -race on a loaded
@@ -16,6 +16,11 @@ version: '3'
 set: [pipefail]
 
 vars:
+  # LOCK prefixes the heavy commands: `testlock` (the machine-wide lock the
+  # maintainers use so two suites never run at once on one machine) when it
+  # is on PATH, otherwise empty, so the command runs directly.
+  LOCK:
+    sh: 'command -v testlock >/dev/null 2>&1 && echo testlock || true'
   # Every package of the four modules this directory holds.
   PKGS: ./... ./enginetest/... ./pgnotify/... ./pgxtx/...
   PG_DB: ubgo_workflow_test
@@ -29,11 +34,11 @@ vars:
 tasks:
   test:
     desc: Race tests on SQLite (the Postgres cases skip without WFTEST_PG_DSN; see test:pg)
-    cmds: ['testlock go test -race {{.PKGS}}']
+    cmds: ['{{.LOCK}} go test -race {{.PKGS}}']
 
   test:pg:
     desc: Race tests on SQLite and Postgres 18 (compose.yml's throwaway postgres profile, removed after the run pass or fail)
-    cmds: ['testlock task test:pg:run']
+    cmds: ['{{.LOCK}} task test:pg:run']
 
   # Called through testlock by the public task above; no desc keeps it off
   # task --list. The defer is registered BEFORE the profile starts.
@@ -51,11 +56,11 @@ tasks:
   test:pg:host:
     desc: Race tests on SQLite and the host's Postgres.app (the Mac shared stack; creates the ubgo_workflow_test database when missing)
     deps: [db:create]
-    cmds: ['testlock sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 60m {{.PKGS}}"']
+    cmds: ['{{.LOCK}} sh -c "WFTEST_PG_DSN={{.PG_DSN}} go test -race -timeout 60m {{.PKGS}}"']
 
   test:mysql:
     desc: Race tests on SQLite and MySQL 8 (compose.yml's throwaway mysql profile, removed after the run pass or fail)
-    cmds: ['testlock task test:mysql:run']
+    cmds: ['{{.LOCK}} task test:mysql:run']
 
   # Called through testlock by the public task above; no desc keeps it off
   # task --list. The defer is registered BEFORE the profile starts, so a

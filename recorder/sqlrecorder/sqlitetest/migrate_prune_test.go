@@ -295,6 +295,45 @@ func TestPrune(t *testing.T) {
 	}
 }
 
+// TestPruneCancelledAfterArchive: a prune cancelled just after Archive
+// accepted a batch still deletes that batch, so the next prune hands
+// Archive only the runs it has not seen. Before, the cancelled context
+// failed the delete and the next prune archived the same batch again.
+func TestPruneCancelledAfterArchive(t *testing.T) {
+	clk := clock.NewFake(t0)
+	seen := map[string]int{}
+	var cancel context.CancelFunc
+	s, _, _ := newStore(t, sqlrecorder.WithClock(clk), sqlrecorder.WithRetention(prunePlan(func(_ context.Context, rs []recorder.RunRecord) error {
+		for _, r := range rs {
+			seen[r.Key()]++
+		}
+		if cancel != nil {
+			cancel() // the prune's caller gives up right after Archive returned
+			cancel = nil
+		}
+		return nil
+	})))
+	seedPrune(t, s, clk)
+	ctx, c := context.WithCancel(context.Background())
+	cancel = c
+	if _, err := s.Prune(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled prune = %v, want context.Canceled", err)
+	}
+	res, err := s.Prune(context.Background())
+	must(t, err)
+	if res.Archived != 2 || res.RunsDeleted != 2 {
+		t.Fatalf("second prune = %+v, want the two runs the first never reached", res)
+	}
+	if len(seen) != 4 {
+		t.Fatalf("archived %d distinct runs, want 4: %v", len(seen), seen)
+	}
+	for k, n := range seen {
+		if n != 1 {
+			t.Errorf("run %s archived %d times, want once", k, n)
+		}
+	}
+}
+
 // TestPruneFailures fails each statement of a prune and checks the error
 // names the stage, wraps the cause, and the failed batch is untouched.
 func TestPruneFailures(t *testing.T) {
