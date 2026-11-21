@@ -144,8 +144,8 @@ func SlotFlows(t *testing.T) {
 	}
 }
 
-// TestRedoFlows proves ResetRunWith (a succeeded run) on every engine.
-func TestRedoFlows(t *testing.T) {
+// RedoFlows proves ResetRunWith (a succeeded run) on every engine.
+func RedoFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
@@ -158,8 +158,8 @@ func TestRedoFlows(t *testing.T) {
 	}
 }
 
-// TestForkFlows proves ForkRun on every engine.
-func TestForkFlows(t *testing.T) {
+// ForkFlows proves ForkRun on every engine.
+func ForkFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
