@@ -1,5 +1,5 @@
 {
-  "_hlc": "2026-11-20T15:34:51.779Z/0000/act_afbe7ed1d969752697eebecaac20e9dc",
+  "_hlc": "2026-11-21T09:41:33.272Z/0000/act_7b6e2727126b7bbb9f3a5a9cefc0022f",
   "_o": {
     "cmd": "task add",
     "git": {
@@ -13,21 +13,51 @@
   "_table": "tasks",
   "_v": 2,
   "_w": {
-    "v": "0.1.23"
+    "v": "0.1.24"
   },
   "body": "Task echoes the templated {{.WORDS}}; pass the list through the environment or mark the command silent.",
-  "commitment": "proposed",
+  "close_reason": "completed",
+  "commitment": "accepted",
+  "completed_at": "2026-11-21T09:41:33.263237000Z",
   "created_at": "2026-11-20T15:34:51.779000000Z",
   "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "done_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "done_commit": "ed86796473dbd3180f9e12a02ea06e5860e51051",
+  "history": [
+    {
+      "at": "2026-11-21T09:41:33Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "status",
+      "from": "todo",
+      "id": "the_01a1fd7b85d072f99bc7e099c34041e0",
+      "note": "open_items_at_close: 0",
+      "to": "done"
+    },
+    {
+      "at": "2026-11-21T09:41:33Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "commitment",
+      "from": "proposed",
+      "id": "the_01a1fd7b85d072fda4b4cdfc4147145f",
+      "to": "accepted"
+    },
+    {
+      "at": "2026-11-21T09:41:33Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "close_reason",
+      "id": "the_01a1fd7b85d0732c8c013f761613ee62",
+      "to": "completed"
+    }
+  ],
   "id": "tsk_01a1f998a00e7b369796019d65e84c87",
   "priority": "medium",
   "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
-  "status": "todo",
+  "status": "done",
   "tasklist_id": "tlt_95b6a5727e7971d98869a8451a761e0a",
   "title": "task docs:words prints the private word list in its command echo",
-  "updated_at": "2026-11-20T15:34:51.779000000Z",
-  "updated_by": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "updated_at": "2026-11-21T09:41:33.272000000Z",
+  "updated_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
   "watchers": [
     "act_afbe7ed1d969752697eebecaac20e9dc"
   ]

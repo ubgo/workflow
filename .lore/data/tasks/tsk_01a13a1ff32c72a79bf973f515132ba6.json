@@ -1,26 +1,21 @@
 {
-  "_hlc": "2026-10-14T11:15:34.828Z/0000/",
+  "_hlc": "2026-11-21T09:41:51.804Z/0000/act_7b6e2727126b7bbb9f3a5a9cefc0022f",
   "_table": "tasks",
   "_v": 2,
-  "assigned_to_actor_id": null,
-  "body": "Rows in the feature catalogue (private notes). Scope to be chosen by the owner before building (propose in/defer/skip first).",
+  "_w": {
+    "v": "0.1.24"
+  },
+  "body": "After round 2 (2026-11-21, v0.2.1): P3 is 144 built, 4 partial, 8 not built; P4 is 51 built, 3 partial, 16 not built (counts in the private BUILD_STATUS notes). Not built in P3: FC-09 (Hatchet sticky workers only), BK-07 (Temporal server), BK-08 (cloud schedulers) and the broker rows MQ-05, MQ-11, MQ-13, MQ-14, MQ-17. Not built in P4: WC-28, WC-31, WC-33, WC-38, WC-41, WC-42 (graph or token engine semantics), WX-06, WX-07, WX-09, WX-10 (human task management), WP-30 (needs a broker), XM-05, XM-06, XM-11, XM-13, and BK-10 (out of scope, owner 2026-11-20). Partial: P3 WC-15, WX-05, WX-13, MQ-08; P4 WC-08, WX-08, IO-01. Scope of anything further to be chosen by the owner (propose in/defer/skip first).",
   "commitment": "accepted",
-  "completed_at": null,
   "created_at": "2026-10-14T11:15:34.828170331Z",
   "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
-  "deferred_until": null,
-  "due_at": null,
   "id": "tsk_01a13a1ff32c72a79bf973f515132ba6",
-  "mission_id": null,
-  "plan_id": null,
   "priority": "medium",
   "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
-  "repo_id": null,
-  "started_at": null,
   "status": "todo",
   "tasklist_id": "tlt_01a12578f3927b089f2112c8d16e0072",
-  "title": "P3 and P4 feature rows (not started)",
-  "updated_at": "2026-10-14T11:15:34.828170672Z",
-  "updated_by": "act_00000000000070008000000000000000"
+  "title": "P3 and P4 feature rows: 8 P3 and 16 P4 rows not built remain",
+  "updated_at": "2026-11-21T09:41:51.804000000Z",
+  "updated_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f"
 }

@@ -126,6 +126,18 @@ Payloads are shown on a run's page only when the handler is built with `admin.Wi
 
 ![A running run with Force complete and Force fail, in dark mode](../assets/admin-ui/run-force-dark.png)
 
+![A succeeded run with "Run again from a step": step transform typed, "also if it succeeded" ticked, and Reset armed as "Confirm reset?"](../assets/admin-ui/run-reset-light.png)
+
+![The same reset of a succeeded run in dark mode](../assets/admin-ui/run-reset-dark.png)
+
+![The fork form on a succeeded run: from step transform, with the idempotency key INV-1040-reupload](../assets/admin-ui/run-fork-light.png)
+
+![The forked run that opens after Fork: its fork-of and fork-step labels, and the toast naming the new run](../assets/admin-ui/run-forked-light.png)
+
+![A run parked on its wait step: status waiting, with Cancel, Force complete, Cancel step and Force fail. Signalling the runs waiting now is an API and CLI operation (POST /signals/waiting, workflow signal-waiting); the UI has no button for it](../assets/admin-ui/run-waiting-light.png)
+
+These five are captured by `task docs:screenshots` (the program in `scripts/admin-screenshots`, over an in-memory client with dummy data and a headless Chrome); rerun it after a change to the run screen.
+
 The label box takes space-separated `key=value` pairs that must all match, and `key=prefix*` for a value that starts with a prefix (`key=*` for "has the key"), the API's `label` filter. A prefix needs a driver with `CapLabelPrefix` ([Search by label](../jobs/manage-runs.md#search-by-label)). The page numbers come from the API's `count=1`, which counts within the handler's max scan:
 
 <!-- snippet: examples/admin-ui/main.go#count -->

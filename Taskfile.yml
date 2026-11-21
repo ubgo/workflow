@@ -206,6 +206,11 @@ tasks:
     cmds:
       - go run ./examples/internal/doccheck/snippets -root . README.md docs examples
 
+  docs:screenshots:
+    desc: Capture the admin UI screenshots of run reset, fork and waiting into docs/assets/admin-ui with a headless Chrome (scripts/admin-screenshots; needs Chrome or Chromium; never part of check)
+    dir: scripts/admin-screenshots
+    cmds: ['go run . -out ../../docs/assets/admin-ui']
+
   docs:words:
     desc: Fail when a forbidden word appears in the Markdown under docs/ and examples/, the top-level public Markdown files or any Go file git tracks or would track (ignored private overlays such as docsi are skipped); the list comes from FORBIDDEN_WORDS or the private docsi/forbidden-words.txt (one word per line), and the check is skipped when neither exists
     # The list itself is private: writing the names here would publish the
