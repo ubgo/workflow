@@ -1,0 +1,36 @@
+{
+  "_hlc": "2026-11-21T09:42:07.062Z/0000/act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "_o": {
+    "cmd": "task add",
+    "git": {
+      "branch": "dev-local",
+      "commit": "e96f24412a25a4dcec1d0b8f02b3d8f0e76d99ae",
+      "state": "branch"
+    },
+    "project": "prj_01a115555ae37c48ae7fddcfa96da417",
+    "store": "repo"
+  },
+  "_table": "tasks",
+  "_v": 2,
+  "_w": {
+    "v": "0.1.24"
+  },
+  "body": "Run-addressed signals (SignalRun, SignalParent) shipped in round 2 without an operator path: add an admin JSON route, a UI action and a workflow CLI command to signal one run.",
+  "commitment": "proposed",
+  "created_at": "2026-11-21T09:42:07.062000000Z",
+  "created_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "created_by_actor_id": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "id": "tsk_01a1fd7c09cf753785b9921f7a80f0f8",
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "source_kind": "agent-proposal",
+  "source_ref": "round 2 integration (dev 09a116a)",
+  "status": "todo",
+  "tasklist_id": "tlt_95b6a5727e7971d98869a8451a761e0a",
+  "title": "Admin route and CLI command for SignalRun",
+  "updated_at": "2026-11-21T09:42:07.062000000Z",
+  "updated_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "watchers": [
+    "act_7b6e2727126b7bbb9f3a5a9cefc0022f"
+  ]
+}

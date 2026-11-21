@@ -1,5 +1,5 @@
 {
-  "_hlc": "2026-11-20T15:34:48.015Z/0000/act_afbe7ed1d969752697eebecaac20e9dc",
+  "_hlc": "2026-11-21T09:41:12.334Z/0000/act_7b6e2727126b7bbb9f3a5a9cefc0022f",
   "_o": {
     "cmd": "task add",
     "git": {
@@ -13,21 +13,51 @@
   "_table": "tasks",
   "_v": 2,
   "_w": {
-    "v": "0.1.23"
+    "v": "0.1.24"
   },
   "body": "A 1000-tick backfill plan takes about 3 s.",
-  "commitment": "proposed",
+  "close_reason": "completed",
+  "commitment": "accepted",
+  "completed_at": "2026-11-21T09:41:12.325716000Z",
   "created_at": "2026-11-20T15:34:48.015000000Z",
   "created_by": "act_afbe7ed1d969752697eebecaac20e9dc",
   "created_by_actor_id": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "done_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+  "done_commit": "ed86796473dbd3180f9e12a02ea06e5860e51051",
+  "history": [
+    {
+      "at": "2026-11-21T09:41:12Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "status",
+      "from": "todo",
+      "id": "the_01a1fd7b34067bb48099833b16fdadb8",
+      "note": "open_items_at_close: 0",
+      "to": "done"
+    },
+    {
+      "at": "2026-11-21T09:41:12Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "commitment",
+      "from": "proposed",
+      "id": "the_01a1fd7b34067bbbaf2d86658c0f0f1d",
+      "to": "accepted"
+    },
+    {
+      "at": "2026-11-21T09:41:12Z",
+      "by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
+      "field": "close_reason",
+      "id": "the_01a1fd7b34067bbf98c99b68229e6101",
+      "to": "completed"
+    }
+  ],
   "id": "tsk_01a1f998915b7c109e1516ac9e8d8e66",
   "priority": "medium",
   "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
-  "status": "todo",
+  "status": "done",
   "tasklist_id": "tlt_95b6a5727e7971d98869a8451a761e0a",
   "title": "Profile cron next-fire (about 3 ms per call)",
-  "updated_at": "2026-11-20T15:34:48.015000000Z",
-  "updated_by": "act_afbe7ed1d969752697eebecaac20e9dc",
+  "updated_at": "2026-11-21T09:41:12.334000000Z",
+  "updated_by": "act_7b6e2727126b7bbb9f3a5a9cefc0022f",
   "watchers": [
     "act_afbe7ed1d969752697eebecaac20e9dc"
   ]
