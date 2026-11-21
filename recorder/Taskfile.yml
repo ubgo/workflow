@@ -5,11 +5,16 @@ version: '3'
 # throwaway service from the repo's own compose files, runs the recorder/e2e
 # module against it, and removes it after the run, pass or fail, through a
 # defer registered before the start. Heavy runs take the machine-wide
-# testlock.
+# testlock when it is on PATH (LOCK); without it they run directly.
 
 set: [pipefail]
 
 vars:
+  # LOCK prefixes the heavy commands: `testlock` (the machine-wide lock the
+  # maintainers use so two suites never run at once on one machine) when it
+  # is on PATH, otherwise empty, so the command runs directly.
+  LOCK:
+    sh: 'command -v testlock >/dev/null 2>&1 && echo testlock || true'
   # sqlstore/compose.yml: throwaway Postgres 18 and MySQL 8.
   SQL_COMPOSE: ../sqlstore/compose.yml
   PG_DSN: postgres://postgres:workflow@127.0.0.1:35432/ubgo_workflow_test?sslmode=disable
@@ -23,7 +28,7 @@ vars:
 tasks:
   test:
     desc: Race tests of recorder, sqlrecorder and recorder/e2e (SQLite, memory driver, SQL driver on SQLite; the live cases skip)
-    cmds: ['testlock task test:run']
+    cmds: ['{{.LOCK}} task test:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   test:run:
@@ -57,7 +62,7 @@ tasks:
 
   e2e:pg:
     desc: recorder/e2e on SQLite and a throwaway Postgres (sqlstore/compose.yml postgres profile, removed after the run)
-    cmds: ['testlock task e2e:pg:run']
+    cmds: ['{{.LOCK}} task e2e:pg:run']
 
   e2e:pg:run:
     cmds:
@@ -68,7 +73,7 @@ tasks:
 
   e2e:mysql:
     desc: recorder/e2e on SQLite and a throwaway MySQL (sqlstore/compose.yml mysql profile, removed after the run)
-    cmds: ['testlock task e2e:mysql:run']
+    cmds: ['{{.LOCK}} task e2e:mysql:run']
 
   e2e:mysql:run:
     cmds:
@@ -79,7 +84,7 @@ tasks:
 
   e2e:redis:
     desc: The recorder over the Redis driver against a throwaway Redis (compose.yml redis profile, removed after the run)
-    cmds: ['testlock task e2e:redis:run']
+    cmds: ['{{.LOCK}} task e2e:redis:run']
 
   e2e:redis:run:
     cmds:
@@ -93,7 +98,7 @@ tasks:
   # and it dies with the container.
   e2e:hatchet:
     desc: The recorder over the Hatchet driver against a throwaway hatchet-lite (compose.yml hatchet profile, removed after the run)
-    cmds: ['testlock task e2e:hatchet:run']
+    cmds: ['{{.LOCK}} task e2e:hatchet:run']
 
   e2e:hatchet:run:
     cmds:
