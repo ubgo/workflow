@@ -4,6 +4,10 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-21
+
+The core `v0.2.1` and every separate module at `v0.2.1`: `admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify` and `sqlstore/pgxtx`. Each separate module requires the core `v0.2.1` (and `recorder/sqlrecorder` requires `recorder/v0.2.1`). `otel`, `recorder`, `recorder/sqlrecorder`, `sentry`, `sqlstore/pgnotify` and `sqlstore/pgxtx` have no code change since v0.2.0; they move to v0.2.1 so the set moves together. This is a patch release: every change below adds API or fixes behaviour, and no exported identifier of any module was removed or changed (checked with `apidiff` against v0.2.0). Capabilities 0 to 63 keep their numbers; `WaitOwnRun` (64), `RoundRobin` (65) and `KeyWeights` (66) are new. sqlstore adds migration `011_fair_turns`, applied by `Client.Migrate`.
+
 ### Changed
 
 - memory, sqlstore and redis: with `ConcurrencyRoundRobin` the keys of a workflow take turns for the workers (start-time fair queueing, `workflow.CapRoundRobin`), a key that was idle rejoins at the current turn, a round-robin workflow keeps its place among other workflows, and `Job.Priority` still goes first (FC-05). This replaces the memory driver's per-task round robin of 0.2.0.
