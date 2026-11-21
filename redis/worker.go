@@ -93,9 +93,6 @@ var errRunTimeout = errors.New("redis: run timed out")
 // errLost is the context cause of a run whose lease this client lost.
 var errLost = errors.New("redis: lease lost; another client holds the run")
 
-// errStepTimeout is the context cause of an attempt past its timeout.
-var errStepTimeout = errors.New("redis: step attempt timed out")
-
 // worker claims and executes runs until the client stops or drains.
 func (c *Client) worker() {
 	defer c.wg.Done()
@@ -282,7 +279,11 @@ func (c *Client) execute(h *held) {
 		return
 	}
 	if h.reclaims > c.maxReclaims {
-		c.finish(h, workflow.StatusFailed, "", fmt.Errorf("%w: its lease expired %d times in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, c.maxReclaims))
+		times := "times"
+		if h.reclaims == 1 {
+			times = "time"
+		}
+		c.finish(h, workflow.StatusFailed, "", fmt.Errorf("%w: its lease expired %d %s in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, times, c.maxReclaims))
 		return
 	}
 	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
@@ -772,12 +773,20 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 		lastBeat.Store(c.clk.Now().UnixNano())
 		return c.renew(h)
 	}))
+	// The attempt's own deadlines cancel it with timeout errors, so
+	// context.Cause in the handler matches workflow.ErrStepTimeout or
+	// ErrHeartbeatTimeout; the driver tells them from any other cause by
+	// identity.
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("redis: step %q attempt %d after %s", s.Name, attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("redis: step %q attempt %d sent no heartbeat for %s", s.Name, attempt, s.HeartbeatTimeout))
 	if d > 0 {
 		tm := c.clk.NewTimer(d)
 		go func() {
 			select {
 			case <-tm.C():
-				cancel(errStepTimeout)
+				cancel(errStep)
 			case <-actx.Done():
 				tm.Stop()
 			}
@@ -796,30 +805,29 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 				}
 				since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
 				if since >= hb {
-					cancel(errHeartbeatTimeout)
+					cancel(errHeartbeat)
 					return
 				}
 				wait = hb - since
 			}
 		}()
 	}
-	out, err = safeCall(handler, actx, in)
+	// A tolerated step (WithRules) claims the attempt's timeout to keep its
+	// record; without a claim a timed-out attempt fails with the timeout.
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err = safeCall(handler, hctx, in)
 	switch cause := context.Cause(actx); {
-	case errors.Is(cause, errStepTimeout):
-		return nil, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrStepTimeout,
-			fmt.Sprintf("redis: step %q attempt %d after %s", s.Name, attempt, d)), context.DeadlineExceeded), false
-	case errors.Is(cause, errHeartbeatTimeout):
-		return nil, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
-			fmt.Sprintf("redis: step %q attempt %d sent no heartbeat for %s", s.Name, attempt, s.HeartbeatTimeout)), context.DeadlineExceeded), false
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		return out, err, false
+	case cause == errStep:
+		return nil, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded), false
+	case cause == errHeartbeat:
+		return nil, fmt.Errorf("%w: %w", errHeartbeat, context.DeadlineExceeded), false
 	case errors.Is(cause, workflow.ErrStepCancelled):
 		return out, err, true
 	}
 	return out, err, false
 }
-
-// errHeartbeatTimeout is the context cause of an attempt that went
-// Step.HeartbeatTimeout without a heartbeat.
-var errHeartbeatTimeout = errors.New("redis: step attempt sent no heartbeat in time")
 
 // attemptRunning counts the attempts executing now (NodeInfo.Running).
 func (c *Client) attemptRunning(d int) {

@@ -9,16 +9,20 @@ import (
 	"github.com/ubgo/workflow"
 )
 
-// Timeout kinds as stored in run_info.timeout: which deadline failed the
-// run, so OnTimeout is chosen over OnFailure (workflow.FailureHandler) and
-// the run's error matches its sentinel again after a restart. Empty: the
-// run did not fail on a deadline.
+// Failure classes as stored in run_info.timeout: which deadline failed the
+// run, so OnTimeout is chosen over OnFailure (workflow.FailureHandler), or
+// that its workers abandoned it; either way the run's error matches its
+// sentinel again once the run has ended, when it is rebuilt from the
+// stored text (failureCause). Empty: neither. The column keeps its name
+// from when it held deadlines only; a class an older client does not know
+// reads there as a plain stored message.
 const (
 	timeoutNone      = ""
 	timeoutRun       = "run"
 	timeoutStep      = "step"
 	timeoutWait      = "wait"
 	timeoutHeartbeat = "heartbeat"
+	failAbandoned    = "abandoned" // not a deadline: ErrAbandoned
 )
 
 // timeoutKinds maps each stored kind to its sentinel, in the order
@@ -33,10 +37,14 @@ var timeoutKinds = []struct {
 	{timeoutStep, workflow.ErrStepTimeout},
 }
 
-// timeoutKindOf is the stored kind of err: the first sentinel it matches,
-// "step" for any other timeout, empty when it is not one.
+// timeoutKindOf is the stored class of err: the first timeout sentinel it
+// matches, "step" for any other timeout, "abandoned" for an error wrapping
+// ErrAbandoned, empty for anything else.
 func timeoutKindOf(err error) string {
 	if !workflow.IsTimeout(err) {
+		if errors.Is(err, ErrAbandoned) {
+			return failAbandoned
+		}
 		return timeoutNone
 	}
 	for _, k := range timeoutKinds {
@@ -62,9 +70,21 @@ func (e storedTimeout) Is(target error) bool {
 	return target == workflow.ErrTimeout || target == e.kind
 }
 
-// failureCause is the error a failed run's message and timeout kind stand
+// storedAbandoned is a failed run's error rebuilt from its stored message
+// when its workers abandoned it: the same text, matching ErrAbandoned.
+type storedAbandoned string
+
+func (e storedAbandoned) Error() string { return string(e) }
+
+// Is matches ErrAbandoned.
+func (e storedAbandoned) Is(target error) bool { return target == ErrAbandoned }
+
+// failureCause is the error a failed run's message and stored class stand
 // for.
 func failureCause(msg, kind string) error {
+	if kind == failAbandoned {
+		return storedAbandoned(msg)
+	}
 	for _, k := range timeoutKinds {
 		if k.kind == kind {
 			return storedTimeout{msg: msg, kind: k.sentinel}
@@ -73,7 +93,8 @@ func failureCause(msg, kind string) error {
 	return storedError(msg)
 }
 
-// setTimeoutKind records in tx which deadline failed run id.
+// setTimeoutKind records in tx the failure class of run id (which deadline
+// failed it, or that its workers abandoned it).
 func (c *Client) setTimeoutKind(ctx context.Context, tx *sql.Tx, id, kind string) error {
 	if kind == timeoutNone {
 		return nil

@@ -1079,14 +1079,6 @@ func (c *Client) worker() {
 	}
 }
 
-// errStepTimeout is the context cause of an attempt that ran past its
-// timeout; errHeartbeat of one that went its HeartbeatTimeout without a
-// Heartbeat.
-var (
-	errStepTimeout = errors.New("memory: step attempt timed out")
-	errHeartbeat   = errors.New("memory: step attempt missed its heartbeat")
-)
-
 // exec runs one attempt with its timeout on the injected clock, and
 // returns the chain edits the attempt made (nil for a closure run, which
 // is never chained).
@@ -1130,12 +1122,21 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 	actx = workflow.WithProgressReporter(actx, workflow.ProgressFunc(func(_ context.Context, p workflow.Progress) error {
 		return c.reportProgress(t, p)
 	}))
-	beat := c.watchHeartbeat(actx, cancel, t.step.HeartbeatTimeout)
-	actx = workflow.WithHeartbeater(actx, beat)
+	// The attempt's own deadlines cancel it with the timeout errors it
+	// fails with, so context.Cause in the handler matches
+	// workflow.ErrStepTimeout or ErrHeartbeatTimeout; the driver tells them
+	// from any other cause (a failing run's *RunError around another
+	// step's timeout) by identity.
 	d := t.step.Timeout
 	if d == 0 {
 		d = t.r.reg.wf.Timeout
 	}
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("memory: step %q attempt %d after %s", t.step.Name, t.attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("memory: step %q attempt %d went %s without a heartbeat", t.step.Name, t.attempt, t.step.HeartbeatTimeout))
+	beat := c.watchHeartbeat(actx, cancel, t.step.HeartbeatTimeout, errHeartbeat)
+	actx = workflow.WithHeartbeater(actx, beat)
 	if d > 0 {
 		tm := c.clk.NewTimer(d)
 		c.wg.Add(1)
@@ -1143,20 +1144,23 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 			defer c.wg.Done()
 			select {
 			case <-tm.C():
-				cancel(errStepTimeout)
+				cancel(errStep)
 			case <-actx.Done():
 				tm.Stop()
 			}
 		}()
 	}
-	out, err := safeCall(h, actx, t.in)
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err := safeCall(h, hctx, t.in)
 	switch cause := context.Cause(actx); {
-	case errors.Is(cause, errStepTimeout):
-		return nil, edits, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrStepTimeout,
-			fmt.Sprintf("memory: step %q attempt %d after %s", t.step.Name, t.attempt, d)), context.DeadlineExceeded)
-	case errors.Is(cause, errHeartbeat):
-		return nil, edits, workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
-			fmt.Sprintf("memory: step %q attempt %d went %s without a heartbeat", t.step.Name, t.attempt, t.step.HeartbeatTimeout))
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		// Step middleware (a tolerated step) turned the timeout into its
+		// result (workflow.ClaimTimeout).
+		return out, edits, err
+	case cause == errStep:
+		return nil, edits, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded)
+	case cause == errHeartbeat:
+		return nil, edits, errHeartbeat
 	}
 	return out, edits, err
 }

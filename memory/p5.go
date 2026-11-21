@@ -105,10 +105,10 @@ func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 }
 
 // watchHeartbeat returns the attempt's Heartbeater. With a HeartbeatTimeout
-// d it also starts a watchdog that cancels the attempt with errHeartbeat
-// when d passes on the client's clock without a beat (from the start, then
-// from each beat). Without one a beat does nothing (this driver has no
-// lease to extend).
+// d it also starts a watchdog that cancels the attempt with timedOut (the
+// attempt's ErrHeartbeatTimeout error) when d passes on the client's
+// clock without a beat (from the start, then from each beat). Without one
+// a beat does nothing (this driver has no lease to extend).
 //
 // A beat stores the clock's time at once, in the handler's goroutine, and
 // the watchdog sleeps until d after the latest beat it knows of, then
@@ -117,7 +117,7 @@ func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 // watchdog over a channel instead would let a beat made just before the
 // deadline lose to the timer (select picks either ready case) and count
 // each beat from when the watchdog woke rather than when it was made.
-func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration) workflow.Heartbeater {
+func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration, timedOut error) workflow.Heartbeater {
 	if d <= 0 {
 		return workflow.HeartbeatFunc(func(context.Context, []byte) error { return nil })
 	}
@@ -137,7 +137,7 @@ func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseF
 			}
 			since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
 			if since >= d {
-				cancel(errHeartbeat)
+				cancel(timedOut)
 				return
 			}
 			wait = d - since

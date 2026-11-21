@@ -293,9 +293,21 @@ func leavesExcept(steps []Step, skip string) []string {
 }
 
 // toleratedHandler runs next and turns its final failure into a record.
+// An attempt cut off by its own Step.Timeout or HeartbeatTimeout fails
+// with that timeout whatever next returned (the handler itself only sees
+// a cancelled ctx), so it is recorded as a FailureTimeout, and the record
+// claims the timeout (ClaimTimeout) so the driver keeps it instead of
+// failing the attempt.
 func toleratedHandler(step string, policy RetryPolicy, routes []CatchRoute, next Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		out, err := next(ctx, in)
+		if te := attemptTimeout(ctx); te != nil && !IsTimeout(err) {
+			if err == nil {
+				err = te
+			} else {
+				err = fmt.Errorf("%w: %w", te, err)
+			}
+		}
 		if err == nil || IsDiscarded(err) || errors.Is(err, ErrCancelled) || errors.Is(err, ErrSnoozed) {
 			return out, err
 		}
@@ -316,7 +328,11 @@ func toleratedHandler(step string, policy RetryPolicy, routes []CatchRoute, next
 				break
 			}
 		}
-		return encodeJSON("tolerated step "+step, ruleRecord{Failed: &StepFailure{Step: step, Kind: kind, Error: err.Error()}})
+		rec, rerr := encodeJSON("tolerated step "+step, ruleRecord{Failed: &StepFailure{Step: step, Kind: kind, Error: err.Error()}})
+		if rerr == nil {
+			ClaimTimeout(ctx) // a no-op unless the attempt timed out
+		}
+		return rec, rerr
 	}
 }
 

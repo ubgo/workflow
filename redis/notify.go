@@ -127,6 +127,60 @@ type storedError string
 
 func (e storedError) Error() string { return string(e) }
 
+// storedSentinel is a failed run's error rebuilt from its stored message
+// when the message shows which of the library's sentinels the error
+// wrapped: the same text, matching that sentinel (and workflow.ErrTimeout
+// for a timeout), as the error did before it was stored.
+type storedSentinel struct {
+	msg     string
+	kind    error
+	timeout bool // kind is one of the timeouts
+}
+
+func (e storedSentinel) Error() string { return e.msg }
+
+// Is matches the sentinel, and ErrTimeout when it is a timeout.
+func (e storedSentinel) Is(target error) bool {
+	return target == e.kind || (e.timeout && target == workflow.ErrTimeout)
+}
+
+// storedSentinels are the sentinels storedCause reads back, each from the
+// start of the failing error's text: ErrAbandoned (a run its workers
+// abandoned, stored as is) and the timeouts (stored as is for a run
+// timeout, behind fail's "redis: step %q failed after N attempt(s): " for
+// a step's). The driver builds each of these errors with the sentinel's
+// text first, so the prefix is a reliable mark; Redis stores the text
+// only.
+var storedSentinels = []error{
+	ErrAbandoned,
+	workflow.ErrRunTimeout,
+	workflow.ErrHeartbeatTimeout,
+	workflow.ErrWaitTimeout,
+	workflow.ErrStepTimeout,
+}
+
+// storedCause is the error a failed run's stored message stands for: one
+// matching the sentinel its failing error starts with (see
+// storedSentinels), else a plain storedError. step is the failed step.
+func storedCause(msg, step string) error {
+	rest := msg
+	if step != "" {
+		wrap := fmt.Sprintf("redis: step %q failed after ", step)
+		const attempts = " attempt(s): "
+		if after, ok := strings.CutPrefix(rest, wrap); ok {
+			if i := strings.Index(after, attempts); i >= 0 {
+				rest = after[i+len(attempts):]
+			}
+		}
+	}
+	for _, k := range storedSentinels {
+		if strings.HasPrefix(rest, k.Error()) {
+			return storedSentinel{msg: msg, kind: k, timeout: k != ErrAbandoned}
+		}
+	}
+	return storedError(msg)
+}
+
 // discardedError is a discarded run's error rebuilt from its stored
 // message: it matches workflow.ErrDiscarded and workflow.ErrCancelled, as
 // workflow.DiscardedError does before it is stored.
@@ -148,7 +202,7 @@ func (r *stored) runError() error {
 	msg := r.err
 	switch r.status {
 	case workflow.StatusFailed:
-		var cause error = storedError(msg)
+		cause := storedCause(msg, r.failedStep)
 		if r.forced {
 			rest := strings.TrimPrefix(msg, workflow.ErrForced.Error())
 			cause = workflow.ForcedFailure(strings.TrimPrefix(rest, ": "))
