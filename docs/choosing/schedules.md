@@ -57,7 +57,7 @@ Three tools that are easy to confuse, because each "skips" something. A misfire 
 ## Pitfalls
 
 - A `Schedule` without a `Name` adds a new schedule on every call. Give run-time schedules a `Name`: every driver then keeps one schedule per (workflow, name) and returns the same `ScheduleID`, so calling it at every boot is safe (Hatchet deletes and recreates the engine trigger when the definition changed, since it cannot edit one in place).
-- A worker-only client given `WithLeaderElection` still campaigns for the `scheduler` role. When it wins, no client fires ticks, because a `WithoutScheduler` client never fires, leader or not. Give `WithLeaderElection` only to clients that may fire.
+- A worker-only client given `WithLeaderElection` never campaigns for the `scheduler` role (its `IsLeader` is always false), so the option can sit in a config every node shares: the leader is always a client that may fire. If no client that may fire runs the elector, nobody leads and no tick fires.
 - With leader election, ticks pause while the role moves: after a crash, up to `LeaderLease` plus `WithLeaseSkew`. The next leader then applies the schedule's misfire policy to what it missed.
 - Leader election gates cron firing and the dispatcher's housekeeping (consumed signals, silent nodes, schedule histories), not retention: `WithRetention`'s background prune picks one client per interval with its own lock row, whoever leads.
 - `LatestOnly` computes "next tick" from the cron expression alone: windows, `ScheduleWhen`, an `Active` period and a pause are not consulted, so a schedule limited to working hours can skip its last run of the day with no later run to do the work. Pass a `Next` function there.

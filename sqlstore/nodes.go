@@ -29,7 +29,9 @@ func WithSchedulerOnly() Option { return func(cl *Client) { cl.schedulerOnly = t
 
 // WithoutScheduler makes a client that runs steps but never fires cron
 // ticks (workflow.NodeWorker); some other client of the tables must fire
-// them (WithSchedulerOnly, or a full client).
+// them (WithSchedulerOnly, or a full client). Given WithLeaderElection
+// too, it never campaigns for the role, so it cannot take leadership away
+// from a client that fires.
 func WithoutScheduler() Option { return func(cl *Client) { cl.noScheduler = true } }
 
 // WithPayloadLimit refuses, at Enqueue, EnqueueTx and EnqueueMany, a job
