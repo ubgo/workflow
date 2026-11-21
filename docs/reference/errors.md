@@ -101,7 +101,7 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrNotExpressible` | `schedexport` | A format cannot express a part of the schedule; the error is a `*NotExpressibleError` naming `Format` and `Field` |
 | `ErrNoNextFire` | `schedexport` | A NextFire form found no next fire (`Active` over, last year passed, no tick inside the windows) |
 | `ErrSchemaTooNew` | `sqlstore` | The database records a sqlstore migration this code does not know: a newer release migrated it. `Migrate` and `Start` refuse it. Returned as a `*SchemaTooNewError` whose `Unknown` lists the migrations |
-| `ErrAbandoned` | `sqlstore` | A step attempt failed because its lease expired more than `WithMaxReclaims` times: every worker that took it died. The retry policy treats it like any failure |
+| `ErrAbandoned` | `sqlstore`, `redis` | A step attempt failed because its lease expired more than `WithMaxReclaims` times: every worker that took it died. The retry policy treats it like any failure. Matches with `errors.Is` on the run's error after it ended too (`RunEvent.Err`); `RunInfo.Error` is its text |
 | `ErrDriver` | `sqlstore/pgnotify` | `Listen` on a pool whose driver is not the pgx stdlib driver, which alone exposes notifications; the client keeps polling |
 | `ErrSchemaTooNew` | `sqlstore/outbox` | The ledger records an outbox migration this code does not know. `Migrate` refuses it |
 | `ErrCancelTooLate` | `hatchet` | A delayed start fired although `Cancel` deleted it before its due time (Cancel within 15 s of due); Cancel cancelled the run unless it had ended. Also matches `workflow.ErrWrongState` |

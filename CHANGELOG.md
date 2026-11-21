@@ -4,8 +4,39 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+### Added
+
+- `workflow.WithTimeoutClaim` and `workflow.ClaimTimeout`, the driver-author handshake that lets step middleware turn the attempt's own timeout into its result.
+- `middleware.LatestOnlyConfig.When`, which takes the workflow's `ScheduleWhen` so `LatestOnly` predicts only ticks the schedule fires.
+- `sqlstore.ArchiveQuery.AfterRunID`, the tie-breaker half of the `ArchivedRuns` paging cursor.
+- `recorder.OpSetOutcome` (`set-outcome`), the `WriteOp` of a failed `SetOutcome` write.
+- `recordertest.RunStore` case `prune_cancelled_archives_once`; `workflowtest` conformance groups `attemptcause`, `toleratedtimeout` and `storedtimeout`, and the `cancel-children-delayed` case of `RunChildFlows`.
+
+### Fixed
+
+- Inside a step handler, `context.Cause(ctx)` of an attempt cut off by `Step.Timeout` or `Step.HeartbeatTimeout` now matches `workflow.ErrStepTimeout` / `workflow.ErrHeartbeatTimeout` (and `ErrTimeout`) on the memory, SQL and Redis drivers, instead of a driver-private error.
+- A step tolerated by `WithRules` now records its own `Step.Timeout` (and `HeartbeatTimeout`) as `FailureTimeout`, so `RuleOneFailedOf(FailureTimeout)` routes it as the `Boundary` doc promised (drivers with `CapRunTimeout`); a handler that returns after its timeout still fails the attempt.
+- `errors.Is(err, sqlstore.ErrAbandoned)` and `errors.Is(err, redis.ErrAbandoned)` now hold for a run's error after it ended (`OnRunFinished`); on Redis the timeout sentinels (`ErrStepTimeout`, `ErrHeartbeatTimeout`, `ErrWaitTimeout`, `ErrRunTimeout`, `ErrTimeout`) now survive the store too. Runs abandoned before this release match by text only.
+- `redis`: an abandoned run (past `WithMaxReclaims`) runs `OnFailure` once with the input of the step its workers were running, as sqlstore does; it used to end without its failure handler.
+- The abandonment message says "1 worker" / "1 time" (sqlstore) and "1 time in a row" (Redis).
+- `ResetRun`'s wrong-state error says "only a failed run can be reset" and, for a succeeded run, names `ResetOptions.Succeeded` and the CLI's `reset --succeeded`, instead of "only a failed run can be retried".
+- `CancelChildren` works on Hatchet: it asks for `StatusRetrying` only on a client with `CapRunStates` (elsewhere a run in retry backoff reads queued or running), and it now also cancels scheduled children (a delayed start), as its doc always said.
+- `ReplayChild` may reuse a name, as the other replayed calls can: each call spawns its own child. The first call with a name keeps its old spawn name, so runs in flight keep their child.
+- `middleware.LatestOnly` counts a tick as newer only when the schedule fires it: its `Windows` and `Active` period, a pause and `OverlapSkip` are honoured, a fire recorded after the run's tick (`ScheduleInfo.Last`) counts, and the new `LatestOnlyConfig.When` takes the workflow's `ScheduleWhen`. Runs with `LabelTrigger` (backfill, manual trigger, startup) always do their work.
+- `batch.WithCompletionSource` replaces the Sources as documented: the last option wins and an empty one means none (it used to append, and an empty one kept the defaults).
+- `batch`: a dispatch whose `RunGroup` fails part-way without refs cancels the children it started by their batch label (`CapCancelAll`); without that capability the error says they run on unseen. On the one-`Enqueue`-per-job path, an `Enqueue` that errored but landed (a timeout after the engine accepted the job) is cancelled the same way where the client has `CapCancelAll`.
+- `sqlstore`: a `WithoutScheduler` client given `WithLeaderElection` never campaigns for the scheduler role; before, it could win and then no client fired cron ticks.
+- `sqlstore`: `ArchivedRuns` pages by (finished_at, id): pass the last run's `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as the new `ArchiveQuery.AfterRunID`; `FinishedBefore` alone skipped a run that tied with the last one shown.
+- `recorder`: a failed `SetOutcome` write now reaches the `ErrorFunc` as the new `WriteOp` `OpSetOutcome` (`set-outcome`) and a store panic there no longer fails the step; the error still goes back to the step.
+- `recorder`: a prune cancelled after `Archive` accepted a batch no longer archives that batch again (`sqlrecorder` finishes the delete, bounded at 30s); `MemoryStore` runs one prune at a time and archives each run once. `sqlrecorder` archive delivery stays at least once across a crash or failed delete, with the same records, so key archives by run ID.
+- `sqlrecorder`: two processes running `Migrate` at once on Postgres no longer fail with `42P07` ("relation already exists") or `42710` from `CREATE TABLE/INDEX IF NOT EXISTS` racing in the catalog; migration statements retry those (and MySQL's 1050). `DefaultRetryable` is unchanged.
+- Doc fixes: the failover `Capabilities` doc lists all 13 primary-only schedule capabilities; the `LatestOnly` doc no longer names a non-existent `Workflow.Use`; `batch.GroupRunner` says how started children of a failed group with nil refs are cancelled; `recorder.Retention.Archive` states its delivery guarantee per store.
+- Tooling: the heavy tasks run their command directly when `testlock` is not on PATH; `bench/run.sh` and `hatchet:test:live:shared` take the shared stack's `.env` path from the `STACK_ENV` environment variable (no default).
+
 ### Documentation
 
+- Writing a driver: a paragraph on the step-timeout handshake (`TimeoutError` as the cancel cause, `WithTimeoutClaim`, `ClaimTimeout`) next to the heartbeat one.
+- `examples/sql-archive` pages the archive with `AfterRunID` across two runs that finish at the same instant.
 - A learning path of thirteen steps from a first job to the full production setup, each with its guide and a runnable example, and a "Start from your goal" table of about a hundred tasks, at the top of [docs/README.md](docs/README.md); every page in the index now lists the example programs its code comes from.
 - Decision guides under [docs/choosing/](docs/choosing/README.md): which driver or wrapper, with each driver's capabilities and refusals; which method (job, workflow, schedule, batch, state machine or events; waits, signals or promises; retries, snooze or release; leader election or lease-only cron; archive tables, `WithArchive` or the recorder's archive; `StartWhen` or a readiness probe; `LatestOnly` or a misfire policy); which setup for one binary, a web fleet with workers, several regions or tenants, and tests.
 - The [feature index](docs/reference/features.md) grew from 421 to 550 rows (the `workflow` command, every admin HTTP route and the repository tasks included); every row with an example points at a program whose code uses the feature's API, and every API row but a few links a guide section that teaches it with code.

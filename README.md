@@ -140,7 +140,7 @@ A runnable version is [examples/quickstart](examples/quickstart/) (and `Example`
 
 ## Development
 
-Commands use [Task](https://taskfile.dev). The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test` and the driver suites) run under `testlock`, a machine-wide lock; without it on your `PATH` they fail with `testlock: command not found`, and [CONTRIBUTING.md › Before you start](CONTRIBUTING.md#before-you-start) has a two-line stand-in.
+Commands use [Task](https://taskfile.dev). The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test` and the driver suites) run under `testlock`, a machine-wide lock, when it is on your `PATH`, and run directly when it is not.
 
 | Command | What it does |
 |---|---|
