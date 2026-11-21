@@ -126,3 +126,40 @@ func TestReplay_FirstRunSeesWhatReplaysSee(t *testing.T) {
 		t.Fatalf("an ignored transient error: %s %v, later calls %d", out, err, later.Load())
 	}
 }
+
+// TestReplayChild_RepeatedName: a loop that calls ReplayChild with one
+// name on every pass spawns one child per pass and gets each one's
+// result, as ReplayStep's names need not be unique either.
+func TestReplayChild_RepeatedName(t *testing.T) {
+	var c workflow.Client
+	kid := workflow.Workflow{Name: "kid", Steps: []workflow.Step{{Name: "echo", Run: func(_ context.Context, in []byte) ([]byte, error) { return in, nil }}}}
+	h, err := workflow.NewReplay(func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
+		var got []byte
+		for _, p := range []string{`"a"`, `"b"`, `"a"`} {
+			out, err := workflow.ReplayChild(rc, "inv", c, workflow.Job{Workflow: "kid", Payload: []byte(p)}, workflow.ChildOptions{Poll: time.Millisecond})
+			if err != nil {
+				return nil, err
+			}
+			got = append(got, out...)
+		}
+		return got, nil
+	}, workflow.ReplayOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := workflow.Workflow{Name: "parent", Steps: []workflow.Step{{Name: "o", Run: h}}}
+	c = flowClient(t, workflow.NewMemoryJournal(), kid, parent)
+	ref := enqueue(t, c, workflow.Job{Workflow: "parent"})
+	if st := waitRun(t, c, ref); st != workflow.StatusSucceeded {
+		info, _ := c.(workflow.RunQuerier).Runs(context.Background(), workflow.RunQuery{Ref: ref})
+		t.Fatalf("parent is %s (%+v), want succeeded", st, info.Runs)
+	}
+	out, err := c.(workflow.ResultReader).Result(context.Background(), ref)
+	if err != nil || string(out) != `"a""b""a"` {
+		t.Fatalf("result %s, %v", out, err)
+	}
+	page, err := c.(workflow.RunQuerier).Runs(context.Background(), workflow.RunQuery{Workflow: "kid"})
+	if err != nil || len(page.Runs) != 3 {
+		t.Fatalf("%d children, %v; want one per call", len(page.Runs), err)
+	}
+}

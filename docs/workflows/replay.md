@@ -169,7 +169,7 @@ payout := func(rc *workflow.ReplayCtx, in []byte) ([]byte, error) {
 
 While the child runs, `ReplayChild` suspends the handler for `ChildOptions.Poll` (`workflow.DefaultChildPoll`, five seconds, when zero) and looks again on the next wake; once the child succeeded its result is recorded and the client is not asked again. The child's client needs results (`workflow.ResultReader`), and the parent's driver `CapSnooze`, as for [`AwaitChild`](children.md#wait-for-children-with-awaitchildren). `SleepUntil` records the instant it was given, so a time already past returns at once, and a replay keeps the recorded instant even when the code would now pass another one.
 
-Calls are matched to the history by their position, and the name labels the position: it must be the same on every run, but it need not be unique, so a loop may call `ReplayStep(rc, "page", ...)` on every iteration. `ReplayChild` is the exception: its name must be unique within the run (see the pitfalls). An empty name is refused.
+Calls are matched to the history by their position, and the name labels the position: it must be the same on every run, but it need not be unique, so a loop may call `ReplayStep(rc, "page", ...)` or `ReplayChild(rc, "invoice", ...)` on every iteration (each `ReplayChild` call spawns a child of its own). An empty name is refused.
 
 **Side effects are at least once.** The process can die after `fn` returns and before its result is saved, and a save can fail; the next run then calls `fn` again. Work that must never repeat, such as a charge or a refund, also carries an idempotency key the remote side honours: build it from the run (`workflow.StepInfoFrom(rc.Context())` gives the `RunID`) and the call's name, never from a random value.
 
@@ -247,7 +247,6 @@ Since you rarely know how far each running run has got, version the workflow for
 - **Do not rename calls in a running deploy.** A rename is another name at a recorded position, which fails every run that passed it. Version the workflow instead, as above.
 - **Long histories cost on every wake.** Each run of the function reads every recorded call back from the journal, one read per call: a loop of thousands of calls, or a promise looked at every few seconds for weeks, pays that on every wake. Keep loops inside a `ReplayStep`, raise `ReplayOptions.Poll` for waits measured in days, and end a run that would loop for ever with `workflow.ContinueAsNew`, carrying the state in the next run's payload ([Loop for ever as a chain of runs](promises.md#loop-for-ever-as-a-chain-of-runs)).
 - **A promise wait wakes on its poll, not on the resolve.** `ResolvePromise` signals `workflow.PromiseEvent`, which wakes wait steps; a replayed `AwaitPromise` is a snooze and sees the promise at its next look, up to `Poll` later.
-- **Give every `ReplayChild` call its own name.** Unlike the other calls, it spawns the child through `Spawn`, memoised under `"replay-child/"` plus the name, and a memo name used twice in one run of the body is refused: a loop that calls `ReplayChild(rc, "invoice", ...)` on each pass fails the run with `memo name "replay-child/invoice" is used twice`. Put the index in the name (`"invoice-" + strconv.Itoa(i)`).
 - **`Step.Timeout` is per run of the function**, not for the whole wait; a sleep of three days does not need a three-day timeout.
 
 ## Replay, memoisation or steps

@@ -148,6 +148,11 @@ type ReplayCtx struct {
 	peekOK  bool  // whether a call is recorded at peeked-1
 	suspend error // set once a wait suspends this run of the handler
 	fault   error // set once a call failed for good (nondeterminism, a store error)
+
+	// children counts the ReplayChild calls per name made so far in this
+	// run of the body, recorded or live, so each call gets a spawn name
+	// of its own (childSpawnName).
+	children map[string]int
 }
 
 // Context returns the step's context.
@@ -395,12 +400,16 @@ func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([
 // client again. A child that ended any other way returns a Permanent
 // *RunFailedError, recorded like a Permanent step error. client is the
 // client the child runs on; the parent's driver needs CapSnooze, and
-// the child's client needs results (ResultReader).
+// the child's client needs results (ResultReader). As with the other
+// calls the name need not be unique: each call with a name spawns its
+// own child (a loop calling ReplayChild(rc, "invoice", ...) starts one
+// per pass).
 func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildOptions) ([]byte, error) {
 	e, ok, err := rc.next("child", name)
 	if err != nil {
 		return nil, err
 	}
+	spawnName := rc.childSpawnName(name)
 	if ok {
 		if e.Err != "" {
 			return nil, Permanent(errors.New(e.Err))
@@ -411,7 +420,7 @@ func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildO
 		}
 		return v, nil
 	}
-	out, err := AwaitChild(rc.ctx, client, "replay-child/"+name, job, opts)
+	out, err := AwaitChild(rc.ctx, client, spawnName, job, opts)
 	if d, snoozed := SnoozeDelay(err); snoozed {
 		return nil, rc.suspendFor(d)
 	}
@@ -429,4 +438,22 @@ func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildO
 		return nil, err
 	}
 	return out, nil
+}
+
+// childSpawnName is the name ReplayChild spawns its child under, counted
+// on every call (a recorded one too) so the same call gets the same name
+// on every run of the body: "replay-child/<name>" for the first call with
+// name, as it always was (a run already waiting on that child keeps it),
+// and "replay-child#<n>/<name>" for the n-th call with the same name, so
+// a loop may reuse a name, as with the other calls. The "#<n>" form
+// cannot be produced by a name in the first form, so the two never meet.
+func (rc *ReplayCtx) childSpawnName(name string) string {
+	if rc.children == nil {
+		rc.children = map[string]int{}
+	}
+	rc.children[name]++
+	if n := rc.children[name]; n > 1 {
+		return "replay-child#" + strconv.Itoa(n) + "/" + name
+	}
+	return "replay-child/" + name
 }
