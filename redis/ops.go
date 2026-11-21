@@ -110,7 +110,7 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 		return workflow.RunRef{}, err
 	}
 	if !workflow.ResetStatusOK(r.status, opts) {
-		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, r.status, resetWants(opts))
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, r.status, resetWants(r.status, from != "", opts))
 	}
 	redo := r.status == workflow.StatusSucceeded
 	if redo && len(r.chain) > 0 {
@@ -168,16 +168,22 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 	case "chain":
 		return workflow.RunRef{}, chainPending(ref)
 	}
-	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(opts))
+	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(workflow.Status(str(res[1])), from != "", opts))
 }
 
-// resetWants names the statuses retryFrom accepts with opts, for its
-// ErrWrongState message.
-func resetWants(opts workflow.ResetOptions) string {
-	if opts.Succeeded {
-		return "failed or succeeded"
+// resetWants ends retryFrom's ErrWrongState message for a run in st: the
+// statuses a Retry (reset false) or a ResetRun with opts accepts, and for
+// a refused reset of a succeeded run the opt-in that would take it.
+func resetWants(st workflow.Status, reset bool, opts workflow.ResetOptions) string {
+	switch {
+	case !reset:
+		return "not failed"
+	case opts.Succeeded:
+		return "only a failed or succeeded run can be reset"
+	case st == workflow.StatusSucceeded:
+		return "only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)"
 	}
-	return "failed"
+	return "only a failed run can be reset"
 }
 
 // chainPending is the error of a reset of a succeeded run that still
