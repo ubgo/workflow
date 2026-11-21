@@ -49,6 +49,10 @@ use (
 	// ./redis is a separate module so an app without Redis never downloads
 	// go-redis.
 	./redis
+	// ./scripts/admin-screenshots is never released: it captures the admin
+	// UI screenshots with a headless Chrome, so chromedp stays out of every
+	// library module and the examples.
+	./scripts/admin-screenshots
 	// ./sentry is a separate module so an app that does not report to
 	// Sentry never downloads sentry-go.
 	./sentry
