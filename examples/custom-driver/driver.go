@@ -36,6 +36,7 @@ type Tiny struct {
 	lastRun int
 }
 
+// The build fails here if Tiny stops satisfying workflow.Client.
 var _ workflow.Client = (*Tiny)(nil)
 
 // NewTiny returns an unstarted driver reading time from clk. It starts no
@@ -127,6 +128,8 @@ func (t *Tiny) Cancel(context.Context, workflow.RunRef) error {
 	return &workflow.UnsupportedError{Field: "Cancel", Missing: workflow.CapCancel}
 }
 
+// Schedule implements workflow.Client: it checks the schedule's shape,
+// then refuses it for the missing CapCron.
 func (t *Tiny) Schedule(_ context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if err := workflow.ValidateSchedule(s); err != nil {
 		return "", err
@@ -135,6 +138,8 @@ func (t *Tiny) Schedule(_ context.Context, s workflow.Schedule) (workflow.Schedu
 	return "", workflow.CheckScheduleCaps(tinyCaps, s)
 }
 
+// Unschedule implements workflow.Client: tiny stores no schedule, so any
+// non-zero ID is ErrNotFound and the zero ID is a no-op.
 func (t *Tiny) Unschedule(_ context.Context, id workflow.ScheduleID) error {
 	if id.IsZero() {
 		return nil
@@ -142,6 +147,8 @@ func (t *Tiny) Unschedule(_ context.Context, id workflow.ScheduleID) error {
 	return fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
 }
 
+// Signal implements workflow.Client: it matches nothing, and only refuses
+// before Start.
 func (t *Tiny) Signal(context.Context, workflow.Event) error { return t.started() }
 
 // started is ErrNotStarted before Start, as the contract asks of Signal.
@@ -167,6 +174,8 @@ func (t *Tiny) Status(_ context.Context, ref workflow.RunRef) (workflow.Status, 
 	return st, nil
 }
 
+// setStatus records st as the run's status under the lock, so Status
+// reads it safely from another goroutine.
 func (t *Tiny) setStatus(id workflow.RunID, st workflow.Status) {
 	t.mu.Lock()
 	t.runs[id] = st

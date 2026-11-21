@@ -1,6 +1,6 @@
 # Choose a method
 
-For the jobs every app has, the library often offers two or three ways to do it. They differ in what they guarantee when a process dies, a caller retries or a burst arrives, and in which drivers support them. This page picks between them: how to enqueue so the job matches your data, how to declare recurring work, when a batch is worth it, which of the three duplicate guards you want, how to delay work, when to stop retrying and where to react to a run's end.
+For the jobs every app has, the library often offers two or three ways to do it. They differ in what they guarantee when a process dies, a caller retries or a burst arrives, and in which drivers support them. This page picks between them: how to enqueue so the job matches your data, how to declare recurring work, when a batch is worth it, which of the three duplicate guards you want, how to delay work, whether a step that cannot go on should retry, snooze or be released, when to stop retrying and where to react to a run's end. To pick the shape of the work first (a workflow, a chain, a batch, a state machine, events), see [Choose the shape of the work](shapes.md); for waits and signals, [Choose how a run waits](waiting.md).
 
 ## Enqueue, EnqueueTx or the outbox
 
@@ -23,14 +23,14 @@ The question: when your handler writes rows and enqueues a job, what happens if 
 
 | Method | Use it for | Lifetime | Drivers | Guide | Example |
 |---|---|---|---|---|---|
-| `Workflow.Cron` (plus `CronLocation`, `Misfire`) | Recurring work that is part of the app: the nightly cleanup, the hourly sync | Declared with the workflow at `Register`; registering again replaces it, never duplicates | every driver with `CapCron` (all three) | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
+| `Workflow.Cron` (plus `CronLocation`, `Misfire`) | Recurring work that is part of the app: the nightly cleanup, the hourly sync | Declared with the workflow at `Register`; registering again replaces it, never duplicates | every driver with `CapCron` (all four) | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
 | `Client.Schedule` / `Unschedule` | Recurring work created at run time: per tenant, per user, configured in your UI | Until `Unschedule` with the stored `ScheduleID` | every driver with `CapCron` | [Schedules at run time](../schedules/cron.md#schedules-at-run-time) | [cron-schedules](../../examples/cron-schedules/) |
 
 - If every deployment runs it on the same expression, declare it on the workflow.
 - If it differs per tenant or a user can change it, use `Schedule`, store the returned ID next to the tenant, and `Unschedule` it when the tenant changes or leaves. `Unschedule("")` is a no-op, so pass the stored ID unchecked.
-- Pitfall: calling `Schedule` again with the same `Name` updates the schedule in place on sqlstore (an upsert by workflow and name), but creates a second schedule on the memory and Hatchet drivers. On those, unschedule the old ID before scheduling a replacement, and do not call `Schedule` at every boot.
+- Pitfall: a `Schedule` without a `Name` adds a new schedule on every call. With a `Name` every driver keeps one schedule per workflow and name and returns the same `ScheduleID`, so calling it at every boot is safe (Hatchet replaces the engine trigger when the definition changed, since it cannot edit one in place).
 - Pitfall: `Schedule.Location` is required (`time.UTC` for UTC). Hatchet refuses any other zone, and refuses misfire policies: crons there run in UTC and a tick missed while the engine was down is dropped.
-- Pitfall: a declared cron runs on every client that registers the workflow. On sqlstore a tick fires once across all of them; on the memory driver each process fires its own.
+- Pitfall: a declared cron runs on every client that registers the workflow. On sqlstore and Redis a tick fires once across all of them, and Hatchet's engine fires it once; on the memory driver each process fires its own. Who fires, and what happens to missed or stale ticks, is in [Choose a schedule tool](schedules.md).
 
 ## A batch or plain enqueues
 
@@ -52,7 +52,7 @@ Three guards against duplicate work, answering three different questions:
 
 | Guard | Question it answers | Second job while the first is unfinished | After the first finished | Drivers | Guide | Example |
 |---|---|---|---|---|---|---|
-| `Job.IdempotencyKey` | "Is this the same request again?" (a retried webhook, a double-clicked button) | Starts nothing; `Enqueue` returns the first run's `RunRef` and a nil error | The key is released: the same key runs again | the driver must have `CapIdempotencyKey` (all three; Hatchet refuses a key with `RunAt`) | [Idempotency keys](../jobs/idempotency.md#idempotency-keys) | [idempotency](../../examples/idempotency/) |
+| `Job.IdempotencyKey` | "Is this the same request again?" (a retried webhook, a double-clicked button) | Starts nothing; `Enqueue` returns the first run's `RunRef` and a nil error | The key is released: the same key runs again | the driver must have `CapIdempotencyKey` (every driver; Hatchet refuses a key with `RunAt`) | [Idempotency keys](../jobs/idempotency.md#idempotency-keys) | [idempotency](../../examples/idempotency/) |
 | `middleware.Unique` / `UniqueUntilFinished` | "Is a job for this thing already queued?" (one sync per account at a time) | Refused: `Enqueue` returns an error wrapping `ErrDuplicate` | `Unique`: still refused until the TTL ends. `UniqueUntilFinished`: freed when the run ends (the TTL stays as a safety net) | any client; `UniqueUntilFinished` needs `RunNotifier`; a shared store for several processes | [Unique for a time](../reliability/unique-jobs.md#unique-for-a-time) | [unique-jobs](../../examples/unique-jobs/) |
 | `middleware.Debounce` | "Should a burst collapse into one run, after it goes quiet?" (reindex after the last of many edits) | The pending run is cancelled and replaced; the last job of the burst wins and runs once the key has been quiet for the window (`maxWait` caps the delay) | A new burst starts | needs `CapDelayedStart` and `CapCancel` (refused otherwise); a shared store for several processes | [Debounce a burst](../reliability/debounce.md#debounce-a-burst) | [debounce](../../examples/debounce/) |
 
@@ -81,7 +81,7 @@ Three ways to make work happen later, for three different shapes of "later":
 
 | Method | Use it for | Needs | Guide | Example |
 |---|---|---|---|---|
-| `Job.RunAt` | One job that must not start before a point in time: the reminder at 09:00 tomorrow, the trial-end email | `CapDelayedStart` (all three drivers) | [Run a job later](../jobs/delays.md#run-a-job-later) | [delayed-jobs](../../examples/delayed-jobs/) |
+| `Job.RunAt` | One job that must not start before a point in time: the reminder at 09:00 tomorrow, the trial-end email | `CapDelayedStart` (every driver) | [Run a job later](../jobs/delays.md#run-a-job-later) | [delayed-jobs](../../examples/delayed-jobs/) |
 | `Step.Sleep` | A pause between two steps of one run: charge now, send the survey three days later | `CapDurableSleep` (every driver) | [Sleep inside a workflow](../workflows/sleep.md#sleep-inside-a-workflow) | [signals-and-sleep](../../examples/signals-and-sleep/) |
 | `Workflow.Cron` or `Client.Schedule` | Work that repeats | `CapCron` | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
 
@@ -90,6 +90,28 @@ Three ways to make work happen later, for three different shapes of "later":
 - Pitfall: on the memory driver, a delayed job and a sleeping run are lost when the process exits. Neither is refused, because durability is never inferred from a workflow.
 - Pitfall: never `time.Sleep` inside a `Run` handler. It holds a worker for the whole delay, ignores the fake clock and is lost on a crash.
 - Pitfall: Hatchet refuses `IdempotencyKey` together with `RunAt` (`ErrUnsupported`); dedup a delayed job there with unique jobs instead.
+
+## Retry, snooze or release
+
+A step that cannot finish now has several ways to say so. They differ in whether the attempt counts, whether an error is recorded, and who decides:
+
+| Tool | Decided by | Spends an attempt | Recorded as an error | Run status meanwhile | Use it for | Needs | Guide | Example |
+|---|---|---|---|---|---|---|---|---|
+| An ordinary error, with `RetryPolicy{Max, Backoff}` | The handler failed | Yes | Yes | `retrying` (with `CapRunStates`) | A transient failure: a timeout, a 503 | the policy; the zero policy means no retries | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
+| `workflow.RetryAfter(err, d)` with `DelayFor: workflow.RetryAfterDelay` | The handler failed and knows when to come back | Yes | Yes | `retrying` | An HTTP 429 with `Retry-After` | `CapRetryDelay` (not Hatchet) | [Retry after a delay the error names](../jobs/retries.md#retry-after-a-delay-the-error-names) | [retries](../../examples/retries/) |
+| `workflow.Snooze(d)` | The handler, after starting: the work is not ready yet | No | No | `waiting` | "Not yet": a report not built, a window that opens at nine | `CapSnooze` (memory, sqlstore, Redis); elsewhere it is an ordinary error | [Snooze a step that is not ready](../jobs/retries.md#snooze-a-step-that-is-not-ready) | [snooze-heartbeat](../../examples/snooze-heartbeat/) |
+| `middleware.Release(when, d)` | Middleware, before the handler runs | Yes | Yes (matches `middleware.ErrReleased`) | `retrying` | A condition known before any work starts: a partner API in maintenance, a tenant over its quota | a policy with `DelayFor: workflow.RetryAfterDelay`, or the delay is the normal backoff | [Release a step for later](../middleware/step-middleware.md#release-a-step-for-later) | [release-jobs](../../examples/release-jobs/) |
+| `workflow.Permanent(err)` | The handler: this input can never succeed | No more: the step fails now, whatever `Max` says, and `OnFailure` runs | Yes | `failed` | A validation error, a 404 for a deleted record that someone should see | every driver | [Errors that must not retry](../jobs/retries.md#errors-that-must-not-retry) | [retries](../../examples/retries/) |
+| `workflow.Discard(err)` | The handler: the work no longer makes sense | No more: the run ends at once and `OnFailure` does not run | As the run's `Err` | `discarded` (with `CapRunStates`, else `cancelled`) | The order was deleted after the job was queued; nobody needs to look | `CapDiscard` (not Hatchet, where it acts as `Permanent`) | [Drop the run: Discard](../jobs/retries.md#drop-the-run-discard) | [retry-limits](../../examples/retry-limits/) |
+| `RetryPolicy.DiscardOnExhaust` | The policy: retries ran out | Every attempt, as usual | Yes | `discarded` instead of `failed`, with no `OnFailure` and no chain | Best-effort work whose final failure is not an incident | `CapDiscardExhausted` (not Hatchet) | [Quiet giving up: DiscardOnExhaust](../jobs/retries.md#quiet-giving-up-discardonexhaust) | [discard-exhausted](../../examples/discard-exhausted/) |
+
+- If the step did nothing wrong and should come back later, snooze: it spends no retries, so a workflow with `Max: 0` can snooze for days.
+- If the step failed and the dependency said when to come back, return `RetryAfter`; if you know before calling that it would fail, `Release` it in middleware so the handler never runs.
+- If the step waits for an outside event it can be told about, use a [wait step](waiting.md#wait-for-the-world-signals-approvals-polls-and-promises) instead of snoozing in a loop.
+- If retrying can never help, return `Permanent` when someone should see the failure and `Discard` when nobody should.
+- Pitfall: a release counts against `RetryPolicy.Max`, and under a policy without `DelayFor: workflow.RetryAfterDelay` the release's delay is ignored and the normal backoff applies. A step released on its last attempt fails its run.
+- Pitfall: on Hatchet a snooze spends an attempt, so a step that snoozes in a loop fails once its retries run out; `Poll`, `SleepUntil`, `AwaitPromise` and pools snooze too.
+- Pitfall: a snooze longer than `workflow.MaxSnooze` (30 days) is cut to it, and `RetryPolicy.Until` keeps counting through snoozes, since it is a deadline.
 
 ## Max, Permanent, NoRetryOn or FailOn
 
@@ -123,6 +145,6 @@ When a step fails, four tools decide whether it is tried again:
 
 ## Related
 
-- [Choose a driver](drivers.md)
-- [Choose by kind of app](app-types.md)
+- [Choose the shape of the work](shapes.md), [Choose how a run waits](waiting.md), [Choose a schedule tool](schedules.md)
+- [Choose a driver](drivers.md), [Choose by kind of app](app-types.md), [Choose an operations tool](operations.md)
 - [Feature index](../reference/features.md)

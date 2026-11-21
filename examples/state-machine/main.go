@@ -29,9 +29,32 @@ import (
 // start is the fake clock's first instant: a Monday at 09:00 UTC.
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
-// await is how the program waits for a run.
-var await = workflow.AwaitOptions{Poll: 2 * time.Millisecond}
+const (
+	// pollInterval is how often the program checks on a run: short, because
+	// the in-memory driver finishes each event's run in well under a
+	// millisecond and the example should not dawdle.
+	pollInterval = 2 * time.Millisecond
+	// doneTimeout bounds waitDone, so a timer that never fires fails the
+	// program instead of hanging it; the real wait is a few milliseconds.
+	doneTimeout = 10 * time.Second
+	// paymentTimeout is how long the fake clock moves for order o-2. It must
+	// match the awaiting state's After delay in orderStates, so the timer
+	// fires.
+	paymentTimeout = 30 * time.Minute
+	// emailBuffer lets the email step hand over its text without waiting for
+	// run to read it; the program sends one email, so a few slots are plenty.
+	emailBuffer = 4
+	// o1Total is order o-1's total: the "pay 50" event falls short of it, so
+	// the guard refuses, and "pay 120" covers it.
+	o1Total = 120
+	// o2Total is order o-2's total; o-2 is never paid, so the timer cancels it.
+	o2Total = 80
+)
 
+// await is how the program waits for a run.
+var await = workflow.AwaitOptions{Poll: pollInterval}
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "state-machine:", err)
@@ -80,6 +103,8 @@ func say(what string) []workflow.MachineAction[Order] {
 }
 
 // snippet:states
+// orderStates is the order's statechart: its states, their parents and
+// the actions and timers on them.
 func orderStates() []workflow.MachineState[Order] {
 	return []workflow.MachineState[Order]{
 		{Name: "cart", Exit: say("exit cart")},
@@ -90,7 +115,7 @@ func orderStates() []workflow.MachineState[Order] {
 
 		{Name: "payment", Parent: "fulfilment", Initial: "awaiting"},
 		{Name: "awaiting", Parent: "payment", Exit: say("exit awaiting"),
-			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}},
+			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}}, // unpaid after half an hour: cancel
 		{Name: "paid", Parent: "payment", Final: true, Entry: say("enter paid")},
 
 		{Name: "shipping", Parent: "fulfilment", Initial: "packing"},
@@ -107,6 +132,8 @@ func orderStates() []workflow.MachineState[Order] {
 // snippet:end
 
 // snippet:transitions
+// orderTransitions says which event moves the order from which state to
+// which, with the guard and actions on each.
 func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 	return []workflow.MachineTransition[Order]{
 		{From: "cart", Event: "checkout", To: "fulfilment"},
@@ -124,9 +151,12 @@ func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 		// Both regions final: the order is complete.
 		{From: "fulfilment", Event: workflow.DoneEvent("fulfilment"), To: "completed"},
 
+		// snippet:history
 		// A transition of fulfilment applies in every state below it.
 		{From: "fulfilment", Event: "hold", To: "on-hold"},
+		// Deep history: resume where each region was, not at its initial state.
 		{From: "on-hold", Event: "resume", To: "fulfilment", History: workflow.HistoryDeep},
+		// snippet:end
 		{From: "fulfilment", Event: "cancel", To: "cancelled"},
 	}
 }
@@ -155,6 +185,8 @@ func shippedEmail(c workflow.Client) workflow.MachineAction[Order] {
 // snippet:end
 
 // snippet:define
+// orderMachine defines the order machine from its states and transitions,
+// keeping each instance's record in store.
 func orderMachine(store workflow.JournalStore, c workflow.Client, clk clock.Clock) (workflow.Workflow, error) {
 	return workflow.DefineMachine(workflow.MachineSpec[Order]{
 		Name:        "order",
@@ -180,7 +212,7 @@ func run(ctx context.Context) error {
 	defer c.Stop()
 	store := workflow.NewMemoryJournal()
 
-	emails := make(chan string, 4)
+	emails := make(chan string, emailBuffer)
 	err := c.Register(workflow.Workflow{
 		Name: "email",
 		Steps: []workflow.Step{{
@@ -206,7 +238,7 @@ func run(ctx context.Context) error {
 	}
 
 	fmt.Println("order o-1:")
-	if err := startOrder(ctx, c, "o-1", 120); err != nil {
+	if err := startOrder(ctx, c, "o-1", o1Total); err != nil {
 		return err
 	}
 	steps := []struct {
@@ -234,14 +266,14 @@ func run(ctx context.Context) error {
 	}
 
 	fmt.Println("order o-2:")
-	if err := startOrder(ctx, c, "o-2", 80); err != nil {
+	if err := startOrder(ctx, c, "o-2", o2Total); err != nil {
 		return err
 	}
 	if err := send(ctx, c, "o-2", "checkout", ""); err != nil {
 		return err
 	}
 	fmt.Println("> 30 minutes pass without a payment")
-	clk.Advance(30 * time.Minute) // the awaiting state's timer fires
+	clk.Advance(paymentTimeout) // the awaiting state's timer fires
 	if err := waitDone(ctx, store, "o-2"); err != nil {
 		return err
 	}
@@ -304,7 +336,7 @@ func send(ctx context.Context, c workflow.Client, key, event, payload string) er
 // waitDone polls until order key reaches a final state: the timer's run
 // is not one the program holds a RunRef for.
 func waitDone(ctx context.Context, store workflow.JournalStore, key string) error {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(doneTimeout)
 	for {
 		snap, _, err := workflow.MachineStatus[Order](ctx, store, "order", key)
 		if err != nil {
@@ -316,7 +348,7 @@ func waitDone(ctx context.Context, store workflow.JournalStore, key string) erro
 		if time.Now().After(deadline) {
 			return fmt.Errorf("order %s: not done after the timer: %v", key, snap.States)
 		}
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(pollInterval)
 	}
 }
 

@@ -27,6 +27,16 @@ import (
 // start is the fake clock's first instant; any fixed time works.
 var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
+const (
+	// eventBuffer is the room of every channel a part's handlers send on:
+	// more than any part sends, so a handler never blocks on the demo.
+	eventBuffer = 4
+	// readyOnLook is the look at which the snoozing step finds its report:
+	// the third, so the output shows two snoozes before the success.
+	readyOnLook = 3
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-heartbeat:", err)
@@ -48,7 +58,7 @@ func run(ctx context.Context) error {
 // run end sent to the returned channel.
 func newClient(ctx context.Context, clk *clock.Fake, wfs ...workflow.Workflow) (*memory.Client, <-chan workflow.RunEvent, error) {
 	c := memory.New(memory.WithClock(clk))
-	finished := make(chan workflow.RunEvent, 4)
+	finished := make(chan workflow.RunEvent, eventBuffer)
 	if err := c.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { finished <- ev }); err != nil {
 		return nil, nil, err
 	}
@@ -69,11 +79,13 @@ func newClient(ctx context.Context, clk *clock.Fake, wfs ...workflow.Workflow) (
 func snooze(ctx context.Context) error {
 	fmt.Println("snooze:")
 	clk := clock.NewFake(start)
-	tries := make(chan int, 4)
+	tries := make(chan int, eventBuffer)
 	checks := 0
-	reportReady := func() bool { checks++; return checks == 3 } // ready on the third look
+	// reportReady stands in for the upstream report: ready on the third look.
+	reportReady := func() bool { checks++; return checks == readyOnLook }
 
 	// snippet:snooze
+	// fetch snoozes until the report it downloads is ready.
 	fetch := func(ctx context.Context, _ []byte) ([]byte, error) {
 		info, _ := workflow.StepInfoFrom(ctx)
 		tries <- info.Attempt
@@ -99,10 +111,10 @@ func snooze(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	for i := range 3 {
+	for i := range readyOnLook {
 		attempt := <-tries
 		fmt.Printf("  try at +%s: attempt %d\n", clk.Now().Sub(start), attempt)
-		if i == 2 { // the third look finds the report
+		if i == readyOnLook-1 { // the last look finds the report
 			break
 		}
 		if err := clk.BlockUntil(ctx, 1); err != nil { // the snooze timer is armed
@@ -130,9 +142,10 @@ func snooze(ctx context.Context) error {
 func heartbeat(ctx context.Context) error {
 	fmt.Println("heartbeat:")
 	clk := clock.NewFake(start)
-	attempts := make(chan int, 4)
+	attempts := make(chan int, eventBuffer)
 
 	// snippet:heartbeat
+	// load hangs on its first attempt and beats once per batch on the next.
 	load := func(ctx context.Context, _ []byte) ([]byte, error) {
 		info, _ := workflow.StepInfoFrom(ctx)
 		attempts <- info.Attempt
@@ -140,7 +153,7 @@ func heartbeat(ctx context.Context) error {
 			<-ctx.Done() // a hung connection: no heartbeat, no progress
 			return nil, context.Cause(ctx)
 		}
-		for batch := 1; batch <= 3; batch++ {
+		for batch := 1; batch <= 3; batch++ { // three batches stand in for the catalog
 			// ... load one batch ...
 			if err := workflow.Heartbeat(ctx, fmt.Appendf(nil, "batch %d", batch)); err != nil {
 				return nil, err // the beat was not recorded: the attempt lost its lease
@@ -158,6 +171,11 @@ func heartbeat(ctx context.Context) error {
 		}},
 	}
 	// snippet:end
+	// snippet:hung
+	// HeartbeatTimeout makes the workflow need CapHeartbeat: Start refuses
+	// it on a driver without the capability instead of never firing.
+	fmt.Println("  needs:", workflow.Requires(wf))
+	// snippet:end
 
 	c, finished, err := newClient(ctx, clk, wf)
 	if err != nil {
@@ -172,11 +190,11 @@ func heartbeat(ctx context.Context) error {
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the heartbeat watchdog
 		return err
 	}
-	clk.Advance(30 * time.Second)
+	clk.Advance(wf.Steps[0].HeartbeatTimeout)      // the attempt goes that long without a beat
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the retry's backoff
 		return err
 	}
-	clk.Advance(time.Second)
+	clk.Advance(wf.Retry.Backoff.Initial)
 	fmt.Printf("  attempt %d started at +%s\n", <-attempts, clk.Now().Sub(start))
 	ev := <-finished
 	page, err := c.Runs(ctx, workflow.RunQuery{Ref: ref})
@@ -186,6 +204,23 @@ func heartbeat(ctx context.Context) error {
 	first := page.Runs[0].Errors[0]
 	fmt.Printf("  attempt %d failed at +%s: %s\n", first.Attempt, first.At.Sub(start), first.Error)
 	fmt.Printf("  run %s\n", ev.Status)
+
+	// A unit test checks that the handler beats as it works, without a
+	// driver: Heartbeat sends each beat to the Heartbeater on the ctx.
+	// snippet:heartbeater
+	var beats []string
+	// beater records each beat the handler sends, in place of a driver.
+	beater := workflow.HeartbeatFunc(func(_ context.Context, details []byte) error {
+		beats = append(beats, string(details))
+		return nil
+	})
+	testCtx := workflow.WithStepInfo(workflow.WithHeartbeater(ctx, beater), workflow.StepInfo{Attempt: 2}) // past attempt 1, which hangs
+	if _, err := load(testCtx, nil); err != nil {
+		return err
+	}
+	fmt.Printf("  beats from a direct call: %q\n", beats)
+	// snippet:end
+	<-attempts // the direct call reported its attempt too
 	return nil
 }
 
@@ -197,6 +232,7 @@ func runTimeout(ctx context.Context) error {
 	started := make(chan struct{}, 1)
 	var mu sync.Mutex
 	var ran []string
+	// note records which hook ran, safe from the hooks' goroutines.
 	note := func(s string) { mu.Lock(); ran = append(ran, s); mu.Unlock() }
 
 	// snippet:run-timeout
@@ -224,15 +260,18 @@ func runTimeout(ctx context.Context) error {
 		return err
 	}
 	defer c.Stop()
+	// snippet:run-cap
+	fmt.Println("  needs:", workflow.Requires(wf)) // Start refuses RunTimeout without CapRunTimeout
 	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "build-report", Payload: []byte(`"q3"`)}); err != nil {
 		return err
 	}
-	<-started
+	<-started                                      // the step runs and hangs
 	if err := clk.BlockUntil(ctx, 1); err != nil { // the run timeout, armed at admission
 		return err
 	}
-	clk.Advance(5 * time.Minute)
-	ev := <-finished
+	clk.Advance(5 * time.Minute) // the whole run's budget is spent
+	ev := <-finished             // failed with ErrRunTimeout; OnTimeout ran
+	// snippet:end
 
 	// snippet:timeout-errors
 	runOut := errors.Is(ev.Err, workflow.ErrRunTimeout) // this deadline in particular

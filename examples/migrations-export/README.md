@@ -2,7 +2,7 @@
 
 The two ways the SQL driver's schema reaches a database. `Migrate` applies numbered migrations under a ledger and the engine's lock, and is safe to call twice. `MigrationScripts` hands the same SQL to a tool of your own: the program writes one `.sql` file per migration, the way a team on goose, Atlas, Flyway or a DBA review would, then applies the scripts with plain `Exec` calls and starts a client that never ran `Migrate`.
 
-It also migrates a `UniqueStore` on its own (only the lock table), shows that `Migrate` and `Start` refuse a database a newer release migrated (`ErrSchemaTooNew`), and shows `WithSchema`: schema-qualified DDL on Postgres, refused on SQLite.
+It also migrates a `UniqueStore` on its own (only the lock table), counts each store's migrations by its owner constant (`sqlstore.MigrationOwner`, `UniqueMigrationOwner`, `DebounceMigrationOwner`, `outbox.MigrationOwner`), shows that `Migrate` and `Start` refuse a database a newer release migrated (`ErrSchemaTooNew`), and shows `WithSchema`: schema-qualified DDL on Postgres, refused on SQLite.
 
 ```sh
 cd examples
@@ -53,6 +53,12 @@ started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique
   ubgo/workflow/sqlstore/unique 002_unique_holder
+migrations per owner:
+  ubgo/workflow/sqlstore: 11 in Client.Migrate
+  ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
+  ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate
+  ubgo/workflow/sqlstore/outbox: 1 in Outbox.Migrate
 refused, unknown migrations: [099_from_the_future]
 Start refused too: sqlstore: the database schema is newer than this code
 postgres: CREATE TABLE IF NOT EXISTS "jobs"."wf_runs"

@@ -8,7 +8,8 @@ import (
 )
 
 // want is the program's whole output, as the README and the guide show it.
-const want = `loaded "order": reserve (run) await-payment (wait) ship (run)
+const want = `checked: steps[0].handlr: unknown field (known: after, handler, name, retry, sleep, timeout, wait)
+loaded "order": reserve (run) await-payment (wait) ship (run)
 both orders waiting for payment
 A-1: "shipped A-1, paid 40"
 A-2: "shipped A-2, paid 25"

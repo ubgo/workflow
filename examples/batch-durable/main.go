@@ -35,12 +35,27 @@ const (
 	// statePoll is how often the program re-reads the batch store while it
 	// waits for the dispatch to reach the state it stalls in.
 	statePoll = 5 * time.Millisecond
+	// batchSize is the number of jobs in the batch: enough that some start
+	// before the stall and some after the takeover.
+	batchSize = 5
+	// stallIndex is the batch.LabelIndex of the job process A hangs on;
+	// jobs 0 and 1 start before it, 3 and 4 are left for process B.
+	stallIndex = "2"
+	// wfExport is the batch's job workflow and wfReport its Finally; both
+	// are registered by every process.
+	wfExport = "export"
+	wfReport = "report"
 )
+
+// start is the shared fake clock's first instant; any fixed date works.
+var start = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // lease is how long a dispatch may go without writing before another
 // process takes it over (batch.DefaultDispatchLease is five minutes).
 const lease = time.Minute
 
+// main runs the example on a SQLite file in a temp dir, removes it, and
+// exits non-zero on error.
 func main() {
 	dir, err := os.MkdirTemp("", "batch-durable")
 	if err != nil {
@@ -66,7 +81,7 @@ func run(ctx context.Context, path string) (err error) {
 	defer func() { err = errors.Join(err, db.Close()) }()
 	// Both managers read time from this clock, so the lease can be ended
 	// with Advance instead of waiting a minute.
-	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(start)
 
 	// Process A dispatches and stalls on job 2.
 	ctxA, killA := context.WithCancel(ctx)
@@ -82,7 +97,7 @@ func run(ctx context.Context, path string) (err error) {
 	if err := a.Start(ctxA); err != nil {
 		return err
 	}
-	stalled := stalledAt{Client: a, index: "2", ctx: ctxA}
+	stalled := stalledAt{Client: a, index: stallIndex, ctx: ctxA}
 	// snippet:dispatcher
 	ma := batch.New(stalled, a.BatchStore(), batch.WithClock(clk),
 		batch.WithDispatchLease(lease),
@@ -91,7 +106,7 @@ func run(ctx context.Context, path string) (err error) {
 	// snippet:end
 	dispatched := make(chan error, 1)
 	go func() {
-		_, err := ma.Dispatch(ctxA, batch.Batch{Name: "nightly", Jobs: jobs(5), Finally: "report"})
+		_, err := ma.Dispatch(ctxA, batch.Batch{Name: "nightly", Jobs: jobs(batchSize), Finally: wfReport})
 		dispatched <- err
 	}()
 	id, err := waitForBatch(ctx, a.BatchStore(), dispatched)
@@ -128,13 +143,16 @@ func run(ctx context.Context, path string) (err error) {
 
 	p := <-finally
 	fmt.Printf("finally: %d jobs, %d succeeded, %d cancelled\n", p.Total, p.Succeeded, p.CancelledJobs)
-	st, err := store.Get(ctx, id)
+	// snippet:state
+	st, err := store.Get(ctx, id) // a batch.State: the whole batch as one record
 	if err != nil {
 		return err
 	}
-	for i, j := range st.Jobs {
-		fmt.Printf("job %d: %s\n", i, j.Status)
+	fmt.Printf("state %q: finished=%v cancelled=%v catch fired=%v\n", st.Name, st.Finished, st.Cancelled, st.CatchFired)
+	for i, j := range st.Jobs { // one batch.JobState per job, in dispatch order
+		fmt.Printf("job %d: %s, has ref=%v\n", i, j.Status, !j.Ref.IsZero())
 	}
+	// snippet:end
 
 	killA() // A's stalled call returns: its lease is gone, so it starts nothing more
 	fmt.Println("process A's dispatch ended with an error:", <-dispatched != nil)
@@ -154,7 +172,7 @@ func newClient(ctx context.Context, db *sql.DB) (*sqlstore.Client, error) {
 func jobs(n int) []workflow.Job {
 	out := make([]workflow.Job, n)
 	for i := range out {
-		out[i] = workflow.Job{Workflow: "export", Payload: fmt.Appendf(nil, "%d", i)}
+		out[i] = workflow.Job{Workflow: wfExport, Payload: fmt.Appendf(nil, "%d", i)}
 	}
 	return out
 }
@@ -162,13 +180,13 @@ func jobs(n int) []workflow.Job {
 // register registers the batch's job workflow and its Finally on c.
 func register(c *sqlstore.Client, finally chan<- batch.Progress) error {
 	if err := c.Register(workflow.Workflow{
-		Name:  "export",
+		Name:  wfExport,
 		Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 	}); err != nil {
 		return err
 	}
 	return c.Register(workflow.Workflow{
-		Name: "report",
+		Name: wfReport,
 		Steps: []workflow.Step{{Name: "run", Run: workflow.Define(func(_ context.Context, p batch.Progress) (string, error) {
 			finally <- p
 			return "", nil

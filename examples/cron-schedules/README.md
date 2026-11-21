@@ -35,6 +35,8 @@ misfire after a five-hour pause:
   Due skip      []
   Due fire-once [05:00]
   Due fire-all  [03:00 04:00 05:00]
+  fire-all needs Cron|MisfireFireAll
+  hatchet: true workflow: Schedule.Misfire unsupported by this driver (missing MisfireFireAll): schedule for workflow hourly
 another dialect:
   memory with the dialect: <nil>
   memory with cron.Parse: workflow: invalid spec: workflow "poll": Cron[0]: cron: invalid macro "@quarter-hour" in "@quarter-hour": unknown macro
@@ -62,7 +64,7 @@ if err != nil {
 	return err
 }
 t := monday
-for range 3 {
+for range 3 { // the next three fires
 	t = s.Next(t, ny) // strictly after t, evaluated in New York
 	fmt.Println(" ", t.Format(layout))
 }
@@ -72,8 +74,8 @@ Day of month and day of week together (the Vixie rule):
 
 <!-- snippet: examples/cron-schedules/main.go#vixie -->
 ```go
-both, _ := cron.Parse("0 0 1 * MON") // day of month AND day of week restricted
-fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10)
+both, _ := cron.Parse("0 0 1 * MON")                                 // day of month AND day of week restricted
+fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10) // at most 10 in a month
 var days []string
 for _, f := range fires {
 	days = append(days, f.Format("Mon 2 Jan"))
@@ -95,20 +97,21 @@ Fixed-time and periodic schedules on New York's DST days:
 
 <!-- snippet: examples/cron-schedules/main.go#dst -->
 ```go
+// show prints at most n fires of expr in the two days after from, in New York time.
 show := func(expr string, from time.Time, n int) {
 	s, _ := cron.Parse(expr)
 	var got []string
-	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
+	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) { // a two-day window
 		got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 	}
 	fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 }
 spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
-show("30 2 * * *", spring, 2) // 02:30 does not exist on 8 March
-show("30 * * * *", spring.Add(13*time.Hour), 3)
-show("30 1 * * *", fall, 2) // 01:30 happens twice on 1 November
-show("30 * * * *", fall.Add(12*time.Hour), 3)
+show("30 2 * * *", spring, 2)                   // 02:30 does not exist on 8 March
+show("30 * * * *", spring.Add(13*time.Hour), 3) // three hourly fires from 01:00 on 8 March
+show("30 1 * * *", fall, 2)                     // 01:30 happens twice on 1 November
+show("30 * * * *", fall.Add(12*time.Hour), 3)   // three hourly fires from 00:00 on 1 November
 ```
 
 A cron declared on a workflow, in Kolkata:
@@ -189,7 +192,7 @@ The rule every driver applies to missed ticks:
 <!-- snippet: examples/cron-schedules/main.go#due -->
 ```go
 hourly, _ := cron.Parse("0 * * * *")
-last, now := monday, monday.Add(5*time.Hour+30*time.Minute)
+last, now := monday, monday.Add(5*time.Hour+30*time.Minute) // after the five-hour pause
 for _, name := range names {
 	var ticks []string
 	for _, t := range policies[name].Due(hourly, last, now, time.UTC) {
@@ -203,6 +206,7 @@ Another cron dialect on the memory driver:
 
 <!-- snippet: examples/cron-schedules/main.go#dialect -->
 ```go
+// withQuarter reads the @quarter-hour macro and hands everything else to cron.Parse.
 withQuarter := func(expr string) (cron.Schedule, error) {
 	if expr == "@quarter-hour" {
 		expr = "*/15 * * * *"
@@ -225,7 +229,7 @@ fmt.Println("  time.Local:", errors.Is(err, workflow.ErrInvalid))
 h := hatchet.New(hatchet.Config{})
 for _, wf := range []workflow.Workflow{
 	{Name: "zoned", Cron: []string{"0 9 * * *"}, CronLocation: kolkata},
-	{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}},
+	{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}}, // any catch-up
 	{Name: "macro", Cron: []string{"@daily"}},
 } {
 	wf.Steps = []workflow.Step{{Name: "s", Run: noop}}

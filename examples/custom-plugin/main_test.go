@@ -16,6 +16,18 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+// The race test's sizes.
+const (
+	// racers is how many goroutines try to take one key at once.
+	racers = 50
+	// ownerLetters spreads the racers over owner names a to z.
+	ownerLetters = 26
+	// lockTTL is how long an acquired lock lives.
+	lockTTL = time.Minute
+	// pastExpiry is how far the clock moves so the lock has surely expired.
+	pastExpiry = 2 * lockTTL
+)
+
 // TestRun runs the program and checks the lines the guides show.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
@@ -48,9 +60,9 @@ func TestKVUniqueOneWinner(t *testing.T) {
 	s := kvUnique{kv: newMemKV(clk), prefix: "u:"}
 	var wins atomic.Int32
 	var wg sync.WaitGroup
-	for i := range 50 {
+	for i := range racers {
 		wg.Go(func() {
-			ok, err := s.Acquire(ctx, "k", "owner-"+string(rune('a'+i%26)), time.Minute)
+			ok, err := s.Acquire(ctx, "k", "owner-"+string(rune('a'+i%ownerLetters)), lockTTL)
 			if err != nil {
 				t.Error(err)
 			}
@@ -63,12 +75,12 @@ func TestKVUniqueOneWinner(t *testing.T) {
 	if wins.Load() != 1 {
 		t.Fatalf("%d acquires won, want 1", wins.Load())
 	}
-	clk.Advance(2 * time.Minute)
-	if ok, _ := s.Acquire(ctx, "k", "late", time.Minute); !ok {
+	clk.Advance(pastExpiry)
+	if ok, _ := s.Acquire(ctx, "k", "late", lockTTL); !ok {
 		t.Fatal("an expired lock was not taken over")
 	}
 	_ = s.Release(ctx, "k", "someone-else")
-	if ok, _ := s.Acquire(ctx, "k", "other", time.Minute); ok {
+	if ok, _ := s.Acquire(ctx, "k", "other", lockTTL); ok {
 		t.Fatal("a release by another owner freed the lock")
 	}
 }

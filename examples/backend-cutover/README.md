@@ -20,6 +20,9 @@ schedule "nightly" on new:schedule-4
 -- Retire the old backend
 unfinished runs on the old backend: 1
 after the export finished: 0 - the app can drop the old backend
+-- Keep the schedules on the old backend for now
+schedule on the old side: true (old:schedule-1)
+MoveSchedules refused under SchedulesOn(SideOld): true
 ```
 
 ## The code
@@ -49,9 +52,11 @@ moved, err := c.MoveSchedules(ctx, func(info workflow.ScheduleInfo) ([]byte, err
 if err != nil {
 	return err
 }
-for _, m := range moved {
+for _, m := range moved { // a cutover.Moved: Name, Workflow, From (old:...), To (new:...)
 	fmt.Printf("moved %q from %s to %s\n", m.Name, m.From, m.To)
 }
 ```
+
+The last part builds a client with `cutover.SchedulesOn(cutover.SideOld)`: its schedule lands on the old backend and `MoveSchedules` refuses.
 
 The guide that copies this program is [backend cutover](../../docs/operations/cutover.md). `go test ./backend-cutover` checks every line.

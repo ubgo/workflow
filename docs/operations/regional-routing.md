@@ -69,6 +69,7 @@ A `Router` has one method, `Region(ctx, job) (string, error)`; `regional.RouterF
 <!-- snippet: examples/regional-routing/main.go#router -->
 ```go
 customers := map[string]string{"acme": "eu", "globex": "us"} // the app's own table
+// router picks the region of the job's tenant from that table.
 router := regional.RouterFunc(func(ctx context.Context, job workflow.Job) (string, error) {
 	r, ok := customers[job.Tenant]
 	if !ok {
@@ -90,7 +91,26 @@ if err := c.Signal(ctx, workflow.Event{Name: "approved", Key: "42"}); err != nil
 }
 ```
 
-Every region is tried; when one fails, the others have already taken the event and the error names the failing region, so a retried `Signal` may reach a region twice. An app whose event payloads must stay in one region too passes `regional.WithSignalRouter(fn)`: `fn` returns the regions an event goes to, at least one, each a region of the client (`ErrUnknownRegion` otherwise). A run waiting in a region it leaves out never sees the event. [`SignalWaiting`](../workflows/signals.md#deliver-only-to-runs-waiting-now) follows the same router.
+Every region is tried; when one fails, the others have already taken the event and the error names the failing region, so a retried `Signal` may reach a region twice.
+
+An app whose event payloads must stay in one region too passes `regional.WithSignalRouter(fn)`. `fn` is a `regional.SignalRouter`: it returns the regions an event goes to, at least one, each a region of the client (`ErrUnknownRegion` otherwise; an empty list is `workflow.ErrInvalid`), or an error that `Signal` returns wrapped as `regional: signal router: <err>`, before any region is tried. This one reads the app's own order table:
+
+<!-- snippet: examples/regional-routing/main.go#signal-router -->
+```go
+orders := map[string]string{"42": "us"} // the app's own table: which region holds an order
+c, err := regional.New(map[string]workflow.Client{"eu": memory.New(), "us": memory.New()},
+	regional.ByLabel("region", "eu"),
+	regional.WithSignalRouter(func(ctx context.Context, ev workflow.Event) ([]string, error) {
+		r, ok := orders[ev.Key]
+		if !ok {
+			return nil, fmt.Errorf("%w: no region for order %q", workflow.ErrInvalid, ev.Key)
+		}
+		return []string{r}, nil // at least one region of the client
+	}),
+)
+```
+
+A run waiting in a region the router leaves out never sees the event. In the example the same order key waits in both regions; after `Signal` the US run has succeeded and the EU run is still waiting, and an event for an unknown order is refused with the router's error (see Try it below). [`SignalWaiting`](../workflows/signals.md#deliver-only-to-runs-waiting-now) follows the same router. A nil `fn` keeps the default, every region.
 
 ## Schedules
 
@@ -104,7 +124,31 @@ id, err := c.Schedule(ctx, workflow.Schedule{
 })
 ```
 
-A workflow's declared `Cron` has no job to route. It fires in the region `regional.WithScheduleRegion(name)` names, and the other regions get each workflow without its `Cron` (and the fields that apply to it alone: `CronWindows`, `Misfire`, `CronOverlap`, `CronSeconds`, `CronActive`, `CronKeepRuns`), so a tick never fires twice. `ScheduleWhen` stays on every copy, because it also conditions the ticks of `Schedule`, which may live in any region. With one region it defaults to that region; with more, `Register` refuses a workflow with `Cron` until it is set.
+A workflow's declared `Cron` has no job to route. It fires in the region `regional.WithScheduleRegion(name)` names, and the other regions get each workflow without its `Cron` (and the fields that apply to it alone: `CronWindows`, `Misfire`, `CronOverlap`, `CronSeconds`, `CronActive`, `CronKeepRuns`), so a tick never fires twice. `ScheduleWhen` stays on every copy, because it also conditions the ticks of `Schedule`, which may live in any region. With one region it defaults to that region; with more, `Register` refuses a workflow with `Cron` until it is set:
+
+<!-- snippet: examples/regional-routing/main.go#schedule-region -->
+```go
+// regions builds a fresh pair of regions, one per client below.
+regions := func() map[string]workflow.Client {
+	return map[string]workflow.Client{"eu": memory.New(), "us": memory.New()}
+}
+without, err := regional.New(regions(), regional.ByLabel("region", "eu"))
+if err != nil {
+	return err
+}
+err = without.Register(nightly) // which region fires 02:00? Register refuses to guess
+fmt.Println("Cron without a schedule region refused:", errors.Is(err, workflow.ErrInvalid))
+
+with, err := regional.New(regions(), regional.ByLabel("region", "eu"),
+	regional.WithScheduleRegion("eu"), // eu fires the tick; us gets the workflow without its Cron
+)
+if err != nil {
+	return err
+}
+fmt.Println("with WithScheduleRegion(\"eu\"):", with.Register(nightly))
+```
+
+A `WithScheduleRegion` naming a region the client was not built with is refused by `regional.New` with `ErrUnknownRegion`.
 
 `Schedules` lists every region's schedules with prefixed IDs; `PauseSchedule`, `ResumeSchedule`, `TriggerSchedule` and `Unschedule` go to the region the ID names (`PauseSchedule` with `All` to every region). A fired run's `workflow.LabelSchedule` label carries the prefixed ID, and a `LabelSchedule` filter in `Runs` and `CancelAll` asks only the region holding that schedule.
 
@@ -161,6 +205,12 @@ invoices: eu 1, us 1
 acme -> eu
 globex -> us
 initech: refused (true)
+-- Keep an event in its region
+order 42: us succeeded, eu waiting
+unknown order refused: true
+-- Name the region that fires declared Cron
+Cron without a schedule region refused: true
+with WithScheduleRegion("eu"): <nil>
 ```
 
 ## Pitfalls

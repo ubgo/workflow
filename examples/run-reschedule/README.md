@@ -46,7 +46,8 @@ Moving a delayed run:
 
 <!-- snippet: examples/run-reschedule/main.go#reschedule -->
 ```go
-moved, err := c.Reschedule(ctx, refs["r-2h"], clk.Now().Add(45*time.Minute))
+reminder := workflow.Job{Workflow: "send-reminder", Labels: map[string]string{"name": "r-2h"}}
+moved, err := moveRun(ctx, c, refs["r-2h"], reminder, clk.Now().Add(45*time.Minute)) // inside the next hour, so the listing shows it
 if err != nil {
 	return err
 }
@@ -65,6 +66,8 @@ A step that falls back when it is withdrawn:
 
 <!-- snippet: examples/run-reschedule/main.go#fallback -->
 ```go
+// fetchPrices hangs on the price feed and falls back to cached prices
+// when an operator withdraws it.
 fetchPrices := func(ctx context.Context, _ []byte) ([]byte, error) {
 	started <- "fetch"
 	<-ctx.Done() // the price feed is hanging

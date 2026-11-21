@@ -24,6 +24,15 @@ step timeout:
 refusals:
   memory: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow order, step await-payment
   hatchet: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: workflow order step await-payment: Hatchet has no API that evaluates a CEL expression to a string for the driver; use workflow.KeyFunc
+wait keys:
+  order A-7 waits on "A-7", every approval on "finance"
+  an expression is the engine's to evaluate: true
+call a handler directly:
+  typed: "hello Ada"
+  empty input: "hello "
+  bad input is permanent: true
+  outside a step: not called from a step
+  inside a step: report/send, run run-1, attempt 2
 `
 
 // TestRun runs the program and checks every line it prints, so a change

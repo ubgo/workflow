@@ -34,6 +34,9 @@ refusal is no outage: false
 reserved: [ubgo.workflow/ workflow.batch. otel.]
 otel.traceparent reserved: true otel.
 ValidateLabels: workflow: invalid spec: label "workflow.batch.id" uses the reserved prefix "workflow.batch."
+app enqueue: workflow: invalid spec: job for "ping": label "workflow.batch.id" uses the reserved prefix "workflow.batch."; only the package owning it may set it
+one key allowed: workflow: invalid spec: job for "ping": label "workflow.batch.index" uses the reserved prefix "workflow.batch."; only the package owning it may set it
+prefix allowed: true
 ```
 
 The guides that copy this program: [capabilities](../../docs/concepts/capabilities.md), [errors](../../docs/concepts/errors.md), [labels](../../docs/concepts/labels.md) and the validation section of [the client](../../docs/concepts/client.md#validation). `main_test.go` runs it and checks every line above.

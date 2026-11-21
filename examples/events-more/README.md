@@ -87,7 +87,7 @@ Payload versions, upcast before subscribers see the message:
 
 <!-- snippet: examples/events-more/main.go#versions -->
 ```go
-b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{
+b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{ // 2: the current version
 	0: func(raw []byte) ([]byte, error) { // v0 -> v1: "amount" is now "cents"
 		return bytes.Replace(raw, []byte(`"amount"`), []byte(`"cents"`), 1), nil
 	},
@@ -105,10 +105,11 @@ A replay of one hour of the log to one subscription:
 <!-- snippet: examples/events-more/main.go#replay -->
 ```go
 from := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC) // the hour the receipt mailer was down
+const outage = 2 * time.Hour                           // how long it stayed down
 r, err := b.Replay(ctx, events.ReplayOptions{
 	ID:            "mailer-outage-2026-11-20",
 	From:          from,
-	To:            from.Add(2 * time.Hour),
+	To:            from.Add(outage),
 	Subscriptions: []string{"receipt"},
 })
 if err != nil {

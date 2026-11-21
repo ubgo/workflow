@@ -8,13 +8,15 @@ import (
 )
 
 // want is the program's whole output, the one its README shows.
-const want = `memory: detailed=true finished steps=0 runs=0, cut off 1
-  cut: thumbnail/resize attempt 1 -> cancelled
+const want = `memory: finished steps=0 runs=0, clean=false, cut off 1 attempt(s) in 1 run(s)
+  cut: thumbnail/resize attempt 1 -> cancelled: the run is cancelled
 memory: drain error is a deadline: true
 memory: cut run status: cancelled
 sql: worker A runs attempt 1
-sql: detailed=true finished steps=0 runs=0, cut off 1
-  cut: thumbnail/resize attempt 1 -> requeued
+sql: drain report true, requeue on a clean stop true
+sql: finished steps=0 runs=0, clean=false, cut off 1 attempt(s) in 1 run(s)
+  cut: thumbnail/resize attempt 1 -> requeued: another worker runs it as the same attempt
+sql: drain error is the deadline: true same as DrainOutcome: true
 sql: worker B runs attempt 1
 sql: run finished: succeeded
 `

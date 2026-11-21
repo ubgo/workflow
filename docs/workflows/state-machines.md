@@ -10,6 +10,7 @@ The interpreter follows SCXML, the W3C statechart standard: compound (nested) an
 - Each instance lives in a `workflow.JournalStore`: `sqlstore.Client.JournalStore()` or `redis.Client.JournalStore()` so it survives restarts and every worker sees it, `workflow.NewMemoryJournal()` for one process. No new table is needed.
 - A machine with timers needs a client with `workflow.CapDelayedStart` and `workflow.CapIdempotencyKey`; `DefineMachine` checks it and returns an `*UnsupportedError` otherwise.
 - The example is [`examples/state-machine`](../../examples/state-machine). Run it with `go run ./state-machine` from `examples/`.
+- To keep a machine's states and transitions in JSON instead of Go, see [state machines as data](definitions-as-data.md#state-machines-as-data) and [`examples/machine-dsl`](../../examples/machine-dsl).
 
 ## The example machine
 
@@ -68,6 +69,8 @@ A `workflow.MachineState[D]` has a unique `Name`, and optionally a `Parent` (mak
 
 <!-- snippet: examples/state-machine/main.go#states -->
 ```go
+// orderStates is the order's statechart: its states, their parents and
+// the actions and timers on them.
 func orderStates() []workflow.MachineState[Order] {
 	return []workflow.MachineState[Order]{
 		{Name: "cart", Exit: say("exit cart")},
@@ -78,7 +81,7 @@ func orderStates() []workflow.MachineState[Order] {
 
 		{Name: "payment", Parent: "fulfilment", Initial: "awaiting"},
 		{Name: "awaiting", Parent: "payment", Exit: say("exit awaiting"),
-			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}},
+			After: []workflow.StateTimer{{Delay: 30 * time.Minute, Event: "payment-timeout"}}}, // unpaid after half an hour: cancel
 		{Name: "paid", Parent: "payment", Final: true, Entry: say("enter paid")},
 
 		{Name: "shipping", Parent: "fulfilment", Initial: "packing"},
@@ -99,6 +102,8 @@ A `workflow.MachineTransition[D]` moves the machine when `Event` arrives while `
 
 <!-- snippet: examples/state-machine/main.go#transitions -->
 ```go
+// orderTransitions says which event moves the order from which state to
+// which, with the guard and actions on each.
 func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 	return []workflow.MachineTransition[Order]{
 		{From: "cart", Event: "checkout", To: "fulfilment"},
@@ -118,6 +123,7 @@ func orderTransitions(c workflow.Client) []workflow.MachineTransition[Order] {
 
 		// A transition of fulfilment applies in every state below it.
 		{From: "fulfilment", Event: "hold", To: "on-hold"},
+		// Deep history: resume where each region was, not at its initial state.
 		{From: "on-hold", Event: "resume", To: "fulfilment", History: workflow.HistoryDeep},
 		{From: "fulfilment", Event: "cancel", To: "cancelled"},
 	}
@@ -157,6 +163,18 @@ A transition with `History` enters a compound or parallel target where it was la
 - `workflow.HistoryDeep` re-enters the whole configuration below the target.
 - `workflow.HistoryNone` (the default) enters through the initial states. A target never left before is entered through its initial states whatever the mode.
 
+Set it on the transition that comes back. The example's `hold` is a transition of `fulfilment`, so it applies in every state below it, and `resume` returns with `workflow.HistoryDeep`:
+
+<!-- snippet: examples/state-machine/main.go#history -->
+```go
+// A transition of fulfilment applies in every state below it.
+{From: "fulfilment", Event: "hold", To: "on-hold"},
+// Deep history: resume where each region was, not at its initial state.
+{From: "on-hold", Event: "resume", To: "fulfilment", History: workflow.HistoryDeep},
+```
+
+`History` needs a compound or parallel target: `DefineMachine` refuses a history transition into an atomic state, which has nothing below it to remember.
+
 The example puts a shipped order on hold and resumes it with deep history, so it comes back paid and in transit:
 
 ```text
@@ -172,6 +190,15 @@ The example puts a shipped order on hold and resumes it with deep history, so it
 ```
 
 For a parallel target, shallow history only remembers the regions, which are all active anyway, so it returns to `[awaiting packing]` like no history; only deep history keeps each region's progress. Entry actions run again on a history entry (`enter paid` above), and re-entering a final state raises its done event again.
+
+Under a compound target the three modes differ visibly. In [`examples/machine-dsl`](../../examples/machine-dsl) a ticket in `review > escalated > investigating` is put on hold and resumed into `review` once per mode (`history` is the data form of the same field, see [state machines as data](definitions-as-data.md#edit-a-definition-in-go-and-build-it)):
+
+```text
+history modes, after assign, escalate, investigate, hold:
+  none    resume enters [first-line]
+  shallow resume enters [triage]
+  deep    resume enters [investigating]
+```
 
 ## Timers
 
@@ -198,6 +225,8 @@ status of o-2: states [cancelled], done true, paid 0 of 80
 
 <!-- snippet: examples/state-machine/main.go#define -->
 ```go
+// orderMachine defines the order machine from its states and transitions,
+// keeping each instance's record in store.
 func orderMachine(store workflow.JournalStore, c workflow.Client, clk clock.Clock) (workflow.Workflow, error) {
 	return workflow.DefineMachine(workflow.MachineSpec[Order]{
 		Name:        "order",
@@ -301,7 +330,25 @@ The log keeps the last `MachineSpec.KeepLog` events: zero means `workflow.Defaul
 
 ## Delete an instance
 
-Instance records are never removed on their own: the Journal plugin forgets runs, and an instance is not a run. `workflow.ForgetMachine(ctx, store, machine, key)` deletes one (its state, data, history and log) once it is no longer needed, typically after `MachineSnapshot.Done`. An event sent to the key afterwards starts a new instance, and a timer of the old one finds nothing to act on. It does not wait for an event being handled at that moment, which may write the record again.
+Instance records are never removed on their own: the Journal plugin forgets runs, and an instance is not a run. `workflow.ForgetMachine(ctx, store, machine, key)` deletes one (its state, data, history and log) once it is no longer needed, typically after `MachineSnapshot.Done`. Afterwards `MachineStatus` reports the key as not found:
+
+<!-- snippet: examples/machine-dsl/main.go#forget -->
+```go
+if err := workflow.ForgetMachine(ctx, store, machineName, "T-1"); err != nil {
+	return err
+}
+_, found, err := workflow.MachineStatus[Ticket](ctx, store, machineName, "T-1")
+if err != nil {
+	return err
+}
+fmt.Fprintln(w, "T-1 after ForgetMachine, found:", found)
+```
+
+```text
+T-1 after ForgetMachine, found: false
+```
+
+An event sent to the key afterwards starts a new instance, and a timer of the old one finds nothing to act on. It does not wait for an event being handled at that moment, which may write the record again.
 
 ## Guarantees
 
@@ -353,6 +400,71 @@ There is no table of the machine's own: an instance is one record in the `Journa
 
 A machine's action can still start a workflow (`client.Enqueue` with `m.IdempotencyKey`), and a workflow step can send a machine an event with `SendEvent`.
 
+## Try it
+
+```sh
+cd examples
+go run ./state-machine
+```
+
+```text
+order o-1:
+> start, total 120
+  states: [cart]
+> checkout
+  exit cart
+  enter fulfilment
+  states: [awaiting packing]
+> pay 50
+  rejected: no transition takes it in the current state
+> pay 120
+  exit awaiting
+  action: record payment of 120
+  enter paid
+  states: [paid packing]
+> ship
+  states: [paid in-transit]
+  email: order o-1 is on its way
+> hold
+  exit fulfilment
+  enter on-hold
+  states: [on-hold]
+> resume
+  exit on-hold
+  enter fulfilment
+  enter paid
+  states: [paid in-transit]
+> deliver
+  exit fulfilment
+  enter completed
+  states: [completed]
+status of o-1: states [completed], done true, paid 120 of 120
+  1 09:00 (start)         [] -> [cart]
+  2 09:00 checkout        [cart] -> [awaiting packing]
+  3 09:00 pay             [awaiting packing] -> [paid packing]
+  4 09:00 ship            [paid packing] -> [paid in-transit]
+  5 09:00 hold            [paid in-transit] -> [on-hold]
+  6 09:00 resume          [on-hold] -> [paid in-transit]
+  8 09:00 deliver         [paid in-transit] -> [completed]
+order o-2:
+> start, total 80
+  states: [cart]
+> checkout
+  exit cart
+  enter fulfilment
+  states: [awaiting packing]
+> 30 minutes pass without a payment
+  exit awaiting
+  exit fulfilment
+  enter cancelled
+status of o-2: states [cancelled], done true, paid 0 of 80
+  1 09:00 (start)         [] -> [cart]
+  2 09:00 checkout        [cart] -> [awaiting packing]
+  3 09:30 payment-timeout [awaiting packing] -> [cancelled]
+```
+
+Order `o-1` goes through checkout, a payment the guard refuses, a payment that covers the total, shipping (which enqueues the email once), a hold and a deep-history resume, and delivery, after which the done event of `fulfilment` completes it. Order `o-2` is cancelled by its 30-minute timer when the fake clock moves. `go test ./state-machine` checks every line.
+
 ## Pitfalls
 
 - Renaming or removing a state strands every instance in it: its next event fails permanently with "stored state is not in the machine". Keep the old state until no instance is in it, with a transition out to the new one. History that names a removed state skips it.
@@ -364,3 +476,12 @@ A machine's action can still start a workflow (`client.Enqueue` with `m.Idempote
 - A slow action holds up every later event of its key. Keep actions short; start long work as a run of its own from an action.
 - `MachineStatus` reads the last saved record; an event being handled now may replace it a moment later.
 - With `workflow.NewMemoryJournal` instances live in one process. Use the driver's durable journal for anything that must survive a restart.
+
+## Related
+
+- [Virtual objects](objects.md): the per-key model a machine is built on.
+- [State machines as data](definitions-as-data.md#state-machines-as-data): the same machine from JSON, with guards and actions by registered name.
+- [Wait for an event](signals.md) and [workflow steps](steps.md): processes one run carries from start to end.
+- [Drive time in tests](../testing/fake-clock.md): the fake clock the example uses for timers.
+- [Idempotency keys](../jobs/idempotency.md): what `m.IdempotencyKey` feeds.
+- Examples: [examples/state-machine](../../examples/state-machine/), [examples/machine-dsl](../../examples/machine-dsl/).

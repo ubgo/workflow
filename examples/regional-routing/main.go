@@ -30,6 +30,7 @@ import (
 // the demo finishes quickly; a real app waits on the run-finished hook.
 const statusPoll = 5 * time.Millisecond
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "regional-routing:", err)
@@ -37,6 +38,8 @@ func main() {
 	}
 }
 
+// invoice is a one-step workflow that does nothing: the demo only cares
+// which region its runs land in.
 var invoice = workflow.Workflow{Name: "invoice", Steps: []workflow.Step{{
 	Name: "render",
 	Run:  func(ctx context.Context, in []byte) ([]byte, error) { return nil, nil },
@@ -150,7 +153,96 @@ func run(ctx context.Context) error {
 	fmt.Printf("invoices: eu %d, us %d\n", perRegion["eu"], perRegion["us"])
 
 	fmt.Println("-- Route by tenant")
-	return byTenant(ctx)
+	if err := byTenant(ctx); err != nil {
+		return err
+	}
+	fmt.Println("-- Keep an event in its region")
+	if err := signalRouter(ctx); err != nil {
+		return err
+	}
+	fmt.Println("-- Name the region that fires declared Cron")
+	return scheduleRegion()
+}
+
+// signalRouter delivers each event only to the region the app's own order
+// table names, and shows that a run waiting elsewhere never sees it.
+func signalRouter(ctx context.Context) error {
+	// snippet:signal-router
+	orders := map[string]string{"42": "us"} // the app's own table: which region holds an order
+	c, err := regional.New(map[string]workflow.Client{"eu": memory.New(), "us": memory.New()},
+		regional.ByLabel("region", "eu"),
+		regional.WithSignalRouter(func(ctx context.Context, ev workflow.Event) ([]string, error) {
+			r, ok := orders[ev.Key]
+			if !ok {
+				return nil, fmt.Errorf("%w: no region for order %q", workflow.ErrInvalid, ev.Key)
+			}
+			return []string{r}, nil // at least one region of the client
+		}),
+	)
+	// snippet:end
+	if err != nil {
+		return err
+	}
+	if err := c.Register(approval); err != nil {
+		return err
+	}
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	// The same order key waits in both regions; only us gets the event.
+	refs := map[string]workflow.RunRef{}
+	for _, r := range []string{"eu", "us"} {
+		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "approval", Labels: map[string]string{"region": r, "order": "42"}})
+		if err != nil {
+			return err
+		}
+		if _, err := waitStatus(ctx, c, ref, workflow.StatusWaiting); err != nil {
+			return err
+		}
+		refs[r] = ref
+	}
+	if err := c.Signal(ctx, workflow.Event{Name: "approved", Key: "42"}); err != nil {
+		return err
+	}
+	us, err := waitStatus(ctx, c, refs["us"], workflow.StatusSucceeded)
+	if err != nil {
+		return err
+	}
+	eu, err := c.Status(ctx, refs["eu"])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("order 42: us %s, eu %s\n", us, eu)
+	err = c.Signal(ctx, workflow.Event{Name: "approved", Key: "7"})
+	fmt.Println("unknown order refused:", errors.Is(err, workflow.ErrInvalid))
+	return nil
+}
+
+// scheduleRegion shows that a workflow with a declared Cron needs
+// WithScheduleRegion once there is more than one region.
+func scheduleRegion() error {
+	nightly := workflow.Workflow{Name: "nightly", Cron: []string{"0 2 * * *"}, Steps: invoice.Steps}
+	// snippet:schedule-region
+	// regions builds a fresh pair of regions, one per client below.
+	regions := func() map[string]workflow.Client {
+		return map[string]workflow.Client{"eu": memory.New(), "us": memory.New()}
+	}
+	without, err := regional.New(regions(), regional.ByLabel("region", "eu"))
+	if err != nil {
+		return err
+	}
+	err = without.Register(nightly) // which region fires 02:00? Register refuses to guess
+	fmt.Println("Cron without a schedule region refused:", errors.Is(err, workflow.ErrInvalid))
+
+	with, err := regional.New(regions(), regional.ByLabel("region", "eu"),
+		regional.WithScheduleRegion("eu"), // eu fires the tick; us gets the workflow without its Cron
+	)
+	if err != nil {
+		return err
+	}
+	fmt.Println("with WithScheduleRegion(\"eu\"):", with.Register(nightly))
+	// snippet:end
+	return nil
 }
 
 // byTenant routes by the job's tenant through the app's own customer
@@ -158,6 +250,7 @@ func run(ctx context.Context) error {
 func byTenant(ctx context.Context) error {
 	// snippet:router
 	customers := map[string]string{"acme": "eu", "globex": "us"} // the app's own table
+	// router picks the region of the job's tenant from that table.
 	router := regional.RouterFunc(func(ctx context.Context, job workflow.Job) (string, error) {
 		r, ok := customers[job.Tenant]
 		if !ok {

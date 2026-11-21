@@ -1,35 +1,130 @@
 # Latest-only runs
 
-Some scheduled work only matters for the newest tick: refreshing a cache, rebuilding a dashboard, pushing the current stock level. When a misfire catch-up fires three missed hours at once, or a backlog delays the 09:00 run until after 10:00, running the older ticks is wasted work. `middleware.LatestOnly` skips the work of a scheduled run whose next tick is already due, so only the newest run does it.
+Some scheduled work only matters for the newest tick: refreshing a cache, rebuilding a dashboard, pushing the current stock level. When a misfire catch-up fires three missed hours at once, or a backlog delays the 09:00 run until after 10:00, running the older ticks is wasted work, and on a slow source it makes the backlog worse. `middleware.LatestOnly` skips the work of a scheduled run whose next tick is already due, so only the newest run does it.
+
+Use it for idempotent "bring it up to date" work. Do not use it for work where every tick counts, such as a daily report or an hourly billing run: there each tick is its own period, and [misfire policies](misfire.md) with `StepInfo.TickAt` are the tool.
 
 ## Before you start
 
-- The run must carry its tick time: drivers with `workflow.CapTickTime` (memory, SQL, Redis, Hatchet) set `workflow.LabelTickAt` on every fired run.
-- The middleware reads the schedule's expression through `workflow.ScheduleLister` (`workflow.CapScheduleList`), usually the client itself, or from a `Next` function you give it.
-- Misfire catch-up is on [misfire](misfire.md); the tick time on [cron](cron.md).
+- The run must carry its tick time: drivers with `workflow.CapTickTime` (memory, SQL, Redis, Hatchet) set `workflow.LabelTickAt` on every run a schedule fires. See [which tick a run is for](cron.md#which-tick-a-run-is-for).
+- The middleware reads the schedule's expression through a `workflow.ScheduleLister` (`workflow.CapScheduleList`), usually the client itself, or from a `Next` function you give it.
+- Misfire catch-up is on [misfire policies](misfire.md); step middleware in general on [step middleware](../middleware/step-middleware.md).
+- The runnable program for this page is [examples/latest-only](../../examples/latest-only/): an hourly cache refresh on the memory driver with a fake clock, a three-hour outage and a catch-up of the missed ticks.
 
-## Skip stale runs
+## Step 1: write the step as usual
 
-Apply `middleware.LatestOnly` to the steps whose work should be skipped:
+The handler does the work for the newest state and needs no knowledge of ticks. The example reads the tick only to print which run did the work; `StepInfo.TickAt` reports false for a run no schedule fired:
 
+<!-- snippet: examples/latest-only/main.go#handler -->
 ```go
-latest := middleware.LatestOnly(middleware.LatestOnlyConfig{
-	Schedules: c.(workflow.ScheduleLister),
-	Clock:     clk, // the driver's clock
-	OnSkip: func(ctx context.Context, info workflow.StepInfo, tick, newer time.Time) {
-		slog.InfoContext(ctx, "stale tick skipped", "tick", tick, "newer", newer)
-	},
-})
-wf := workflow.Workflow{Name: "refresh-cache", Cron: []string{"0 * * * *"}, Steps: []workflow.Step{
-	{Name: "refresh", Run: latest(refresh)},
-}}
+// refresh is the expensive work: rebuild the cache from the source.
+refresh := func(ctx context.Context, in []byte) ([]byte, error) {
+	info, _ := workflow.StepInfoFrom(ctx)
+	label := "none"
+	tick, ok := info.TickAt() // false for a run no schedule fired
+	if ok {
+		label = tick.Format(hourFormat)
+	}
+	j.add(tick, fmt.Sprintf("tick %s, run at %s: refreshed the cache", label, clk.Now().Format(hourFormat)))
+	return in, nil
+}
 ```
 
-For each attempt it reads the run's tick (`StepInfo.TickAt`), looks up the schedule that fired the run (`workflow.LabelSchedule`), computes the tick after the run's own in the schedule's zone, and compares it with the clock. When that next tick is already due, a newer run exists or is about to, so the step returns its input unchanged without calling the handler and `OnSkip` is told. Otherwise the handler runs.
+## Step 2: wrap the step in LatestOnly
 
-Runs not fired by a schedule, and runs whose schedule is gone, always run. `Next` replaces the lookup for a schedule kept elsewhere, and `Parser` names the cron dialect when the drivers use a custom one.
+`middleware.LatestOnly(cfg)` returns a `workflow.Middleware`. Wrap the steps whose work should be skipped:
+
+<!-- snippet: examples/latest-only/main.go#latest -->
+```go
+latest := middleware.LatestOnly(middleware.LatestOnlyConfig{
+	Schedules: c,   // the client lists its schedules (CapScheduleList)
+	Clock:     clk, // the driver's clock, so a fake clock decides in tests
+	OnSkip: func(ctx context.Context, info workflow.StepInfo, tick, newer time.Time) {
+		j.add(tick, fmt.Sprintf("tick %s, run at %s: skipped, the %s tick is due", tick.Format(hourFormat), clk.Now().Format(hourFormat), newer.Format(hourFormat)))
+	},
+})
+err := c.Register(workflow.Workflow{Name: "refresh-cache", Steps: []workflow.Step{
+	{Name: "refresh", Run: latest(refresh)}, // only this step's work is skipped
+}})
+```
+
+For each attempt it reads the run's tick (`StepInfo.TickAt`), looks up the schedule that fired the run (the `workflow.LabelSchedule` label) in `Schedules`, computes the tick after the run's own in the schedule's zone, and compares it with `Clock`. When that next tick is already due, a newer run exists or is about to, so the step returns its input unchanged without calling the handler, and `OnSkip` is told the run's tick and the newer one. Otherwise the handler runs.
+
+The `LatestOnlyConfig` fields:
+
+| Field | What it does |
+|---|---|
+| `Schedules` | looks up the schedule that fired the run; usually the client. Required unless `Next` is set |
+| `Next` | `func(ctx, info, tick) (next time.Time, ok bool, err error)`: the tick after `tick`, in place of the lookup, for a schedule kept outside the client or a custom calendar; `ok` false means unknown, and the step runs |
+| `Parser` | the cron dialect of the schedules when the drivers use a custom one (their `WithCronParser` option); nil is the default parser |
+| `OnSkip` | told about every attempt it skips, for a log line or a metric |
+| `Clock` | the now the next tick is compared with; nil is the real clock. Pass the driver's clock |
+
+## Step 3: schedule the workflow
+
+Any schedule works. The example fires every missed tick after an outage, so there are stale runs to skip:
+
+<!-- snippet: examples/latest-only/main.go#schedule -->
+```go
+_, err = c.Schedule(ctx, workflow.Schedule{
+	Name:     "hourly",
+	Workflow: "refresh-cache",
+	Cron:     "0 * * * *",
+	Location: time.UTC,
+	// After an outage, fire every missed tick (at most three), oldest first.
+	Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: catchUp},
+})
+```
+
+With `MisfireFireOnce` (the default of the memory, SQL and Redis drivers) a catch-up fires only the newest missed tick, so `LatestOnly` then matters for the other case: a run that waited in a backlog until after its successor's tick.
+
+## Step 4: runs nobody scheduled always work
+
+A run without a tick label (enqueued by hand, or by a driver without `CapTickTime`) and a run whose schedule is gone (unscheduled since) always run the handler:
+
+<!-- snippet: examples/latest-only/main.go#manual -->
+```go
+// A run enqueued by hand has no tick, so LatestOnly always lets it work.
+if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "refresh-cache"}); err != nil {
+	return err
+}
+```
+
+A run started with `ScheduleTriggerer.TriggerSchedule` carries the clock at the trigger as its tick, so its next tick is in the future and it works too.
+
+## Try it
+
+```sh
+cd examples
+go run ./latest-only
+```
+
+```text
+-- on time
+  tick 09:00, run at 09:00: refreshed the cache
+-- after a three-hour outage
+  tick 10:00, run at 12:30: skipped, the 11:00 tick is due
+  tick 11:00, run at 12:30: skipped, the 12:00 tick is due
+  tick 12:00, run at 12:30: refreshed the cache
+-- not fired by a schedule
+  tick none, run at 12:30: refreshed the cache
+```
+
+The 09:00 run is on time: its next tick, 10:00, is in the future. The process is then down from 09:30 to 12:30; on return the misfire policy fires the 10:00, 11:00 and 12:00 ticks at once. At 12:30 the 10:00 and 11:00 runs are stale (their next ticks are due) and skip; the 12:00 run is the newest and refreshes. `go test ./latest-only` checks every line.
 
 ## Pitfalls
 
-- A skipped step still succeeds, and the steps after it run with its input. Put `LatestOnly` on the step that does the expensive work, or on every step of the run.
-- The comparison uses the clock you pass. Give it the driver's clock, or a test with a fake clock decides on the wall time.
+- **A skipped step still succeeds.** It returns its input as its output, and the steps after it run with that input. Put `LatestOnly` on the step that does the expensive work, or on every step of the run; a later step that writes somewhere must not assume the refresh happened.
+- **Only the cron expression decides what "newer" means.** The next tick is computed from `Cron` (and `Seconds`) in the schedule's zone; windows, `ScheduleWhen`, an `Active` period and a pause are not consulted. An hourly schedule limited to 09:00 to 17:00 whose 16:00 run is delayed past 17:00 skips its work, and no 17:00 run comes to do it. Use `Next` to compute the next tick that really fires when the schedule has windows, or leave `LatestOnly` off such schedules.
+- **A backfill is skipped too.** [`workflow.Backfill`](backfill.md) runs with a `ScheduleID` carry the schedule label and their past tick, so every backfilled run except possibly the newest finds its next tick due and does nothing. Backfill a workflow without `LatestOnly`, or start the backfill without `ScheduleID`.
+- **A missing `Schedules` and `Next` fails at run time, not at build time.** `LatestOnly(LatestOnlyConfig{})` builds, and every attempt then fails permanently with an error matching `workflow.ErrInvalid`.
+- **A lookup error fails the attempt.** An error from `Schedules.Schedules` or from parsing the expression (a custom dialect without `Parser`) is returned as `middleware: latest only: ...`, and the step's retry policy decides what happens next.
+- **The comparison uses the clock you pass.** Give it the driver's clock; with the default real clock a test on a fake clock decides on the wall time.
+
+## Related
+
+- [Misfire policies](misfire.md): what fires after an outage.
+- [Cron schedules › Which tick a run is for](cron.md#which-tick-a-run-is-for): the tick label `LatestOnly` reads.
+- [Overlap](overlap.md): skip or replace a tick while the previous run is still running, a different problem.
+- [Step middleware](../middleware/step-middleware.md): how middleware wraps a step.
+- Example: [examples/latest-only](../../examples/latest-only/).

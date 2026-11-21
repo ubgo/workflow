@@ -23,7 +23,15 @@ invoices: eu 1, us 1
 acme -> eu
 globex -> us
 initech: refused (true)
+-- Keep an event in its region
+order 42: us succeeded, eu waiting
+unknown order refused: true
+-- Name the region that fires declared Cron
+Cron without a schedule region refused: true
+with WithScheduleRegion("eu"): <nil>
 ```
+
+The last two parts keep an event in the region the app's order table names (`regional.WithSignalRouter`), so a run waiting with the same key in the other region is not resumed, and show that a workflow with a declared `Cron` needs `regional.WithScheduleRegion` once there are two regions.
 
 In production each region is a `sqlstore` or Hatchet client running in that region; the program's code does not change.
 

@@ -30,7 +30,7 @@ refund := workflow.Workflow{Name: "refund", Steps: []workflow.Step{{Name: "appro
 	if err := json.Unmarshal(in, &requestID); err != nil {
 		return nil, workflow.Permanent(err)
 	}
-	return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond)
+	return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond) // snoozes and looks again this often
 }}}}
 ```
 
@@ -74,7 +74,7 @@ Send an update and wait for the answer:
 
 <!-- snippet: examples/flow-promises/main.go#update -->
 ```go
-updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
+updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second) // a run that never takes the signal never answers
 defer cancelUpd()
 answer, err := workflow.Update(updCtx, c, promises, workflow.Event{Name: "cart.add", Key: "cart-8", Payload: []byte(`"hat"`)}, await)
 if err != nil {
@@ -86,14 +86,15 @@ A loop that continues as new runs:
 
 <!-- snippet: examples/flow-promises/main.go#continue -->
 ```go
+const rounds = 3 // the poller stops after its third round
 var client workflow.Client = c
 poller := workflow.Workflow{Name: "poller", Steps: []workflow.Step{{Name: "round", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 	var round int
 	if err := json.Unmarshal(in, &round); err != nil {
 		return nil, workflow.Permanent(err)
 	}
-	// ... one round of polling ...
-	if round < 3 {
+	// A real poller checks its source here; this one only counts rounds.
+	if round < rounds {
 		if _, err := workflow.ContinueAsNew(ctx, client, []byte(fmt.Sprint(round+1))); err != nil {
 			return nil, err
 		}

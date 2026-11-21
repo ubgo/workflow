@@ -10,10 +10,13 @@ import (
 // want is the program's whole output, the one its README and guide show.
 const want = `failed: run-2 at step "ship": memory: step "ship" failed after 1 attempt(s): warehouse API: 503
 retried run-2: succeeded; charge ran 1 time(s), ship 2
+retry a succeeded run: ErrWrongState true
 deleted: true then Status is ErrNotFound: true
 cancelled waiting runs: 2
 while paused: queued
 after Resume: succeeded
+steps that run again: [charge ship]
+reset run-16 from charge: succeeded, same ref true; charge ran 1 more time(s)
 `
 
 // TestRun runs the program and checks every line it prints.

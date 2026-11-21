@@ -24,6 +24,7 @@ import (
 	"github.com/ubgo/workflow/schedexport"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "schedule-export:", err)
@@ -59,6 +60,7 @@ func run(context.Context) error {
 		func() error { return kubernetes(report, app) },
 		func() error { return systemd(report, app) },
 		func() error { return taskScheduler(report, app, berlin) },
+		func() error { return launchd(report, app, berlin) },
 		func() error { return handoff(report, app) },
 		func() error { return refusals(report, app) },
 		yearField,
@@ -70,6 +72,7 @@ func run(context.Context) error {
 	return nil
 }
 
+// kubernetes prints the schedule as a Kubernetes CronJob manifest.
 func kubernetes(report workflow.Schedule, app schedexport.Target) error {
 	fmt.Println("kubernetes:")
 	// snippet:cronjob
@@ -86,6 +89,7 @@ func kubernetes(report workflow.Schedule, app schedexport.Target) error {
 	return nil
 }
 
+// systemd prints the schedule as a systemd timer and the service it starts.
 func systemd(report workflow.Schedule, app schedexport.Target) error {
 	fmt.Println("systemd:")
 	// snippet:systemd
@@ -100,6 +104,8 @@ func systemd(report workflow.Schedule, app schedexport.Target) error {
 	return nil
 }
 
+// taskScheduler prints an office-hours variant of the schedule as a Windows
+// Task Scheduler task, to show a repeating trigger.
 func taskScheduler(report workflow.Schedule, app schedexport.Target, berlin *time.Location) error {
 	fmt.Println("task scheduler:")
 	report.Cron = "*/15 9-17 * * MON-FRI" // every 15 minutes in office hours
@@ -115,6 +121,9 @@ func taskScheduler(report workflow.Schedule, app schedexport.Target, berlin *tim
 	return nil
 }
 
+// handoff prints the one-shot files a desktop app leaves behind when it
+// quits (launchd, systemd, Task Scheduler) for the next fire on a fixed
+// clock, and shows ErrNoNextFire once the schedule has ended.
 func handoff(report workflow.Schedule, app schedexport.Target) error {
 	fmt.Println("handoff:")
 	report.Misfire = workflow.Misfire{} // launchd has its own catch-up rule
@@ -130,14 +139,55 @@ func handoff(report workflow.Schedule, app schedexport.Target) error {
 	}
 	// snippet:end
 	show(f)
+
+	// snippet:handoff-utc
+	units, err := schedexport.SystemdTimerNextFire(report, app, clk) // a one-shot .timer, then its .service
+	if err != nil {
+		return err
+	}
+	task, err := schedexport.TaskSchedulerNextFire(report, app, clk) // one TimeTrigger
+	if err != nil {
+		return err
+	}
+	// snippet:end
+	fmt.Print(onCalendar(units[0]))
+	fmt.Print(startBoundary(task))
+
+	// snippet:no-next-fire
+	ended := report
+	ended.Active = workflow.Active{Until: monday} // the campaign ended this morning
+	_, err = schedexport.SystemdTimerNextFire(ended, app, clk)
+	if errors.Is(err, schedexport.ErrNoNextFire) {
+		fmt.Println("  no next fire: uninstall the timer") // nothing to hand over
+	}
+	// snippet:end
 	return nil
 }
 
+// launchd prints the StartCalendarInterval entries of the schedule as a
+// launchd plist.
+func launchd(report workflow.Schedule, app schedexport.Target, berlin *time.Location) error {
+	fmt.Println("launchd:")
+	report.Misfire = workflow.Misfire{} // launchd has its own catch-up rule
+	// snippet:launchd
+	f, err := schedexport.Launchd(report, app, schedexport.LaunchdOptions{
+		Zone: berlin, // the zone the Mac runs in; it must be the schedule's
+	})
+	if err != nil {
+		return err
+	}
+	// snippet:end
+	fmt.Print(calendarEntries(f))
+	return nil
+}
+
+// refusals prints what each format cannot express: a fire-all misfire
+// policy, overlapping runs and an @every interval.
 func refusals(report workflow.Schedule, app schedexport.Target) error {
 	fmt.Println("refusals:")
 	// snippet:refusals
 	backfill := report
-	backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7}
+	backfill.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 7} // replay up to a week of missed ticks
 	_, err := schedexport.CronJob(backfill, app, schedexport.CronJobOptions{Image: "app"})
 	var ne *schedexport.NotExpressibleError
 	if errors.As(err, &ne) {
@@ -155,6 +205,8 @@ func refusals(report workflow.Schedule, app schedexport.Target) error {
 	return nil
 }
 
+// yearField walks a seven-field cron with a year until it ends, then exports
+// it as a systemd timer through the year-aware parser.
 func yearField() error {
 	fmt.Println("year field:")
 	// snippet:year
@@ -199,6 +251,39 @@ func onCalendar(f schedexport.File) string {
 	for _, line := range strings.Split(string(f.Data), "\n") {
 		if strings.HasPrefix(line, "OnCalendar=") {
 			out.WriteString("  " + line + "\n")
+		}
+	}
+	return out.String()
+}
+
+// startBoundary returns the StartBoundary line of a task, indented.
+func startBoundary(f schedexport.File) string {
+	for _, line := range strings.Split(string(f.Data), "\n") {
+		if strings.Contains(line, "<StartBoundary>") {
+			return "  " + strings.TrimSpace(line) + "\n"
+		}
+	}
+	return ""
+}
+
+// calendarEntries summarises a plist's StartCalendarInterval entries, one
+// line per entry, as key=value pairs.
+func calendarEntries(f schedexport.File) string {
+	var out strings.Builder
+	var entry []string
+	key := ""
+	for _, line := range strings.Split(string(f.Data), "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "<dict>":
+			entry = nil
+		case strings.HasPrefix(line, "<key>"):
+			key = strings.TrimSuffix(strings.TrimPrefix(line, "<key>"), "</key>")
+		case strings.HasPrefix(line, "<integer>"):
+			entry = append(entry, key+"="+strings.TrimSuffix(strings.TrimPrefix(line, "<integer>"), "</integer>"))
+		case line == "</dict>" && len(entry) > 0:
+			out.WriteString("  " + strings.Join(entry, " ") + "\n")
+			entry = nil
 		}
 	}
 	return out.String()

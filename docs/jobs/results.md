@@ -33,7 +33,40 @@ checkout := workflow.Workflow{
   checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
 ```
 
-The result is kept with the run until the run is deleted or removed by retention. `ResultReader.Result(ctx, ref)` returns it for a run in `StatusSucceeded`; any other status returns `workflow.ErrWrongState`, and an unknown run `workflow.ErrNotFound`, so a caller can tell "not done yet" from "done with an empty result". `RunInfo.Output` carries the same bytes in a `Runs` listing.
+The result is kept with the run until the run is deleted or removed by retention. `ResultReader.Result(ctx, ref)` returns it for a run in `StatusSucceeded`; any other status returns `workflow.ErrWrongState`, and an unknown run `workflow.ErrNotFound`, so a caller can tell "not done yet" from "done with an empty result". `ResultReader` is an optional interface, so reach it with a type assertion; `RunInfo.Output` carries the same bytes in a `Runs` listing, and `RunOutput` over the step outputs gives them again:
+
+<!-- snippet: examples/results-progress/main.go#read-result -->
+```go
+reader, isReader := workflow.Client(c).(workflow.ResultReader) // CapResult
+if !isReader {
+	return errors.New("this driver keeps no results")
+}
+raw2, err := reader.Result(ctx, ref2) // ErrWrongState unless the run succeeded
+if err != nil {
+	return err
+}
+fmt.Printf("  checkout, final steps %v: %s\n", workflow.Sinks(checkout), raw2)
+
+listed, err := c.Runs(ctx, workflow.RunQuery{Ref: ref2})
+if err != nil {
+	return err
+}
+fmt.Printf("  RunInfo.Output is the same: %t\n", bytes.Equal(listed.Runs[0].Output, raw2))
+
+// RunOutput is the rule the driver applied to the step outputs.
+rule := workflow.RunOutput(checkout, map[string][]byte{
+	"charge": []byte(`"ch_1"`), "email": []byte(`"sent"`), "invoice": []byte(`"inv_7"`),
+})
+fmt.Printf("  RunOutput gives the same: %t\n", bytes.Equal(rule, raw2))
+```
+
+```text
+  checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
+  RunInfo.Output is the same: true
+  RunOutput gives the same: true
+```
+
+`workflow.Client(c)` in the assertion turns the concrete `*memory.Client` into the interface first, as app code that holds a `workflow.Client` already has it. A wrapper (`workflow.Use`, middleware, failover) implements `ResultReader` whatever it wraps and refuses with an `UnsupportedError` when the client inside lacks `CapResult`, so on a wrapped client check `Capabilities().Has(workflow.CapResult)` as well.
 
 ## Wait for a result
 
@@ -47,7 +80,7 @@ if err != nil {
 }
 ctx, cancel := context.WithTimeout(ctx, time.Minute) // how long the caller will wait
 defer cancel()
-raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 if err != nil {
 	return err
 }
@@ -67,7 +100,7 @@ A run that ends in any status but succeeded makes `AwaitResult` return a `*workf
 
 <!-- snippet: examples/results-progress/main.go#failed -->
 ```go
-_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 var failed *workflow.RunFailedError
 if errors.As(err, &failed) {
 	fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)
@@ -94,6 +127,8 @@ result:
   {"file":"orders.csv","rows":3000}
   decoded: orders.csv, 3000 rows
   checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
+  RunInfo.Output is the same: true
+  RunOutput gives the same: true
   pay: ended failed: memory: step "charge" failed after 1 attempt(s): card declined
   Result of a failed run: ErrWrongState true
 ```

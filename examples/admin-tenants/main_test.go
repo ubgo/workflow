@@ -23,6 +23,7 @@ acme GET globex's run: 404
 acme GET /runs?tenant=globex: 403
 acme GET /queues: 403
 acme GET /capabilities: tenant acme
+acme DELETE its own run: 403 {"error":{"code":"forbidden","message":"not allowed: runs.delete"}}
 -- A bulk action stays in the tenant
 acme POST /runs/cancel: 200 {"cancelled":2}
 globex's run: waiting

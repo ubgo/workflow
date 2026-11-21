@@ -35,7 +35,44 @@ if err != nil {
 }
 ```
 
-The zero `Config{}` builds the SDK client from the `HATCHET_CLIENT_*` variables at `Start`. To pass your own options, set `Config.ClientOptions` (token, host and port, namespace, TLS), or build the SDK client yourself and set `Config.Client`.
+The zero `Config{}` builds the SDK client from the `HATCHET_CLIENT_*` variables at `Start`. To pass your own options, set `Config.ClientOptions` (token, host and port, namespace, TLS), or build the SDK client yourself and set `Config.Client`. A client for a reporting service that reads a month of schedule history, from [examples/hatchet-schedules](../../examples/hatchet-schedules/):
+
+<!-- snippet: examples/hatchet-schedules/main.go#new -->
+```go
+c := hatchet.New(hatchet.Config{
+	// The zero Config builds the SDK client from the HATCHET_CLIENT_*
+	// variables at Start; ClientOptions or Client replace that.
+	Namespace:             os.Getenv("HATCHET_CLIENT_NAMESPACE"), // must equal the SDK's
+	WorkerName:            "reports-worker",
+	ScheduleHistoryWindow: historyWindow, // how far back ScheduleInfo.Last looks (default a week)
+})
+```
+
+`hatchet.New` never fails and never connects: a bad `Config` is reported by `Start`, and a workflow the engine cannot honour by `Register`. Every zero field takes a default the package exports, so an app can log or compare against them:
+
+<!-- snippet: examples/hatchet-schedules/main.go#defaults -->
+```go
+retry := hatchet.DefaultBatchCoordinatorRetry()
+fmt.Fprintln(w, "StepTimeout:", hatchet.DefaultStepTimeout)
+fmt.Fprintln(w, "ScheduleTimeout:", hatchet.DefaultScheduleTimeout)
+fmt.Fprintln(w, "RegisterTimeout:", hatchet.DefaultRegisterTimeout)
+fmt.Fprintln(w, "RunFinishedPoll:", hatchet.DefaultRunFinishedPoll)
+fmt.Fprintln(w, "ScheduleHistoryWindow:", hatchet.DefaultScheduleHistoryWindow)
+fmt.Fprintln(w, "PayloadLimit:", hatchet.DefaultPayloadLimit, "bytes")
+fmt.Fprintln(w, "GroupChunkRuns:", hatchet.DefaultGroupChunkRuns, "GroupChunkBytes:", hatchet.DefaultGroupChunkBytes)
+fmt.Fprintf(w, "BatchCoordinatorRetry: %d retries, %s doubling, capped at %s\n", retry.Max, retry.Backoff.Initial, retry.Backoff.Max)
+```
+
+```text
+StepTimeout: 24h0m0s
+ScheduleTimeout: 24h0m0s
+RegisterTimeout: 30s
+RunFinishedPoll: 1s
+ScheduleHistoryWindow: 168h0m0s
+PayloadLimit: 1572864 bytes
+GroupChunkRuns: 1000 GroupChunkBytes: 2097152
+BatchCoordinatorRetry: 10 retries, 2s doubling, capped at 2m0s
+```
 
 ## Configuration
 
@@ -348,13 +385,89 @@ The program [hatchet-pause](../../examples/hatchet-pause/) runs the refusals wit
 
 ### Step 7: run a schedule now, read its last fire, enqueue from web nodes
 
-`TriggerSchedule(ctx, id)` (`CapScheduleTrigger`) reads a cron trigger, declared or made by `Schedule`, and enqueues its workflow now with the trigger's input and labels plus the trigger labels (`workflow.TriggeredLabels`); it works on a disabled trigger too and leaves the cron alone ([Trigger a schedule now](../schedules/overlap.md#trigger-a-schedule-now)).
+`TriggerSchedule(ctx, id)` (`CapScheduleTrigger`) reads a cron trigger, declared or made by `Schedule`, and enqueues its workflow now with the trigger's input and labels plus the trigger labels (`workflow.TriggeredLabels`); it works on a disabled trigger too and leaves the cron alone ([Trigger a schedule now](../schedules/overlap.md#trigger-a-schedule-now)):
 
-`ScheduleInfo.Last` (`CapScheduleHistory`) is not stored by the driver: `Schedules` reads it from the engine's run list, as the newest run the engine fired for the trigger, or that `TriggerSchedule` started for it, within `Config.ScheduleHistoryWindow` (a week by default, `hatchet.DefaultScheduleHistoryWindow`).
+<!-- snippet: examples/hatchet-schedules/main.go#trigger -->
+```go
+id, err := c.Schedule(ctx, workflow.Schedule{Workflow: report, Name: "nightly", Cron: "0 2 * * *", Location: time.UTC})
+if err != nil {
+	return err
+}
+ref, err := c.TriggerSchedule(ctx, id) // runs it now; the cron is left alone
+if err != nil {
+	return err
+}
+```
 
-`Config.EnqueueOnly` (`CapEnqueueOnly`) makes a client for web nodes: `Enqueue`, `Status`, `Cancel`, `Signal`, `Schedule` and the listings work without `Start` and without a worker, connecting on first use; `Start` starts nothing and `OnRunFinished` is refused ([Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)); a run recorder takes `EnqueuePlugin` there ([Record runs from web nodes](#record-runs-from-web-nodes)).
+`ScheduleInfo.Last` (`CapScheduleHistory`) is not stored by the driver: `Schedules` reads it from the engine's run list, as the newest run the engine fired for the trigger, or that `TriggerSchedule` started for it, within `Config.ScheduleHistoryWindow` (a week by default, `hatchet.DefaultScheduleHistoryWindow`). Raise the window for a cron that fires less than weekly, or its last fire reads as never:
+
+<!-- snippet: examples/hatchet-schedules/main.go#last -->
+```go
+infos, err := c.Schedules(ctx) // Last comes from the engine's run list
+if err != nil {
+	return err
+}
+for _, s := range infos {
+	if s.ID == id {
+		fmt.Fprintf(w, "schedule %s: last run %s, next fire %s\n", s.Name, s.Last.Status, s.Next.Format("15:04 MST"))
+	}
+}
+```
+
+```text
+schedule nightly: last run succeeded, next fire 02:00 UTC
+```
+
+`Config.EnqueueOnly` (`CapEnqueueOnly`) makes a client for web nodes: `Enqueue`, `Status`, `Cancel`, `Signal`, `Schedule` and the listings work without `Start` and without a worker, connecting on first use; `Start` starts nothing and `OnRunFinished` is refused ([Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)); a run recorder takes `EnqueuePlugin` there ([Record runs from web nodes](#record-runs-from-web-nodes)):
+
+<!-- snippet: examples/hatchet-schedules/main.go#enqueue-only -->
+```go
+web := hatchet.New(hatchet.Config{EnqueueOnly: true}) // connects on first use
+err := web.OnRunFinished(func(context.Context, workflow.RunEvent) {})
+fmt.Fprintln(w, "OnRunFinished on a web node: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+fmt.Fprintln(w, "Start on a web node starts nothing:", web.Start(ctx) == nil)
+```
+
+```text
+OnRunFinished on a web node: ErrUnsupported = true
+Start on a web node starts nothing: true
+```
+
+A job the web node enqueues runs on any worker that registered its workflow; the program's live part enqueues one and reads `succeeded`.
 
 The driver refuses `OverlapSkip` by field name, because the engine fires ticks without asking a worker, and it claims no error history, shutdown requeue or force: the engine has no call that completes or fails a run from outside, and a worker stopped by its `Start` context spends the attempts it cut short, so use `Drain` for a clean deploy.
+
+<!-- snippet: examples/hatchet-schedules/main.go#overlap -->
+```go
+err = c.Register(workflow.Workflow{
+	Name:        "digest",
+	Cron:        []string{"*/5 * * * *"},
+	CronOverlap: workflow.OverlapSkip, // the engine fires ticks without asking a worker
+	Steps:       []workflow.Step{{Name: "send", Run: noop}},
+})
+fmt.Fprintln(w, "OverlapSkip: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+```
+
+### Step 8: cancel a delayed start
+
+`Cancel` of a delayed start deletes the engine's scheduled run. The engine loads a scheduled run into its ticker up to five seconds before it is due and fires it at the loaded time even after the delete, so a cancel within 15 seconds of the due time watches for the run: none by the deadline, `Cancel` returns nil; one fired, it cancels that run (unless it already ended) and returns `hatchet.ErrCancelTooLate`, which also matches `workflow.ErrWrongState`. Handle it where a cancel must mean "did not run":
+
+<!-- snippet: examples/hatchet-schedules/main.go#cancel-too-late -->
+```go
+err = c.Cancel(ctx, delayed)
+switch {
+case errors.Is(err, hatchet.ErrCancelTooLate):
+	// The engine had loaded the start and fired it; Cancel cancelled
+	// the run unless it had already ended. Check what it did.
+	fmt.Fprintln(w, "the delayed start fired before the cancel reached the engine")
+case err != nil:
+	return err
+default:
+	fmt.Fprintln(w, "delayed start cancelled before it fired")
+}
+```
+
+A start cancelled well ahead of its due time, as here (five minutes), never fires: `delayed start cancelled before it fired`. The measured odds of a late cancel are under [Pitfalls](#pitfalls-1).
 
 ### What Hatchet cannot do here
 
@@ -450,7 +563,22 @@ Not offered, and why: snooze (the engine counts every failed attempt, so `workfl
 
 ## Known engine quirks
 
-Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's workaround:
+Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's workaround. Three of them are the app's to tune: the read side's lag (`VisibilityLag`), the moment a failed attempt reads FAILED before its retry (`FailedSettle`), and how long a dead worker's step waits before the engine reclaims it (`Step.Timeout`):
+
+<!-- snippet: examples/hatchet-schedules/main.go#quirks -->
+```go
+slow := hatchet.New(hatchet.Config{
+	VisibilityLag: slowEngineLag, // Status retries the read side's 404 this long (default 5s)
+	FailedSettle:  slowEngineLag, // a FAILED read with retries left is "between attempts" (default 5s)
+})
+err = slow.Register(workflow.Workflow{Name: "export", Steps: []workflow.Step{{
+	Name:    "upload",
+	Run:     noop,
+	Timeout: uploadTimeout, // also how long a step on a dead worker waits before the engine reclaims it
+}}})
+```
+
+The quirks and what the driver does about each:
 
 - Scheduled runs store their trigger time without a zone, so a local time fires hours off: `Enqueue` sends `RunAt` in UTC.
 - A scheduled-run record is deleted when it fires: the run carries a token in its metadata and the `ScheduledID` encodes it, so `Status` and `Cancel` find the fired run.
@@ -537,6 +665,38 @@ live run: succeeded
 worker listed through Native: true
 ```
 
+The schedule features, the defaults and the web-node client:
+
+```sh
+cd examples
+go run ./hatchet-schedules
+```
+
+```text
+StepTimeout: 24h0m0s
+ScheduleTimeout: 24h0m0s
+RegisterTimeout: 30s
+RunFinishedPoll: 1s
+ScheduleHistoryWindow: 168h0m0s
+PayloadLimit: 1572864 bytes
+GroupChunkRuns: 1000 GroupChunkBytes: 2097152
+BatchCoordinatorRetry: 10 retries, 2s doubling, capped at 2m0s
+trigger now: true last fire: true
+OnRunFinished on a web node: ErrUnsupported = true
+Start on a web node starts nothing: true
+OverlapSkip: ErrUnsupported = true
+export registered with a 2m0s step timeout: true
+HATCHET_CLIENT_TOKEN is not set: the live run is skipped
+```
+
+Against hatchet-lite v0.110.5 the last line becomes:
+
+```text
+schedule nightly: last run succeeded, next fire 02:00 UTC
+enqueued from the web node: succeeded
+delayed start cancelled before it fired
+```
+
 ## Pitfalls
 
 - `Config.Namespace` must match the SDK's namespace, or idempotency keys are scoped by a name the engine does not use.
@@ -555,5 +715,6 @@ worker listed through Native: true
 - Example: [hatchet-worker](../../examples/hatchet-worker/)
 - Example: [hatchet-manage](../../examples/hatchet-manage/) (queues, run list, retry, schedules, drain)
 - Example: [hatchet-pause](../../examples/hatchet-pause/) (workflow and schedule pause through `Config.API`)
+- Example: [hatchet-schedules](../../examples/hatchet-schedules/) (defaults, trigger-now, last fire, web nodes, a late cancel)
 - [Run-finished hook](../observability/run-finished.md)
 - [Record run history](../observability/run-recorder.md) and example [recorder-split](../../examples/recorder-split/) (a web node and a worker)

@@ -85,7 +85,7 @@ digest := workflow.Workflow{
 	Cron:         []string{"0 9 * * *"},
 	CronLocation: kolkata,
 	Misfire:      workflow.Misfire{Policy: workflow.MisfireSkip},
-	Retry:        workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second, Factor: 2, Jitter: 0.2}},
+	Retry:        workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second, Factor: 2, Jitter: 0.2}}, // 3 retries from 1s, doubling, 20% jitter (needs RetryJitter)
 	Steps: []workflow.Step{{Name: "send", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 		return nil, nil
 	}}},

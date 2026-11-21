@@ -11,7 +11,9 @@ import (
 // refund logs each line once although its body ran four times, every
 // side effect ran once, the recorded card error took the store credit
 // branch on every wake, the drifting code failed with the
-// nondeterminism error, and both histories were forgotten.
+// nondeterminism error, the payout spawned its invoice child once over
+// three runs of its body and slept until pay day, and every history was
+// forgotten.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -29,8 +31,12 @@ nondeterminism:
   the run ended failed: memory: step "orchestrate" failed after 1 attempt(s): workflow: replay: call 0 is step store-credit, but the history has step refund-card
   position 0: recorded "step refund-card", the code called "step store-credit"; permanent true
   matches ErrNondeterminism: true
+child and pay day:
+  invoice child returned "INV-s-9"
+  result: paid "INV-s-9" at 2026-03-31T17:00:00Z
+  the body ran 3 times; the invoice child ran 1
 journal:
-  runs holding history after both runs finished: 0
+  runs holding history after every run finished: 0
 `
 	if out != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out, want)

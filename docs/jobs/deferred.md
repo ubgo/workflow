@@ -110,6 +110,26 @@ Deferred dispatch answers "send this only if the request succeeded". It is not a
 
 The two combine: inside a request wrapped by `DeferHTTP`, a job written with `EnqueueTx` or the outbox belongs to the transaction, and the jobs that should wait for the response go through the deferred client.
 
+## Try it
+
+```sh
+cd examples
+go run ./deferred-dispatch
+```
+
+```text
+POST /orders/o-1: status 201, panicked false
+POST /orders/o-2?then=fail: status 402, panicked false
+POST /orders/o-3?then=panic: status 500, panicked true
+receipts after the requests: o-1
+held before flush: 2
+flushed: 2 runs
+discarded: 1, enqueue after discard: ErrDeferredClosed true
+receipts at the end: o-1,o-4,o-5
+```
+
+Only the request that answered 201 sent its receipt: the 402 and the panic dropped theirs (`DeferHTTP` drops the held jobs and lets the panic go on, and the example's server answers 500 for it), so the receipts after the requests are `o-1` alone. Then a `Deferred` used by hand held two enqueues until `Flush` sent both, a third was dropped by `Discard`, and an enqueue after that was refused with `ErrDeferredClosed`.
+
 ## Pitfalls
 
 - **No `RunRef` while held.** A held enqueue returns the zero `RunRef`. Code that needs the ref at once (to store it, or to return it to the caller) must enqueue on a context without a `Deferred`, or read the refs `Flush` returns.

@@ -6,7 +6,7 @@
 
 - A zone other than UTC needs `workflow.CapCronZone`. The memory, SQL and Redis drivers have it; Hatchet does not, because it evaluates crons in UTC only.
 - The example is [`examples/cron-schedules`](../../examples/cron-schedules). Run it with `go run ./cron-schedules` from `examples/`.
-- Load zones with `cron.LoadZone("Europe/Berlin")` (see [load a zone by name](#load-a-zone-by-name)). The binary needs the zone database: the host's, or `import _ "github.com/ubgo/workflow/cron/tzdata"` to embed it.
+- Load zones with `cron.LoadZone("Europe/Berlin")` (see [load a zone by name](#load-a-zone-by-name)). The binary needs the zone database: the host's, or `cron/tzdata` to [embed it](#embed-the-zone-database).
 
 ## Schedules in a time zone
 
@@ -56,7 +56,7 @@ fmt.Println("  time.Local:", errors.Is(err, workflow.ErrInvalid))
 h := hatchet.New(hatchet.Config{})
 for _, wf := range []workflow.Workflow{
 	{Name: "zoned", Cron: []string{"0 9 * * *"}, CronLocation: kolkata},
-	{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}},
+	{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}}, // any catch-up
 	{Name: "macro", Cron: []string{"@daily"}},
 } {
 	wf.Steps = []workflow.Step{{Name: "s", Run: noop}}
@@ -76,20 +76,21 @@ The example prints both kinds around New York's two changes in 2026 (8 March, 02
 
 <!-- snippet: examples/cron-schedules/main.go#dst -->
 ```go
+// show prints at most n fires of expr in the two days after from, in New York time.
 show := func(expr string, from time.Time, n int) {
 	s, _ := cron.Parse(expr)
 	var got []string
-	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
+	for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) { // a two-day window
 		got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 	}
 	fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 }
 spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
-show("30 2 * * *", spring, 2) // 02:30 does not exist on 8 March
-show("30 * * * *", spring.Add(13*time.Hour), 3)
-show("30 1 * * *", fall, 2) // 01:30 happens twice on 1 November
-show("30 * * * *", fall.Add(12*time.Hour), 3)
+show("30 2 * * *", spring, 2)                   // 02:30 does not exist on 8 March
+show("30 * * * *", spring.Add(13*time.Hour), 3) // three hourly fires from 01:00 on 8 March
+show("30 1 * * *", fall, 2)                     // 01:30 happens twice on 1 November
+show("30 * * * *", fall.Add(12*time.Hour), 3)   // three hourly fires from 00:00 on 1 November
 ```
 
 ```text
@@ -114,11 +115,18 @@ if err != nil {
 }
 ```
 
-A container image without a zone database (scratch, distroless and many slim images) finds no zone but UTC. Import `github.com/ubgo/workflow/cron/tzdata` once in the main package to embed one; it is the standard library's `time/tzdata` (about 450 KB) under a name that says why a scheduler imports it, and Go uses the embedded copy only when the host has none, so a host's newer rules still win:
+## Embed the zone database
 
+A container image without a zone database (scratch, distroless and many slim images) finds no zone but UTC, so `cron.LoadZone("Europe/Berlin")` fails at boot. Import `github.com/ubgo/workflow/cron/tzdata` once, for its side effect, in the main package to embed one:
+
+<!-- snippet: examples/schedule-keep-runs/tzdata.go#tzdata -->
 ```go
+// Embeds the IANA zone database, so cron.LoadZone("Europe/Berlin") works
+// in a scratch or distroless image; a host's own copy still wins.
 import _ "github.com/ubgo/workflow/cron/tzdata"
 ```
+
+It is the standard library's `time/tzdata` (about 450 KB) under a name that says why a scheduler imports it. Go uses the embedded copy only when the host has no database (or `ZONEINFO` points nowhere), so a host's newer rules still win. It is opt-in because an app on a host with `/usr/share/zoneinfo` does not need the extra size. The [schedule-keep-runs](../../examples/schedule-keep-runs/) program imports it and runs its schedules in Europe/Berlin.
 
 ## Show the next runs in two zones
 
@@ -134,7 +142,8 @@ runs := workflow.NextRuns(workflow.NextRunsQuery{
 	Schedule: s,
 	Location: berlin,
 	After:    time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC), // the caller's clock; Berlin leaves summer time on the 25th
-	Count:    3,
+	// The next three fires, across the change to winter time.
+	Count: 3,
 })
 for _, r := range runs {
 	fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
@@ -172,7 +181,7 @@ and, under `refusals:`, a schedule without a `Location`, a `time.Local` cron, an
 
 - **Hatchet is UTC only.** The Hatchet driver refuses any `CronLocation` or `Location` other than UTC (field `Workflow.CronLocation` or `Schedule.Location`, missing `CronZone`). Translating "09:00 Berlin" to a UTC expression yourself is wrong for half the year; run such schedules on the memory or SQL driver, or accept UTC.
 - **On the SQL driver a zone must load by name on every node.** The zone is stored by name, so every process must be able to `time.LoadLocation` it (or it must be a fixed offset). Ship the zone database with the binary (`cron/tzdata`) if your containers have none, and load zones with `cron.LoadZone` so a missing one fails at boot.
-- **Do not pass `time.Local` as a `Schedule.Location` either.** Validation refuses it only as a `CronLocation`. For a run-time schedule the SQL driver refuses it with an error matching `workflow.ErrUnsupported`, but the memory driver accepts it and evaluates in the host's zone, so code tested on memory can fail in production. Name the zone.
+- **`time.Local` is refused.** The host's zone differs from machine to machine, so validation refuses it both as a `Workflow.CronLocation` (at `Register`) and as a `Schedule.Location` (at `Schedule`), with an error matching `workflow.ErrInvalid`, on every driver. Name the zone.
 - **A fixed offset is not a zone.** `time.FixedZone("CET", 3600)` never observes DST; use the IANA name (`Europe/Berlin`) when the schedule should follow local time.
 - **Print fire times with the zone.** Users read "09:00" in their own zone; store and show the zone name alongside the expression.
 
@@ -181,4 +190,5 @@ and, under `refusals:`, a schedule without a `Location`, a `time.Local` cron, an
 - [Cron schedules](cron.md), [misfire policies](misfire.md)
 - [Time and clocks](../concepts/time.md)
 - Example: [`examples/schedule-specs`](../../examples/schedule-specs) (`LoadZone`, `NextRuns`)
+- Example: [`examples/schedule-keep-runs`](../../examples/schedule-keep-runs) (`cron/tzdata`, a schedule in Europe/Berlin)
 - Example: [`examples/cron-schedules`](../../examples/cron-schedules)

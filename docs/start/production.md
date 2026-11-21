@@ -11,7 +11,7 @@ What changes between the memory driver on a laptop and a service whose jobs must
 
 | # | Item | Why | Guide |
 |---|---|---|---|
-| 1 | Run on a driver that declares `CapDurable`: `sqlstore` (SQLite, Postgres, MySQL 8), `redis` or `hatchet` | The memory driver loses every queued, waiting and sleeping run when the process exits; it declares every capability but `CapDurable` | [Choose a driver](../choosing/drivers.md#memory-sql-redis-or-hatchet) |
+| 1 | Run on a driver that declares `CapDurable`: `sqlstore` (SQLite, Postgres, MySQL 8), `redis` or `hatchet` | The memory driver loses every queued, waiting and sleeping run when the process exits; it declares every capability but `CapDurable`, `CapEnqueueOnly` and `CapShutdownRequeue` | [Choose a driver](../choosing/drivers.md#memory-sql-redis-or-hatchet) |
 | 2 | Run `Client.Migrate` from the deploy, before the new code starts | `Start` never migrates. `Migrate` is versioned and safe to call from several processes at once, and it refuses a database a newer release already migrated (`ErrSchemaTooNew`) | [Run the migrations](../operations/migrations.md#run-the-migrations) |
 | 3 | Make every handler idempotent | Delivery is at least once: on `sqlstore` a step whose worker died is run again by another worker once its lease expires (`WithLease`, 30s by default); the outbox relays at least once; run-finished observers may see an event twice | [Leases and crashed workers](../drivers/sqlstore.md#leases-and-crashed-workers) |
 | 4 | Put an idempotency key on jobs a caller may send twice (a webhook, a retried HTTP request) | One run per key while a run holding it is unfinished; the second `Enqueue` returns the first run's `RunRef` | [Idempotency keys](../jobs/idempotency.md#idempotency-keys) |
@@ -31,6 +31,76 @@ What changes between the memory driver on a laptop and a service whose jobs must
 | 18 | Get told when runs fail for good, once per cause | Nobody reads a failed-runs list at night; `middleware.AlertPlugin` calls your own sender with a dedup window, and `middleware.Report` (or the `sentry` module) puts errors in your tracker without the payload | [Failure alerts and error reporting](../observability/failure-alerts.md) |
 | 19 | Set the overlap policy of crons that must not run twice at once | By default every tick starts a run, even while the last one is still going; `Schedule.Overlap: workflow.OverlapSkip` skips the tick instead, across every node | [Overlap, trigger now and last fire](../schedules/overlap.md) |
 | 20 | Let web nodes only enqueue, and wake workers on Postgres | A web server that also runs workers competes with requests; `WithEnqueueOnly()` makes a client that runs nothing, and `pgnotify` starts work at once instead of at the next poll | [Deploy workers](../operations/deploy.md#web-nodes-that-only-enqueue), [Wake workers at once](../drivers/sqlstore.md#wake-workers-at-once) |
+| 21 | Keep staging and production apart on shared infrastructure | Two clients with the same table prefix or Redis prefix share every run, schedule, pause and unique lock; give each environment its own prefix and read it from one config value | [Namespaces](../operations/namespaces.md#step-1--give-each-sql-namespace-a-table-prefix) |
+| 22 | Give finished runs and step output somewhere to go before they are deleted | `WithArchive` copies each chunk to cold storage first and keeps the chunk when the copy fails | [Archive before deleting](../operations/retention.md#archive-before-deleting) |
+| 23 | On an edge device or a laptop, check the clock before scheduling | A device that boots at 1970 fires a wrong set of ticks; `workflow.StartWhen` holds `Start` until the clock is synchronised, and `clock.WakeChecked` fires timers on time after a sleep | [Start when ready](../operations/start-gate.md), [Laptops that sleep](../operations/sleep-and-wake.md) |
+| 24 | On a multi-region deployment, keep each job, schedule and event in its region | `regional.New` routes each job by a router you write; `WithSignalRouter` keeps an event's payload in one region | [Regional routing](../operations/regional-routing.md) |
+
+## Items 1, 2, 7 and 15 in code
+
+The deploy example runs three workers on one database, the way three processes of one service would. Every process runs the same start-up, with `Migrate` before `Start` (item 2) and the same table prefix:
+
+<!-- snippet: examples/postgres-cluster/main.go#workers -->
+```go
+// Every process runs the same start-up: Migrate (safe to run from all of
+// them at once; the engine's lock serialises it), Register, Start.
+startCtx, stopAll := context.WithCancel(ctx)
+defer stopAll()
+clients := make([]*sqlstore.Client, workers)
+for i := range clients {
+	c, err := sqlstore.New(db, dialect,
+		sqlstore.WithTablePrefix(prefix),
+		sqlstore.WithClock(clk),
+		sqlstore.WithPollInterval(pollInterval), // 20ms so the demo is quick; the default is 1s
+	)
+	if err != nil {
+		return err
+	}
+	if err := c.Migrate(ctx); err != nil {
+		return err
+	}
+	for _, wf := range workflows {
+		if err := c.Register(wf); err != nil {
+			return err
+		}
+	}
+	if err := c.Start(startCtx); err != nil {
+		return err
+	}
+	clients[i] = c
+}
+```
+
+On SIGTERM each process cancels its `Start` context and calls `Stop` (item 7):
+
+<!-- snippet: examples/postgres-cluster/main.go#shutdown -->
+```go
+// Shut down: cancel the Start context (what SIGTERM handling does) and
+// call Stop, which waits until every goroutine has exited. Steps still
+// running are handed back, so another worker takes them at once.
+stopAll()
+for _, c := range clients {
+	c.Stop()
+}
+```
+
+[Deploy workers](../operations/deploy.md) walks through the program; [Shut down cleanly](../operations/deploy.md#shut-down-cleanly) adds the grace period and the drain report.
+
+## Try it
+
+```sh
+cd examples
+go run ./postgres-cluster
+```
+
+```text
+30 jobs, 30 ran exactly once
+hourly-report fired at 10:00
+fired once across 3 workers
+stopped; Enqueue now fails with workflow: client not started
+```
+
+Thirty jobs spread over three workers each run exactly once (items 3 and 15), the hourly cron fires once across the three (item 15), and after the clean stop calls that need workers fail fast. Without `PG_DSN` it runs on a SQLite file; with `PG_DSN` pointing at a Postgres database you can create tables in, the same program runs on Postgres.
 
 ## Pitfalls
 
@@ -45,3 +115,4 @@ What changes between the memory driver on a laptop and a service whose jobs must
 - [Choose by kind of app](../choosing/app-types.md)
 - [Run several workers](../operations/deploy.md#run-several-workers)
 - [Capabilities](../concepts/capabilities.md#what-a-driver-declares)
+- Example: [postgres-cluster](../../examples/postgres-cluster/)

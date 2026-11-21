@@ -6,7 +6,7 @@ A payment provider, a SaaS webhook or another team's service sends events in the
 
 - Everything here is in the `events` package and runs on every driver; the bus needs `workflow.CapIdempotencyKey` as always (see [Publish and subscribe](publish-subscribe.md)).
 - Only the JSON event format is read and written, in HTTP binary and structured mode. Batch mode (`application/cloudevents-batch+json`) and the other formats (Avro, Protobuf) are refused with `workflow.ErrInvalid`.
-- The example is [`examples/events-more`](../../examples/events-more). Run it with `go run ./events-more` from `examples/`.
+- The example is [`examples/events-more`](../../examples/events-more). Run it with `go run ./events-more` from `examples/`. The extension-name check is in [`examples/events-signal`](../../examples/events-signal).
 
 ## Send a CloudEvent over HTTP
 
@@ -58,6 +58,33 @@ The mapping, both ways:
 
 `ReadHTTP` reads at most `events.DefaultWebhookMaxBody` (1 MiB); wrap `r.Body` in `http.MaxBytesReader` for a smaller cap. It does not authenticate the sender: put it behind the same verification you would use for a webhook (see [Inbound webhooks](webhooks.md)).
 
+## Check an extension name
+
+CloudEvents spells extension attributes one way only: one or more lower-case ASCII letters or digits, and not the name of a core attribute (`id`, `source`, `specversion`, `type`, `datacontenttype`, `dataschema`, `subject`, `time`) or a data member (`data`, `data_base64`). `events.ValidExtensionName(name)` is that rule. `Validate` uses it to refuse an event with a bad extension, and `FromMessage` uses it to choose which message labels become extensions: a label it rejects is dropped, without an error.
+
+<!-- snippet: examples/events-signal/main.go#extension-names -->
+```go
+for _, name := range []string{"tenant", "region2", "tenant-id", "Tenant", "subject", ""} {
+	fmt.Fprintf(p.w, "  %-12q valid=%v\n", name, events.ValidExtensionName(name))
+}
+ce := events.FromMessage(events.Message{ID: "evt_1", Name: "order.paid",
+	Labels: map[string]string{"tenant": "acme", "tenant-id": "7", "subject": "x"}}, "https://shop.example/orders")
+fmt.Fprintf(p.w, "  FromMessage kept: %v\n", ce.Extensions) // the other two labels have no CloudEvents spelling
+```
+
+```text
+extension names:
+  "tenant"     valid=true
+  "region2"    valid=true
+  "tenant-id"  valid=false
+  "Tenant"     valid=false
+  "subject"    valid=false
+  ""           valid=false
+  FromMessage kept: map[tenant:acme]
+```
+
+Call it where labels are named, at boot or in a test of your label keys, when a label must survive a round trip through a CloudEvent: a label `ToMessage` copied from an event that `ReadHTTP` or `json.Unmarshal` read (both validate) always passes, but one your own code adds (`tenant-id`, `order.channel`) is lost on the way out.
+
 ## Write the JSON format
 
 `json.Marshal` on a `CloudEvent` writes the JSON format with attributes in a fixed order and extensions sorted, so one event always encodes to the same bytes. The data member follows the content type: JSON data as a JSON value under `data`, text (`text/*`, XML) as a string under `data`, anything else base64 under `data_base64`. With an empty `DataContentType` the format reads `data` as JSON, so non-JSON bytes go out as `data_base64`.
@@ -79,7 +106,7 @@ The payload of `order.paid` started as `{"amount": 500}`, became `{"cents": 500}
 
 <!-- snippet: examples/events-more/main.go#versions -->
 ```go
-b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{
+b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{ // 2: the current version
 	0: func(raw []byte) ([]byte, error) { // v0 -> v1: "amount" is now "cents"
 		return bytes.Replace(raw, []byte(`"amount"`), []byte(`"cents"`), 1), nil
 	},
@@ -101,7 +128,7 @@ p, err := b.Publish(ctx, old) // the receipt run gets {"order":7,"cents":500,"cu
 if err != nil {
 	return err
 }
-_, future := b.Publish(ctx, events.Message{ID: "evt_v3", Name: "order.paid", Version: 3})
+_, future := b.Publish(ctx, events.Message{ID: "evt_v3", Name: "order.paid", Version: 3}) // newer than the current version
 ```
 
 ```text
@@ -112,6 +139,28 @@ versions:
 
 `Bus.CurrentVersion(event)` reports an event's current version. An event without upcasters ignores `Version`.
 
+## Try it
+
+```sh
+cd examples
+go run ./events-more
+```
+
+The CloudEvents and versions parts:
+
+```text
+cloudevents:
+  headers: ce-id=evt_1 ce-type=order.paid ce-subject=42 ce-tenant=acme
+  message: name=order.paid key=42 labels=map[tenant:acme]
+  receipt ran with {"order":42,"cents":1999,"currency":"EUR"}
+  structured: {"specversion":"1.0","id":"evt_1","source":"https://shop.example/orders","type":"order.paid","subject":"42","tenant":"acme","data":{"order":42,"cents":1999,"currency":"EUR"}}
+versions:
+  v0 message reached the receipt run as {"order":7,"cents":500,"currency":"EUR"}
+  v3 message refused: ErrInvalid=true
+```
+
+The binary-mode headers carry the extension as `ce-tenant`; the message the bus published has it as the label `tenant`; the receipt run got the payload unchanged; and `FromMessage` wrote the label back as the `tenant` attribute of the JSON format. `go run ./events-signal` prints the extension-name checks shown above.
+
 ## Pitfalls
 
 - A CloudEvent carries no `Message.Version`. When the sender puts the version in `dataschema` (`https://shop.example/schemas/order-paid/v2`) or an extension, set `m.Version` from it after `ToMessage`.
@@ -119,3 +168,10 @@ versions:
 - `New` refuses an empty event name, a negative current version, an upcaster keyed outside `[0, current)` or nil, and two `WithUpcasters` for one event.
 - The run gets the upcast payload but no `workflow.LabelPayloadVersion`: a workflow's payload version is the workflow's own (`middleware.PayloadVersion`).
 - `ReadHTTP` refuses a request that is in neither mode; a plain JSON webhook without `ce-` headers belongs to [`NewWebhook`](webhooks.md).
+- `FromMessage` drops a label whose key is not a valid extension name without an error. Check label keys that must cross over with `events.ValidExtensionName` in a test.
+
+## Related
+
+- [Publish and subscribe](publish-subscribe.md), [Inbound webhooks](webhooks.md), [Event log, replay and cancel](replay-and-cancel.md), [Events](README.md)
+- [Typed payloads › Change a payload's shape between releases](../jobs/payloads.md#change-a-payloads-shape-between-releases)
+- Examples: [examples/events-more](../../examples/events-more/), [examples/events-signal](../../examples/events-signal/)

@@ -6,7 +6,8 @@
 
 - Promises and updates keep their values in a `workflow.PromiseStore`. `workflow.NewMemoryPromises()` is the in-process store; `sqlstore.Client.PromiseStore()` (or `sqlstore.NewPromiseStore`, rows in the journal table) and `redis.Client.PromiseStore()` (or `redis.NewPromiseStore`, needs Redis 7 or later) are durable and shared by every process on that database. The caller and the run must use the same store.
 - `AwaitPromise` waits by snoozing, so it needs `workflow.CapSnooze` (memory, SQL and Redis). `Update` and `SignalWithStart` need `workflow.CapWaitForEvent`; `SignalWithStart` and `ContinueAsNew` need `workflow.CapIdempotencyKey`.
-- The example is [`examples/flow-promises`](../../examples/flow-promises). Run it with `go run ./flow-promises` from `examples/`.
+- `CancelSteps` needs a client that implements `workflow.StepCanceller` (memory, SQL and Redis; no capability bit, so check with a type assertion or `workflow.Supports(c, workflow.OpCancelStep)`).
+- The examples are [`examples/flow-promises`](../../examples/flow-promises) and, for withdrawing steps, [`examples/flow-cancel`](../../examples/flow-cancel). Run them with `go run ./flow-promises` and `go run ./flow-cancel` from `examples/`.
 
 ## Wait for a promise
 
@@ -19,7 +20,7 @@ refund := workflow.Workflow{Name: "refund", Steps: []workflow.Step{{Name: "appro
 	if err := json.Unmarshal(in, &requestID); err != nil {
 		return nil, workflow.Permanent(err)
 	}
-	return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond)
+	return workflow.AwaitPromise(ctx, promises, requestID, 5*time.Millisecond) // snoozes and looks again this often
 }}}}
 ```
 
@@ -56,7 +57,7 @@ cart := workflow.Workflow{Name: "cart", Steps: []workflow.Step{
 
 <!-- snippet: examples/flow-promises/main.go#update -->
 ```go
-updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
+updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second) // a run that never takes the signal never answers
 defer cancelUpd()
 answer, err := workflow.Update(updCtx, c, promises, workflow.Event{Name: "cart.add", Key: "cart-8", Payload: []byte(`"hat"`)}, await)
 if err != nil {
@@ -85,14 +86,15 @@ A run that loops for months (a subscription renewed monthly, a poller) would kee
 
 <!-- snippet: examples/flow-promises/main.go#continue -->
 ```go
+const rounds = 3 // the poller stops after its third round
 var client workflow.Client = c
 poller := workflow.Workflow{Name: "poller", Steps: []workflow.Step{{Name: "round", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 	var round int
 	if err := json.Unmarshal(in, &round); err != nil {
 		return nil, workflow.Permanent(err)
 	}
-	// ... one round of polling ...
-	if round < 3 {
+	// A real poller checks its source here; this one only counts rounds.
+	if round < rounds {
 		if _, err := workflow.ContinueAsNew(ctx, client, []byte(fmt.Sprint(round+1))); err != nil {
 			return nil, err
 		}
@@ -105,10 +107,75 @@ The next run's idempotency key is derived from the current run, so a retried ste
 
 ## Withdraw several steps of a run
 
-`workflow.CancelSteps(ctx, client, ref, steps...)` withdraws several steps of one run through `workflow.StepCanceller` (memory, SQL and Redis), as `CancelStep` does for one: a running step's ctx is cancelled with cause `workflow.ErrStepCancelled` and its handler decides what it returns, while the rest of the run goes on. It tries every step and returns their errors joined.
+Sometimes a part of a run is no longer wanted while the rest still is: two price feeds hang, and the quote should go on with cached prices rather than wait or fail. `workflow.CancelSteps(ctx, client, ref, steps...)` withdraws each listed step of one run through `workflow.StepCanceller`, as `CancelStep` does for one, and leaves the rest of the run alone. The example is [`examples/flow-cancel`](../../examples/flow-cancel): a quote runs `feed-eu` and `feed-us` in parallel, both hang, and `combine` runs after both.
+
+Each feed watches its ctx and, when the cause is `workflow.ErrStepCancelled`, returns a fallback, so the step succeeds and the run continues:
+
+<!-- snippet: examples/flow-cancel/main.go#cancel-steps -->
+```go
+if err := workflow.CancelSteps(ctx, c, ref, "feed-eu", "feed-us"); err != nil {
+	return err
+}
+out, err := workflow.AwaitResult(ctx, c, ref, await)
+if err != nil {
+	return err
+}
+fmt.Fprintf(w, "  quote succeeded with %s\n", out)
+```
+
+What happens to each step is `StepCanceller`'s contract:
+
+- **A running attempt** has its ctx cancelled with cause `workflow.ErrStepCancelled` (read it with `context.Cause`). An output from the handler means the step succeeded; an error fails the step for good, without retry, with an error matching `ErrStepCancelled`, and the run fails (`OnFailure` runs).
+- **A step with no attempt running** (in retry backoff, snoozed, or a suspended wait or sleep) fails for good at once with an error matching `ErrStepCancelled`, which fails the run. Withdraw a wait step only when the run should end.
+- **A step that has not started or has ended** answers `workflow.ErrWrongState`, an unknown run or step `workflow.ErrNotFound`.
+
+`CancelSteps` tries every step, even after one fails, and returns their answers joined, each prefixed with its step name, so `errors.Is` finds any of them. No steps at all is an error matching `workflow.ErrInvalid`, and a client without `StepCanceller` is refused with an `*workflow.UnsupportedError`. The memory, SQL and Redis drivers implement it; Hatchet does not.
+
+## Try it
+
+```sh
+cd examples
+go run ./flow-promises
+```
+
+```text
+promise:
+  before approval the run has ended: false
+  after approval: "approved by finance"
+  a second, different outcome is refused: true
+signal with start and update:
+  started and signalled: "socks added, total 3 items"
+  update answered: "hat added, total 3 items"
+continue as new:
+  rounds run as separate runs: 3
+```
+
+Withdrawing several steps is in `examples/flow-cancel`; its `withdraw several steps` lines are:
+
+```sh
+go run ./flow-cancel
+```
+
+```text
+withdraw several steps:
+  quote succeeded with "cached feed-eu + cached feed-us"
+  withdraw again: ErrWrongState true, both steps named true
+```
+
+The second call finds the run ended, so both steps answer `ErrWrongState` and both are named in the joined error.
 
 ## Pitfalls
 
 - A signal reaches every run waiting with its name and key. With `Update` the first answer wins and later ones are ignored; with `SignalWithStart` give each run its own key (`WaitSpec.KeyFrom`) so the signal reaches only the run it started.
 - Promises stay in the store until deleted. Delete the ones you settle and nobody reads, or give the Redis store a TTL.
 - `AwaitPromise` looks again every `poll`; a wait step on `workflow.PromiseEvent` resumes at the signal instead.
+- `CancelSteps` is not atomic. It withdraws the steps one by one; if one of them fails the run (a wait step, or a handler that returns an error), the steps after it answer `ErrWrongState` because the run has ended.
+- A handler that ignores its ctx is not interrupted. Withdrawing a running step only cancels its ctx; pass `ctx` to every call and check `context.Cause` to offer a fallback.
+
+## Related
+
+- [Wait for an event](signals.md): the signals these helpers build on
+- [Manage runs › Cancel one step](../jobs/manage-runs.md#cancel-one-step): `CancelStep` and the fallback handler in detail
+- [Joins and distributed maps › Cancel every child of a step](joins.md#cancel-every-child-of-a-step): withdraw child runs instead of steps
+- [Escalation and signal handlers](escalation.md): signal one run by its ID
+- Examples: [examples/flow-promises](../../examples/flow-promises/), [examples/flow-cancel](../../examples/flow-cancel/)

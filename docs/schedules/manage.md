@@ -6,6 +6,7 @@ An app with schedules needs to answer "what runs when?" and to stop a schedule f
 
 - Listing needs `workflow.CapScheduleList` and pausing `workflow.CapSchedulePause`; the memory, SQL and Redis drivers have both. Hatchet declares `CapScheduleList`, and `CapSchedulePause` only when `hatchet.Config.API` is set (see [the Hatchet driver](../drivers/hatchet.md)); there `PauseSchedule` of `All` is refused, while `ResumeSchedule` of `All` re-enables every disabled trigger. Find the interface with a type assertion after checking the capability: wrappers implement every optional interface and refuse when the client inside lacks it, so the capability is the reliable test.
 - The example is [`examples/schedule-hooks`](../../examples/schedule-hooks), on the memory driver with a fake clock. Run it with `go run ./schedule-hooks` from `examples/`.
+- Keeping runs, the cursor and the tick time are in [`examples/schedule-keep-runs`](../../examples/schedule-keep-runs), also on the memory driver with a fake clock; the JSON form is in [`examples/schedule-specs`](../../examples/schedule-specs).
 
 ## List schedules
 
@@ -93,7 +94,43 @@ The program [schedule-groups](../../examples/schedule-groups/) builds two schedu
 
 ## Keep the newest runs
 
-`Schedule.KeepRuns` (or `Workflow.CronKeepRuns`) keeps only the newest N finished runs a schedule fired, so a schedule that fires every minute does not fill the run store with a year of history. It needs `workflow.CapScheduleKeep` (the memory, Redis and SQL drivers declare it; Hatchet refuses); zero keeps everything, as before. Only finished runs carrying the schedule's label are deleted, never a run still queued or running, and never a run of the same workflow enqueued by hand. Retention by age ([retention](../operations/retention.md)) still applies on top.
+A schedule that fires every minute fills the run store with a year of history nobody reads. `Schedule.KeepRuns` keeps only the newest N finished runs a schedule fired and deletes the older ones. It needs `workflow.CapScheduleKeep` (the memory, Redis and SQL drivers declare it; Hatchet refuses the field with an `*workflow.UnsupportedError` naming `Schedule.KeepRuns`); zero keeps everything. Check the capability where the driver is chosen at run time:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#caps -->
+```go
+need := workflow.CapsOf(workflow.CapScheduleKeep, workflow.CapTickTime)
+fmt.Fprintf(w, "  memory has %s: %v\n", need, mem.Capabilities().Has(need))
+```
+
+Set the field on the schedule:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#keep -->
+```go
+id, err := c.Schedule(ctx, workflow.Schedule{
+	Name:     "hourly-import",
+	Workflow: "import-orders",
+	Cron:     "0 * * * *",
+	Location: berlin,
+	KeepRuns: keep, // only the newest 2 finished runs stay in the run store
+	Misfire:  workflow.Misfire{Policy: workflow.MisfireFireAll, Max: catchUp},
+})
+```
+
+For a cron declared on the workflow, `Workflow.CronKeepRuns` does the same for each of its expressions; it is refused on a workflow without `Cron`, and both refuse a negative count with `workflow.ErrInvalid`:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#cron-keep -->
+```go
+err = c.Register(workflow.Workflow{
+	Name:         "rollup",
+	Cron:         []string{"0 * * * *"},
+	CronLocation: berlin,
+	CronKeepRuns: keep, // each declared cron keeps its newest 2 finished runs
+	Misfire:      workflow.Misfire{Policy: workflow.MisfireFireAll, Max: catchUp},
+	Steps:        []workflow.Step{{Name: "sum", Run: rollup(rollups)}},
+})
+```
+
+Only finished runs carrying the schedule's label count and are deleted: never a run still queued or running, and never a run of the same workflow enqueued by hand. The example fires five ticks of each schedule and ends with two runs of each, the 12:00 and 13:00 ticks. Retention by age ([retention](../operations/retention.md)) still applies on top.
 
 ## Store a schedule as JSON
 
@@ -121,26 +158,57 @@ if err := json.Unmarshal(data, &back); err != nil { // refuses another version, 
 {"v":1,"name":"nightly-report","workflow":"report","cron":"0 2 * * *","location":"Europe/Berlin","misfire":{"policy":"skip"}}
 ```
 
-Reading refuses another version, unknown fields (so a document from a newer release never loses meaning silently) and zones that do not load; every error wraps `workflow.ErrScheduleJSON`. `json.Unmarshal` loads zones with `cron.LoadZone`; `workflow.UnmarshalSchedule(data, loadZone)` takes your own loader, for a zone alias table or a test. Writing refuses `time.Local` and a fixed offset, since neither has a name another process can load. The JSON form does not validate the rest of the schedule; `Client.Schedule` does that when it is created.
+Reading refuses another version, unknown fields (so a document from a newer release never loses meaning silently) and zones that do not load; every error wraps `workflow.ErrScheduleJSON`. `json.Unmarshal` loads zones with `cron.LoadZone`; `workflow.UnmarshalSchedule(data, loadZone)` takes your own loader, for a zone alias table or a test, and nil means `cron.LoadZone`:
+
+<!-- snippet: examples/schedule-specs/main.go#json-read -->
+```go
+stored := []byte(`{"v":2,"name":"x"}`)           // written by a newer release
+_, err = workflow.UnmarshalSchedule(stored, nil) // nil loads zones with cron.LoadZone
+fmt.Printf("  v2 ErrScheduleJSON=%t\n", errors.Is(err, workflow.ErrScheduleJSON))
+```
+
+```text
+  v2 ErrScheduleJSON=true
+```
+
+Match `ErrScheduleJSON` with `errors.Is` to tell a bad stored document (show it to an operator, keep the old schedule) from a failure of the store itself. Writing refuses `time.Local` and a fixed offset, since neither has a name another process can load. The JSON form does not validate the rest of the schedule; `Client.Schedule` does that when it is created.
 
 ## Keep a cursor between runs
 
-A schedule that pulls new rows each tick needs to remember where the last tick stopped. Keep that cursor in the schedule's own folder of a [`DataStore`](../workflows/memoisation.md#share-data-across-runs) and move it with `UpdateData`, a compare-and-set, so two runs of the schedule never both take the same rows:
+A schedule that pulls new rows each tick needs to remember where the last tick stopped. Keep that cursor in the schedule's own folder of a [`DataStore`](../workflows/memoisation.md#share-data-across-runs) and move it with `UpdateData`, a compare-and-set, so two runs of the schedule never both take the same rows.
 
+First give the client a data store with the `workflow.Data` plugin. `workflow.NewMemoryData()` lives in one process; `sqlstore.DataStore` and `redis.DataStore` survive restarts and are shared by every node:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#data -->
 ```go
-c, err := workflow.Use(client, workflow.Data(store)) // store: sqlstore.DataStore, redis.DataStore or MemoryData
-// ...
-{Name: "pull", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
-	info, _ := workflow.StepInfoFrom(ctx)
-	folder := workflow.Folder("schedule/" + info.Labels[workflow.LabelSchedule])
-	_, err := workflow.UpdateData(ctx, folder, "cursor", func(last int64, _ bool) (int64, error) {
-		return importAfter(ctx, last, 500) // processes up to 500 rows after last, returns the new last ID
-	})
-	return nil, err
-}}
+c, err := workflow.Use(mem, workflow.Data(workflow.NewMemoryData())) // sqlstore.DataStore or redis.DataStore across processes
+if err != nil {
+	return err
+}
 ```
 
-The cursor survives restarts on a durable store and is shared by every node. `LabelSchedule` is the schedule's ID, set on every run it fires (`CapTickEvents`); a run started by hand has none, so key the folder by `Schedule.Name` instead when manual runs should move the same cursor. `UpdateData` may call the function again when another writer changed the cursor first, so make the import idempotent or keep the work outside it and only the cursor move inside.
+Then, in the step, key the folder by the schedule's ID and claim the next rows:
+
+<!-- snippet: examples/schedule-keep-runs/main.go#cursor -->
+```go
+info, _ := workflow.StepInfoFrom(ctx)
+folder := workflow.Folder("schedule/" + info.Labels[workflow.LabelSchedule]) // this schedule's own folder
+var last int64
+next, err := workflow.UpdateData(ctx, folder, cursorName, func(cur int64, _ bool) (int64, error) {
+	last = cur // set again on every attempt: UpdateData retries on a lost race
+	return min(cur+batchSize, newestRow), nil
+})
+if err != nil {
+	return nil, err
+}
+// Rows last+1..next are this run's alone: the compare-and-set gave them
+// to no other run. Import them here, outside the function UpdateData
+// may call more than once.
+```
+
+`UpdateData` reads the cursor, calls the function and writes the result only if nobody wrote the cursor in between; otherwise it reads again and calls the function again. So the function only computes the new cursor, and the import of rows `last+1` to `next` happens after it, once. After `workflow.UpdateDataAttempts` (32) lost races it returns `workflow.ErrDataConflict`, which is not permanent, so the step's retry policy tries again later.
+
+`LabelSchedule` is the schedule's ID, set on every run it fires; a run started by hand has none, so key the folder by `Schedule.Name` instead when manual runs should move the same cursor. In the example each of the five runs takes the next three rows, the three catch-up runs included, and no row is taken twice.
 
 ## Task output
 
@@ -171,6 +239,30 @@ The list before and after the pause, and the ticks around it:
   15:00 fired, run succeeded
 ```
 
+The keep, cursor and tick part, from [schedule-keep-runs](../../examples/schedule-keep-runs/):
+
+```sh
+cd examples
+go run ./schedule-keep-runs
+```
+
+```text
+-- driver
+  memory has ScheduleKeep|TickTime: true
+-- hourly import, three rows a run
+  tick 09:00, run at 09:00: orders 08:00-09:00, rows 1-3
+  tick 10:00, run at 10:00: orders 09:00-10:00, rows 4-6
+-- after a three-hour outage
+  tick 11:00, run at 13:30: orders 10:00-11:00, rows 7-9
+  tick 12:00, run at 13:30: orders 11:00-12:00, rows 10-12
+  tick 13:00, run at 13:30: orders 12:00-13:00, rows 13-15
+-- run history
+  import-orders (KeepRuns 2): 2 runs kept, ticks 12:00 13:00
+  rollup (CronKeepRuns 2): 2 runs kept, ticks 12:00 13:00
+```
+
+Each run takes the next three rows, also the three catch-up runs that start together at 13:30, and each schedule ends with its newest two runs. `go test ./schedule-hooks ./schedule-keep-runs` checks every line.
+
 ## Pitfalls
 
 - **A pause is per schedule, not per run.** Runs a schedule already fired keep running; cancel or pause those separately.
@@ -178,6 +270,8 @@ The list before and after the pause, and the ticks around it:
 - **A named schedule is upserted.** Calling `Schedule` again with the same `Name` and workflow returns the same ID and replaces the schedule, so declaring schedules at every boot is safe; without a `Name`, every call adds one.
 - **`time.Local` is refused.** A schedule's `Location` must name a zone; the host's local zone differs from machine to machine, so every driver refuses it with `ErrInvalid`.
 - **`KeepRuns` deletes only runs the schedule fired.** Runs of the workflow enqueued by hand, and runs not yet finished, are never counted or deleted.
+- **A cursor function runs more than once.** `UpdateData` calls it again after a lost race, so a side effect inside it (an import, a message) can happen twice. Compute the new cursor inside, do the work after.
+- **A cursor keyed by the schedule ID starts over with a new schedule.** `Schedule` with the same `Name` keeps the ID, but `Unschedule` followed by a new `Schedule` gives a new ID and so a new, empty folder. Key the folder by `Schedule.Name` when the schedule may be recreated, or copy the cursor over.
 - **`json.Marshal(Schedule)` changed form.** Earlier releases wrote the zone as `{}`; it is now the versioned form above, and a document from before cannot be read back.
 - **The list is of live schedules.** After `Unschedule` a schedule is gone from it; a paused one stays.
 
@@ -188,3 +282,4 @@ The list before and after the pause, and the ticks around it:
 - Example: [examples/schedule-hooks](../../examples/schedule-hooks/).
 - Example: [examples/schedule-groups](../../examples/schedule-groups/) (a group of schedules from one helper).
 - Example: [examples/schedule-specs](../../examples/schedule-specs/) (a schedule stored as JSON).
+- Example: [examples/schedule-keep-runs](../../examples/schedule-keep-runs/) (`KeepRuns`, `CronKeepRuns`, a cursor between runs).

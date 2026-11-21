@@ -35,6 +35,8 @@ misfire after a five-hour pause:
   Due skip      []
   Due fire-once [05:00]
   Due fire-all  [03:00 04:00 05:00]
+  fire-all needs Cron|MisfireFireAll
+  hatchet: true workflow: Schedule.Misfire unsupported by this driver (missing MisfireFireAll): schedule for workflow hourly
 another dialect:
   memory with the dialect: <nil>
   memory with cron.Parse: workflow: invalid spec: workflow "poll": Cron[0]: cron: invalid macro "@quarter-hour" in "@quarter-hour": unknown macro

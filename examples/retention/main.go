@@ -32,8 +32,22 @@ const (
 	runTimeout = 10 * time.Second
 	// statusPoll is how often finish re-reads a run's status.
 	statusPoll = 5 * time.Millisecond
+	// reports is how many report runs finish: more than its KeepLast, so
+	// the count rule has older ones to delete.
+	reports = 5
+	// pastADay moves the clock past the one-day age of successes.
+	pastADay = 25 * time.Hour
+	// aWeek then moves it past the one-week age of failures.
+	aWeek = 7 * 24 * time.Hour
+	// pastAnHour moves the clock past the one-hour age the later parts
+	// keep successes for.
+	pastAnHour = 2 * time.Hour
 )
 
+// start is the fake clocks' first instant; any fixed time works.
+var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "retention:", err)
@@ -62,7 +76,10 @@ func run(ctx context.Context) (err error) {
 	if err := keepAndPrune(ctx, filepath.Join(dir, "app.db")); err != nil {
 		return err
 	}
-	return heldUndelivered(ctx, filepath.Join(dir, "held.db"))
+	if err := heldUndelivered(ctx, filepath.Join(dir, "held.db")); err != nil {
+		return err
+	}
+	return archiveFails(ctx, filepath.Join(dir, "archive.db"))
 }
 
 // keepAndPrune runs the rules and the archive hook over a few runs.
@@ -72,8 +89,25 @@ func keepAndPrune(ctx context.Context, path string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
-	clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(start)
 	var coldStorage []string // stands in for an object store or an archive table
+
+	// snippet:archive
+	// archive copies each chunk to cold storage before Prune deletes it.
+	var archive sqlstore.ArchiveFunc = func(ctx context.Context, runs []sqlstore.FinishedRun) error {
+		for _, r := range runs {
+			line := r.Workflow + " " + string(r.Status) + " " + string(r.Payload)
+			if r.Err != "" { // the stored error text; empty when it succeeded
+				line += " err=" + r.Err
+			}
+			for step, out := range r.Outputs { // each succeeded step's output
+				line += " " + step + "=" + string(out)
+			}
+			coldStorage = append(coldStorage, line)
+		}
+		return nil // an error here keeps the chunk and stops the prune
+	}
+	// snippet:end
 
 	// snippet:retention
 	c, err := sqlstore.New(db, sqlb.SQLiteDialect{},
@@ -85,14 +119,9 @@ func keepAndPrune(ctx context.Context, path string) (err error) {
 			},
 			Undelivered: true, // no client of this cluster calls OnRunFinished
 		}),
-		sqlstore.WithArchive(func(ctx context.Context, runs []sqlstore.FinishedRun) error {
-			for _, r := range runs {
-				coldStorage = append(coldStorage, r.Workflow+" "+string(r.Status)+" "+string(r.Payload))
-			}
-			return nil // an error here keeps the chunk and stops the prune
-		}),
-		sqlstore.WithPruneChunk(2),  // runs per delete transaction and per archive call (default 100)
-		sqlstore.WithoutAutoPrune(), // the app calls Prune itself
+		sqlstore.WithArchive(archive), // each chunk goes through archive before it is deleted
+		sqlstore.WithPruneChunk(2),    // runs per delete transaction and per archive call (default 100)
+		sqlstore.WithoutAutoPrune(),   // the app calls Prune itself
 		sqlstore.WithClock(clk),
 	)
 	// snippet:end
@@ -119,7 +148,7 @@ func keepAndPrune(ctx context.Context, path string) (err error) {
 		{Workflow: "email", Payload: []byte(`"b"`)},
 		{Workflow: "email", Payload: []byte(`"fail"`)},
 	}
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= reports; i++ {
 		jobs = append(jobs, workflow.Job{Workflow: "report", Payload: fmt.Appendf(nil, `"r%d"`, i)})
 	}
 	for _, job := range jobs {
@@ -139,14 +168,14 @@ func keepAndPrune(ctx context.Context, path string) (err error) {
 		res.Deleted, res.HeldUndelivered, res.HeldIdempotency, res.HeldBatch)
 	// snippet:end
 
-	clk.Advance(25 * time.Hour)
+	clk.Advance(pastADay)
 	res, err = c.Prune(ctx)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("a day later: deleted %d\n", res.Deleted)
 
-	clk.Advance(7 * 24 * time.Hour)
+	clk.Advance(aWeek)
 	res, err = c.Prune(ctx)
 	if err != nil {
 		return err
@@ -166,7 +195,7 @@ func heldUndelivered(ctx context.Context, path string) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
-	clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
+	clk := clock.NewFake(start)
 
 	c, err := client(ctx, db, clk, sqlstore.Retention{Succeeded: time.Hour}) // Undelivered left false
 	if err != nil {
@@ -175,7 +204,7 @@ func heldUndelivered(ctx context.Context, path string) (err error) {
 	if err := finish(ctx, c, workflow.Job{Workflow: "email", Payload: []byte(`"a"`)}); err != nil {
 		return err
 	}
-	clk.Advance(2 * time.Hour)
+	clk.Advance(pastAnHour)
 	res, err := c.Prune(ctx)
 	if err != nil {
 		return err
@@ -196,10 +225,48 @@ func heldUndelivered(ctx context.Context, path string) (err error) {
 	return nil
 }
 
+// archiveFails shows an archive hook that fails: the chunk is kept and
+// Prune returns the hook's error, so no run is lost to a failed copy.
+func archiveFails(ctx context.Context, path string) (err error) {
+	db, err := driversqlite.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, db.Close()) }()
+	clk := clock.NewFake(start)
+	errBucket := errors.New("bucket unavailable") // the object store is down
+
+	c, err := client(ctx, db, clk, sqlstore.Retention{Succeeded: time.Hour, Undelivered: true},
+		sqlstore.WithArchive(func(context.Context, []sqlstore.FinishedRun) error { return errBucket }))
+	if err != nil {
+		return err
+	}
+	defer c.Stop()
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "email", Payload: []byte(`"a"`)})
+	if err != nil {
+		return err
+	}
+	if err := wait(ctx, c, ref); err != nil {
+		return err
+	}
+	clk.Advance(pastAnHour)
+	// snippet:archive-fails
+	res, err := c.Prune(ctx)
+	fmt.Printf("archive failed: deleted %d, error is the hook's: %t\n", res.Deleted, errors.Is(err, errBucket))
+	// snippet:end
+	st, err := c.Status(ctx, ref)
+	if err != nil {
+		return err
+	}
+	fmt.Println("the run is kept:", st)
+	return nil
+}
+
 // client builds, migrates and starts a client with retention r and no
-// background prune.
-func client(ctx context.Context, db *sql.DB, clk clock.Clock, r sqlstore.Retention) (*sqlstore.Client, error) {
+// background prune; extra options come last.
+func client(ctx context.Context, db *sql.DB, clk clock.Clock, r sqlstore.Retention, extra ...sqlstore.Option) (*sqlstore.Client, error) {
 	opts := append(housekeeping(), sqlstore.WithRetention(r), sqlstore.WithoutAutoPrune(), sqlstore.WithClock(clk))
+	opts = append(opts, extra...)
 	c, err := sqlstore.New(db, sqlb.SQLiteDialect{}, opts...)
 	if err != nil {
 		return nil, err
@@ -237,6 +304,11 @@ func finish(ctx context.Context, c *sqlstore.Client, job workflow.Job) error {
 	if err != nil {
 		return err
 	}
+	return wait(ctx, c, ref)
+}
+
+// wait polls ref's status until its run has ended.
+func wait(ctx context.Context, c *sqlstore.Client, ref workflow.RunRef) error {
 	deadline := time.Now().Add(runTimeout)
 	for {
 		st, err := c.Status(ctx, ref)

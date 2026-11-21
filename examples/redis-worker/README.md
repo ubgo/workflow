@@ -16,7 +16,7 @@ REDIS_URL is not set: the live run is skipped
 Against the shared local stack's Redis (start it with `task up:redis` in the stack's repository):
 
 ```sh
-REDIS_URL=redis://localhost:7012/0 go run ./redis-worker
+REDIS_URL=redis://127.0.0.1:36379/0 go run ./redis-worker
 ```
 
 ```text
@@ -33,11 +33,12 @@ schedule nightly: last run succeeded, next fire 02:00 UTC
 ```go
 rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
 defer func() { err = errors.Join(err, rdb.Close()) }()
-prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), prefixBase)
+// newWorker builds one worker client on the shared prefix.
 newWorker := func() (*redis.Client, error) {
 	return redis.New(rdb,
-		redis.WithPrefix(prefix), // clients that share a prefix share every run and schedule
-		redis.WithPollInterval(50*time.Millisecond),
+		redis.WithPrefix(prefix),                    // clients that share a prefix share every run and schedule
+		redis.WithPollInterval(50*time.Millisecond), // short for the demo; how often a worker looks for due runs
 	)
 }
 ```

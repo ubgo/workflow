@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,12 +28,25 @@ import (
 // start is the fake clock's first instant; any fixed time works.
 var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
+const (
+	// awaitPoll is how often the program looks at a run it waits for: the
+	// in-memory driver ends a run in microseconds.
+	awaitPoll = 10 * time.Millisecond
+	// progressReports is how many progress events the export sends: its
+	// total over its batch size.
+	progressReports = 3
+)
+
+// await is how the program waits for a run outside the guide's regions.
+var await = workflow.AwaitOptions{Poll: awaitPoll}
+
 // ExportResult is what the export step returns: the run's result.
 type ExportResult struct {
 	File string `json:"file"`
 	Rows int    `json:"rows"`
 }
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "results-progress:", err)
@@ -46,11 +60,11 @@ func run(ctx context.Context) error {
 
 	// snippet:report
 	export := workflow.Define(func(ctx context.Context, _ struct{}) (ExportResult, error) {
-		const total = 3000
-		for done := 1000; done <= total; done += 1000 {
+		const total, batch = 3000, 1000 // orders to export, and how many per round
+		for done := batch; done <= total; done += batch {
 			// ... export the next 1,000 orders ...
 			err := workflow.ReportProgress(ctx, workflow.Progress{
-				Percent: 100 * float64(done) / total,
+				Percent: 100 * float64(done) / total, // a share from 0 to 100
 				Message: fmt.Sprintf("exported %d of %d orders", done, total),
 			})
 			if err != nil && !errors.Is(err, workflow.ErrUnsupported) {
@@ -61,6 +75,7 @@ func run(ctx context.Context) error {
 	})
 	// snippet:end
 
+	// ok returns a step that answers with the JSON s.
 	ok := func(s string) workflow.Handler {
 		return func(context.Context, []byte) ([]byte, error) { return []byte(s), nil }
 	}
@@ -74,13 +89,14 @@ func run(ctx context.Context) error {
 		},
 	}
 	// snippet:end
+	// refuse is a step that always fails for good.
 	refuse := func(context.Context, []byte) ([]byte, error) {
 		return nil, workflow.Permanent(errors.New("card declined"))
 	}
 
 	c := memory.New(memory.WithClock(clk))
 	// snippet:events
-	progress := make(chan workflow.Progress, 8)
+	progress := make(chan workflow.Progress, 8) // room for every report: the observer must not block
 	err := c.OnLifecycle(func(_ context.Context, ev workflow.LifecycleEvent) {
 		if ev.Kind == workflow.LifecycleProgress {
 			progress <- *ev.Progress // a page could push this to the browser
@@ -112,7 +128,7 @@ func run(ctx context.Context) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute) // how long the caller will wait
 	defer cancel()
-	raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+	raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 	if err != nil {
 		return err
 	}
@@ -121,7 +137,7 @@ func run(ctx context.Context) error {
 		return err
 	}
 	// snippet:end
-	for range 3 {
+	for range progressReports {
 		p := <-progress
 		fmt.Printf("  %3.0f%% %s (step %s, at %s)\n", p.Percent, p.Message, p.Step, p.At.Format("15:04"))
 	}
@@ -143,18 +159,39 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	raw2, err := workflow.AwaitResult(ctx, c, ref2, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+	if _, err := workflow.Await(ctx, c, ref2, await); err != nil {
+		return err
+	}
+	// snippet:read-result
+	reader, isReader := workflow.Client(c).(workflow.ResultReader) // CapResult
+	if !isReader {
+		return errors.New("this driver keeps no results")
+	}
+	raw2, err := reader.Result(ctx, ref2) // ErrWrongState unless the run succeeded
 	if err != nil {
 		return err
 	}
 	fmt.Printf("  checkout, final steps %v: %s\n", workflow.Sinks(checkout), raw2)
+
+	listed, err := c.Runs(ctx, workflow.RunQuery{Ref: ref2})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  RunInfo.Output is the same: %t\n", bytes.Equal(listed.Runs[0].Output, raw2))
+
+	// RunOutput is the rule the driver applied to the step outputs.
+	rule := workflow.RunOutput(checkout, map[string][]byte{
+		"charge": []byte(`"ch_1"`), "email": []byte(`"sent"`), "invoice": []byte(`"inv_7"`),
+	})
+	fmt.Printf("  RunOutput gives the same: %t\n", bytes.Equal(rule, raw2))
+	// snippet:end
 
 	ref3, err := c.Enqueue(ctx, workflow.Job{Workflow: "pay"})
 	if err != nil {
 		return err
 	}
 	// snippet:failed
-	_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+	_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 	var failed *workflow.RunFailedError
 	if errors.As(err, &failed) {
 		fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)
@@ -176,7 +213,7 @@ func tenants(ctx context.Context, c *memory.Client) error {
 			return err
 		}
 		// snippet:end
-		if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond}); err != nil {
+		if _, err := workflow.Await(ctx, c, ref, await); err != nil {
 			return err
 		}
 	}
@@ -197,7 +234,7 @@ func tenants(ctx context.Context, c *memory.Client) error {
 	if err != nil {
 		return err
 	}
-	if _, err := workflow.Await(ctx, c, fired, workflow.AwaitOptions{Poll: 10 * time.Millisecond}); err != nil {
+	if _, err := workflow.Await(ctx, c, fired, await); err != nil {
 		return err
 	}
 	// snippet:tenant-query

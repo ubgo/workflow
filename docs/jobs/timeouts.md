@@ -23,6 +23,24 @@ Each specific sentinel also matches `workflow.ErrTimeout`. On the memory and Red
 
 `Workflow.RunTimeout` caps a run's whole life, from when it is admitted to start (for a delayed run, from when it is due) to its end, with waits, sleeps, retries and backoffs included. A step timeout cannot do that: a step that times out and retries five times, or a run with ten slow steps, can take far longer than any one attempt's limit. When the run goes past it, attempts still running see their `ctx` cancelled with the cause `workflow.ErrRunTimeout`, and the run fails with an error matching `ErrRunTimeout` and `ErrTimeout`. It is never retried: the time is spent. Zero means no limit, and a negative value fails validation.
 
+The budget is a field on the workflow (shown whole in the next section), and it makes the workflow need `workflow.CapRunTimeout`: the memory, SQL and Redis drivers have it, and a driver without it refuses the workflow rather than letting the run go on forever. In the example the clock is fake, so moving it five minutes is what spends the budget:
+
+<!-- snippet: examples/snooze-heartbeat/main.go#run-cap -->
+```go
+fmt.Println("  needs:", workflow.Requires(wf)) // Start refuses RunTimeout without CapRunTimeout
+if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "build-report", Payload: []byte(`"q3"`)}); err != nil {
+	return err
+}
+<-started                                      // the step runs and hangs
+if err := clk.BlockUntil(ctx, 1); err != nil { // the run timeout, armed at admission
+	return err
+}
+clk.Advance(5 * time.Minute) // the whole run's budget is spent
+ev := <-finished             // failed with ErrRunTimeout; OnTimeout ran
+```
+
+The step is still running when the clock passes five minutes: it sees its `ctx` cancelled and returns, the run fails without another attempt, and `OnTimeout` runs once with the run's payload (the output under [the next section](#handle-a-timeout-differently-from-a-failure)).
+
 ## Handle a timeout differently from a failure
 
 `Workflow.OnTimeout` runs once, in place of `OnFailure`, when a run fails for good because of any timeout: a step attempt past its timeout on its last attempt, a wait past its deadline, a heartbeat timeout, or `RunTimeout`. It gets the failing step's input, or the run's payload for a `RunTimeout` that struck outside any step. Nil means `OnFailure` runs for timeouts too. A timeout is often a different story for the user ("your report is late, we will email it") than a failure ("your report could not be built"):
@@ -50,6 +68,7 @@ wf := workflow.Workflow{
 
 ```text
 run timeout:
+  needs: RunTimeout
   run failed: workflow: run timed out: after 5m0s
   ErrRunTimeout true, IsTimeout true, ErrStepTimeout false
   ran OnTimeout with payload "q3"
@@ -85,11 +104,14 @@ snooze:
   try at +2m0s: attempt 1
   run succeeded, attempts 1, errors recorded 0
 heartbeat:
+  needs: Heartbeat
   attempt 1 started
   attempt 2 started at +31s
   attempt 1 failed at +30s: workflow: heartbeat timed out: memory: step "load" attempt 1 went 30s without a heartbeat
   run succeeded
+  beats from a direct call: ["batch 1" "batch 2" "batch 3"]
 run timeout:
+  needs: RunTimeout
   run failed: workflow: run timed out: after 5m0s
   ErrRunTimeout true, IsTimeout true, ErrStepTimeout false
   ran OnTimeout with payload "q3"

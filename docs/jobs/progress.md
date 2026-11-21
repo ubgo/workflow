@@ -15,11 +15,11 @@ A long job is a black box unless it says how it is doing. An export page wants "
 <!-- snippet: examples/results-progress/main.go#report -->
 ```go
 export := workflow.Define(func(ctx context.Context, _ struct{}) (ExportResult, error) {
-	const total = 3000
-	for done := 1000; done <= total; done += 1000 {
+	const total, batch = 3000, 1000 // orders to export, and how many per round
+	for done := batch; done <= total; done += batch {
 		// ... export the next 1,000 orders ...
 		err := workflow.ReportProgress(ctx, workflow.Progress{
-			Percent: 100 * float64(done) / total,
+			Percent: 100 * float64(done) / total, // a share from 0 to 100
 			Message: fmt.Sprintf("exported %d of %d orders", done, total),
 		})
 		if err != nil && !errors.Is(err, workflow.ErrUnsupported) {
@@ -51,7 +51,7 @@ A client implementing `workflow.LifecycleNotifier` also streams every report as 
 
 <!-- snippet: examples/results-progress/main.go#events -->
 ```go
-progress := make(chan workflow.Progress, 8)
+progress := make(chan workflow.Progress, 8) // room for every report: the observer must not block
 err := c.OnLifecycle(func(_ context.Context, ev workflow.LifecycleEvent) {
 	if ev.Kind == workflow.LifecycleProgress {
 		progress <- *ev.Progress // a page could push this to the browser
@@ -67,6 +67,7 @@ Lifecycle events are best effort and local to the process that ran the step: goo
 
 <!-- snippet: examples/snooze-heartbeat/main.go#heartbeat -->
 ```go
+// load hangs on its first attempt and beats once per batch on the next.
 load := func(ctx context.Context, _ []byte) ([]byte, error) {
 	info, _ := workflow.StepInfoFrom(ctx)
 	attempts <- info.Attempt
@@ -74,7 +75,7 @@ load := func(ctx context.Context, _ []byte) ([]byte, error) {
 		<-ctx.Done() // a hung connection: no heartbeat, no progress
 		return nil, context.Cause(ctx)
 	}
-	for batch := 1; batch <= 3; batch++ {
+	for batch := 1; batch <= 3; batch++ { // three batches stand in for the catalog
 		// ... load one batch ...
 		if err := workflow.Heartbeat(ctx, fmt.Appendf(nil, "batch %d", batch)); err != nil {
 			return nil, err // the beat was not recorded: the attempt lost its lease
@@ -99,17 +100,45 @@ Outside a step, or on a driver without `CapHeartbeat`, `Heartbeat` returns nil a
 
 ## Catch a hung step
 
-`Step.HeartbeatTimeout` fails an attempt that goes that long without a beat, counted from the attempt's start and then from each beat. It catches a handler stuck on a dead connection after seconds, where `Step.Timeout` has to allow for the longest healthy attempt. In the example the first attempt hangs without beating and is failed after 30 seconds; the retry beats and succeeds:
+`Step.HeartbeatTimeout` fails an attempt that goes that long without a beat, counted from the attempt's start and then from each beat. It catches a handler stuck on a dead connection after seconds, where `Step.Timeout` has to allow for the longest healthy attempt. The `load` step in [Send heartbeats](#send-heartbeats) sets it to 30 seconds. A step with a heartbeat timeout makes its workflow need `workflow.CapHeartbeat`, so a driver that would never fire it refuses the workflow instead (the memory, SQL and Redis drivers have it; Hatchet refuses such a step at `Register`):
+
+<!-- snippet: examples/snooze-heartbeat/main.go#hung -->
+```go
+// HeartbeatTimeout makes the workflow need CapHeartbeat: Start refuses
+// it on a driver without the capability instead of never firing.
+fmt.Println("  needs:", workflow.Requires(wf))
+```
+
+In the example the first attempt hangs without beating and is failed after 30 seconds; the retry beats and succeeds:
 
 ```text
 heartbeat:
+  needs: Heartbeat
   attempt 1 started
   attempt 2 started at +31s
   attempt 1 failed at +30s: workflow: heartbeat timed out: memory: step "load" attempt 1 went 30s without a heartbeat
   run succeeded
+  beats from a direct call: ["batch 1" "batch 2" "batch 3"]
 ```
 
 The failed attempt's error matches `workflow.ErrHeartbeatTimeout` and `workflow.ErrTimeout` (see [timeouts](timeouts.md)), and the step's retry policy applies to it like any other failure. A step that sets `HeartbeatTimeout` must beat more often than that, from its first second: an attempt that does a minute of setup before its first beat needs a timeout longer than the setup. `HeartbeatTimeout` is for run steps only; a negative value fails validation.
+
+The timeout only helps if the handler really beats on every path. `workflow.Heartbeat` sends each beat to the `workflow.Heartbeater` on the step's context (drivers set theirs with `WithHeartbeater`), and does nothing when there is none. So a unit test can call the handler directly with a `workflow.HeartbeatFunc` that records the beats, which is the last line above:
+
+<!-- snippet: examples/snooze-heartbeat/main.go#heartbeater -->
+```go
+var beats []string
+// beater records each beat the handler sends, in place of a driver.
+beater := workflow.HeartbeatFunc(func(_ context.Context, details []byte) error {
+	beats = append(beats, string(details))
+	return nil
+})
+testCtx := workflow.WithStepInfo(workflow.WithHeartbeater(ctx, beater), workflow.StepInfo{Attempt: 2}) // past attempt 1, which hangs
+if _, err := load(testCtx, nil); err != nil {
+	return err
+}
+fmt.Printf("  beats from a direct call: %q\n", beats)
+```
 
 ## Try it
 
@@ -137,6 +166,7 @@ progress:
 - **Progress is one value, not a log.** Each report replaces the last; keep a history in your own store if you need one.
 - **Lifecycle events are local.** On a fleet, a progress event fires only in the process running the step. An observer runs on a driver goroutine and must return quickly; a panic in it is recovered and never changes the run.
 - **A heartbeat is not progress.** It says "alive", not "how far". Call both when a page shows progress and a hang must be caught.
+- **Inside the handler, the timeout's cause is the driver's own.** When the watchdog fires, the step's `ctx` is cancelled with a driver-private cause (the memory, SQL and Redis drivers each have one), so `errors.Is(context.Cause(ctx), workflow.ErrHeartbeatTimeout)` is false in the handler. The error the attempt is recorded with is the one that matches: return `context.Cause(ctx)` and let the driver classify it.
 - **A handler that ignores `ctx` keeps running after a heartbeat timeout.** Go cannot stop a goroutine: the attempt is failed and retried, and the old goroutine runs on until it returns. Pass `ctx` to every call that can block.
 
 ## Related

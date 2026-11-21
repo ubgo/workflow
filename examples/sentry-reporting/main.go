@@ -29,6 +29,14 @@ import (
 	"github.com/ubgo/workflow/sentry"
 )
 
+// The wait for the reporter's event after the run ended: it is sent from a
+// goroutine, so the example polls the transport briefly instead of racing it.
+const (
+	eventWait = 5 * time.Second  // generous: the event normally lands in microseconds
+	eventPoll = time.Millisecond // short, the in-memory transport is instant
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "sentry-reporting:", err)
@@ -42,10 +50,21 @@ type memTransport struct {
 	events []*sentrygo.Event
 }
 
-func (t *memTransport) Configure(sentrygo.ClientOptions)      {}
-func (t *memTransport) Flush(time.Duration) bool              { return true }
+// Configure implements sentrygo.Transport: there is nothing to configure.
+func (t *memTransport) Configure(sentrygo.ClientOptions) {}
+
+// Flush implements sentrygo.Transport: events are kept at once, so it is
+// always done.
+func (t *memTransport) Flush(time.Duration) bool { return true }
+
+// FlushWithContext implements sentrygo.Transport, like Flush.
 func (t *memTransport) FlushWithContext(context.Context) bool { return true }
-func (t *memTransport) Close()                                {}
+
+// Close implements sentrygo.Transport: there is no connection to close.
+func (t *memTransport) Close() {}
+
+// SendEvent implements sentrygo.Transport: it keeps the event for the
+// example to print.
 func (t *memTransport) SendEvent(e *sentrygo.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -107,7 +126,7 @@ func run(ctx context.Context) error {
 	hub.Flush(2 * time.Second) // before the process exits, as with any sentry-go event
 	// snippet:end
 
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(eventWait)
 	for {
 		tr.mu.Lock()
 		n := len(tr.events)
@@ -118,7 +137,7 @@ func run(ctx context.Context) error {
 		if time.Now().After(deadline) {
 			return errors.New("no event was sent")
 		}
-		time.Sleep(time.Millisecond)
+		time.Sleep(eventPoll)
 	}
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
@@ -130,6 +149,13 @@ func run(ctx context.Context) error {
 		fmt.Printf("tag %s=%s\n", k, e.Tags[k])
 	}
 	fmt.Println("fingerprint:", strings.Join(e.Fingerprint, " "))
+	fmt.Printf("context %q: %s\n", sentry.ContextName, strings.Join(slices.Sorted(maps.Keys(e.Contexts[sentry.ContextName])), " "))
+	// snippet:tag-names
+	// A saved issue search for one tenant's final failures of one workflow,
+	// built from the tag names the reporter sets rather than retyped.
+	search := fmt.Sprintf("%s:%s %s:true %s:%s", sentry.TagWorkflow, "charge", sentry.TagFinal, sentry.TagLabelPrefix+"tenant", "acme")
+	fmt.Println("issue search:", search)
+	// snippet:end
 	body, err := json.Marshal(e) // what would go over the wire
 	if err != nil {
 		return err

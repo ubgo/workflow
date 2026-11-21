@@ -7,6 +7,7 @@ When an order is paid, several things should happen: a receipt is mailed, the CR
 - The bus deduplicates by event ID through idempotency keys, so `events.New` refuses a client without `workflow.CapIdempotencyKey` with an `*workflow.UnsupportedError`, unless you pass `events.AllowDuplicates()`. Every driver declares the capability.
 - Subscriptions are code, registered at boot in every process that publishes, as workflows are.
 - The example is [`examples/events-webhooks`](../../examples/events-webhooks). Its runs hold until the program ends, so the deduplication of unfinished runs is visible. Run it with `go run ./events-webhooks` from `examples/`.
+- Delivering to waiting runs is shown by [`examples/events-signal`](../../examples/events-signal), run with `go run ./events-signal` from `examples/`. It needs a driver with wait steps (`workflow.CapWaitForEvent`): memory, SQL, Redis and Hatchet declare it.
 
 ## Publish an event
 
@@ -59,7 +60,59 @@ Every matching subscription is tried even when one fails, and the error joins ea
 
 ## Deliver to waiting runs
 
-With `events.WithSignal()`, `Publish` also calls `client.Signal` with the message's `Name`, `Key` and `Payload`, so a run already parked on a [wait step](../workflows/signals.md) for that event and key continues, and a new subscriber's run and a waiting run see the same event. `Published.Signalled` reports whether the signal went out without error; a signal error joins the publish error.
+A subscription starts a new run. A run that is already parked on a [wait step](../workflows/signals.md) for the same thing (an order run waiting for its payment) needs the event too, and publishing it and calling `client.Signal` separately means two calls that can half fail. With `events.WithSignal()`, `Publish` does both: after starting the subscribers' runs it calls `client.Signal(ctx, workflow.Event{Name, Key, Payload})` with the message's `Name`, `Key` and `Payload`.
+
+<!-- snippet: examples/events-signal/main.go#signal-bus -->
+```go
+bus, err := events.New(p.c, events.WithSignal()) // Publish also signals waiting runs
+if err != nil {
+	return err
+}
+err = bus.Subscribe(events.Subscription{Name: "receipt", Event: evPaid, Workflow: wfReceipt})
+if err != nil {
+	return err
+}
+```
+
+The waiting run is an ordinary workflow whose wait step takes its key from the run's own labels, so each order waits for its own payment:
+
+<!-- snippet: examples/events-signal/main.go#wait-step -->
+```go
+{
+	Name: "await-payment",
+	Wait: &workflow.WaitSpec{
+		Event:   evPaid,
+		KeyFrom: workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[labelOrder] }), // its own order
+	},
+},
+```
+
+The message's `Key` is what the waiting run matches, so set it to the same value the wait step's key resolves to:
+
+<!-- snippet: examples/events-signal/main.go#signal-publish -->
+```go
+pub, err := bus.Publish(ctx, events.Message{
+	ID:      "pay_1",
+	Name:    evPaid,
+	Key:     "A-1", // the key the waiting run matches: its order
+	Payload: []byte(`{"order":"A-1","cents":4000}`),
+})
+if err != nil {
+	return err // a failed signal is joined in here; Signalled is then false
+}
+fmt.Fprintf(p.w, "  signalled: %v, subscriber runs started: %d\n", pub.Signalled, len(pub.Deliveries))
+```
+
+```text
+signal:
+  signalled: true, subscriber runs started: 1
+  order A-1 woke and shipped with {"order":"A-1","cents":4000}
+  order A-2 is still waiting: the event's key was A-1
+```
+
+The run for order A-1 continued and its next step received the message's payload; the run for A-2 waits on, because the key did not match. `Published.Signalled` is true when the signal went out without error. A signal error is joined into the error `Publish` returns, after the deliveries, so the subscribers' runs are already stored: publishing again with the same ID starts no second run (the deduplication above) and signals again.
+
+Once sent, the signal follows the `Client.Signal` contract every driver keeps: it resumes every run waiting with that name and key, not only the first; a run enqueued before the publish that has not reached its wait step yet still takes it when it gets there; a run enqueued after the publish never does; and a signal nobody waits for is not an error. A wait matches only a message with exactly its key, and an empty `Key` matches a wait with an empty key. See [Wait for an event](../workflows/signals.md) for the wait step itself, its timeout and fan-in.
 
 ## Try it
 
@@ -80,6 +133,14 @@ bus:
   run labels: event=order.paid id=evt_1 subscription=crm channel=web
 ```
 
+Delivering to a waiting run:
+
+```sh
+go run ./events-signal
+```
+
+The first section of its output is the one shown in [Deliver to waiting runs](#deliver-to-waiting-runs).
+
 ## Pitfalls
 
 - **An event is only as durable as the client.** On the memory driver, published events are lost with the process. Use a durable driver. `Publish` is not part of your database transaction, so a crash between your commit and the publish loses the event; when that matters, write the job inside the transaction with [transactional enqueue](../reliability/transactional-enqueue.md) or the [outbox](../reliability/outbox.md) instead.
@@ -87,9 +148,11 @@ bus:
 - **Renaming a subscription changes its keys.** A republish across a deploy that renamed it starts a second run.
 - **Subscriptions live in each process.** A process that publishes before registering a subscription starts no run for it.
 - **No ID means no deduplication.** A message published without an `ID` gets a fresh one every time.
+- **`WithSignal` signals with `Message.Key`, nothing else.** A message whose `Key` is empty wakes only waits with an empty key, not the run whose label holds the order number; set `Key` to what the wait step's `Key` or `KeyFrom` resolves to.
+- **The signal carries the upcast payload.** A signalled run gets the message's `Payload` after upcasting ([payload versions](cloudevents.md#version-an-events-payload)), so the step after the wait reads the current shape.
 
 ## Related
 
 - [Inbound webhooks](webhooks.md), [Events](README.md)
 - [Wait for an event](../workflows/signals.md), [Idempotency keys](../jobs/idempotency.md), [Outbox](../reliability/outbox.md)
-- Example: [examples/events-webhooks](../../examples/events-webhooks/)
+- Examples: [examples/events-webhooks](../../examples/events-webhooks/), [examples/events-signal](../../examples/events-signal/)

@@ -32,7 +32,10 @@ A unique store needs two operations a key-value service has: "set if absent, wit
 // Redis gives both (SET key value NX PX ttl, and a compare-and-delete
 // script); so does a SQL table with a primary key.
 type KV interface {
+	// SetNX stores value under key for ttl unless a live value is there,
+	// and reports whether it did.
 	SetNX(ctx context.Context, key, value string, ttl time.Duration) (bool, error)
+	// DeleteIfEquals deletes key only while it still holds value.
 	DeleteIfEquals(ctx context.Context, key, value string) error
 }
 
@@ -45,12 +48,17 @@ type kvUnique struct {
 	prefix string
 }
 
+// kvUnique must keep satisfying the interface middleware.Unique takes.
 var _ middleware.UniqueStore = kvUnique{}
 
+// Acquire implements middleware.UniqueStore: one atomic SetNX of the
+// prefixed key with the owner as its value.
 func (s kvUnique) Acquire(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
 	return s.kv.SetNX(ctx, s.prefix+key, owner, ttl)
 }
 
+// Release implements middleware.UniqueStore: it deletes the lock only if
+// owner still holds it.
 func (s kvUnique) Release(ctx context.Context, key, owner string) error {
 	return s.kv.DeleteIfEquals(ctx, s.prefix+key, owner)
 }
@@ -65,10 +73,11 @@ The example's `memKV` stands in for the service, with a mutex where Redis would 
 // EnqueueMiddleware makes workflow.Use run these on every Enqueue through
 // the client it returns. The first entry sees the job first.
 func (p *tenancy) EnqueueMiddleware() []workflow.EnqueueMiddleware {
+	// byTenant is the uniqueness key: one queued job per tenant and workflow.
 	byTenant := func(j workflow.Job) string { return j.Labels["tenant"] + "/" + j.Workflow }
 	return []workflow.EnqueueMiddleware{
 		requireLabel("tenant"),
-		middleware.Unique(byTenant, p.unique, time.Hour),
+		middleware.Unique(byTenant, p.unique, time.Hour), // TTL: a lock whose release was lost frees itself
 	}
 }
 

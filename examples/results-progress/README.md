@@ -18,6 +18,8 @@ result:
   {"file":"orders.csv","rows":3000}
   decoded: orders.csv, 3000 rows
   checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
+  RunInfo.Output is the same: true
+  RunOutput gives the same: true
   pay: ended failed: memory: step "charge" failed after 1 attempt(s): card declined
   Result of a failed run: ErrWrongState true
 tenants:
@@ -34,11 +36,11 @@ A step that reports progress and returns a typed result:
 <!-- snippet: examples/results-progress/main.go#report -->
 ```go
 export := workflow.Define(func(ctx context.Context, _ struct{}) (ExportResult, error) {
-	const total = 3000
-	for done := 1000; done <= total; done += 1000 {
+	const total, batch = 3000, 1000 // orders to export, and how many per round
+	for done := batch; done <= total; done += batch {
 		// ... export the next 1,000 orders ...
 		err := workflow.ReportProgress(ctx, workflow.Progress{
-			Percent: 100 * float64(done) / total,
+			Percent: 100 * float64(done) / total, // a share from 0 to 100
 			Message: fmt.Sprintf("exported %d of %d orders", done, total),
 		})
 		if err != nil && !errors.Is(err, workflow.ErrUnsupported) {
@@ -53,7 +55,7 @@ Progress events for a live page:
 
 <!-- snippet: examples/results-progress/main.go#events -->
 ```go
-progress := make(chan workflow.Progress, 8)
+progress := make(chan workflow.Progress, 8) // room for every report: the observer must not block
 err := c.OnLifecycle(func(_ context.Context, ev workflow.LifecycleEvent) {
 	if ev.Kind == workflow.LifecycleProgress {
 		progress <- *ev.Progress // a page could push this to the browser
@@ -71,7 +73,7 @@ if err != nil {
 }
 ctx, cancel := context.WithTimeout(ctx, time.Minute) // how long the caller will wait
 defer cancel()
-raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+raw, err := workflow.AwaitResult(ctx, c, ref, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 if err != nil {
 	return err
 }
@@ -112,7 +114,7 @@ A run that fails while the caller waits:
 
 <!-- snippet: examples/results-progress/main.go#failed -->
 ```go
-_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond})
+_, err = workflow.AwaitResult(ctx, c, ref3, workflow.AwaitOptions{Poll: 10 * time.Millisecond}) // how often to look
 var failed *workflow.RunFailedError
 if errors.As(err, &failed) {
 	fmt.Printf("  pay: ended %s: %s\n", failed.Status, failed.Err)

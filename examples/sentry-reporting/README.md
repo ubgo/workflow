@@ -17,6 +17,8 @@ tag workflow.name=charge
 tag workflow.status=failed
 tag workflow.step=capture
 fingerprint: ubgo-workflow charge capture *errors.errorString
+context "workflow": at run_id
+issue search: workflow.name:charge workflow.final:true workflow.label.tenant:acme
 payload sent: false user label sent: false
 ```
 

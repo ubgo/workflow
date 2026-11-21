@@ -9,7 +9,8 @@ import (
 
 // TestRun runs the program and checks every line the guides show: bus
 // deliveries and their deduplication, the webhook handler's status codes,
-// and Standard Webhooks refusing a changed body and a replay.
+// Standard Webhooks refusing a changed body and a replay, and an HMAC
+// secret rotation where both secrets verify until the old one is removed.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -36,6 +37,10 @@ standard webhooks:
   verified id=msg_1 err=<nil>
   changed body: ErrSignature=true
   replayed after 10m: ErrSignature=true
+hmac rotation:
+  new signature: g0kvyILC8kxerVjwwPqiYVmYAoBSuxlWZ1pbtLCkJS4=
+  during rotation: old secret verifies true, new secret verifies true
+  after rotation:  old secret verifies false, new secret verifies true
 `
 	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)

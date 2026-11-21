@@ -10,7 +10,7 @@ import (
 // TestRun runs the program and checks every line the guide shows: the
 // first mirror to answer wins and the others are cancelled, two of four
 // mirrors make a quorum, and a paged map of ten products tolerates one
-// failure.
+// failure, and each branch of a multi-merge starts its own notification.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -23,6 +23,8 @@ partial join:
   two of four answered, winners: [0,2]
 distributed map:
   started 10, succeeded 9, failed 1 (item 4)
+multi-merge:
+  one notification per branch: packed, paid, shipped
 `
 	if out != want {
 		t.Errorf("output:\n%s\nwant:\n%s", out, want)

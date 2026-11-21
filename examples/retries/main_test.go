@@ -45,6 +45,19 @@ refusals:
   memory: <nil>
   hatchet: workflow "sync" step "call": workflow: Retry.Backoff.Jitter unsupported by this driver (missing RetryJitter): Hatchet waits exactly Factor^n seconds and has no jitter | unsupported: true
   hatchet: workflow "sync" step "call": workflow: Retry.DelayFor unsupported by this driver (missing RetryDelay): Hatchet sets a retry's delay from the backoff only, never from the error (RetryAfter)
+
+jitter:
+  needs: RetryJitter | memory has it: true
+  retry 2 exact delay: 4s
+  draw 0.000: 4s
+  draw 0.500: 3.5s
+  draw 0.999: 3.001s
+
+precedence:
+  job over step: 1
+  step over workflow: 5
+  workflow default: 2
+  library default: 0 | DefaultRetryMax: 0
 `
 
 // TestRun runs the program and checks every line it prints, so a change

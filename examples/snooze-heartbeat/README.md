@@ -16,11 +16,14 @@ snooze:
   try at +2m0s: attempt 1
   run succeeded, attempts 1, errors recorded 0
 heartbeat:
+  needs: Heartbeat
   attempt 1 started
   attempt 2 started at +31s
   attempt 1 failed at +30s: workflow: heartbeat timed out: memory: step "load" attempt 1 went 30s without a heartbeat
   run succeeded
+  beats from a direct call: ["batch 1" "batch 2" "batch 3"]
 run timeout:
+  needs: RunTimeout
   run failed: workflow: run timed out: after 5m0s
   ErrRunTimeout true, IsTimeout true, ErrStepTimeout false
   ran OnTimeout with payload "q3"
@@ -32,6 +35,7 @@ A step that snoozes until the report is ready:
 
 <!-- snippet: examples/snooze-heartbeat/main.go#snooze -->
 ```go
+// fetch snoozes until the report it downloads is ready.
 fetch := func(ctx context.Context, _ []byte) ([]byte, error) {
 	info, _ := workflow.StepInfoFrom(ctx)
 	tries <- info.Attempt
@@ -52,6 +56,7 @@ A step that beats as it works, with a heartbeat timeout that catches a hang:
 
 <!-- snippet: examples/snooze-heartbeat/main.go#heartbeat -->
 ```go
+// load hangs on its first attempt and beats once per batch on the next.
 load := func(ctx context.Context, _ []byte) ([]byte, error) {
 	info, _ := workflow.StepInfoFrom(ctx)
 	attempts <- info.Attempt
@@ -59,7 +64,7 @@ load := func(ctx context.Context, _ []byte) ([]byte, error) {
 		<-ctx.Done() // a hung connection: no heartbeat, no progress
 		return nil, context.Cause(ctx)
 	}
-	for batch := 1; batch <= 3; batch++ {
+	for batch := 1; batch <= 3; batch++ { // three batches stand in for the catalog
 		// ... load one batch ...
 		if err := workflow.Heartbeat(ctx, fmt.Appendf(nil, "batch %d", batch)); err != nil {
 			return nil, err // the beat was not recorded: the attempt lost its lease

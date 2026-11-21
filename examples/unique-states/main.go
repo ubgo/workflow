@@ -38,6 +38,11 @@ type SyncArgs struct {
 
 // snippet:end
 
+// startedBuffer lets a handler report its start without waiting for the
+// program to read it; the program reads each report before it goes on.
+const startedBuffer = 4
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "unique-states:", err)
@@ -48,8 +53,10 @@ func main() {
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
-	started := make(chan string, 4)
+	started := make(chan string, startedBuffer)
 	release := make(chan struct{})
+	// sync is both workflows' step: it reports its payload, then holds its
+	// run until the program ends, so a run stays running.
 	sync := func(_ context.Context, in []byte) ([]byte, error) {
 		started <- string(in)
 		<-release
@@ -70,6 +77,11 @@ func run(ctx context.Context) error {
 	defer mc.Stop()
 	defer close(release)
 
+	fmt.Println("key from tagged fields:")
+	if err := taggedKeys(); err != nil {
+		return err
+	}
+
 	fmt.Println("unique while waiting to start:")
 	// snippet:states
 	waiting, err := middleware.UniqueWith(middleware.UniqueConfig{
@@ -85,6 +97,8 @@ func run(ctx context.Context) error {
 	c := middleware.WrapClient(mc, waiting)
 	// snippet:end
 
+	// enqueue enqueues a sync of args due at runAt through the unique
+	// middleware and prints whether it was accepted.
 	enqueue := func(label string, args SyncArgs, runAt time.Time) error {
 		job, err := workflow.JobOf("sync-shop", args)
 		if err != nil {
@@ -161,5 +175,24 @@ func run(ctx context.Context) error {
 	}
 	// snippet:end
 	<-started
+	return nil
+}
+
+// taggedKeys builds the key function from the tags on SyncArgs and shows
+// that only the tagged field decides the key.
+func taggedKeys() error {
+	// snippet:tagged-key
+	by := middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]())
+	jobs := make([]workflow.Job, 0, 3) // one per payload below
+	for _, args := range []SyncArgs{{ShopID: "s-1", Cursor: "a"}, {ShopID: "s-1", Cursor: "b"}, {ShopID: "s-2", Cursor: "a"}} {
+		job, err := workflow.JobOf("sync-shop", args)
+		if err != nil {
+			return err
+		}
+		jobs = append(jobs, job)
+	}
+	fmt.Println("  s-1 with two cursors, same key:", by(jobs[0]) == by(jobs[1]))
+	fmt.Println("  s-1 and s-2, same key:", by(jobs[0]) == by(jobs[2]))
+	// snippet:end
 	return nil
 }

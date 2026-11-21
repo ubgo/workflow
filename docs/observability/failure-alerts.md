@@ -76,6 +76,46 @@ By default an alert is sent once per workflow and step every ten minutes (`middl
 
 `middleware.NewMemoryAlertLimiter(clk, middleware.AlertLimits{Dedup, Max, Per})` dedups per key for `Dedup` and caps alerts across all keys at `Max` per sliding `Per`; `AlertLimits{}` lets every alert through. Its state is in one process, so each replica of a fleet dedups on its own; a limiter over a shared store (a database row per key) makes the limit fleet-wide. A limiter that returns an error does not hide the failure: the alert is sent anyway and the error logged.
 
+The second part of the example keys alerts per tenant instead of per step, never alerts for a load-test tenant that fails on purpose, and caps alerts at two an hour across every key. It registers the bare observer `middleware.Alerts` with `OnRunFinished`; `AlertPlugin` is the same observer bundled for `workflow.Use`:
+
+<!-- snippet: examples/failure-alerts/main.go#limiter -->
+```go
+limiter := middleware.NewMemoryAlertLimiter(clk, middleware.AlertLimits{
+	Dedup: tenantDedup, // one alert per key in this window
+	Max:   alertCap,    // and at most this many alerts, all keys together,
+	Per:   capWindow,   // in any sliding window this long
+})
+alerts := middleware.Alerts(slack, middleware.AlertConfig{
+	// One alert per workflow and tenant, not per workflow and step.
+	Key: func(f workflow.Failure) string { return f.Workflow + "/" + f.Labels["tenant"] },
+	// The load-test tenant fails on purpose: never page for it.
+	When:    func(f workflow.Failure) bool { return f.Labels["tenant"] != "loadtest" },
+	Limiter: limiter,
+	Clock:   clk,
+})
+if err := mem.OnRunFinished(alerts); err != nil { // the bare observer; AlertPlugin wraps it for workflow.Use
+	return err
+}
+```
+
+Four tenants fail at once. The cap lets the first two alerts out, holds `initech` back and never counts `loadtest`, which `When` filtered out before the limiter. An hour later the window has moved, and the next `initech` failure alerts with the one held back:
+
+```text
+-- per tenant, at most 2 alerts an hour: acme, globex, initech and loadtest fail
+  ALERT charge/acme (and 0 more)
+  ALERT charge/globex (and 0 more)
+-- an hour later initech fails again
+  ALERT charge/initech (and 1 more)
+```
+
+How the limiter decides, in order, for each failure that passed `When`:
+
+1. A key that alerted less than `Dedup` ago is held back, and its count grows.
+2. Otherwise, when `Max` alerts already went out (any key) within the last `Per`, it is held back too, and its count grows.
+3. Otherwise the alert goes out with `Suppressed` set to the count for its key, and the count starts again from zero.
+
+A held-back alert is not queued: nothing is sent until that key fails again after the window. A limiter of your own implements `middleware.AlertLimiter`, one method `Allow(ctx, key, at) (ok bool, suppressed int, err error)`, over the store your fleet shares.
+
 ## Report to Sentry
 
 The module `github.com/ubgo/workflow/sentry` is a `workflow.Reporter` on sentry-go. It is a separate module, so an app that does not use Sentry never downloads its SDK.
@@ -97,7 +137,7 @@ mem := memory.New()
 c, err := workflow.Use(mem, middleware.Report(reporter, middleware.ReportConfig{}))
 ```
 
-Each failure becomes one Sentry event: the error with its type chain, level `error` for a run's end and `warning` for an attempt (`WithLevels`), the tags `workflow.name`, `workflow.step`, `workflow.status` and `workflow.final`, and a `workflow` context with the run ID, attempt and time. Labels are sent only on opt-in, as `workflow.label.<key>` tags: `WithLabels(keys...)` for chosen keys or `WithAllLabels()`. The default fingerprint groups events by workflow, step and the type of the innermost error, so a failure that recurs is one issue, not one per run; `WithFingerprint` replaces it, and `WithEvent` sees each event and its failure before sending and may change or drop it.
+Each failure becomes one Sentry event: the error with its type chain, level `error` for a run's end and `warning` for an attempt (`WithLevels`), the tags `workflow.name`, `workflow.step`, `workflow.status` and `workflow.final`, and a `workflow` context with the run ID, the attempt (for an attempt's report) and the time. Labels are sent only on opt-in, as `workflow.label.<key>` tags: `WithLabels(keys...)` for chosen keys or `WithAllLabels()`. The default fingerprint groups events by workflow, step and the type of the innermost error, so a failure that recurs is one issue, not one per run; `WithFingerprint` replaces it, and `WithEvent` sees each event and its failure before sending and may change or drop it.
 
 ```text
 events sent: 1
@@ -109,7 +149,19 @@ tag workflow.name=charge
 tag workflow.status=failed
 tag workflow.step=capture
 fingerprint: ubgo-workflow charge capture *errors.errorString
+context "workflow": at run_id
+issue search: workflow.name:charge workflow.final:true workflow.label.tenant:acme
 payload sent: false user label sent: false
+```
+
+The tag and context names are constants of the module (`sentry.TagWorkflow`, `TagStep`, `TagStatus`, `TagFinal`, `TagLabelPrefix` and `ContextName`; the full list is in [Reserved names](../reference/names.md)), so a saved search, an alert rule or a dashboard built in code never retypes them:
+
+<!-- snippet: examples/sentry-reporting/main.go#tag-names -->
+```go
+// A saved issue search for one tenant's final failures of one workflow,
+// built from the tag names the reporter sets rather than retyped.
+search := fmt.Sprintf("%s:%s %s:true %s:%s", sentry.TagWorkflow, "charge", sentry.TagFinal, sentry.TagLabelPrefix+"tenant", "acme")
+fmt.Println("issue search:", search)
 ```
 
 `sentry.New(nil)` sends through the hub in the report's context, or the current hub. Each report works on a clone of that hub, so the app's scope is never changed. sentry-go sends in the background; flush before the process exits:
@@ -127,10 +179,12 @@ go run ./failure-alerts
 go run ./sentry-reporting
 ```
 
-The output of each is shown above.
+The output of each is shown above: `failure-alerts` prints the first part under [Step 2](#step-2-add-them-as-plugins) and the second under [Deduplication and rate limits](#deduplication-and-rate-limits).
 
 ## Pitfalls
 
+- **A held-back alert never arrives on its own.** The limiter only answers when a failure comes in; a key that failed once inside the window and never again is counted, not sent. Pair alerts with the [admin Monitor](../admin/alerts.md) or a dashboard when silence matters.
+- **The cap is shared by every key.** With `Max` and `Per`, one noisy workflow can use up the window and hold back another workflow's first alert; give a critical workflow its own `AlertPlugin` with its own limiter.
 - **The default limiter dedups per process.** Three replicas send up to three alerts per window; give `AlertConfig.Limiter` a shared store when that matters.
 - **Attempt reports include the last attempt.** With `ReportConfig.Attempts` the final attempt of a failing run is reported twice: once as an attempt, once as the run's end. Filter on `Final` in the reporter if that is noise.
 - **A run that ends while no observer runs is alerted when one is.** Run ends are delivered at least once, so on the SQL driver an end that happened during a deploy reaches the sink after it; on Hatchet an end can be missed (best effort).

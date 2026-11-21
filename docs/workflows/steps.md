@@ -62,7 +62,29 @@ Register every workflow, then call `Start` once; `Register` after `Start` return
 
 Working with bytes in every step is tedious. `workflow.Define` wraps a typed function into a `Handler`: it decodes the input from JSON into `In` and encodes the `Out` it returns as JSON. Empty input decodes to the zero `In`. Input that does not decode is a `workflow.Permanent` error, so it is not retried: the same bytes can never decode.
 
-The `reserve` and `ship` steps above are both `Define` handlers: `reserve` takes and returns an `order`, `ship` takes a `payment`.
+The `reserve` and `ship` steps above are both `Define` handlers: `reserve` takes and returns an `order`, `ship` takes a `payment`. A `Define` handler is a plain `Handler`, so a unit test can call it with bytes and no driver at all:
+
+<!-- snippet: examples/signals-and-sleep/main.go#define -->
+```go
+type greeting struct{ Name string }
+greet := workflow.Define(func(ctx context.Context, in greeting) (string, error) {
+	return "hello " + in.Name, nil
+})
+out, err := greet(ctx, []byte(`{"Name":"Ada"}`))
+if err != nil {
+	return err
+}
+fmt.Printf("  typed: %s\n", out)
+out, err = greet(ctx, nil) // empty input decodes to the zero greeting
+if err != nil {
+	return err
+}
+fmt.Printf("  empty input: %s\n", out)
+_, err = greet(ctx, []byte(`not json`))
+fmt.Println("  bad input is permanent:", workflow.IsPermanent(err))
+```
+
+The output is the JSON encoding of what the function returned, so the string comes back quoted. An output that does not encode (a channel, a func) is a `workflow.Permanent` error too. An error your function returns is passed on as it is, so the step's retry policy decides about it.
 
 ## Steps that depend on other steps
 
@@ -117,7 +139,28 @@ When a step fails for good, the run's other steps are cancelled and the run fail
 
 Every driver puts a `workflow.StepInfo` on the ctx it passes to a handler: the workflow and step names, the `RunID`, the `Attempt` (1 for the first, one more per retry) and the run's `Labels`. Read it with `workflow.StepInfoFrom(ctx)`; the second result is false outside a step (in an enqueue middleware, for example). The `quote` step above prints its workflow, step and attempt from it. Handlers and middleware must not modify `Labels`; it is the run's own map.
 
-`workflow.WithStepInfo` is the setter. Drivers call it before running a step; you need it only when writing a driver, or a test that calls a handler directly.
+`StepInfo` carries more for middleware: the run's `Queue`, its `Tenant`, the `Node` running the attempt, the workflow `Version`, and `ReadyAt`, when the attempt became ready to claim (now minus `ReadyAt` is how long it waited for a worker). Each is empty or zero on a driver without the matching capability.
+
+`workflow.WithStepInfo` is the setter. Drivers call it before running a step, before the middleware chain; you need it only when writing a driver, or a test that calls a handler directly. The program calls a handler that reads its `StepInfo`, once outside a step and once with a `StepInfo` set:
+
+<!-- snippet: examples/signals-and-sleep/main.go#step-info -->
+```go
+report := func(ctx context.Context, _ []byte) ([]byte, error) {
+	info, ok := workflow.StepInfoFrom(ctx)
+	if !ok {
+		return nil, workflow.Permanent(errors.New("not called from a step"))
+	}
+	return fmt.Appendf(nil, "%s/%s, run %s, attempt %d", info.Workflow, info.Step, info.RunID, info.Attempt), nil
+}
+_, err = report(ctx, nil)
+fmt.Println("  outside a step:", err)
+stepCtx := workflow.WithStepInfo(ctx, workflow.StepInfo{Workflow: "report", Step: "send", RunID: "run-1", Attempt: 2})
+out, err = report(stepCtx, nil)
+if err != nil {
+	return err
+}
+fmt.Printf("  inside a step: %s\n", out)
+```
 
 ## Timeouts
 
@@ -152,8 +195,8 @@ approval := workflow.Workflow{
 		Name: "await-approval",
 		Wait: &workflow.WaitSpec{
 			Event:   "expense.approved",
-			Key:     "finance", // a fixed key: every run waits for the same one
-			Timeout: 72 * time.Hour,
+			Key:     "finance",      // a fixed key: every run waits for the same one
+			Timeout: 72 * time.Hour, // three days, then the run fails
 		},
 	}},
 	// OnFailure runs once when a run fails for good, with the input of
@@ -191,7 +234,18 @@ step timeout:
 refusals:
   memory: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow order, step await-payment
   hatchet: workflow: WaitSpec.KeyFrom.Expr unsupported by this driver: workflow order step await-payment: Hatchet has no API that evaluates a CEL expression to a string for the driver; use workflow.KeyFunc
+wait keys:
+  order A-7 waits on "A-7", every approval on "finance"
+  an expression is the engine's to evaluate: true
+call a handler directly:
+  typed: "hello Ada"
+  empty input: "hello "
+  bad input is permanent: true
+  outside a step: not called from a step
+  inside a step: report/send, run run-1, attempt 2
 ```
+
+`steps that depend on other steps` is the fan-in above, `step timeout` the export, and `call a handler directly` the `Define` and `StepInfo` sections; the wait, sleep and key lines belong to [signals](signals.md) and [sleep](sleep.md).
 
 ## Pitfalls
 
@@ -200,6 +254,8 @@ refusals:
 - **On Hatchet, set `Step.Timeout` near the step's real duration.** A step whose worker process dies is reclaimed only when its execution timeout expires (`Config.StepTimeout`, 24 hours by default) and then retried, if it has a retry left.
 - **Read time from an injected clock in handlers**, never from `time.Now`, so a test or a replay sees the same values (the example reads its fake clock).
 - **The graph is fixed at Register.** A running workflow cannot gain steps: an engine declares the graph server-side and the SQL driver finds steps by name after a crash, so steps added at run time would have no code on the node that resumes them. For a fan-out decided at run time, enqueue child runs or a [batch](../batches/batches.md) from a step and wait for them.
+- **A `Define` input that does not decode is never retried.** It fails the step for good at once, so a payload whose shape changed fails runs instead of retrying them; version the payload type or accept both shapes.
+- **`StepInfoFrom` is false outside a step.** An enqueue middleware, or a helper called from `main`, gets the zero `StepInfo`; check the second result.
 - **Outputs are stored.** On a durable driver every step's output is written to the database or engine; keep outputs small, or move big ones out with a [claim check](../reliability/claim-check.md).
 
 ## Related

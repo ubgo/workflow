@@ -7,7 +7,7 @@ A run recorder keeps a history of runs that your app owns, separate from the dri
 - You know [plugins](../concepts/plugins.md): the recorder is applied with `workflow.Use` before `Register` and `Start`.
 - Any driver works: the recorder is built only from enqueue middleware, step middleware and the [run-finished hook](run-finished.md), which every driver runs. On the Hatchet driver, whose run-finished delivery is best effort, run the [Reconciler](#close-the-gaps-with-the-reconciler) next to it.
 - Add the modules you use: `go get github.com/ubgo/workflow/recorder` (the contract, an in-memory store, redaction, the Reconciler; standard library and the core only), and `go get github.com/ubgo/workflow/recorder/sqlrecorder` for the SQL store. Neither pulls a database driver: you open the `*sql.DB` with the driver you already use.
-- The runnable program for this page is [examples/run-recorder](../../examples/run-recorder/).
+- The runnable program for this page is [examples/run-recorder](../../examples/run-recorder/). Two more cover the rest: [examples/recorder-custom-store](../../examples/recorder-custom-store/) (redaction of your own, the error hook, the Reconciler's options, a store of your own proven with `recordertest`) and [examples/recorder-sql](../../examples/recorder-sql/) (the SQL store's dialects, retries and two-stage retention).
 
 ## Why a recorder
 
@@ -216,6 +216,40 @@ admin reads the recorder: succeeded
 reconcile: checked=0 finished=0 stale=0
 ```
 
+The two other programs of this page print what their sections below explain:
+
+```sh
+go run ./recorder-custom-store
+go run ./recorder-sql
+```
+
+```text
+input as stored: {"card":{"number":"[REDACTED]"},"order":"order-1"}
+  step charge output=none (51 bytes before redaction)
+  step notify output={"sent":true} (13 bytes before redaction)
+    event "receipt sent" [{email a***@example.com}]
+-- the history store goes into maintenance
+history writes that failed: add-event end-step finish-run start-step upsert-run
+run status from the driver: succeeded; in the history: true
+-- maintenance over: one Reconciler pass
+reconcile: checked=0 finished=0 backfilled=2 errors=0
+second run in the history: succeeded source=api/order-2 steps=0
+```
+
+```text
+dialects: [postgres mysql sqlite]
+refused: history database "oracle": want one of [postgres mysql sqlite]
+retried: sqlite busy true | proxy busy true | syntax error false
+migration statements: 15, tables: hist_events hist_labels hist_runs hist_schema hist_steps
+day 0: report succeeded steps=1, billing succeeded steps=1
+prune after a week: steps cleared=1 runs deleted=0 archived=0
+day 7: report succeeded steps=0, billing succeeded steps=1
+prune after a month, archive down: deleted=0 error=sqlrecorder: archive: cold storage unreachable
+day 31: report succeeded steps=0, billing succeeded steps=1
+archived: report (steps kept: 0)
+after PruneEvery: report gone, billing succeeded steps=1
+```
+
 ## Redaction and payload bounds
 
 A runs table is read by more people than the queue, so it is where a token in a payload leaks. A [`recorder.Redactor`](ds:block?id=rec-redactor-x3e2p5bt) scrubs every body (the run's input and result, each step's input and output) and every event attribute before it is stored:
@@ -223,26 +257,180 @@ A runs table is read by more people than the queue, so it is where a token in a 
 - [`recorder.JSONPaths(paths...)`](ds:block?id=rec-jsonpaths-66ph5w5h) replaces the values at dot paths of a JSON body with `[REDACTED]`; `*` matches any key or array element, a number an array index (`"password"`, `"card.number"`, `"users.*.token"`). An event attribute is redacted when its key matches a path. A body that is not JSON is stored unchanged, so an app with non-JSON payloads writes its own `Redactor`.
 - [`recorder.PerWorkflow(map, fallback)`](ds:block?id=rec-perworkflow-vx8puukg) picks a redactor per workflow; [`recorder.Chain(...)`](ds:block?id=rec-chain-ryg3zfvp) applies several in order.
 - [`recorder.WithMaxPayload(n)`](ds:block?id=rec-withmaxpayload-3f6m2zdh) keeps a body only up to n bytes ([64 KiB](ds:block?id=rec-defaultmaxpayload-43z9t84h) by default) and records the size of a larger one. `WithMaxPayload(0)` keeps no bodies at all, only sizes; [`WithStepBodies(false)`](ds:block?id=rec-withstepbodies-7dpfqzyb) drops step inputs and outputs while keeping the run's own.
+- [`WithErrorHistory(n)`](ds:block?id=rec-witherrorhistory-3fap7agv) bounds the attempt errors a record keeps (`workflow.DefaultErrorHistory` by default; zero keeps none). The value `JSONPaths` writes is the constant [`recorder.Redacted`](ds:block?id=rec-redacted-uvn3fy6r).
 
 Event messages are not redacted: put values in attributes.
+
+### Step 1: write a Redactor of your own
+
+A `Redactor` has two methods, one for bodies and one for event attributes, and each is told what it is looking at through a [`recorder.PayloadInfo`](ds:block?id=rec-payloadinfo-9axyr3hj): the workflow, the step (empty for the run's input and result) and the [`PayloadKind`](ds:block?id=rec-payloadkind-2vp35d73), one of `PayloadInput`, `PayloadStepInput`, `PayloadStepOutput`, `PayloadResult` and `PayloadEvent`. This one keeps none of the `charge` step's output (the payment provider's raw response) and masks an email in any event attribute:
+
+<!-- snippet: examples/recorder-custom-store/main.go#redactor -->
+```go
+// receipts is a Redactor of the app's own. It reads PayloadInfo to treat
+// one step differently: the charge step's output is the payment provider's
+// raw response, so none of it is stored (nil keeps the size only), and an
+// email in any event attribute is masked down to its domain. It must not
+// change the slice it is given, and it runs on the step's goroutine, so it
+// stays quick.
+type receipts struct{}
+
+// RedactPayload implements recorder.Redactor: it drops the charge step's
+// output and keeps every other body as it is.
+func (receipts) RedactPayload(info recorder.PayloadInfo, body []byte) []byte {
+	if info.Kind == recorder.PayloadStepOutput && info.Step == "charge" {
+		return nil
+	}
+	return body
+}
+
+// RedactAttr implements recorder.Redactor: it masks an email attribute
+// down to its first letter and domain.
+func (receipts) RedactAttr(_ recorder.PayloadInfo, a workflow.EventAttr) workflow.EventAttr {
+	if at := strings.IndexByte(a.Value, '@'); a.Key == "email" && at > 0 {
+		a.Value = a.Value[:1] + "***" + a.Value[at:]
+	}
+	return a
+}
+```
+
+Returning `nil` stores no body; the record still holds the size the body had. Returning a body larger than the bound stores none either, so a redactor cannot push a body past `WithMaxPayload`.
+
+### Step 2: combine redactors and set the bounds
+
+`PerWorkflow` gives `checkout` both redactors, card paths first, and every other workflow the card paths only:
+
+<!-- snippet: examples/recorder-custom-store/main.go#recorder -->
+```go
+cards, err := recorder.JSONPaths("card.number")
+if err != nil {
+	return err
+}
+// checkout gets both redactors, in order; every other workflow the
+// card paths only.
+redact := recorder.PerWorkflow(map[string]recorder.Redactor{
+	"checkout": recorder.Chain(cards, receipts{}),
+}, cards)
+rec, err := recorder.New(db,
+	recorder.WithRedactor(redact),
+	recorder.WithMaxPayload(maxBody),        // larger bodies are kept by size only
+	recorder.WithStepBodies(true),           // the default; false keeps only the run's input and result
+	recorder.WithErrorHistory(errorHistory), // attempt errors kept per run
+	recorder.WithClock(clk),                 // the driver's clock, so records and driver agree
+	recorder.WithOnError(func(_ context.Context, op recorder.WriteOp, ref workflow.RunRef, err error) {
+		failed.add(op) // in an app: a counter by op, and a log line with ref and err
+	}),
+)
+if err != nil {
+	return err
+}
+```
+
+The first run of `checkout` is stored like this (the full output is under [Try it](#try-it)):
+
+```text
+input as stored: {"card":{"number":"[REDACTED]"},"order":"order-1"}
+  step charge output=none (51 bytes before redaction)
+  step notify output={"sent":true} (13 bytes before redaction)
+    event "receipt sent" [{email a***@example.com}]
+```
+
+## Be told about a failed write
+
+A recorder never fails a run: when a history write fails (the store is down, a write times out after [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw), the store panics), the run goes on and the failure goes to the hook set with [`recorder.WithOnError`](ds:block?id=rec-withonerror-r4hkn36k). The hook is a [`recorder.ErrorFunc`](ds:block?id=rec-errorfunc-nrd8pzfd), `func(ctx, op recorder.WriteOp, ref workflow.RunRef, err error)`; without one, each failure is logged with `slog.Default` at warn level. `op` says which write failed:
+
+| `WriteOp` | Value | The write |
+|---|---|---|
+| `OpUpsertRun` | `upsert-run` | The run was accepted (enqueue seam) |
+| `OpStartStep` | `start-step` | A step attempt started |
+| `OpEndStep` | `end-step` | A step attempt ended |
+| `OpAddEvent` | `add-event` | A step event (`workflow.RecordEvent`) |
+| `OpFinishRun` | `finish-run` | The run ended (run-finished observer) |
+| `OpReadResult` | `read-result` | Reading a succeeded run's result with [`WithResultReader`](ds:block?id=rec-withresultreader-wrjsqy26) failed; the end is still written, without the result |
+
+The example's hook (in the `recorder` snippet above) collects the ops. It then takes the store down for maintenance and runs the workflow again: every write fails, the hook hears of each, and the run still succeeds on the driver:
+
+```text
+-- the history store goes into maintenance
+history writes that failed: add-event end-step finish-run start-step upsert-run
+run status from the driver: succeeded; in the history: true
+```
+
+The hook runs on the goroutine that made the write (a step's, an enqueuer's, the driver's run-finished goroutine), so it must return quickly: count by `op` and log with `ref`, never write to the same store again from it. A run whose writes failed is recorded later by the [Reconciler](#close-the-gaps-with-the-reconciler)'s backfill.
 
 ## Retention
 
 Both bundled stores prune in [two stages](ds:block?id=rec-retention-gz6xhhm8), measured from a run's end, so the heavy part goes first and the summary row a runs page lists stays longer:
 
-```go
-store, err := sqlrecorder.New(db, sqlrecorder.Postgres, sqlrecorder.WithRetention(recorder.Retention{
-	RetentionRule: recorder.RetentionRule{Steps: 7 * 24 * time.Hour, Runs: 30 * 24 * time.Hour},
-	PerWorkflow:   map[string]recorder.RetentionRule{"billing": {Runs: 365 * 24 * time.Hour}},
-	Archive:       func(ctx context.Context, runs []recorder.RunRecord) error { return coldStorage.Put(ctx, runs) },
-}))
-// later, next to the client:
-go recorder.PruneEvery(ctx, store, time.Hour, func(err error) { log.Warn("prune", "err", err) })
-```
-
 - After `Steps`, a finished run's step and event rows are dropped; its record stays.
 - After `Runs`, the record is handed to `Archive` (with whatever steps are left) and deleted. An `Archive` error stops the prune and deletes nothing of that batch, so nothing is lost while an archive is down.
 - A zero age keeps that stage; `PerWorkflow` overrides both ages for a workflow. Unfinished runs are never pruned, and each prune works in batches ([`Retention.Batch`](ds:block?id=rec-retention-gz6xhhm8), [500](ds:block?id=rec-defaultprunebatch-4n8gxw2n) by default).
+
+The program is [examples/recorder-sql](../../examples/recorder-sql/). Its store keeps step rows a week and run rows a month, a [`recorder.Retention`](ds:block?id=rec-retention-gz6xhhm8) with a [`RetentionRule`](ds:block?id=rec-retentionrule-33x6hwfr) for every workflow and a `PerWorkflow` rule that keeps `billing` runs a year, and an `Archive` hook that takes each run before it is deleted:
+
+<!-- snippet: examples/recorder-sql/main.go#store -->
+```go
+dialect, err := dialectFor(historyDialect)
+if err != nil {
+	return err
+}
+store, err := sqlrecorder.New(db, dialect,
+	sqlrecorder.WithTablePrefix(tablePrefix),
+	sqlrecorder.WithTxAttempts(txAttempts),
+	sqlrecorder.WithRetryable(retryable),
+	sqlrecorder.WithClock(clk), // retention ages are measured on this clock
+	sqlrecorder.WithRetention(recorder.Retention{
+		RetentionRule: recorder.RetentionRule{Steps: stepsAge, Runs: runsAge},
+		// A PerWorkflow rule replaces both ages: billing keeps its
+		// steps (zero) and its runs for a year.
+		PerWorkflow: map[string]recorder.RetentionRule{"billing": {Runs: billingRunsAge}},
+		// Every run is handed here before stage two deletes it.
+		Archive: cold.Put,
+	}),
+)
+if err != nil {
+	return err
+}
+if err := store.Migrate(ctx); err != nil { // idempotent, on every start
+	return err
+}
+```
+
+A store with retention is a [`recorder.Pruner`](ds:block?id=rec-pruner-tz43nn4x): `Prune` runs both stages once and returns a [`PruneResult`](ds:block?id=rec-pruneresult-2nc4x76t). Call it from a scheduled job of your own:
+
+<!-- snippet: examples/recorder-sql/main.go#prune -->
+```go
+clk.Advance(stepsAge + time.Hour) // an hour past the step age
+res, err := store.Prune(ctx)      // or a scheduled job of your own
+if err != nil {
+	return err
+}
+fmt.Fprintf(w, "prune after a week: steps cleared=%d runs deleted=%d archived=%d\n", res.StepsCleared, res.RunsDeleted, res.Archived)
+```
+
+or run [`recorder.PruneEvery`](ds:block?id=rec-pruneevery-7jzsmuxr) next to the client, which prunes at once, then every interval until its context ends, and hands each error to its callback:
+
+<!-- snippet: examples/recorder-sql/main.go#prune-every -->
+```go
+go func() {
+	// Prunes at once, then every pruneInterval, until pctx ends.
+	done <- recorder.PruneEvery(pctx, store, pruneInterval, func(err error) {
+		fmt.Fprintln(w, "prune failed:", err) // a log line in an app
+	})
+}()
+```
+
+The program moves a fake clock a week, then a month, with the archive down at the first try:
+
+```text
+day 0: report succeeded steps=1, billing succeeded steps=1
+prune after a week: steps cleared=1 runs deleted=0 archived=0
+day 7: report succeeded steps=0, billing succeeded steps=1
+prune after a month, archive down: deleted=0 error=sqlrecorder: archive: cold storage unreachable
+day 31: report succeeded steps=0, billing succeeded steps=1
+archived: report (steps kept: 0)
+after PruneEvery: report gone, billing succeeded steps=1
+```
 
 ## Close the gaps with the Reconciler
 
@@ -266,6 +454,54 @@ fmt.Printf("reconcile: checked=%d finished=%d stale=%d\n", rep.Checked, rep.Fini
 
 Run it with [`go rc.Run(ctx)`](ds:block?id=rec-reconciler-run-hkpv3q3x) (every [30 seconds](ds:block?id=rec-defaultreconcileinterval-6wpsuxsy) by default) on one node or several: every write is an upsert, so two reconcilers never conflict.
 
+### Tune the Reconciler
+
+| Option | Default | What it changes |
+|---|---|---|
+| [`WithInterval(d)`](ds:block?id=rec-withinterval-xygvejf4) | 30 seconds | The pause between passes of `Run` |
+| [`WithStaleAfter(d)`](ds:block?id=rec-withstaleafter-94d6u87k) | [10 minutes](ds:block?id=rec-defaultstaleafter-ecr2t7eq) | How long an unfinished run may go with nothing recorded before it is flagged `Stale` |
+| [`WithBatch(n)`](ds:block?id=rec-withbatch-7wqg86rr) | [100](ds:block?id=rec-defaultreconcilebatch-6zk3gwwh) | Unfinished records checked per pass, and the page size of the backfill listing (1 to `workflow.MaxRunsLimit`) |
+| [`WithBackfill(on)`](ds:block?id=rec-withbackfill-euvuqmgs) | on | Whether a pass lists the client's runs at all |
+| `WithBackfillWindow(d)` | an hour | How far back the listing reaches: longer than the longest store outage you expect |
+| [`WithBackfillPages(n)`](ds:block?id=rec-withbackfillpages-eyrfe4qc) | [10](ds:block?id=rec-defaultbackfillpages-mejfjkfb) | The pages one backfill pass reads at most, so a large window cannot make a pass unbounded |
+| `WithBackfillQuery(q)` | every run | The workflows, tenant or labels the listing is scoped to |
+| [`WithReconcileClock(c)`](ds:block?id=rec-withreconcileclock-9n7x2xtd) | the real clock | The clock ages and the window are measured on: the recorder's |
+| [`WithReconcileOnError(fn)`](ds:block?id=rec-withreconcileonerror-muvwebjc) | dropped by `Pass`, logged by `Run` | Told about each run whose check or backfill failed; the pass goes on and counts it in `Errors` |
+
+After the maintenance in [Be told about a failed write](#be-told-about-a-failed-write), the example runs one pass with every option set:
+
+<!-- snippet: examples/recorder-custom-store/main.go#reconciler -->
+```go
+rc, err := recorder.NewReconciler(c, store,
+	recorder.WithReconcileClock(clk),            // the recorder's clock
+	recorder.WithBatch(reconcileBatch),          // records checked per pass, and the backfill page size
+	recorder.WithBackfill(true),                 // the default: list the client's recent runs too
+	recorder.WithBackfillWindow(backfillWindow), // how far back the listing reaches
+	recorder.WithBackfillPages(backfillPages),   // and how many pages one pass reads at most
+	recorder.WithStaleAfter(staleAfter),
+	recorder.WithInterval(reconcileEvery), // between passes of rc.Run
+	recorder.WithReconcileOnError(func(_ context.Context, err error) {
+		fmt.Fprintln(w, "reconcile error:", err) // one run's failure; the pass goes on
+	}),
+)
+if err != nil {
+	return err
+}
+rep, err := rc.Pass(ctx) // go rc.Run(ctx) next to the client in an app
+if err != nil {
+	return err
+}
+fmt.Fprintf(w, "reconcile: checked=%d finished=%d backfilled=%d errors=%d\n", rep.Checked, rep.Finished, rep.Backfilled, rep.Errors)
+```
+
+```text
+-- maintenance over: one Reconciler pass
+reconcile: checked=0 finished=0 backfilled=2 errors=0
+second run in the history: succeeded source=api/order-2 steps=0
+```
+
+`backfilled` counts every run the listing returned (here both), not only new ones: the first run was already recorded and is left as it was, because upserts only fill. The second run gets its record back from the listing, with its source from its labels and its end, but no steps: step detail is only written by the step seam.
+
 ## Per driver
 
 The recorder is the same on every driver; what differs is which run ends the driver delivers and what its store or engine forgets. The recorder's end-to-end module, `recorder/e2e`, runs the shared driver cases of [`recordertest.RunDriver`](ds:block?id=rectest-rundriver-y5s57z34) (a run with its source, steps, events and outcome; retries and failure; redaction; a delayed run cancelled before it starts; the Reconciler's backfill and check) on each driver below but hybrid, and the web-node split on the SQL driver and on Hatchet. Each service's cases skip without its connection variable (`WFTEST_PG_DSN`, `WFTEST_MYSQL_DSN`, `WFTEST_REDIS_URL`, `HATCHET_CLIENT_TOKEN`); SQLite always runs.
@@ -277,6 +513,24 @@ The recorder is the same on every driver; what differs is which run ends the dri
 | [redis](../drivers/redis.md#record-run-history) | Every end, at least once | [`recorder.MemoryStore`](ds:block?id=rec-memorystore-smz35v44) | Finished runs expire after the driver's retention; the record stays |
 | [hatchet](../drivers/hatchet.md#record-run-history) | Best effort: run the Reconciler | `recorder.MemoryStore`; `sqlrecorder` on SQLite for the split | The record keeps every attempt's error, which the driver does not report |
 | [hybrid](../drivers/hybrid.md#record-run-history) | The jobs client's | not run on its own | Cron runs are recorded from their first step, as `schedule` |
+
+The same cases run on your driver, or with your store, from a test of your own. `RunDriver` takes a [`workflowtest.Harness`](../extending/writing-a-driver.md#run-the-conformance-suite) that builds a fresh client per case, and [`recordertest.WithStore`](ds:block?id=rectest-withstore-uh7nyewq) records into stores your function builds instead of the in-memory default. The function is a [`recordertest.NewStore`](ds:block?id=rectest-newstore-ppek35b3), `func(t, cfg recordertest.StoreConfig) recorder.Store`; [`StoreConfig`](ds:block?id=rectest-storeconfig-ehg5t6ys) carries the `Retention` and `Clock` a case wants, which a store without retention ignores:
+
+<!-- snippet: examples/recorder-custom-store/main_test.go#contract-driver -->
+```go
+// TestRecorderOnMemoryDriver runs the recorder's driver cases (source,
+// steps, events and outcome; retries and failure; redaction; a delayed run
+// cancelled before it starts; the Reconciler's backfill and check) on the
+// memory driver, recording into docStore instead of the default store.
+func TestRecorderOnMemoryDriver(t *testing.T) {
+	recordertest.RunDriver(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
+		clk := clock.NewFake(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
+		return workflowtest.Instance{Client: memory.New(memory.WithClock(clk)), Clock: clk}
+	}}, recordertest.WithStore(func(t *testing.T, _ recordertest.StoreConfig) recorder.Store {
+		return newDocStore()
+	}))
+}
+```
 
 ## The SQL store
 
@@ -290,11 +544,226 @@ The recorder is the same on every driver; what differs is which run ends the dri
 | `labels` | run label | label and label-prefix filters |
 | `schema` | applied schema version | `Migrate` |
 
+Pick the dialect from the same setting that picked your database driver, and refuse an unknown one before anything is opened. [`sqlrecorder.Dialects()`](ds:block?id=sqlrec-dialects-f8qtn3z5) lists the three ([`Postgres`](ds:block?id=sqlrec-postgres-h97qy2kb), [`MySQL`](ds:block?id=sqlrec-mysql-pq4wcncq), [`SQLite`](ds:block?id=sqlrec-sqlite-pa63vhwe)); `New` itself refuses any other value with `workflow.ErrInvalid`:
+
+<!-- snippet: examples/recorder-sql/main.go#dialect -->
+```go
+// dialectFor turns a configuration value into a sqlrecorder.Dialect,
+// refusing an engine the store does not support before anything is opened.
+func dialectFor(name string) (sqlrecorder.Dialect, error) {
+	for _, d := range sqlrecorder.Dialects() {
+		if string(d) == name {
+			return d, nil
+		}
+	}
+	return "", fmt.Errorf("history database %q: want one of %v", name, sqlrecorder.Dialects())
+}
+```
+
 Steps and events are rows of their own, so a busy run never rewrites one large row per event. Times are Unix nanoseconds in UTC (0 for unset), identifiers compare byte by byte on every engine, and every write is one transaction that locks the run's row first and is [retried on contention](ds:block?id=sqlrec-defaultretryable-h3ustvp4). [`Migrate`](ds:block?id=sqlrec-store-migrate-63gjrdbn) is idempotent and safe to run on every start; [`MigrationScripts`](ds:block?id=sqlrec-store-migrationscripts-xbepgg67) returns its statements for your own migration tool.
+
+A write transaction that hits contention (two first writes of one run racing, a deadlock, a serialization failure, a busy SQLite file) runs again, up to [`WithTxAttempts(n)`](ds:block?id=sqlrec-withtxattempts-dqc6w5mx) times ([8](ds:block?id=sqlrec-defaulttxattempts-a3fk8dhr) by default). Which errors count as contention is [`DefaultRetryable`](ds:block?id=sqlrec-defaultretryable-h3ustvp4): it matches the error text of each engine (`40001`, `40P01`, `deadlock`, `Error 1213`, `database is locked`, the unique violations and more), so the module needs no driver's error types. A driver or a proxy whose errors read differently adds its own with [`WithRetryable`](ds:block?id=sqlrec-withretryable-cx2mmux2); keep `DefaultRetryable` in it, as here:
+
+<!-- snippet: examples/recorder-sql/main.go#retryable -->
+```go
+// retryable is DefaultRetryable plus the proxy's own contention error, for
+// sqlrecorder.WithRetryable.
+func retryable(err error) bool {
+	return sqlrecorder.DefaultRetryable(err) || (err != nil && strings.Contains(err.Error(), proxyBusy))
+}
+```
+
+```text
+dialects: [postgres mysql sqlite]
+refused: history database "oracle": want one of [postgres mysql sqlite]
+retried: sqlite busy true | proxy busy true | syntax error false
+migration statements: 15, tables: hist_events hist_labels hist_runs hist_schema hist_steps
+```
+
+The SQL store's whole set-up, with the table prefix, the retries, the clock and the retention, is the `store` snippet under [Retention](#retention).
 
 ## Bring your own store
 
-[`recorder.Store`](ds:block?id=rec-store-pgu7xhxs) is an interface: any database can hold the history. The `Apply*` functions of the `recorder` package hold the merge rules, so your store merges a write exactly as the bundled ones do, and [`recordertest.RunStore(t, newStore)`](ds:block?id=rectest-runstore-w3fd43ef) holds it to the same contract they pass (fill-only upserts, attempts, events, outcome, finish and re-open, the join of a delayed run's two IDs, every filter, paging, `Pending`, copies on read, concurrent writes, retention). `recordertest.RunDriver(t, harness, recordertest.WithStore(newStore))` then proves it under a real driver.
+[`recorder.Store`](ds:block?id=rec-store-pgu7xhxs) is an interface: any database can hold the history. The program is [examples/recorder-custom-store](../../examples/recorder-custom-store/); its `docStore` keeps one document per run, the shape of a store over a document database.
+
+### Step 1: load, apply the shared rule, save
+
+The `Apply*` functions of the `recorder` package hold the merge rules (fill and never overwrite, the earliest enqueue and start, a terminal status changed only by a finish or a new attempt, the join of a delayed run's `ScheduledID` and `RunID` with `MergeRecords`), so your store merges a write exactly as the bundled ones do. Each write loads the run's document, applies the rule and saves it, in one transaction:
+
+<!-- snippet: examples/recorder-custom-store/store.go#store -->
+```go
+// docStore is a recorder.Store of the app's own, shaped like a store over a
+// document database: one document per run (the run with its steps and their
+// events) under the run's key, and a secondary index from a delayed run's
+// ScheduledID to that key. Every write is the same three moves in one
+// transaction: load the document, apply the recorder's merge rule for the
+// write (the recorder.Apply* functions), save it. The rules are shared, so
+// this store merges a write exactly as the bundled stores do, and
+// recordertest.RunStore holds it to their contract (see main_test.go).
+//
+// Here the "database" is a map behind a mutex; over a real one, update is
+// a transaction that reads the document, runs fn and writes it back.
+type docStore struct {
+	mu      sync.Mutex
+	docs    map[string]recorder.RunRecord
+	bySched map[workflow.ScheduledID]string
+}
+
+var _ recorder.Store = (*docStore)(nil)
+
+// newDocStore returns an empty store.
+func newDocStore() *docStore {
+	return &docStore{docs: map[string]recorder.RunRecord{}, bySched: map[workflow.ScheduledID]string{}}
+}
+
+// update is one write: it loads the run's document (joining a record kept
+// under the ScheduledID into the one under the RunID when ref carries
+// both, as recorder.MergeRecords says), hands it to fn, and saves it under
+// its key, moving it off a ScheduledID-only key once it has a RunID.
+func (s *docStore) update(ref workflow.RunRef, fn func(r *recorder.RunRecord, isNew bool)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var byRun, bySched *recorder.RunRecord
+	if !ref.RunID.IsZero() {
+		if d, ok := s.docs[recorder.KeyOf(workflow.RunRef{RunID: ref.RunID})]; ok {
+			byRun = &d
+		}
+	}
+	if k, ok := s.bySched[ref.ScheduledID]; ok && !ref.ScheduledID.IsZero() {
+		if d, ok := s.docs[k]; ok {
+			bySched = &d
+		}
+	}
+	var r recorder.RunRecord
+	isNew := false
+	switch {
+	case byRun != nil && bySched != nil && byRun.Key() != bySched.Key():
+		delete(s.docs, bySched.Key())
+		r = recorder.MergeRecords(*byRun, *bySched)
+	case byRun != nil:
+		r = *byRun
+	case bySched != nil:
+		r = *bySched
+	default:
+		r, isNew = recorder.NewRecord(ref), true
+	}
+	fn(&r, isNew)
+	key := r.Key()
+	if !r.Ref.ScheduledID.IsZero() {
+		if old := recorder.KeyOf(workflow.RunRef{ScheduledID: r.Ref.ScheduledID}); old != key {
+			delete(s.docs, old)
+		}
+		s.bySched[r.Ref.ScheduledID] = key
+	}
+	s.docs[key] = r.Clone() // the document owns its data, never the caller's slices
+}
+```
+
+### Step 2: one rule per write
+
+Every write method is a check (`recorder.CheckRef`, `recorder.CheckStep`, refused with `workflow.ErrInvalid`) and one call to `update` with its rule. The other four writes follow the same pattern; the file has all of them:
+
+<!-- snippet: examples/recorder-custom-store/store.go#writes -->
+```go
+// UpsertRun implements recorder.Store.
+func (s *docStore) UpsertRun(_ context.Context, w recorder.RunWrite) error {
+	if err := recorder.CheckRef("UpsertRun", w.Ref); err != nil {
+		return err
+	}
+	s.update(w.Ref, func(r *recorder.RunRecord, isNew bool) { recorder.ApplyRunWrite(r, isNew, w) })
+	return nil
+}
+
+// StartStep implements recorder.Store.
+func (s *docStore) StartStep(_ context.Context, st recorder.StepStart) error {
+	if err := recorder.CheckStep("StartStep", st.Ref, st.Step, st.Attempt); err != nil {
+		return err
+	}
+	s.update(st.Ref, func(r *recorder.RunRecord, _ bool) {
+		i := attempt(r.Steps, st.Step, st.Attempt)
+		var existing *recorder.StepRecord
+		if i >= 0 {
+			existing = &r.Steps[i]
+		}
+		recorder.ApplyStepStart(r, recorder.StartsNewAttempt(existing), st)
+		if i < 0 {
+			r.Steps = append(r.Steps, recorder.NewStepRecord(st))
+		} else {
+			recorder.ResetStepRecord(&r.Steps[i], st) // a repeated start keeps the attempt's events
+		}
+		recorder.SortSteps(r.Steps)
+	})
+	return nil
+}
+```
+
+### Step 3: answer listings the shared way
+
+`Records` filters with `recorder.Query.Match`, orders with `recorder.SortRecords` and pages with `recorder.EncodeCursor`, so a page reads the same as on the bundled stores; a database store turns the same filters into its own query. `Runs` is `Records` through `recorder.InfoPage`, which makes the store a `workflow.RunQuerier` the admin API can read; `Pending` sorts with `recorder.SortPending` for the Reconciler:
+
+<!-- snippet: examples/recorder-custom-store/store.go#records -->
+```go
+// Records implements recorder.Store: the filters are recorder.Query.Match,
+// the order recorder.SortRecords, the cursor recorder.EncodeCursor, so a
+// page reads the same as on the bundled stores. A database store turns the
+// same filters into its own query.
+func (s *docStore) Records(_ context.Context, q recorder.Query) (recorder.RecordPage, error) {
+	if err := recorder.ValidateQuery(q); err != nil {
+		return recorder.RecordPage{}, err
+	}
+	var after *recorder.Cursor
+	if q.Cursor != "" {
+		c, err := recorder.DecodeCursor(q.Cursor)
+		if err != nil {
+			return recorder.RecordPage{}, err
+		}
+		after = &c
+	}
+	s.mu.Lock()
+	var page []recorder.RunRecord
+	for _, r := range s.docs {
+		if q.Match(r) && (after == nil || after.After(r)) {
+			c := r.Clone()
+			c.Steps = nil // listings carry no steps
+			page = append(page, c)
+		}
+	}
+	s.mu.Unlock()
+	recorder.SortRecords(page)
+	out := recorder.RecordPage{Runs: page}
+	if limit := q.PageLimit(); len(page) > limit {
+		out.Runs = page[:limit]
+		last := out.Runs[limit-1]
+		out.Next = recorder.EncodeCursor(recorder.Cursor{EnqueuedAt: last.EnqueuedAt, Key: last.Key()})
+	}
+	return out, nil
+}
+```
+
+### Step 4: prove it
+
+The `Apply*` functions of the `recorder` package hold the merge rules, so your store merges a write exactly as the bundled ones do, and [`recordertest.RunStore(t, newStore)`](ds:block?id=rectest-runstore-w3fd43ef) holds it to the same contract they pass (fill-only upserts, attempts, events, outcome, finish and re-open, the join of a delayed run's two IDs, every filter, paging, `Pending`, copies on read, concurrent writes, retention). It also checks the refusals, and runs the retention cases only when the store is a `recorder.Pruner`. `recordertest.RunDriver` with `WithStore` then runs the recorder over a real driver into it ([Per driver](#per-driver)):
+
+<!-- snippet: examples/recorder-custom-store/main_test.go#contract-store -->
+```go
+// TestStoreContract holds docStore to the recorder.Store contract the
+// bundled stores pass: fill-only upserts, attempts, events, outcome,
+// finish and re-open, the join of a delayed run's two IDs, every filter,
+// paging, Pending, copies on read, concurrent writes and the refusals.
+// docStore is no recorder.Pruner, so the retention cases skip.
+func TestStoreContract(t *testing.T) {
+	recordertest.RunStore(t, func(t *testing.T, _ recordertest.StoreConfig) recorder.Store {
+		return newDocStore()
+	})
+}
+```
+
+```sh
+cd examples
+go test -v -run 'Contract|Driver' ./recorder-custom-store
+```
+
+Every case passes; `prune_two_stages` and `prune_archive_failure` skip, because `docStore` has no retention.
 
 ## Pitfalls
 
@@ -302,6 +771,10 @@ Steps and events are rows of their own, so a busy run never rewrites one large r
 - A delayed run is recorded under its `ScheduledID` at enqueue and under its `RunID` once it starts; the two records are joined by the first write that carries both IDs (its run-finished event, or a Reconciler pass). Until then a listing can show both.
 - On a driver without `workflow.CapRunFinished` (Hatchet), a run end can be missed: run the Reconciler.
 - The recorder's history is not the driver's: [`admin.WithRunQuerier`](ds:block?id=admin-withrunquerier-g356xuy3) shows the recorder, while a retry or a cancel acts on the client. A run the engine already pruned can be shown but no longer retried.
+- **An archive sees a run at least once.** The SQL store deletes a batch after `Archive` returned; a prune stopped between the two (its context cancelled, the database gone) archives the batch again next time. Key what the archive writes by the run, so a second copy replaces the first.
+- **A failed `SetOutcome` is not reported to the hook.** `workflow.SetOutcome` returns the store's error to the step that called it; the `WriteOp` list has no outcome write.
+- **A `Redactor` must not change the slice it gets.** Return a new one; the body it was handed is the step's own input or output.
+- **The backfill window must outlast an outage.** A run that started and ended while the store was down for longer than `WithBackfillWindow` is never listed again, so it never gets a record.
 - `RecordEvent` and the recorder's writes run on the step's goroutine: a slow store slows steps, up to [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw) ([5 seconds](ds:block?id=rec-defaultwritetimeout-wbngg5vx) by default) per write.
 
 ## Related
@@ -312,4 +785,4 @@ Steps and events are rows of their own, so a busy run never rewrites one large r
 - [Retention](../operations/retention.md): the SQL driver's own retention, separate from the recorder's.
 - [Write a plugin](../extending/writing-a-plugin.md): the seams the recorder is built from.
 - [Trigger source](../concepts/trigger-source.md), [Step events](../concepts/step-events.md), [Run outcome](../concepts/run-outcome.md): the run metadata the recorder keeps.
-- Examples: [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) (a web node and a worker), [step-events](../../examples/step-events/).
+- Examples: [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) (a web node and a worker), [recorder-custom-store](../../examples/recorder-custom-store/) (redaction, the error hook, the Reconciler, a store of your own), [recorder-sql](../../examples/recorder-sql/) (dialects, retries, retention), [step-events](../../examples/step-events/).

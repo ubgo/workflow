@@ -33,6 +33,12 @@ invoices: eu 1, us 1
 acme -> eu
 globex -> us
 initech: refused (true)
+-- Keep an event in its region
+order 42: us succeeded, eu waiting
+unknown order refused: true
+-- Name the region that fires declared Cron
+Cron without a schedule region refused: true
+with WithScheduleRegion("eu"): <nil>
 `
 	if got := out; got != want {
 		t.Errorf("output:\n%s\nwant:\n%s", got, want)

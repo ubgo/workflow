@@ -24,6 +24,140 @@ defer c.Stop() // cancels unfinished runs and waits for every goroutine
 
 Cancelling the context passed to `Start` shuts the client down too. Either way, every unfinished run becomes `StatusCancelled` (and is delivered to run-finished observers), and later calls fail with `workflow.ErrNotStarted`. Prefer `Stop` in tests, because it also waits.
 
+The sections below are the program [examples/memory-options](../../examples/memory-options/), which runs every option on a fake clock; its full output is under [Try it](#try-it).
+
+## Set the pool, the clock, the logger and the middleware
+
+Five options shape how the client runs steps. A test usually wants all of them: a fake clock so "retry in 10 seconds" takes no time, a logger it can read, a middleware it can count, and a pinned jitter draw so a backoff is the same on every run:
+
+<!-- snippet: examples/memory-options/main.go#options -->
+```go
+clk := clock.NewFake(start)
+var calls atomic.Int32
+countCalls := func(next workflow.Handler) workflow.Handler { // step middleware
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		calls.Add(1)
+		return next(ctx, in)
+	}
+}
+logger := slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{ReplaceAttr: dropTime}))
+c := memory.New(
+	memory.WithWorkers(2),                                         // step attempts at once (default 8)
+	memory.WithClock(clk),                                         // every timer: backoff, sleeps, cron, timeouts
+	memory.WithLogger(logger),                                     // errors no caller can see
+	memory.WithMiddleware(countCalls),                             // around every step and OnFailure
+	memory.WithJitterSource(func() float64 { return pinnedDraw }), // pin Backoff.Jitter's draw
+)
+defer c.Stop()
+```
+
+With `Backoff{Initial: 10 * time.Second, Jitter: 0.5}` and the draw pinned to 0.5, the first retry waits `10s - 10s*0.5*0.5`, so 7.5 seconds of fake time: after `Advance(7 * time.Second)` the run still reads `retrying`, after another half second it succeeds. An `OnFailure` handler that returns an error has no caller to return it to, so the driver logs it:
+
+```text
+sync after 7s: retrying
+sync after 7.5s: succeeded, attempts 2
+level=ERROR msg="memory: OnFailure handler failed" workflow=import run=run-6 error="pager is down"
+middleware calls: 4
+```
+
+The middleware ran four times: two attempts of `pull`, one of `read`, and the `OnFailure` handler, which middleware wraps too.
+
+## Serve only some queues
+
+`WithQueues` gives the client a list of [named queues](../jobs/queues.md), each with its own worker cap and priority. Because one process is the whole cluster, work for a queue the client does not serve could never run, so it is refused at once:
+
+<!-- snippet: examples/memory-options/main.go#queues -->
+```go
+c := memory.New(memory.WithQueues(
+	workflow.QueueConfig{Name: "emails", Workers: 4},               // four email steps at once
+	workflow.QueueConfig{Name: "reports", Workers: 1, Priority: 1}, // one report, served first
+))
+defer c.Stop()
+if err := c.Register(workflow.Workflow{Name: "welcome", Queue: "emails", Steps: []workflow.Step{{Name: "send", Run: noop}}}); err != nil {
+	return err
+}
+if err := c.Start(ctx); err != nil {
+	return err
+}
+_, err := c.Enqueue(ctx, workflow.Job{Workflow: "welcome", Queue: "video"}) // not served here
+fmt.Fprintln(w, "job on queue video: ErrInvalid =", errors.Is(err, workflow.ErrInvalid))
+```
+
+A job whose `Job.Queue` is not listed fails at `Enqueue`, and a workflow whose `Workflow.Queue` is not listed fails at `Start`, both with `workflow.ErrInvalid`. A job with no queue runs on its workflow's queue.
+
+## Keep fewer or more finished runs
+
+The client remembers finished runs so `Status`, `Runs`, `Retry` and `Delete` can find them. By default it keeps them for a day, at most 10,000 (`memory.DefaultRunRetention`); `WithRunRetention` changes both limits:
+
+<!-- snippet: examples/memory-options/main.go#retention -->
+```go
+c := memory.New(memory.WithRunRetention(memory.RunRetention{
+	MaxAge:  time.Hour, // forget a finished run an hour after it ended
+	MaxRuns: 2,         // and keep at most the newest two
+}))
+```
+
+A run past either limit is forgotten when a run ends, when one is enqueued, or when `Runs` lists them; its `Status` then returns `workflow.ErrNotFound`, as after `Delete`. Unfinished runs are never forgotten. `memory.RunRetention{}` keeps every finished run until `Delete`, for a test that inspects everything. With three runs and `MaxRuns: 2`:
+
+```text
+default retention: 24h0m0s, at most 10000 runs
+run-2: forgotten
+run-5: succeeded
+run-8: succeeded
+```
+
+## Stop when the work is done
+
+A batch-style process starts, enqueues its work and should exit when nothing is left. `WithStopWhenIdle(grace)` stops the client by itself, as `Drain` would, once its last unfinished run (delayed, queued, running or waiting) has ended and nothing was enqueued for `grace`; `Done` closes then:
+
+<!-- snippet: examples/memory-options/main.go#stop-when-idle -->
+```go
+c := memory.New(memory.WithClock(clk), memory.WithStopWhenIdle(idleGrace))
+if err := c.Register(workflow.Workflow{Name: "resize", Steps: []workflow.Step{{Name: "image", Run: noop}}}); err != nil {
+	return err
+}
+if err := c.Start(ctx); err != nil {
+	return err
+}
+var refs []workflow.RunRef
+for range 3 { // three images to resize
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "resize"})
+	if err != nil {
+		return err
+	}
+	refs = append(refs, ref)
+}
+// The last run ends, nothing is enqueued for idleGrace: Done closes.
+```
+
+```text
+stopped by itself after 30s idle
+enqueue after the stop: ErrNotStarted = true
+```
+
+A client that never ran anything never stops this way, so `Start` followed by `Enqueue` is safe. Schedules do not keep it alive.
+
+## Run thousands of schedules from one timer
+
+By default each schedule, declared or made with `Client.Schedule`, runs its own goroutine and its own clock timer. `WithScheduleHeap()` runs all of them from one scheduler goroutine and one timer, armed for the earliest next tick in a heap:
+
+<!-- snippet: examples/memory-options/main.go#schedule-heap -->
+```go
+if heap {
+	opts = append(opts, memory.WithScheduleHeap()) // one goroutine, one timer
+}
+c := memory.New(opts...)
+```
+
+The same ticks fire either way; only the number of timers differs, which a test with a fake clock sees in `BlockUntil` and `Pending`:
+
+```text
+schedule heap false: 3 schedules, 3 pending timer(s), 3 fired at 09:05
+schedule heap true: 3 schedules, 1 pending timer(s), 3 fired at 09:05
+```
+
+Use it for thousands of per-tenant schedules in one process, where a goroutine and a timer each is the cost that matters.
+
 ## Options
 
 | Option | What it sets | Default |
@@ -66,12 +200,7 @@ How it behaves, from `memory/doc.go`:
 - **Cron.** `Workflow.Cron` fires in its `CronLocation` (UTC when nil) and `Client.Schedule` in its `Location`, from `Start` onwards. The default misfire policy fires once after a long pause; every explicit `workflow.Misfire` policy is honoured.
 - **Run ends.** It implements `workflow.RunNotifier` and declares `CapRunFinished`: every run that ends is delivered once to each observer, including runs cancelled before they started and runs cancelled by shutdown.
 
-Run the program:
-
-```sh
-cd examples
-go run ./sqlite-worker
-```
+The same workflow on memory and then on SQLite, from [examples/sqlite-worker](../../examples/sqlite-worker/) (`go run ./sqlite-worker` from `examples/`):
 
 ```text
 memory durable: false
@@ -83,6 +212,33 @@ sqlite run: succeeded
 status after the end: succeeded
 ```
 
+## Try it
+
+```sh
+cd examples
+go run ./memory-options
+```
+
+```text
+sync after 7s: retrying
+sync after 7.5s: succeeded, attempts 2
+level=ERROR msg="memory: OnFailure handler failed" workflow=import run=run-6 error="pager is down"
+middleware calls: 4
+job on queue video: ErrInvalid = true
+welcome on queue emails: succeeded
+workflow on unserved queue at Start: ErrInvalid = true
+default retention: 24h0m0s, at most 10000 runs
+run-2: forgotten
+run-5: succeeded
+run-8: succeeded
+stopped by itself after 30s idle
+enqueue after the stop: ErrNotStarted = true
+schedule heap false: 3 schedules, 3 pending timer(s), 3 fired at 09:05
+schedule heap true: 3 schedules, 1 pending timer(s), 3 fired at 09:05
+```
+
+`main_test.go` in the example checks every line, so the output above is what the code does today.
+
 ## Record run history
 
 A [run recorder](../observability/run-recorder.md) works on this driver as on any other: `workflow.Use(memory.New(), rec.Plugin())`, then register and start through the client `Use` returned.
@@ -90,7 +246,7 @@ A [run recorder](../observability/run-recorder.md) works on this driver as on an
 - **Every end is recorded.** The driver declares `CapRunFinished`, so each run end reaches the recorder's observer, including runs cancelled before they started and runs cancelled by `Stop`, which end `cancelled` on the record.
 - **The Reconciler can backfill.** The driver declares `CapRunQuery`, so a Reconciler pass finds runs enqueued or registered past the recorder and records them with source `external`.
 - **The history outlives the driver when the store does.** The driver keeps finished runs for a day, at most 10,000 (`WithRunRetention`), and nothing across a restart; a record in `sqlrecorder` stays until the recorder's own [retention](../observability/run-recorder.md#retention) removes it. [`recorder.NewMemoryStore()`](ds:block?id=rec-newmemorystore-5yrbgb94) lives and dies with the process.
-- **Run IDs restart with every client.** This driver numbers runs `run-1`, `run-2` and so on per client, so a persistent store shared by two memory clients, or kept across a restart, would merge different runs under one ID. Give each memory client its own store: an in-memory store, or `sqlrecorder` with a table prefix of its own ([`sqlrecorder.WithTablePrefix`](ds:block?id=sqlrec-withtableprefix-avt2n8sd)).
+- **Run IDs restart with every client.** This driver numbers runs from a counter of its own (`run-2`, `run-5` and so on; step attempts share the counter, so the numbers are not consecutive) that starts again with every client, so a persistent store shared by two memory clients, or kept across a restart, would merge different runs under one ID. Give each memory client its own store: an in-memory store, or `sqlrecorder` with a table prefix of its own ([`sqlrecorder.WithTablePrefix`](ds:block?id=sqlrec-withtableprefix-avt2n8sd)).
 
 The recorder's end-to-end suite runs its driver cases on this driver with `sqlrecorder` on SQLite, Postgres and MySQL, and [examples/run-recorder](../../examples/run-recorder/) and [examples/step-events](../../examples/step-events/) run on it.
 
@@ -102,6 +258,9 @@ The recorder's end-to-end suite runs its driver cases on this driver with `sqlre
 - With a fake clock, nothing that waits on time moves until the test calls `Advance` or `Set`.
 - `BlockUntil` counts timers, and the default arms one per schedule, so a test with three schedules waits for three. With `WithScheduleHeap` the schedules share one timer: wait for one plus whatever else the test arms, or the wait never ends.
 - With `WithScheduleHeap`, a slow `ScheduleWhen` delays the other schedules due at the same moment, since one goroutine handles them in turn. Keep it fast, or leave the option off.
+- `WithStopWhenIdle` stops the client after a quiet `grace`, schedules or not: a long-running service with schedules but bursts of runs must not use it, or it stops between bursts.
+- Past `WithRunRetention`'s limits a finished run reads `ErrNotFound`, so a caller that polls `Status` long after a run ended must treat `ErrNotFound` as "gone", or raise the limits.
+- `WithJitterSource` and the source behind it are called from several workers at once; a source with state needs a lock.
 
 ## Related
 
@@ -109,4 +268,4 @@ The recorder's end-to-end suite runs its driver cases on this driver with `sqlre
 - [Choose a driver](../choosing/drivers.md)
 - [Capabilities](../concepts/capabilities.md)
 - [Record run history](../observability/run-recorder.md)
-- Example: [sqlite-worker](../../examples/sqlite-worker/) (runs one workflow on memory, then on SQLite) and [quickstart](../../examples/quickstart/)
+- Example: [memory-options](../../examples/memory-options/) (every option on a fake clock), [sqlite-worker](../../examples/sqlite-worker/) (runs one workflow on memory, then on SQLite) and [quickstart](../../examples/quickstart/)

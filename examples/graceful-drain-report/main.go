@@ -34,6 +34,17 @@ const grace = 50 * time.Millisecond
 // pollInterval is short so the demo is quick; the default is one second.
 const pollInterval = 20 * time.Millisecond
 
+const (
+	// attemptsBuffer is the room on the attempts channel: each run sends one
+	// value per attempt and the program sees at most two, so four never
+	// blocks a step on a slow reader.
+	attemptsBuffer = 4
+	// finishTimeout bounds the wait for the requeued run to finish on worker
+	// B; it finishes in a few polls, so a longer wait means it is stuck.
+	finishTimeout = 5 * time.Second
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "graceful-drain-report:", err)
@@ -69,17 +80,35 @@ func stuckWorkflow(attempts chan<- int, release <-chan struct{}) workflow.Workfl
 }
 
 // printReport is the log line a deploy script writes.
+//
+// snippet:report
 func printReport(label string) func(workflow.DrainReport, bool) {
+	// next says what becomes of a cut-off attempt; DrainDisposition is a
+	// closed set, so every value has an entry.
+	next := map[workflow.DrainDisposition]string{
+		workflow.DrainRequeued:    "another worker runs it as the same attempt",
+		workflow.DrainCancelled:   "the run is cancelled",
+		workflow.DrainEngineOwned: "the engine decides",
+	}
 	return func(r workflow.DrainReport, detailed bool) {
-		fmt.Printf("%s: detailed=%v finished steps=%d runs=%d, cut off %d\n", label, detailed, r.FinishedSteps, r.FinishedRuns, len(r.Cut))
+		if !detailed { // no CapDrainReport: the report is unknown, not clean
+			fmt.Printf("%s: the driver cannot say what a drain cut off\n", label)
+			return
+		}
+		fmt.Printf("%s: finished steps=%d runs=%d, clean=%t, cut off %d attempt(s) in %d run(s)\n",
+			label, r.FinishedSteps, r.FinishedRuns, r.Clean(), len(r.Cut), r.CutRuns())
 		for _, c := range r.Cut {
-			fmt.Printf("  cut: %s/%s attempt %d -> %s\n", c.Workflow, c.Step, c.Attempt, c.Disposition)
+			fmt.Printf("  cut: %s/%s attempt %d -> %s: %s\n", c.Workflow, c.Step, c.Attempt, c.Disposition, next[c.Disposition])
 		}
 	}
 }
 
+// snippet:end
+
+// inMemory drains a memory client through ShutdownHookReport while a step
+// is stuck, and shows the cut run ends cancelled.
 func inMemory(ctx context.Context) error {
-	attempts := make(chan int, 4)
+	attempts := make(chan int, attemptsBuffer)
 	c := memory.New()
 	if err := c.Register(stuckWorkflow(attempts, nil)); err != nil {
 		return err
@@ -109,6 +138,8 @@ func inMemory(ctx context.Context) error {
 	return nil
 }
 
+// durable drains a SQL worker by hand while a step is stuck, then shows a
+// second worker running the requeued run as the same attempt number.
 func durable(ctx context.Context) (err error) {
 	dir, err := os.MkdirTemp("", "graceful-drain-report-")
 	if err != nil {
@@ -121,7 +152,7 @@ func durable(ctx context.Context) (err error) {
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
 
-	attempts := make(chan int, 4)
+	attempts := make(chan int, attemptsBuffer)
 	a, err := worker(ctx, db, stuckWorkflow(attempts, nil))
 	if err != nil {
 		return err
@@ -131,8 +162,30 @@ func durable(ctx context.Context) (err error) {
 		return err
 	}
 	fmt.Println("sql: worker A runs attempt", <-attempts)
-	hook := workflow.ShutdownHookReport(a, grace, printReport("sql"))
-	_ = hook(ctx)
+
+	// snippet:caps
+	caps := a.Capabilities()
+	fmt.Printf("sql: drain report %t, requeue on a clean stop %t\n",
+		caps.Has(workflow.CapDrainReport), caps.Has(workflow.CapShutdownRequeue))
+	// snippet:end
+
+	// snippet:drain-with-report
+	// What ShutdownHookReport does, by hand: a grace period on the ctx,
+	// then DrainWithReport when the client is a ReportingDrainer.
+	dctx, cancel := workflow.DrainContext(ctx, grace) // zero or less: no waiting at all
+	var report workflow.DrainReport
+	rd, detailed := any(a).(workflow.ReportingDrainer)
+	if detailed {
+		report, err = rd.DrainWithReport(dctx)
+	} else {
+		err = a.Drain(dctx) // it still drains; the report stays unknown
+	}
+	cancel()
+	printReport("sql")(report, detailed)
+	// Drain's error is DrainOutcome: nil when nothing was cut off, else the ctx's error.
+	fmt.Println("sql: drain error is the deadline:", errors.Is(err, context.DeadlineExceeded),
+		"same as DrainOutcome:", err == workflow.DrainOutcome(report, context.DeadlineExceeded))
+	// snippet:end
 
 	release := make(chan struct{})
 	close(release)
@@ -142,7 +195,7 @@ func durable(ctx context.Context) (err error) {
 	}
 	defer b.Stop()
 	fmt.Println("sql: worker B runs attempt", <-attempts)
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(pollInterval) {
+	for deadline := time.Now().Add(finishTimeout); time.Now().Before(deadline); time.Sleep(pollInterval) {
 		st, err := b.Status(ctx, ref)
 		if err != nil {
 			return err

@@ -31,6 +31,16 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+const (
+	// pollEvery is how often the waits below look at a run again: short,
+	// so the program finishes quickly on the in-memory driver.
+	pollEvery = 2 * time.Millisecond
+	// waitFor bounds every wait, so a run that never reaches the state the
+	// program expects fails the program instead of hanging it.
+	waitFor = 5 * time.Second
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "events-more:", err)
@@ -44,6 +54,7 @@ type inbox struct {
 	got map[string][]string
 }
 
+// add records that workflow wf ran with payload.
 func (in *inbox) add(wf, payload string) {
 	in.mu.Lock()
 	defer in.mu.Unlock()
@@ -53,6 +64,7 @@ func (in *inbox) add(wf, payload string) {
 	in.got[wf] = append(in.got[wf], payload)
 }
 
+// of returns a copy of the payloads workflow wf ran with, oldest first.
 func (in *inbox) of(wf string) []string {
 	in.mu.Lock()
 	defer in.mu.Unlock()
@@ -115,6 +127,7 @@ func run(ctx context.Context) error {
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
+	// sections run in order on the one client, each printing its block.
 	sections := []func(context.Context, workflow.Client, *inbox) error{cloudEvents, versions, replay, cancelOnEvent, divert, thenSection}
 	for _, s := range sections {
 		if err := s(ctx, c, in); err != nil {
@@ -124,6 +137,8 @@ func run(ctx context.Context) error {
 	return nil
 }
 
+// cloudEvents sends a CloudEvent over HTTP in binary mode, publishes it on
+// the bus and writes the message back out in structured JSON.
 func cloudEvents(ctx context.Context, c workflow.Client, in *inbox) error {
 	b, err := events.New(c)
 	if err != nil {
@@ -174,10 +189,12 @@ func cloudEvents(ctx context.Context, c workflow.Client, in *inbox) error {
 	return nil
 }
 
-// orderV0 had "amount"; v1 renamed it "cents"; v2 added "currency".
+// versions upcasts an old order.paid payload before the subscriber sees it
+// and shows a version newer than the bus knows refused. orderV0 had
+// "amount"; v1 renamed it "cents"; v2 added "currency".
 func versions(ctx context.Context, c workflow.Client, in *inbox) error {
 	// snippet:versions
-	b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{
+	b, err := events.New(c, events.WithUpcasters("order.paid", 2, map[int]workflow.Upcaster{ // 2: the current version
 		0: func(raw []byte) ([]byte, error) { // v0 -> v1: "amount" is now "cents"
 			return bytes.Replace(raw, []byte(`"amount"`), []byte(`"cents"`), 1), nil
 		},
@@ -198,7 +215,7 @@ func versions(ctx context.Context, c workflow.Client, in *inbox) error {
 	if err != nil {
 		return err
 	}
-	_, future := b.Publish(ctx, events.Message{ID: "evt_v3", Name: "order.paid", Version: 3})
+	_, future := b.Publish(ctx, events.Message{ID: "evt_v3", Name: "order.paid", Version: 3}) // newer than the current version
 	// snippet:end
 	if err := awaitAll(ctx, c, p.Deliveries); err != nil {
 		return err
@@ -210,6 +227,9 @@ func versions(ctx context.Context, c workflow.Client, in *inbox) error {
 	return nil
 }
 
+// replay logs three invoices an hour apart and replays the two from the
+// hour the receipt mailer was down, then shows the same replay ID start
+// nothing twice.
 func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 	clk := clock.NewFake(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC))
 	// snippet:log
@@ -227,7 +247,8 @@ func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 		return err
 	}
 	var refs []workflow.RunRef
-	for i, id := range []string{"inv_1", "inv_2", "inv_3"} {
+	invoices := []string{"inv_1", "inv_2", "inv_3"}
+	for i, id := range invoices {
 		p, err := b.Publish(ctx, events.Message{ID: id, Name: "invoice.issued", Payload: []byte(`"` + id + `"`)})
 		if err != nil {
 			return err
@@ -235,7 +256,7 @@ func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 		for _, d := range p.Deliveries {
 			refs = append(refs, d.Ref)
 		}
-		if i < 2 {
+		if i < len(invoices)-1 { // an hour between invoices, none after the last
 			clk.Advance(time.Hour)
 		}
 	}
@@ -245,10 +266,11 @@ func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 	before := len(in.of("receipt"))
 	// snippet:replay
 	from := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC) // the hour the receipt mailer was down
+	const outage = 2 * time.Hour                           // how long it stayed down
 	r, err := b.Replay(ctx, events.ReplayOptions{
 		ID:            "mailer-outage-2026-11-20",
 		From:          from,
-		To:            from.Add(2 * time.Hour),
+		To:            from.Add(outage),
 		Subscriptions: []string{"receipt"},
 	})
 	if err != nil {
@@ -266,7 +288,7 @@ func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 	replayed := in.of("receipt")[before:]
 	slices.Sort(replayed) // the two runs ran concurrently
 	fmt.Printf("  log holds %d messages; replayed %d to receipt: %v\n", log.Len(), r.Messages, replayed)
-	again, err := b.Replay(ctx, events.ReplayOptions{ID: "mailer-outage-2026-11-20", From: from, To: from.Add(2 * time.Hour), Subscriptions: []string{"receipt"}})
+	again, err := b.Replay(ctx, events.ReplayOptions{ID: "mailer-outage-2026-11-20", From: from, To: from.Add(outage), Subscriptions: []string{"receipt"}})
 	if err != nil {
 		return err
 	}
@@ -280,6 +302,8 @@ func replay(ctx context.Context, c workflow.Client, in *inbox) error {
 	return nil
 }
 
+// cancelOnEvent cancels the reminder runs of the cart a checkout event
+// names and leaves the other cart's reminder running.
 func cancelOnEvent(ctx context.Context, c workflow.Client, _ *inbox) error {
 	b, err := events.New(c)
 	if err != nil {
@@ -303,8 +327,12 @@ func cancelOnEvent(ctx context.Context, c workflow.Client, _ *inbox) error {
 	if err != nil {
 		return err
 	}
-	if err := awaitStatus(ctx, c, r1, workflow.StatusRunning); err != nil {
-		return err
+	// Both reminders must be running before the checkout, so the c2 line
+	// below reads "running" and not a status it held for a moment before.
+	for _, r := range []workflow.RunRef{r1, r2} {
+		if err := awaitStatus(ctx, c, r, workflow.StatusRunning); err != nil {
+			return err
+		}
 	}
 	// snippet:cancel-publish
 	p, err := b.Publish(ctx, events.Message{ID: "chk_1", Name: "cart.checked-out", Key: "c1"})
@@ -325,6 +353,8 @@ func cancelOnEvent(ctx context.Context, c workflow.Client, _ *inbox) error {
 	return nil
 }
 
+// divert cancels an order's fulfilment run when the order is cancelled,
+// starts a refund in its place, and shows a republish start no second one.
 func divert(ctx context.Context, c workflow.Client, in *inbox) error {
 	b, err := events.New(c)
 	if err != nil {
@@ -367,6 +397,8 @@ func divert(ctx context.Context, c workflow.Client, in *inbox) error {
 	return nil
 }
 
+// thenSection shows workflow.Then starting index after a successful import
+// and alert after a failed one.
 func thenSection(ctx context.Context, c workflow.Client, in *inbox) error {
 	for _, file := range []string{"ok.csv", "bad.csv"} {
 		if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "import", Payload: []byte(file), Labels: map[string]string{"file": file}}); err != nil {
@@ -395,7 +427,7 @@ func awaitAll(ctx context.Context, c workflow.Client, ds []events.Delivery) erro
 // awaitRefs waits for every run to finish.
 func awaitRefs(ctx context.Context, c workflow.Client, refs []workflow.RunRef) error {
 	for _, ref := range refs {
-		if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+		if _, err := workflow.Await(ctx, c, ref, workflow.AwaitOptions{Poll: pollEvery}); err != nil {
 			return err
 		}
 	}
@@ -410,16 +442,16 @@ func awaitStatus(ctx context.Context, c workflow.Client, ref workflow.RunRef, wa
 	})
 }
 
-// waitUntil polls cond for up to five seconds.
+// waitUntil polls cond every pollEvery for up to waitFor.
 func waitUntil(ctx context.Context, cond func() bool) error {
-	for range 2500 {
+	for range int(waitFor / pollEvery) {
 		if cond() {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(2 * time.Millisecond):
+		case <-time.After(pollEvery):
 		}
 	}
 	return errors.New("timed out")

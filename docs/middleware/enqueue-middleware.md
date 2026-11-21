@@ -6,7 +6,7 @@ Enqueue middleware wraps every `Client.Enqueue` before the job reaches the drive
 
 - Any `workflow.Client` and the `middleware` package (core module).
 - Unlike step middleware, enqueue middleware is not a driver option: `middleware.WrapClient` returns a new `Client`, and the app enqueues through that one.
-- The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/), the same program as [step middleware](step-middleware.md).
+- The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/), the same program as [step middleware](step-middleware.md). The routing table has a program of its own, [examples/route-jobs](../../examples/route-jobs/).
 
 ## Wrap every enqueue
 
@@ -64,9 +64,54 @@ Nothing reaches the driver, and the outer `Unique` releases the lock it took, so
 
 ## Route jobs
 
-`middleware.Route(rules...)` applies the first `RouteRule` whose `Match` accepts the job and passes every job on, matched or not. A rule can replace `Job.Workflow` (`RouteRule.Workflow`) and add labels (`RouteRule.Labels`); a nil `Match` matches every job. Routing is an app-side table that keeps queue names and tenant labels out of the code that enqueues.
+`middleware.Route(rules...)` applies the first `RouteRule` whose `Match` accepts the job and passes every job on, matched or not. A rule can replace `Job.Workflow` (`RouteRule.Workflow`) and add labels (`RouteRule.Labels`); a nil `Match` matches every job, so a last rule without one is the default. Routing is an app-side table that keeps workflow choices and tenant or cost labels out of the code that enqueues:
 
-A label the job already carries wins over the rule's, as an explicit choice should win over a default, and the job's `Labels` map is copied before it is changed, so the caller's map is never mutated. In the example, a job labelled `tier=bulk` leaves `Route` with `queue=bulk` added.
+<!-- snippet: examples/route-jobs/main.go#route -->
+```go
+// isBulk matches the plain invoice jobs the enqueue site marked as bulk.
+isBulk := func(j workflow.Job) bool {
+	return j.Workflow == invoiceWorkflow && j.Labels["tier"] == "bulk"
+}
+c := middleware.WrapClient(mc, middleware.Route(
+	// The first rule whose Match accepts the job applies; the rest
+	// are skipped.
+	middleware.RouteRule{Match: isBulk, Workflow: bulkInvoiceWorkflow, Labels: map[string]string{costCenterLabel: "batch"}},
+	// A nil Match accepts every job: the default for the rest.
+	middleware.RouteRule{Labels: map[string]string{costCenterLabel: "web"}},
+))
+```
+
+The code that enqueues names only `invoice`. The table sends bulk invoices to `invoice-bulk`, and every job leaves with a `cost-center` label:
+
+<!-- snippet: examples/route-jobs/main.go#enqueue -->
+```go
+jobs := []workflow.Job{
+	{Workflow: invoiceWorkflow, Labels: map[string]string{"tier": "bulk"}},
+	{Workflow: invoiceWorkflow},
+	{Workflow: invoiceWorkflow, Labels: map[string]string{costCenterLabel: "sales"}}, // chosen here: wins
+}
+for _, job := range jobs {
+	ref, err := c.Enqueue(ctx, job)
+	if err != nil {
+		return err
+	}
+	page, err := mc.Runs(ctx, workflow.RunQuery{Ref: ref})
+	if err != nil {
+		return err
+	}
+	got := page.Runs[0]
+	fmt.Fprintf(w, "job %s %v -> run of %s, %s=%s\n", job.Workflow, job.Labels, got.Workflow, costCenterLabel, got.Labels[costCenterLabel])
+}
+```
+
+```text
+job invoice map[tier:bulk] -> run of invoice-bulk, cost-center=batch
+job invoice map[] -> run of invoice, cost-center=web
+job invoice map[cost-center:sales] -> run of invoice, cost-center=sales
+the caller's labels are not changed: map[tier:bulk]
+```
+
+A label the job already carries wins over the rule's, as an explicit choice should win over a default: the third job keeps `cost-center=sales`. The job's `Labels` map is copied before it is changed, so the caller's map is never mutated (the last line). Only the first matching rule applies; the bulk job does not also get the default rule's label. `RouteRule.Workflow` must name a workflow the driver has registered, or the enqueue fails like any job for an unknown workflow.
 
 ## Require a trigger source
 
@@ -171,6 +216,7 @@ third, while the first runs: accepted
 - **`sqlstore.Client.EnqueueTx` does not run enqueue middleware.** It writes the run inside the app's transaction directly. The [transactional outbox](../reliability/outbox.md) relays through any client, wrapped or not.
 - **`UniqueUntilStarted` without its step half is plain `Unique`.** If no worker installs the step half (or `ReleaseUniqueOnStart`), nothing frees the lock early and it lasts the whole `ttl`. With `MemoryUnique`, the enqueuer and the worker must be one process.
 - **`RequireSource` is not authorization.** It checks that a source is named, not who named it: anything that can enqueue can claim any source.
+- **`Route` cannot set `Job.Queue`.** A rule changes the workflow and adds labels only; a label named `queue` is just a label. To move jobs to another queue, route them to a workflow declared on that queue (`Workflow.Queue`).
 - **Labels under a reserved prefix are refused, not overwritten.** An app label such as `otel.tenant` or `workflow.batch.id` fails the enqueue with `workflow.ErrInvalid`; pick another key.
 
 ## Related
@@ -181,5 +227,6 @@ third, while the first runs: accepted
 - [Reserved names](../reference/names.md#labels): every reserved label prefix.
 - [Trigger source](../concepts/trigger-source.md): `WithSource`, [`SourceOf`](ds:block?id=sourceof-7mrryr2k) and the sources the library derives.
 - Example: [examples/middleware-stack](../../examples/middleware-stack/).
+- Example: [examples/route-jobs](../../examples/route-jobs/) (`Route`).
 - Example: [examples/release-jobs](../../examples/release-jobs/) (`UniqueUntilStarted`).
 - Example: [examples/trigger-source](../../examples/trigger-source/) (`RequireSource`).

@@ -1,6 +1,12 @@
 # The client
 
-`workflow.Client` is the one interface an app uses, and every driver implements it: the memory driver, the SQL driver and the Hatchet driver, plus every wrapper in the library (plugins, middleware, failover). App code depends on the interface alone, so moving from the memory driver in tests to SQLite on one server and Hatchet in a cluster changes one constructor call. This page covers its methods, its lifecycle and the validation every spec goes through.
+`workflow.Client` is the one interface an app uses, and every driver implements it: the memory driver, the SQL driver, the Redis driver and the Hatchet driver, plus every wrapper in the library (plugins, middleware, failover). App code depends on the interface alone, so moving from the memory driver in tests to SQLite on one server and Hatchet in a cluster changes one constructor call. This page covers its methods, its lifecycle and the validation every spec goes through.
+
+## Before you start
+
+- The core module is installed (`go get github.com/ubgo/workflow`, Go 1.24 or later); its `memory` package is the driver every snippet here uses. The SQL, Redis and Hatchet drivers are modules of their own ([Install](../start/install.md#pick-your-modules)).
+- You have run one workflow end to end, so `Register`, `Start` and `Enqueue` are familiar names ([Quickstart](../start/quickstart.md)).
+- The examples behind this page are [`client-wrapper`](../../examples/client-wrapper/), [`first-workflow`](../../examples/first-workflow/), [`graceful-drain`](../../examples/graceful-drain/) and [`capabilities`](../../examples/capabilities/); run them from `examples/` with `go run ./<name>`.
 
 ## The Client interface
 

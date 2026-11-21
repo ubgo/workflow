@@ -154,6 +154,33 @@ Buttons for an operation the driver does not support are hidden: the UI reads th
 
 ![The runs screen in dark mode](../assets/admin-ui/runs-dark.png)
 
+## Try it
+
+```sh
+cd examples
+go run ./admin-ui
+```
+
+```text
+anonymous GET /admin/ui/: 401
+viewer GET /admin/: 302 to ui/
+viewer GET /admin/ui/: 200 text/html; charset=utf-8, page true
+CSP: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+X-Frame-Options: DENY
+viewer runs tenant=acme*: 2 runs, total 2
+viewer pauses the schedule: 403
+admin pauses the schedule: 200
+```
+
+The program checks the UI through HTTP calls and exits. To click through it, keep the server running on an address and log in through the program's stand-in login route, which sets the session cookie and redirects to the UI:
+
+```sh
+ADMIN_UI_ADDR=127.0.0.1:8090 go run ./admin-ui
+# open http://127.0.0.1:8090/login?as=s-ann (admin) or ?as=s-vic (viewer)
+```
+
+As the viewer every screen opens and every button answers 403; as the admin the buttons work. `go test ./admin-ui` checks every line above.
+
 ## Pitfalls
 
 - **A bearer-token-only `Identify` locks the UI out.** The API works from scripts, but every page load is answered 401. Accept the session cookie as well.
@@ -172,3 +199,4 @@ Buttons for an operation the driver does not support are hidden: the UI reads th
 - [Admin JSON API](http-api.md): the routes the UI calls and the `Auth` hooks.
 - [Admin operations](operations.md): the same operations from Go.
 - [Queue alerts](alerts.md): be told about a backlog instead of watching for it.
+- Example: [examples/admin-ui](../../examples/admin-ui/).

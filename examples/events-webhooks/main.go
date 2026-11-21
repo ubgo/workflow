@@ -1,7 +1,8 @@
 // Command events-webhooks shows the events package: a Bus that turns one
 // published event into a run per subscription, deduplicated by the event's
 // ID; an inbound webhook handler that verifies a signature and enqueues;
-// and the HMAC and Standard Webhooks signing schemes. It runs on the
+// the HMAC and Standard Webhooks signing schemes; and an HMAC secret
+// rotated without dropping a delivery. It runs on the
 // in-memory driver and calls the handler through httptest, so nothing
 // listens on a port and nothing needs to be installed.
 //
@@ -25,12 +26,17 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "events-webhooks:", err)
 		os.Exit(1)
 	}
 }
+
+// tooLarge is the size of the oversized webhook body: twice the handler's
+// 1 KiB MaxBody, so the handler answers 413 before reading it all.
+const tooLarge = 2 << 10
 
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
@@ -40,6 +46,7 @@ func run(ctx context.Context) error {
 	// Every run holds until gate closes, so a republished event finds its
 	// first runs unfinished and the deduplication is visible.
 	gate := make(chan struct{})
+	// hold is every workflow's step: it ends only when gate closes.
 	hold := func(ctx context.Context, _ []byte) ([]byte, error) {
 		select {
 		case <-gate:
@@ -65,9 +72,14 @@ func run(ctx context.Context) error {
 	if err := webhook(ctx, c); err != nil {
 		return err
 	}
-	return standard()
+	if err := standard(); err != nil {
+		return err
+	}
+	return hmacRotation()
 }
 
+// bus publishes an event to two subscriptions, republishes it to show
+// the deduplication by event ID, and prints the labels a run carries.
 func bus(ctx context.Context, c workflow.Client) error {
 	fmt.Println("bus:")
 	// snippet:bus
@@ -117,6 +129,8 @@ func bus(ctx context.Context, c workflow.Client) error {
 	return nil
 }
 
+// webhook sends signed, unsigned, oversized and redelivered requests to
+// an inbound webhook handler and prints each status code.
 func webhook(ctx context.Context, c workflow.Client) error {
 	fmt.Println("webhook:")
 	// snippet:webhook
@@ -130,7 +144,7 @@ func webhook(ctx context.Context, c workflow.Client) error {
 		Verifier: signer,
 		Client:   c,
 		Workflow: "github-push",
-		MaxBody:  1 << 10,
+		MaxBody:  1 << 10, // 1 KiB; a bigger body is refused with 413
 	})
 	if err != nil {
 		return err
@@ -141,6 +155,8 @@ func webhook(ctx context.Context, c workflow.Client) error {
 	if err != nil {
 		return err
 	}
+	// send calls the current handler h with one request and prints its
+	// label, status code and body.
 	send := func(label, method string, body []byte, headers map[string]string) {
 		req := httptest.NewRequestWithContext(ctx, method, "/hooks/github", bytes.NewReader(body))
 		for k, v := range headers {
@@ -154,7 +170,7 @@ func webhook(ctx context.Context, c workflow.Client) error {
 	send("GET", http.MethodGet, nil, nil)
 	send("no signature", http.MethodPost, body, nil)
 	send("wrong signature", http.MethodPost, body, map[string]string{"X-Hub-Signature-256": "sha256=00"})
-	send("too large", http.MethodPost, bytes.Repeat([]byte("x"), 2<<10), signed)
+	send("too large", http.MethodPost, bytes.Repeat([]byte("x"), tooLarge), signed)
 	send("signed", http.MethodPost, body, signed)
 	send("redelivered", http.MethodPost, body, signed)
 	page, err := c.(workflow.RunQuerier).Runs(ctx, workflow.RunQuery{Workflow: "github-push"})
@@ -180,15 +196,19 @@ func webhook(ctx context.Context, c workflow.Client) error {
 // fails with an error marked workflow.Unavailable.
 type unreachable struct{ workflow.Client }
 
+// Enqueue implements workflow.Client: it always fails as an outage, so the
+// webhook handler answers 503 and the sender retries.
 func (unreachable) Enqueue(context.Context, workflow.Job) (workflow.RunRef, error) {
 	return workflow.RunRef{}, workflow.Unavailable(errors.New("connection refused"))
 }
 
+// standard signs a request with the Standard Webhooks scheme and shows a
+// changed body and a late replay refused.
 func standard() error {
 	fmt.Println("standard webhooks:")
 	clk := clock.NewFake(time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC))
 	// snippet:standard
-	sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk)
+	sw, err := events.NewStandardWebhooks([]string{"whsec_c2VjcmV0LWtleS0x"}, 5*time.Minute, clk) // older timestamps are replays
 	if err != nil {
 		return err
 	}
@@ -203,5 +223,45 @@ func standard() error {
 	clk.Advance(10 * time.Minute) // the same request replayed ten minutes later
 	_, err = sw.Verify(req, body)
 	fmt.Printf("  replayed after 10m: ErrSignature=%v\n", errors.Is(err, events.ErrSignature))
+	return nil
+}
+
+// hmacRotation rotates a Shopify-style HMAC secret (base64 digest): the
+// new secret goes first, so it signs, while the old one still verifies
+// the senders that have not switched; once they all have, the old one is
+// removed and stops verifying.
+func hmacRotation() error {
+	fmt.Println("hmac rotation:")
+	body := []byte(`{"id":820982911946154508}`)
+	// snippet:hmac-rotate
+	before := events.HMAC{
+		Header:   "X-Shopify-Hmac-Sha256",
+		Encoding: events.EncodingBase64, // GitHub's hex is the default, events.EncodingHex
+		Secrets:  [][]byte{[]byte("old-secret")},
+	}
+	during := before
+	during.Secrets = [][]byte{[]byte("new-secret"), []byte("old-secret")} // new first: it signs, both verify
+	after := before
+	after.Secrets = [][]byte{[]byte("new-secret")} // every sender has switched
+
+	sigOld, err := before.Sign(body) // a sender still on the old secret
+	if err != nil {
+		return err
+	}
+	sigNew, err := during.Sign(body) // a sender already on the new one
+	if err != nil {
+		return err
+	}
+	// verifies reports whether v accepts body signed with sig.
+	verifies := func(v events.Verifier, sig string) bool {
+		req := httptest.NewRequest(http.MethodPost, "/hooks/shopify", bytes.NewReader(body))
+		req.Header.Set("X-Shopify-Hmac-Sha256", sig)
+		_, err := v.Verify(req, body)
+		return !errors.Is(err, events.ErrSignature)
+	}
+	// snippet:end
+	fmt.Printf("  new signature: %s\n", sigNew)
+	fmt.Printf("  during rotation: old secret verifies %v, new secret verifies %v\n", verifies(during, sigOld), verifies(during, sigNew))
+	fmt.Printf("  after rotation:  old secret verifies %v, new secret verifies %v\n", verifies(after, sigOld), verifies(after, sigNew))
 	return nil
 }

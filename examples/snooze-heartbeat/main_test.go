@@ -23,11 +23,14 @@ func TestRun(t *testing.T) {
   try at +2m0s: attempt 1
   run succeeded, attempts 1, errors recorded 0
 heartbeat:
+  needs: Heartbeat
   attempt 1 started
   attempt 2 started at +31s
   attempt 1 failed at +30s: workflow: heartbeat timed out: memory: step "load" attempt 1 went 30s without a heartbeat
   run succeeded
+  beats from a direct call: ["batch 1" "batch 2" "batch 3"]
 run timeout:
+  needs: RunTimeout
   run failed: workflow: run timed out: after 5m0s
   ErrRunTimeout true, IsTimeout true, ErrStepTimeout false
   ran OnTimeout with payload "q3"

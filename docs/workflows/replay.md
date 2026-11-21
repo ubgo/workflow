@@ -27,6 +27,8 @@ A replayed handler is a `workflow.ReplayFunc`: it gets a `*workflow.ReplayCtx` a
 
 <!-- snippet: examples/flow-replay/main.go#refund -->
 ```go
+// refund is the whole refund as one function: each wake runs it from
+// the top, and the recorded calls return without running again.
 refund := func(rc *workflow.ReplayCtx, in []byte) ([]byte, error) {
 	calls.add("body")
 	var o order
@@ -137,7 +139,37 @@ if err := workflow.ResolvePromise(ctx, c, promises, "refund-A-1", []byte("dana")
 | `rc.AwaitPromise(name, store, id)` | The promise's value once settled, or its rejection | The recorded value, or a permanent `*workflow.PromiseRejectedError` |
 | `workflow.ReplayChild(rc, name, client, job, opts)` | A child run's result once it succeeded, or its failure (the child is spawned once, through `Spawn`, and looked at every `opts.Poll` while it runs) | The recorded result, or a permanent error with the recorded text; the client is not asked again |
 
-Calls are matched to the history by their position, and the name labels the position: it must be the same on every run, but it need not be unique, so a loop may call `ReplayStep(rc, "page", ...)` on every iteration. An empty name is refused.
+The refund above uses `ReplayStep`, `Sleep`, `AwaitPromise` and `Now`. A payout in the same example uses the other two: it starts an invoice as a child run, which is spawned once however often the body runs, and then sleeps until a fixed pay day rather than for a duration:
+
+<!-- snippet: examples/flow-replay/main.go#calls -->
+```go
+// payout pays a seller after an invoice child run, on pay day.
+payout := func(rc *workflow.ReplayCtx, in []byte) ([]byte, error) {
+	calls.add("payout body")
+	// The child is spawned once; later wakes look at it until it ended.
+	invoice, err := workflow.ReplayChild(rc, "invoice", c,
+		workflow.Job{Workflow: "invoice", Payload: in}, workflow.ChildOptions{Poll: childPoll})
+	if err != nil {
+		return nil, err // a suspension while the child runs, or its failure
+	}
+	if !rc.Replaying() {
+		fmt.Printf("  invoice child returned %s\n", invoice)
+	}
+	// A fixed instant, unlike Sleep's duration from the first time here.
+	if err := rc.SleepUntil("pay-day", payDay); err != nil {
+		return nil, err
+	}
+	paidAt, err := rc.Now("paid-at")
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(fmt.Sprintf("paid %s at %s", invoice, paidAt.Format(time.RFC3339)))
+}
+```
+
+While the child runs, `ReplayChild` suspends the handler for `ChildOptions.Poll` (`workflow.DefaultChildPoll`, five seconds, when zero) and looks again on the next wake; once the child succeeded its result is recorded and the client is not asked again. The child's client needs results (`workflow.ResultReader`), and the parent's driver `CapSnooze`, as for [`AwaitChild`](children.md#wait-for-children-with-awaitchildren). `SleepUntil` records the instant it was given, so a time already past returns at once, and a replay keeps the recorded instant even when the code would now pass another one.
+
+Calls are matched to the history by their position, and the name labels the position: it must be the same on every run, but it need not be unique, so a loop may call `ReplayStep(rc, "page", ...)` on every iteration. `ReplayChild` is the exception: its name must be unique within the run (see the pitfalls). An empty name is refused.
 
 **Side effects are at least once.** The process can die after `fn` returns and before its result is saved, and a save can fail; the next run then calls `fn` again. Work that must never repeat, such as a charge or a refund, also carries an idempotency key the remote side honours: build it from the run (`workflow.StepInfoFrom(rc.Context())` gives the `RunID`) and the call's name, never from a random value.
 
@@ -158,6 +190,7 @@ The example has a second version of the refund that reads a feature flag on ever
 
 <!-- snippet: examples/flow-replay/main.go#drift -->
 ```go
+// drift records one call whose name depends on an unrecorded flag.
 drift := func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
 	step := "refund-card"
 	if creditFirst.Load() { // wrong: read again on every run, never recorded
@@ -166,7 +199,7 @@ drift := func(rc *workflow.ReplayCtx, _ []byte) ([]byte, error) {
 	if _, err := workflow.ReplayStep(rc, step, func(ctx context.Context) (bool, error) { return true, nil }); err != nil {
 		return nil, err
 	}
-	return nil, rc.Sleep("close-after", 24*time.Hour)
+	return nil, rc.Sleep("close-after", 24*time.Hour) // a day, as in the refund
 }
 ```
 
@@ -214,6 +247,7 @@ Since you rarely know how far each running run has got, version the workflow for
 - **Do not rename calls in a running deploy.** A rename is another name at a recorded position, which fails every run that passed it. Version the workflow instead, as above.
 - **Long histories cost on every wake.** Each run of the function reads every recorded call back from the journal, one read per call: a loop of thousands of calls, or a promise looked at every few seconds for weeks, pays that on every wake. Keep loops inside a `ReplayStep`, raise `ReplayOptions.Poll` for waits measured in days, and end a run that would loop for ever with `workflow.ContinueAsNew`, carrying the state in the next run's payload ([Loop for ever as a chain of runs](promises.md#loop-for-ever-as-a-chain-of-runs)).
 - **A promise wait wakes on its poll, not on the resolve.** `ResolvePromise` signals `workflow.PromiseEvent`, which wakes wait steps; a replayed `AwaitPromise` is a snooze and sees the promise at its next look, up to `Poll` later.
+- **Give every `ReplayChild` call its own name.** Unlike the other calls, it spawns the child through `Spawn`, memoised under `"replay-child/"` plus the name, and a memo name used twice in one run of the body is refused: a loop that calls `ReplayChild(rc, "invoice", ...)` on each pass fails the run with `memo name "replay-child/invoice" is used twice`. Put the index in the name (`"invoice-" + strconv.Itoa(i)`).
 - **`Step.Timeout` is per run of the function**, not for the whole wait; a sleep of three days does not need a three-day timeout.
 
 ## Replay, memoisation or steps
@@ -250,11 +284,15 @@ nondeterminism:
   the run ended failed: memory: step "orchestrate" failed after 1 attempt(s): workflow: replay: call 0 is step store-credit, but the history has step refund-card
   position 0: recorded "step refund-card", the code called "step store-credit"; permanent true
   matches ErrNondeterminism: true
+child and pay day:
+  invoice child returned "INV-s-9"
+  result: paid "INV-s-9" at 2026-03-31T17:00:00Z
+  the body ran 3 times; the invoice child ran 1
 journal:
-  runs holding history after both runs finished: 0
+  runs holding history after every run finished: 0
 ```
 
-Each line inside the function was printed once, although the body ran four times: the first run stopped at the return window, the second at the approval, the third after the store credit at the one-day wait, and the fourth replayed every call and returned.
+Each line inside the function was printed once, although the body ran four times: the first run stopped at the return window, the second at the approval, the third after the store credit at the one-day wait, and the fourth replayed every call and returned. The payout's body ran three times (spawning the child, recording its result, after pay day) and its child once.
 
 ## Related
 

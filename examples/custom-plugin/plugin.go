@@ -26,14 +26,29 @@ func (p *tenancy) Name() string { return "tenancy" }
 
 // snippet:end
 
+// snippet:provides
+// Use finds each contribution by type assertion, so a method with a typo
+// in its name or signature is not an error: the contribution is silently
+// missing. These assertions make the compiler check every interface the
+// plugin means to implement.
+var (
+	_ workflow.Plugin                    = (*tenancy)(nil)
+	_ workflow.EnqueueMiddlewareProvider = (*tenancy)(nil)
+	_ workflow.StepMiddlewareProvider    = (*tenancy)(nil)
+	_ workflow.RunFinishedProvider       = (*tenancy)(nil)
+)
+
+// snippet:end
+
 // snippet:enqueue
 // EnqueueMiddleware makes workflow.Use run these on every Enqueue through
 // the client it returns. The first entry sees the job first.
 func (p *tenancy) EnqueueMiddleware() []workflow.EnqueueMiddleware {
+	// byTenant is the uniqueness key: one queued job per tenant and workflow.
 	byTenant := func(j workflow.Job) string { return j.Labels["tenant"] + "/" + j.Workflow }
 	return []workflow.EnqueueMiddleware{
 		requireLabel("tenant"),
-		middleware.Unique(byTenant, p.unique, time.Hour),
+		middleware.Unique(byTenant, p.unique, time.Hour), // TTL: a lock whose release was lost frees itself
 	}
 }
 
@@ -95,6 +110,8 @@ type lineLog struct {
 	mu sync.Mutex
 }
 
+// Printf prints one formatted line under the lock, so lines from step
+// goroutines and run-finished observers never interleave.
 func (l *lineLog) Printf(format string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

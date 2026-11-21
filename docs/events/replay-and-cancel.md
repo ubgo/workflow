@@ -6,7 +6,7 @@ Three problems sit next to a bus. The receipt mailer was down for an hour, so th
 
 - The log and replay run on every driver. A replay repeated with the same ID starts nothing twice while its runs are unfinished on every driver, and also after they finished on a client with `workflow.RunQuerier` (`CapRunQuery`: memory, SQL, Redis).
 - A cancel subscription needs `workflow.CapCancelAll` (memory, SQL, Redis; not Hatchet); `SubscribeCancel` refuses a client without it with an `*workflow.UnsupportedError`. A divert also needs `CapRunQuery`, which every driver with `CapCancelAll` has.
-- The example is [`examples/events-more`](../../examples/events-more). Run it with `go run ./events-more` from `examples/`.
+- The examples are [`examples/events-more`](../../examples/events-more) (the log, a replay, a cancel and a divert) and [`examples/events-signal`](../../examples/events-signal) (`ReplayResult` with a failed delivery, `Cancellation` and `UnfinishedStatuses`), both on the in-memory driver. Run them with `go run ./events-more` and `go run ./events-signal` from `examples/`.
 
 ## Keep a log
 
@@ -30,10 +30,11 @@ if err != nil {
 <!-- snippet: examples/events-more/main.go#replay -->
 ```go
 from := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC) // the hour the receipt mailer was down
+const outage = 2 * time.Hour                           // how long it stayed down
 r, err := b.Replay(ctx, events.ReplayOptions{
 	ID:            "mailer-outage-2026-11-20",
 	From:          from,
-	To:            from.Add(2 * time.Hour),
+	To:            from.Add(outage),
 	Subscriptions: []string{"receipt"},
 })
 if err != nil {
@@ -49,7 +50,59 @@ replay:
 
 Each replayed run carries the idempotency key `event/<subscription>/<id>/replay/<replay ID>` and the label `events.LabelReplay`, so the original delivery's key does not swallow it even while the original run is unfinished. Replaying again with the same `ID` starts nothing twice: the key holds while the replayed run is unfinished, and on a client with run queries `Replay` first looks for a run labelled with the message, subscription and replay ID in any status and reports it as `Existing`. Leave `ID` empty for a new one each call. A message ID logged twice (a retried publish) is delivered once.
 
-`ReplayResult` has the replay `ID`, how many distinct `Messages` matched, and one `ReplayDelivery` per message and subscription with its `Ref`, `Existing` and `Err`. Failures are per delivery and joined into the returned error, so calling `Replay` again with the same ID retries only those. `Replay` refuses, with `ErrInvalid`, a bus without a log, `From` not before `To`, and an unknown subscription name.
+`Replay` refuses, with `ErrInvalid`, a bus without a log, `From` not before `To`, an unknown subscription name and a cancel subscription's name.
+
+## Read what a replay did
+
+`Bus.Replay` returns an `events.ReplayResult` even when some deliveries failed:
+
+| Field | Meaning |
+|---|---|
+| `ID` | The replay ID, the one given or the one the bus made |
+| `Messages` | How many distinct message IDs in the range passed `Filter` |
+| `Deliveries` | One `events.ReplayDelivery` per message and matching subscription, in log order, then subscription order |
+
+Each `ReplayDelivery` has the `MessageID`, the `Subscription`, the run's `Ref`, `Existing` (an earlier replay with this ID already started that run, found and returned as `Ref`, and nothing was enqueued) and `Err`. A failure is per delivery: it lands in that delivery's `Err`, is joined into the error `Replay` returns, and the replay goes on with the rest. Calling `Replay` again with the same ID then starts only what failed, because everything else is found as `Existing`.
+
+Here the ledger subscription's `Job` fails while the ledger is down. The replay delivers every receipt and reports both ledger deliveries as failed:
+
+<!-- snippet: examples/events-signal/main.go#replay-result -->
+```go
+r, err := bus.Replay(ctx, events.ReplayOptions{ID: "backfill-1"}) // zero From and To: the whole log
+fmt.Fprintf(p.w, "  replay %s: %d messages, %d deliveries, error: %v\n", r.ID, r.Messages, len(r.Deliveries), err != nil)
+for _, d := range r.Deliveries {
+	fmt.Fprintf(p.w, "    %s -> %-7s existing=%-5v failed=%v\n", d.MessageID, d.Subscription, d.Existing, d.Err != nil)
+}
+```
+
+With the ledger back, the same replay ID finds the receipts as `Existing` and starts only the two ledger runs:
+
+<!-- snippet: examples/events-signal/main.go#replay-again -->
+```go
+again, err := bus.Replay(ctx, events.ReplayOptions{ID: "backfill-1"}) // retries only what failed
+if err != nil {
+	return err
+}
+for _, d := range again.Deliveries {
+	fmt.Fprintf(p.w, "    %s -> %-7s existing=%-5v failed=%v\n", d.MessageID, d.Subscription, d.Existing, d.Err != nil)
+}
+```
+
+```text
+replay result:
+  replay backfill-1: 2 messages, 4 deliveries, error: true
+    inv_1 -> receipt existing=false failed=false
+    inv_1 -> ledger  existing=false failed=true
+    inv_2 -> receipt existing=false failed=false
+    inv_2 -> ledger  existing=false failed=true
+  the ledger is back; the same replay ID again:
+    inv_1 -> receipt existing=true  failed=false
+    inv_1 -> ledger  existing=false failed=false
+    inv_2 -> receipt existing=true  failed=false
+    inv_2 -> ledger  existing=false failed=false
+```
+
+Check the result, not only the error: a nil error with an empty `Deliveries` means the range or `Filter` matched nothing, and `Messages` counts what matched before any subscription's own `Filter`.
 
 ## Cancel runs on an event
 
@@ -83,7 +136,53 @@ cancel on event:
   cart c1 reminder: cancelled; cart c2 reminder: running
 ```
 
-`Key` reads the label value from the message when it is not `m.Key`; a message for which it is empty cancels nothing and its `Cancellation` holds `ErrInvalid`, since an empty value would match every run carrying the label empty. `Workflow` narrows the cancel to one workflow, and `Statuses` to some statuses; the default, `events.UnfinishedStatuses`, includes running and waiting runs, so a running reminder is cut short, unlike `CancelAll`'s own default of runs not yet started. `Filter` works as on a subscription. `Published.Cancellations` reports each cancel subscription's `Cancelled` count and error.
+`Workflow` narrows the cancel to one workflow, and `Statuses` to some statuses; the default, `events.UnfinishedStatuses`, includes running and waiting runs, so a running reminder is cut short, unlike `CancelAll`'s own default of runs not yet started. `Filter` works as on a subscription.
+
+## Read what a cancel did
+
+`Published.Cancellations` has one `events.Cancellation` per cancel subscription the message matched, in the order they were subscribed:
+
+| Field | Meaning |
+|---|---|
+| `Subscription` | The cancel subscription's name |
+| `Cancelled` | How many runs `CancelAll` cancelled |
+| `Diverted` | The divert run (see below); zero without `Divert` or when the cancel failed |
+| `Err` | The cancel's or the divert's error, also joined into the error `Publish` returns |
+
+`Key` reads the label value from the message when it is not `m.Key`. A message for which it is empty cancels nothing: its `Cancellation` holds an error matching `ErrInvalid`, since an empty value would match every run carrying the label empty, and `Publish` returns that error too. The subscribers' runs of that message are still started.
+
+<!-- snippet: examples/events-signal/main.go#cancellation -->
+```go
+err = bus.SubscribeCancel(events.CancelSubscription{
+	Name:  "stop-reminders",
+	Event: evCheckedOut,
+	Label: labelCart,
+	Key:   func(m events.Message) string { return m.Labels[labelCart] }, // not m.Key
+})
+if err != nil {
+	return err
+}
+pub, err := bus.Publish(ctx, events.Message{ID: "chk_1", Name: evCheckedOut, Labels: map[string]string{labelCart: "c1"}})
+if err != nil {
+	return err
+}
+cn := pub.Cancellations[0]
+fmt.Fprintf(p.w, "  %s: cancelled %d, diverted %v, err %v\n", cn.Subscription, cn.Cancelled, !cn.Diverted.IsZero(), cn.Err)
+```
+
+<!-- snippet: examples/events-signal/main.go#cancellation-nokey -->
+```go
+pub, err = bus.Publish(ctx, events.Message{ID: "chk_2", Name: evCheckedOut}) // no cart label
+fmt.Fprintf(p.w, "  no key: cancelled %d, Cancellation.Err is ErrInvalid: %v, Publish error: %v\n",
+	pub.Cancellations[0].Cancelled, errors.Is(pub.Cancellations[0].Err, workflow.ErrInvalid), err != nil)
+```
+
+```text
+cancellation:
+  default statuses: scheduled, queued, running, waiting, retrying
+  stop-reminders: cancelled 1, diverted false, err <nil>
+  no key: cancelled 0, Cancellation.Err is ErrInvalid: true, Publish error: true
+```
 
 `Publish` runs every cancel before it starts any run, so the runs a message starts are never cancelled by the same message, even when they carry the label. Cancel subscriptions share the name space of subscriptions, and `Replay` never runs them: cancelling later would hit runs that did not exist when the event happened.
 
@@ -112,9 +211,46 @@ divert:
 
 `DivertJob` builds the job instead (another payload, a queue, `RunAt`). The divert run carries the bus's labels and the key `event/<name>/<id>`, like a subscription's run. It starts whether the cancel found runs or not, because a publish retried after a crash between the cancel and the divert finds nothing left to cancel and must still divert; it does not start when the cancel failed, so a republish retries both. A message whose divert run already exists, in any status, was handled: `Publish` finds that run and neither cancels nor diverts again, which keeps a republish from cancelling the divert run itself when it carries the cancelled label. `Cancellation.Diverted` is the divert run.
 
+## Try it
+
+```sh
+cd examples
+go run ./events-more
+```
+
+The log, replay, cancel and divert parts:
+
+```text
+replay:
+  log holds 3 messages; replayed 2 to receipt: ["inv_2" "inv_3"]
+  same replay ID again: 2 of 2 already started, new receipt runs 0
+cancel on event:
+  stop-cart-reminders cancelled 1 run(s)
+  cart c1 reminder: cancelled; cart c2 reminder: running
+divert:
+  cancelled 1 fulfilment run(s); refund ran with {"order":42}
+  republish: cancelled 0, same refund run true, refund runs 1
+```
+
+The replay result and cancellation parts come from the second program:
+
+```sh
+go run ./events-signal
+```
+
+Its `replay result:` and `cancellation:` sections are the ones shown in [Read what a replay did](#read-what-a-replay-did) and [Read what a cancel did](#read-what-a-cancel-did).
+
 ## Pitfalls
 
 - `MemoryLog` lives in one process. A fleet where every replica publishes needs one durable `EventLog` they share, or each replica replays only its own messages.
 - A replay without run queries is deduplicated only while its runs are unfinished; on such a client keep the replay ID per incident and do not repeat it after the runs finished.
 - Cancelling is by label, so the runs to stop must carry it: label them at enqueue (`Labels: {"order": "42"}`), or publish the event with that label so subscriptions copy it onto their runs.
 - `SubscribeCancel` refuses a terminal status in `Statuses` and a subscription without `Name`, `Event` or `Label`, with `ErrInvalid`.
+- A cancel subscription's error fails the `Publish` call even though the subscribers' runs were started. Read `Published.Deliveries` and `Published.Cancellations` before treating the error as "nothing happened", and publish again with the same ID: the deliveries are deduplicated and only the cancel is retried.
+- Replayed runs are new runs: they run the subscriber's workflow again, so the workflow must be safe to run twice for one event (a receipt mailer that checks whether it already sent one).
+
+## Related
+
+- [Publish and subscribe](publish-subscribe.md), [CloudEvents and payload versions](cloudevents.md), [Choreography](choreography.md), [Events](README.md)
+- [Manage runs](../jobs/manage-runs.md), [Idempotency keys](../jobs/idempotency.md)
+- Examples: [examples/events-more](../../examples/events-more/), [examples/events-signal](../../examples/events-signal/)

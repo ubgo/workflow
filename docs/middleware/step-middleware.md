@@ -6,7 +6,7 @@ Step middleware wraps every step attempt on a driver: logging, panic recovery, a
 
 - A driver and the `middleware` package (core module, no extra dependency).
 - Middleware is given to the driver when it is built: `memory.WithMiddleware`, `sqlstore.WithMiddleware`, `redis.WithMiddleware` or `hatchet.Config.Middleware`. The same chain works on all four.
-- The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/).
+- The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/), every piece in one chain. [examples/step-middleware](../../examples/step-middleware/) shows `Recover`, `Timeout`, `FailOn` and `Skip` one at a time, each on a client of its own; the four sections below copy it.
 
 ## Wrap every step
 
@@ -54,21 +54,113 @@ Writing your own middleware is covered in [Write step middleware](../extending/w
 
 ## Recover from panics
 
-`middleware.Recover(logger)` turns a panic in a step into an error wrapping `middleware.ErrPanic`, so one bad step fails its attempt instead of killing the worker. The panic value goes into the error; the stack goes to the logger at Error (a nil logger drops it) and never into the error string, which ends up in run status where it would leak file paths. The example's `panics` workflow ends `failed` with `workflow/middleware: step panicked: nil map`.
+`middleware.Recover(logger)` turns a panic in a step into an error wrapping `middleware.ErrPanic`, so one bad step fails its attempt instead of killing the worker. The panic value goes into the error; the stack goes to the logger at Error (a nil logger drops it) and never into the error string, which ends up in run status where it would leak file paths.
 
-The error is retryable on purpose: whether a panic deserves a retry is the retry policy's decision. To fail at once, set `NoRetryOn: func(err error) bool { return errors.Is(err, middleware.ErrPanic) }` on the workflow's `RetryPolicy`.
+The error is retryable on purpose: whether a panic deserves a retry is the retry policy's decision. Here the policy allows three retries for passing errors, and `NoRetryOn` refuses to retry a panic:
+
+<!-- snippet: examples/step-middleware/main.go#recover -->
+```go
+c := memory.New(memory.WithMiddleware(middleware.Recover(logger)))
+err := c.Register(workflow.Workflow{
+	Name: "import",
+	Retry: workflow.RetryPolicy{
+		Max:     3, // what an outage would get
+		Backoff: fastRetry,
+		// A panic is a bug, not an outage: fail at once instead of
+		// spending the three retries.
+		NoRetryOn: func(err error) bool { return errors.Is(err, middleware.ErrPanic) },
+	},
+	Steps: []workflow.Step{{Name: "parse", Run: func(context.Context, []byte) ([]byte, error) {
+		attempts.Add(1)
+		var rows map[string]int
+		rows["total"]++ // panics: assignment to entry in nil map
+		return nil, nil
+	}}},
+})
+```
+
+The run fails on its first attempt with `workflow/middleware: step panicked: assignment to entry in nil map`, and the logger gets one `workflow step panicked` line with the panic value and the stack. The error also carries the stack for the run's error history (it implements `workflow.StackTracer`), so a driver with `CapErrorHistory` keeps it in `AttemptError.Stack`, apart from the message:
+
+<!-- snippet: examples/step-middleware/main.go#recover-stack -->
+```go
+page, err := c.Runs(ctx, workflow.RunQuery{Ref: ref})
+if err != nil {
+	return err
+}
+for _, e := range page.Runs[0].Errors {
+	// The stack is kept apart from the message, never inside it.
+	fmt.Fprintf(w, "history: attempt %d %q, stack kept: %t\n", e.Attempt, e.Error, e.Stack != "")
+}
+```
 
 ## Time out a step
 
-`middleware.Timeout(d)` gives every step attempt a context that ends after `d`, a cap the app sets across every workflow; `Step.Timeout` and `Workflow.Timeout` set one per step, and the drivers apply those themselves. A `d` of zero or less is a no-op. The timeout is cooperative: the step must watch `ctx`, because abandoning a goroutine that keeps running would leak it and let two attempts of one step overlap. The example's `slow` step blocks on `<-ctx.Done()` and fails with `context deadline exceeded` after 100 ms.
+`middleware.Timeout(d)` gives every step attempt a context that ends after `d`, a cap the app sets across every workflow; `Step.Timeout` and `Workflow.Timeout` set one per step, and the drivers apply those themselves. A `d` of zero or less is a no-op. The timeout is cooperative: the step must watch `ctx`, because abandoning a goroutine that keeps running would leak it and let two attempts of one step overlap.
+
+<!-- snippet: examples/step-middleware/main.go#timeout -->
+```go
+c := memory.New(memory.WithMiddleware(middleware.Timeout(stepTimeout)))
+err := c.Register(workflow.Workflow{
+	Name: "fetch-feed",
+	Steps: []workflow.Step{{Name: "download", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		select {
+		case <-time.After(time.Hour): // a feed server that never answers
+			return []byte("feed"), nil
+		case <-ctx.Done(): // the timeout is cooperative: watch ctx
+			return nil, ctx.Err()
+		}
+	}}},
+})
+```
+
+The feed server never answers, so the attempt ends after 50 ms with `context deadline exceeded`, and the run fails (the workflow has no retries). Give the workflow retries when a timeout is worth another try: each attempt gets a fresh `d`.
 
 ## Fail on chosen errors
 
-`middleware.FailOn(match)` marks an error permanent when `match` reports true, so the step fails at once instead of spending its retries. An error already permanent stays so, and a nil `match` is a no-op. The example's `validate` workflow has two retries, yet its `bad input` error ends the run after one attempt. `workflow.Permanent(err)` returned from a handler, or `RetryPolicy.NoRetryOn`, does the same per handler or per workflow; `FailOn` is for a rule that holds across every workflow.
+`middleware.FailOn(match)` marks an error permanent (`workflow.Permanent`) when `match` reports true, so the step fails at once instead of spending its retries. An error already permanent stays so, and a nil `match` is a no-op. `match` gets the handler's error as returned, so `errors.Is` sees through `%w` wrapping:
+
+<!-- snippet: examples/step-middleware/main.go#fail-on -->
+```go
+// declined picks the errors FailOn makes permanent.
+declined := func(err error) bool { return errors.Is(err, errCardDeclined) }
+c := memory.New(memory.WithMiddleware(middleware.FailOn(declined)))
+err := c.Register(workflow.Workflow{
+	Name:  "charge",
+	Retry: workflow.RetryPolicy{Max: 2, Backoff: fastRetry}, // two retries for a passing error
+	Steps: []workflow.Step{{Name: "card", Run: func(_ context.Context, in []byte) ([]byte, error) {
+		attempts.Add(1)
+		if string(in) == "declined" {
+			return nil, fmt.Errorf("charge order: %w", errCardDeclined) // permanent: no retry
+		}
+		return nil, errGatewayBusy // retried twice, as the policy says
+	}}},
+})
+```
+
+The `charge` workflow has two retries. A declined card fails after one attempt; a busy gateway is not matched and spends both retries, three attempts in all. `workflow.Permanent(err)` returned from a handler, or `RetryPolicy.NoRetryOn`, does the same per handler or per workflow; `FailOn` is for a rule that holds across every workflow on the client.
 
 ## Skip a step
 
-`middleware.Skip(skip)` does not call the step when `skip(ctx, in)` reports true and returns a nil output and a nil error, so the step counts as done. The example skips any step whose input is `"skip"`: that run succeeds with no handler call. A nil `skip` is a no-op.
+`middleware.Skip(skip)` does not call the step when `skip(ctx, in)` reports true and returns a nil output and a nil error, so the step counts as done. A nil `skip` is a no-op. `skip` sees the step's input and its context, so `workflow.StepInfoFrom(ctx)` tells it which workflow, step and attempt is about to run:
+
+<!-- snippet: examples/step-middleware/main.go#skip -->
+```go
+// quiet picks the step calls Skip completes without running them.
+quiet := func(ctx context.Context, in []byte) bool {
+	info, _ := workflow.StepInfoFrom(ctx) // which step is about to run
+	return info.Step == "notify" && bytes.Contains(in, []byte(`"quiet":true`))
+}
+c := memory.New(memory.WithMiddleware(middleware.Skip(quiet)))
+err := c.Register(workflow.Workflow{
+	Name: "ship",
+	Steps: []workflow.Step{{Name: "notify", Run: func(context.Context, []byte) ([]byte, error) {
+		sent.Add(1)
+		return nil, nil
+	}}},
+})
+```
+
+The first run calls `notify`; the second asks for quiet, succeeds, and `notify` is never called. A skipped step returns no output, so a step whose children read its output should not be skipped.
 
 ## Release a step for later
 
@@ -248,6 +340,31 @@ run call-api: failed (memory: step "run" failed after 1 attempt(s): payments api
 
 `go test ./middleware-stack` runs the same program and checks every line.
 
+The program for the `Recover`, `Timeout`, `FailOn` and `Skip` sections:
+
+```sh
+cd examples
+go run ./step-middleware
+```
+
+```text
+-- recover
+level=ERROR msg="workflow step panicked" panic="assignment to entry in nil map"
+run: failed after 1 attempt(s): memory: step "parse" failed after 1 attempt(s): workflow/middleware: step panicked: assignment to entry in nil map
+history: attempt 1 "workflow/middleware: step panicked: assignment to entry in nil map", stack kept: true
+-- timeout
+run: failed: memory: step "download" failed after 1 attempt(s): context deadline exceeded
+stopped well before the hour: true
+-- fail on
+declined: failed after 1 attempt(s)
+busy: failed after 3 attempt(s)
+-- skip
+{"order":1}: succeeded, notify called 1 time(s)
+{"order":2,"quiet":true}: succeeded, notify called 0 time(s)
+```
+
+The panic fails after one attempt although the policy allows three retries, and its stack is kept in the error history but not in the message. The busy gateway gets the policy's two retries; the declined card does not. `go test ./step-middleware` checks every line.
+
 The release section's program:
 
 ```sh
@@ -283,6 +400,7 @@ With `Max: 3`, the second run gets four attempts (the first plus three retries),
 - **Releases spend retries.** Each release is an attempt against `RetryPolicy.Max`, so a step that may be released for an hour at ten-minute steps needs `Max` of at least six.
 - **An event sink runs on the step's goroutine.** A sink bound with `WithStepEventSink` must be safe for concurrent use and must not block; a slow one slows every step that records events.
 - **A recovered panic is retried by default.** Add `NoRetryOn` for `middleware.ErrPanic` when a panic means a bug that a retry cannot fix.
+- **`FailOn` sees the error as it reaches it.** A handler that wraps with `%v` instead of `%w`, or middleware between `FailOn` and the handler that replaces the error, hides the sentinel from `errors.Is`, and the error is retried as usual.
 
 ## Related
 
@@ -295,4 +413,5 @@ With `Max: 3`, the second run gets four attempts (the first plus three retries),
 - [Step events](../concepts/step-events.md) and [Task output](../schedules/output.md): `RecordEvent` and `CaptureOutput`.
 - Example: [examples/release-jobs](../../examples/release-jobs/) (`Release`).
 - Example: [examples/step-events](../../examples/step-events/) (an event sink of your own, `CaptureOutput`).
+- Example: [examples/step-middleware](../../examples/step-middleware/) (`Recover`, `Timeout`, `FailOn`, `Skip` one at a time).
 - Example: [examples/middleware-stack](../../examples/middleware-stack/).

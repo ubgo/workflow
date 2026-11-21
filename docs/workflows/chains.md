@@ -125,6 +125,23 @@ On Hatchet, a step that discovers more work enqueues it itself: it calls `Enqueu
 
 `batch.Dispatch` refuses a job with a chain, because a batch tracks exactly one run per job.
 
+## Try it
+
+```sh
+cd examples
+go run ./chain-edits
+```
+
+```text
+chain: import-file(a.csv) -> notify(imported)
+edited while running (scan tried 2 times): import-files(inbox) -> import-files(inbox) -> import-file(b.csv) -> notify(imported) -> reindex(all)
+a failed run ends the chain: charge(o-1) (failed)
+AppendToChain outside a step: true, missing Chain
+on hatchet: ErrUnsupported true (workflow: Job.Chain unsupported by this driver (missing Chain): job for workflow import-file)
+```
+
+Each line is one part of this page: the chain enqueued in step 1; the scan whose first attempt failed after an edit, so only the second attempt's edits ran (`import-file(b.csv)` in front, `reindex(all)` at the end); the chain that stopped at its failed first job; an edit refused outside a step; and the check that refuses a chain on Hatchet.
+
 ## Pitfalls
 
 - **Enqueue middleware runs for the first job only.** The driver enqueues later jobs itself, as `EnqueueTx` does, so middleware such as `Unique` or `Debounce` does not see them. Payload codecs and the claim check are the exception: they rewrite every chained payload, including jobs a step adds.

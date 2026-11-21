@@ -23,6 +23,7 @@ import (
 // the demo finishes quickly; a real app waits on the run-finished hook.
 const statusPoll = 5 * time.Millisecond
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "custom-driver:", err)
@@ -68,11 +69,14 @@ func run(ctx context.Context) error {
 	fmt.Printf("%s: %s\n", ref.RunID, st)
 
 	// snippet:refused
-	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "report", RunAt: time.Now().Add(time.Hour)})
+	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "report", RunAt: time.Now().Add(time.Hour)}) // any future start needs DelayedStart
 	fmt.Println("delayed start refused:", errors.Is(err, workflow.ErrUnsupported))
 	fmt.Println(err)
 	// snippet:end
-	return nil
+
+	// The core helpers a driver calls for the capabilities Tiny lacks
+	// (helpers.go), and what each one decides.
+	return helperTour(ctx, os.Stdout)
 }
 
 // waitTerminal polls Status until the run has finished.

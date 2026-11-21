@@ -29,6 +29,20 @@ import (
 // start is the fake clock's first instant; any fixed time works.
 var start = time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 
+const (
+	// startedBuffer holds a report from each step that hangs until it is
+	// withdrawn, so a handler never blocks on it; two such runs start,
+	// and the spare room covers a slow reader.
+	startedBuffer = 4
+	// finishedBuffer holds every run end the hook reports (four end while
+	// the program runs) without blocking a worker, with room to spare.
+	finishedBuffer = 8
+	// dueInTheHour is how many reminders run when the clock moves an hour:
+	// r-30m, and r-2h once moved to +45m.
+	dueInTheHour = 2
+)
+
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "run-reschedule:", err)
@@ -36,13 +50,44 @@ func main() {
 	}
 }
 
+// snippet:move-run
+// moveRun moves a delayed run to at. A client that really reschedules
+// (workflow.Supports answers for what a wrapper wraps, where a bare type
+// assertion would succeed on any wrapper) keeps the run's ref, labels and
+// idempotency key; on any other client the
+// fallback cancels the run and enqueues job again with the new start,
+// which gives the run a new ref. The fallback's status check and cancel
+// are two calls, so a run that starts between them is cancelled midway:
+// that race is why the driver's own Reschedule is preferred.
+func moveRun(ctx context.Context, c workflow.Client, ref workflow.RunRef, job workflow.Job, at time.Time) (workflow.RunRef, error) {
+	if workflow.Supports(c, workflow.OpReschedule) {
+		return c.(workflow.RunRescheduler).Reschedule(ctx, ref, at) // ErrWrongState once the run has started
+	}
+	st, err := c.Status(ctx, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if st != workflow.StatusScheduled {
+		return workflow.RunRef{}, fmt.Errorf("move run %s: it is %s: %w", ref.RunID, st, workflow.ErrWrongState)
+	}
+	if err := c.Cancel(ctx, ref); err != nil {
+		return workflow.RunRef{}, err
+	}
+	job.RunAt = at
+	return c.Enqueue(ctx, job)
+}
+
+// snippet:end
+
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
 	clk := clock.NewFake(start)
-	started := make(chan string, 4)
+	started := make(chan string, startedBuffer)
 	stored := make(chan string, 1)
 
 	// snippet:fallback
+	// fetchPrices hangs on the price feed and falls back to cached prices
+	// when an operator withdraws it.
 	fetchPrices := func(ctx context.Context, _ []byte) ([]byte, error) {
 		started <- "fetch"
 		<-ctx.Done() // the price feed is hanging
@@ -52,18 +97,20 @@ func run(ctx context.Context) error {
 		return nil, context.Cause(ctx)
 	}
 	// snippet:end
+	// pull hangs on a feed and has no fallback.
 	pull := func(ctx context.Context, _ []byte) ([]byte, error) {
 		started <- "pull"
 		<-ctx.Done()
 		return nil, context.Cause(ctx) // no fallback: the step fails, and so does the run
 	}
+	// store hands what it got to the program.
 	store := func(_ context.Context, in []byte) ([]byte, error) {
 		stored <- string(in)
 		return nil, nil
 	}
 
 	c := memory.New(memory.WithClock(clk))
-	finished := make(chan workflow.RunEvent, 8)
+	finished := make(chan workflow.RunEvent, finishedBuffer)
 	if err := c.OnRunFinished(func(_ context.Context, ev workflow.RunEvent) { finished <- ev }); err != nil {
 		return err
 	}
@@ -88,7 +135,7 @@ func run(ctx context.Context) error {
 	for _, r := range []struct {
 		name string
 		in   time.Duration
-	}{{"r-30m", 30 * time.Minute}, {"r-2h", 2 * time.Hour}, {"r-5h", 5 * time.Hour}} {
+	}{{"r-30m", 30 * time.Minute}, {"r-2h", 2 * time.Hour}, {"r-5h", 5 * time.Hour}} { // demo data: each name says when it is due
 		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "send-reminder", RunAt: start.Add(r.in), Labels: map[string]string{"name": r.name}})
 		if err != nil {
 			return err
@@ -102,7 +149,8 @@ func run(ctx context.Context) error {
 	}
 
 	// snippet:reschedule
-	moved, err := c.Reschedule(ctx, refs["r-2h"], clk.Now().Add(45*time.Minute))
+	reminder := workflow.Job{Workflow: "send-reminder", Labels: map[string]string{"name": "r-2h"}}
+	moved, err := moveRun(ctx, c, refs["r-2h"], reminder, clk.Now().Add(45*time.Minute)) // inside the next hour, so the listing shows it
 	if err != nil {
 		return err
 	}
@@ -118,7 +166,7 @@ func run(ctx context.Context) error {
 	}
 	clk.Advance(time.Hour)
 	var ran []string
-	for range 2 {
+	for range dueInTheHour {
 		ev := <-finished
 		ran = append(ran, ev.Labels["name"]+" "+string(ev.Status))
 	}

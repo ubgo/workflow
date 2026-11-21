@@ -48,8 +48,8 @@ A structured calendar spec, compiled to the expression a person would write:
 <!-- snippet: examples/schedule-specs/main.go#calendar -->
 ```go
 spec := cron.Calendar{
-	Hour:      []int{9},
-	Minute:    []int{0, 30},
+	Hour:      []int{9},     // at nine
+	Minute:    []int{0, 30}, // on the hour and half past
 	DayOfWeek: []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday},
 }
 expr, err := spec.Expr() // "0,30 9 * * 1-5", a plain cron string every driver takes
@@ -90,7 +90,8 @@ runs := workflow.NextRuns(workflow.NextRunsQuery{
 	Schedule: s,
 	Location: berlin,
 	After:    time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC), // the caller's clock; Berlin leaves summer time on the 25th
-	Count:    3,
+	// The next three fires, across the change to winter time.
+	Count: 3,
 })
 for _, r := range runs {
 	fmt.Printf("  %s\n", r) // "2026-10-24 09:00:00 CEST (07:00:00 UTC)"
@@ -105,7 +106,7 @@ campaign := workflow.Active{
 	From:  time.Date(2026, 10, 14, 0, 0, 0, 0, time.UTC),
 	Until: time.Date(2026, 10, 17, 0, 0, 0, 0, time.UTC), // exclusive
 }
-runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign})
+runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign}) // asks for 10, the period holds 3
 ```
 
 Environment gating combined with another condition:

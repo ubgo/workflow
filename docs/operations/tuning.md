@@ -64,6 +64,32 @@ return hatchet.Config{
 | `BatchCoordinatorRetry` | The coordinator's retry policy. A retry starts the children again with the same child keys, and the engine returns the existing child for a key it has seen, so no job runs twice | `DefaultBatchCoordinatorRetry()`: 10 retries at 2^n seconds capped at 2 minutes, about ten minutes of engine outage | Must fit Factor^n seconds; `NoRetryOn` must be nil |
 | `BatchCoordinatorMaxInput` | JSON input and metadata one coordinator trigger carries; a larger batch starts as bulk triggers | 2 MiB (`DefaultBatchCoordinatorMaxInput`) | the engine's gRPC message limit |
 
+Every default in the tables on this page and in [the Hatchet driver's Configuration](../drivers/hatchet.md#configuration) is an exported constant, so a deploy check or a test can compare a `Config` against it; [examples/hatchet-schedules](../../examples/hatchet-schedules/) prints them with no engine:
+
+<!-- snippet: examples/hatchet-schedules/main.go#defaults -->
+```go
+retry := hatchet.DefaultBatchCoordinatorRetry()
+fmt.Fprintln(w, "StepTimeout:", hatchet.DefaultStepTimeout)
+fmt.Fprintln(w, "ScheduleTimeout:", hatchet.DefaultScheduleTimeout)
+fmt.Fprintln(w, "RegisterTimeout:", hatchet.DefaultRegisterTimeout)
+fmt.Fprintln(w, "RunFinishedPoll:", hatchet.DefaultRunFinishedPoll)
+fmt.Fprintln(w, "ScheduleHistoryWindow:", hatchet.DefaultScheduleHistoryWindow)
+fmt.Fprintln(w, "PayloadLimit:", hatchet.DefaultPayloadLimit, "bytes")
+fmt.Fprintln(w, "GroupChunkRuns:", hatchet.DefaultGroupChunkRuns, "GroupChunkBytes:", hatchet.DefaultGroupChunkBytes)
+fmt.Fprintf(w, "BatchCoordinatorRetry: %d retries, %s doubling, capped at %s\n", retry.Max, retry.Backoff.Initial, retry.Backoff.Max)
+```
+
+```text
+StepTimeout: 24h0m0s
+ScheduleTimeout: 24h0m0s
+RegisterTimeout: 30s
+RunFinishedPoll: 1s
+ScheduleHistoryWindow: 168h0m0s
+PayloadLimit: 1572864 bytes
+GroupChunkRuns: 1000 GroupChunkBytes: 2097152
+BatchCoordinatorRetry: 10 retries, 2s doubling, capped at 2m0s
+```
+
 A single job larger than `GroupChunkBytes` goes in a call of its own. `Start` refuses a chunk size over its limit with an error matching `workflow.ErrInvalid`, and a coordinator retry policy Hatchet cannot express, before it connects.
 
 For a slow engine, two fields outside batches matter:

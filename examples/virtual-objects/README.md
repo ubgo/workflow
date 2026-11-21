@@ -1,6 +1,6 @@
 # virtual-objects
 
-A keyed virtual object on the in-memory driver: one shopping cart per customer, whose calls run one at a time per cart and share the cart's state, kept in the journal store.
+A keyed virtual object on the in-memory driver: one shopping cart per customer, whose calls run one at a time per cart and share the cart's state, kept in the journal store. It also lists one cart's calls by their key label and shows a call of an unknown method failing.
 
 ```sh
 cd examples
@@ -11,6 +11,8 @@ go run ./virtual-objects
 alice's cart holds 3 items
 bob's cart holds 1 item
 after clear, alice's cart holds 0 items
+calls of alice's cart so far: 4
+unknown method: the call failed, naming the methods: true
 ```
 
 ## The code
@@ -24,6 +26,8 @@ type Cart struct {
 	Items []string `json:"items"`
 }
 
+// cartObject defines the cart object: its state lives in store and its
+// methods add an item or clear the cart.
 func cartObject(store workflow.JournalStore) (workflow.Workflow, error) {
 	return workflow.DefineObject(workflow.ObjectSpec[Cart]{
 		Name:  "cart",
@@ -72,6 +76,20 @@ alice, _, err := workflow.ObjectState[Cart](ctx, store, "cart", "alice")
 if err != nil {
 	return err
 }
+```
+
+List one key's calls by the label `CallObject` sets:
+
+<!-- snippet: examples/virtual-objects/main.go#calls -->
+```go
+page, err := c.Runs(ctx, workflow.RunQuery{ // c implements workflow.RunQuerier
+	Workflow: "cart",
+	Labels:   map[string]string{workflow.LabelObjectKey: "alice"}, // set by CallObject
+})
+if err != nil {
+	return err
+}
+fmt.Println("calls of alice's cart so far:", len(page.Runs))
 ```
 
 The guide is [docs/workflows/objects.md](../../docs/workflows/objects.md).

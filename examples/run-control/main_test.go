@@ -8,7 +8,8 @@ import (
 )
 
 // TestRun runs the program and checks every line: a payload search, a
-// suspended run held between its steps and resumed, a schedule fire that
+// suspended run held between its steps and resumed, a detour that holds a
+// run, resumes it and resets it from the step that failed, a schedule fire that
 // replaces the running run, and a duplicate that replaces a scheduled
 // job's arguments.
 func TestRun(t *testing.T) {
@@ -21,6 +22,8 @@ func TestRun(t *testing.T) {
 suspend:
   after fetch, while suspended: load not run, run finished: false
   resumed, load got "feed.csv"
+detour:
+  held, resumed, failed in transform, reset from transform: succeeded; fetch ran 1 time(s)
 replace:
   first run cancelled, second running
 unique replace:

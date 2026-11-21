@@ -19,6 +19,8 @@ type Cart struct {
 	Items []string `json:"items"`
 }
 
+// cartObject defines the cart object: its state lives in store and its
+// methods add an item or clear the cart.
 func cartObject(store workflow.JournalStore) (workflow.Workflow, error) {
 	return workflow.DefineObject(workflow.ObjectSpec[Cart]{
 		Name:  "cart",
@@ -77,10 +79,77 @@ if err != nil {
 
 ## How a call is applied once
 
-A call loads the key's record, runs the method, and saves the new state together with the call's run ID and result. A call retried after its save (the process died before the step's end was recorded) finds its own run ID in the record and returns the saved result without running the method again. A method error leaves the state as it was and goes to the retry policy (`ObjectSpec.Retry`). Each call carries the key in the reserved label `workflow.LabelObjectKey`, set only through `CallObject`.
+A call loads the key's record, runs the method, and saves the new state together with the call's run ID and result. A call retried after its save (the process died before the step's end was recorded) finds its own run ID in the record and returns the saved result without running the method again. A method error leaves the state as it was and goes to the retry policy (`ObjectSpec.Retry`, the same field as `Workflow.Retry`).
+
+## Find a key's calls
+
+Each call carries the key in the reserved label `workflow.LabelObjectKey`, set only through `CallObject` (it lifts the reserved-prefix guard for that one label with `workflow.AllowReservedLabels`). A run listing filters on it like any label, so an admin page or a test finds every call of one key:
+
+<!-- snippet: examples/virtual-objects/main.go#calls -->
+```go
+page, err := c.Runs(ctx, workflow.RunQuery{ // c implements workflow.RunQuerier
+	Workflow: "cart",
+	Labels:   map[string]string{workflow.LabelObjectKey: "alice"}, // set by CallObject
+})
+if err != nil {
+	return err
+}
+fmt.Println("calls of alice's cart so far:", len(page.Runs))
+```
+
+The listing holds runs in every status: here the three `add` calls and the `clear`. The serialisation itself uses the same label as the concurrency key (`Concurrency{Key: LabelObjectKey, MaxRuns: 1}`), which is why a job enqueued with `Enqueue` instead of `CallObject` is not a call: it has no key, and its step fails with a permanent error that says to enqueue it with `CallObject`.
+
+## A method the object does not have
+
+`CallObject` only enqueues; it does not know the object's methods, so a misspelt method is accepted there and fails the call's run with a permanent error that lists the methods the object has:
+
+<!-- snippet: examples/virtual-objects/main.go#unknown-method -->
+```go
+ref, err = workflow.CallObject(ctx, c, "cart", "alice", "remove", []byte(`"hat"`), workflow.Job{})
+if err != nil {
+	return err // CallObject does not know the methods; the call's run does
+}
+_, err = workflow.AwaitResult(ctx, c, ref, await)
+var failed *workflow.RunFailedError
+if !errors.As(err, &failed) {
+	return fmt.Errorf("a call of an unknown method did not fail: %v", err)
+}
+fmt.Printf("unknown method: the call %s, naming the methods: %v\n",
+	failed.Status, strings.Contains(failed.Err, "(methods: [add clear])"))
+```
+
+The state is untouched. `DefineObject` itself refuses, with `ErrInvalid`, a spec without a `Name`, `Methods` or a `Store`, and a method with an empty name or a nil function.
+
+## Try it
+
+```sh
+cd examples
+go run ./virtual-objects
+```
+
+```text
+alice's cart holds 3 items
+bob's cart holds 1 item
+after clear, alice's cart holds 0 items
+calls of alice's cart so far: 4
+unknown method: the call failed, naming the methods: true
+```
+
+Alice's three `add` calls ran one after another on the same state, while Bob's ran beside them on his own.
 
 ## Pitfalls
 
 - A slow method holds up every later call of its key. Keep methods short; start long work as a child run from the method's caller instead.
 - `ObjectState` reads the last saved state; a call running now may replace it a moment later.
 - With `workflow.NewMemoryJournal` the state lives in one process. Use the driver's durable journal for anything that must survive a restart.
+- **Without `Ordered`, a key's calls may run in any order.** They never overlap, but two calls enqueued back to back can be claimed the other way round. Set `ObjectSpec.Ordered` when the order matters; it needs `workflow.CapKeyFIFO`.
+- **Do not fork a call.** `ForkRun` drops `LabelObjectKey` with the other membership labels, so the fork has no key and its step fails permanently. Enqueue a new call with `CallObject` instead; resetting a failed call keeps its labels and works.
+- **The state goes through JSON.** It is saved with `encoding/json` after every call, so unexported fields are lost and a stored state that no longer decodes into the type fails the call permanently. Change the state type the way you would change a stored JSON document.
+
+## Related
+
+- [Durable state machines](state-machines.md): a keyed object whose calls are events moving it between states.
+- [Concurrency keys](../jobs/concurrency.md): the per-key limit an object is built on.
+- [Memoise work inside a step](memoisation.md#turn-on-the-journal): the journal stores that keep object state.
+- [Manage runs](../jobs/manage-runs.md#search-by-label): run listings by label.
+- Example: [examples/virtual-objects](../../examples/virtual-objects/)

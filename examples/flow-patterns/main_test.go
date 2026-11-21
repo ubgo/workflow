@@ -9,7 +9,9 @@ import (
 
 // TestRun runs the program and checks every line the guides show: trigger
 // rules with an exit handler, a saga, a multi-choice, a race, a poll, an
-// approval with a signed link, a group, an early end and a recursion limit.
+// approval with a signed link, a group, an early end and a recursion limit,
+// a saga across steps, a local merge, a race deadline, a sleep until a
+// time, a typed enqueue and result, and a shape guard.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -38,6 +40,21 @@ end run:
   status succeeded, ran: lookup
 recursion:
   depth 0, depth 1, depth 2, depth 3 stopped: limit reached
+saga across steps:
+  failed: trip compensated: hotel: no rooms
+    ran: cancel flight-booking-1, cancel car-booking-1
+local merge:
+  audit after email-receipt-1, sms-receipt-1
+race deadline:
+  nobody answered: "listing expired"
+sleep until:
+  "renewed"
+    renewed on time: true
+typed:
+  pen costs 10.00
+shape guard:
+  shape v1 ee4f66355fdd42d5, v2 2572197af55e2410
+  run from the old build failed: was enqueued with steps ee4f66355fdd42d5, now 2572197af55e2410 (step "fetch")
 `
 	if out != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", out, want)

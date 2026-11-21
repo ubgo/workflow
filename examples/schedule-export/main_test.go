@@ -9,7 +9,9 @@ import (
 
 // TestRun runs the program and checks every line the guide shows: the
 // CronJob, the systemd units, the Task Scheduler task, the launchd
-// handoff on a fixed clock, the refusals and the year field ending.
+// entries, the handoffs to launchd, systemd and Task Scheduler on a fixed
+// clock (and ErrNoNextFire once the schedule has ended), the refusals and
+// the year field ending.
 func TestRun(t *testing.T) {
 	out, err := capture.Stdout(func() error { return run(context.Background()) })
 	if err != nil {
@@ -96,6 +98,12 @@ task scheduler:
       </Exec>
     </Actions>
   </Task>
+launchd:
+  Weekday=1 Hour=3 Minute=0
+  Weekday=2 Hour=3 Minute=0
+  Weekday=3 Hour=3 Minute=0
+  Weekday=4 Hour=3 Minute=0
+  Weekday=5 Hour=3 Minute=0
 handoff:
   == nightly-report.plist
   <?xml version="1.0" encoding="UTF-8"?>
@@ -125,6 +133,9 @@ handoff:
   	</array>
   </dict>
   </plist>
+  OnCalendar=2026-01-06 02:00:00 UTC
+  <StartBoundary>2026-01-06T02:00:00Z</StartBoundary>
+  no next fire: uninstall the timer
 refusals:
   kubernetes refuses Misfire: true
   schedexport: systemd cannot express Overlap: a running service is never started twice, so a tick during a run is skipped; set Overlap to OverlapSkip

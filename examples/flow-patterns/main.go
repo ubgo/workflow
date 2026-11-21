@@ -2,8 +2,12 @@
 // ordinary steps: trigger rules over tolerated failures with an exit
 // handler, a saga that compensates, a multi-choice, a race decided by the
 // first signal, a polling sensor, a human approval with a signed link, a
-// step group, an early successful end, and a recursion limit. Everything
-// runs on the in-memory driver.
+// step group, an early successful end, and a recursion limit; then a
+// saga across parallel steps, a local merge over multi-choice branches,
+// a race whose default branch a delayed deadline job answers, a durable
+// sleep until a time, a typed enqueue and result, and a shape guard
+// catching a renamed step during a rolling deploy. Everything runs on the
+// in-memory driver.
 //
 // It is the program behind docs/workflows/trigger-rules.md,
 // docs/workflows/sagas.md, docs/workflows/multi-choice-and-race.md,
@@ -18,14 +22,18 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ubgo/workflow"
+	"github.com/ubgo/workflow/clock"
 	"github.com/ubgo/workflow/memory"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "flow-patterns:", err)
@@ -33,8 +41,25 @@ func main() {
 	}
 }
 
+const (
+	// pollEvery is how often the program checks a run or the log: every
+	// run here finishes in microseconds on the memory driver, so a slow
+	// poll would only make the program slower.
+	pollEvery = 2 * time.Millisecond
+
+	// recursionPolls bounds the wait for the deepest walk run to log its
+	// refusal: that many polls of pollEvery is a second, far more than
+	// four nested runs need, and a broken build still ends.
+	recursionPolls = 500
+
+	// recursionSettle is the pause after the refusal is logged, so a
+	// shallower run that is still finishing adds its line before the log
+	// is printed.
+	recursionSettle = 10 * time.Millisecond
+)
+
 // await is how the program waits for a run.
-var await = workflow.AwaitOptions{Poll: 2 * time.Millisecond}
+var await = workflow.AwaitOptions{Poll: pollEvery}
 
 // log collects what the steps did, in order, safely across goroutines.
 type log struct {
@@ -42,8 +67,20 @@ type log struct {
 	lines []string
 }
 
+// add appends one line under the lock; steps call it from the driver's
+// goroutines.
 func (l *log) add(s string) { l.mu.Lock(); l.lines = append(l.lines, s); l.mu.Unlock() }
 
+// has reports whether any line so far contains sub, under the lock, so
+// the program can poll the log while steps still write to it.
+func (l *log) has(sub string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return strings.Contains(strings.Join(l.lines, ","), sub)
+}
+
+// take returns the lines so far joined with commas and empties the log,
+// so each section prints only what its own runs did.
 func (l *log) take() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -69,7 +106,8 @@ func run(ctx context.Context) error {
 	}
 	// snippet:end
 
-	wfs := []func(*log) (workflow.Workflow, error){orderWorkflow, tripWorkflow, notifyWorkflow, offerWorkflow, sensorWorkflow, refundWorkflow, importWorkflow, checkWorkflow}
+	wfs := []func(*log) (workflow.Workflow, error){orderWorkflow, tripWorkflow, notifyWorkflow, offerWorkflow, sensorWorkflow, refundWorkflow, importWorkflow, checkWorkflow,
+		bookingWorkflow, alertsWorkflow, renewalWorkflow, priceWorkflow, listingWorkflow}
 	for _, build := range wfs {
 		wf, err := build(&did)
 		if err != nil {
@@ -82,13 +120,18 @@ func run(ctx context.Context) error {
 	if err := c.Register(walkWorkflow(c, &did)); err != nil {
 		return err
 	}
+	if err := c.Register(deadlineWorkflow(c)); err != nil {
+		return err
+	}
 	if err := c.Start(ctx); err != nil {
 		return err
 	}
 
+	// start enqueues one run of wf with payload and labels.
 	start := func(wf string, payload string, labels map[string]string) (workflow.RunRef, error) {
 		return c.Enqueue(ctx, workflow.Job{Workflow: wf, Payload: []byte(payload), Labels: labels})
 	}
+	// result waits for ref and returns its output, or its error as text.
 	result := func(ref workflow.RunRef) string {
 		out, err := workflow.AwaitResult(ctx, c, ref, await)
 		if err != nil {
@@ -175,20 +218,60 @@ func run(ctx context.Context) error {
 	if _, err := workflow.Await(ctx, c, ref, await); err != nil {
 		return err
 	}
-	for range 500 {
-		if strings.Contains(strings.Join(did.lines, ","), "stopped") {
+	for range recursionPolls {
+		if did.has("stopped") {
 			break
 		}
-		time.Sleep(2 * time.Millisecond)
+		time.Sleep(pollEvery)
 	}
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(recursionSettle)
 	fmt.Printf("  %s\n", did.take())
-	return nil
+
+	fmt.Println("saga across steps:")
+	ref, err = start("booking", `null`, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  %s\n    ran: %s\n", shorten(result(ref)), did.take())
+
+	fmt.Println("local merge:")
+	ref, err = start("alerts", `{"email":true,"sms":true}`, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := workflow.Await(ctx, c, ref, await); err != nil {
+		return err
+	}
+	fmt.Printf("  %s\n", did.take())
+
+	fmt.Println("race deadline:")
+	if err := listingDeadline(ctx, c, result); err != nil {
+		return err
+	}
+
+	fmt.Println("sleep until:")
+	renewal := time.Now().Add(renewIn)
+	ref, err = start("renewal", strconv.Quote(renewal.Format(time.RFC3339Nano)), nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  %s\n    renewed on time: %v\n", result(ref), !time.Now().Before(renewal))
+
+	fmt.Println("typed:")
+	if err := typed(ctx, c); err != nil {
+		return err
+	}
+
+	fmt.Println("shape guard:")
+	return shapeGuard(ctx)
 }
 
 // shorten keeps the part of a run error after the driver's prefix.
 func shorten(s string) string {
 	if i := strings.Index(s, "workflow: steps failed"); i >= 0 {
+		return "failed: " + s[i:]
+	}
+	if i := strings.Index(s, "trip compensated"); i >= 0 {
 		return "failed: " + s[i:]
 	}
 	if i := strings.Index(s, "workflow: saga"); i >= 0 {
@@ -201,12 +284,14 @@ func shorten(s string) string {
 // mails the customer, and the receipt is skipped. A cleanup step always
 // runs last.
 func orderWorkflow(did *log) (workflow.Workflow, error) {
+	// step builds a step that logs its name, then runs fn.
 	step := func(name string, after []string, fn func(in []byte) ([]byte, error)) workflow.Step {
 		return workflow.Step{Name: name, After: after, Run: func(ctx context.Context, in []byte) ([]byte, error) {
 			did.add(name)
 			return fn(in)
 		}}
 	}
+	// errDeclined is the charge's failure the Catch route recognises.
 	errDeclined := errors.New("card declined")
 	// snippet:rules
 	wf := workflow.Workflow{Name: "order", Steps: []workflow.Step{
@@ -235,9 +320,11 @@ func orderWorkflow(did *log) (workflow.Workflow, error) {
 // tripWorkflow books a car, a flight and a hotel; the hotel has no
 // rooms, so the flight and the car are cancelled, newest first.
 func tripWorkflow(did *log) (workflow.Workflow, error) {
+	// act returns a saga action or compensation that only logs s.
 	act := func(s string) func(context.Context) error {
 		return func(context.Context) error { did.add(s); return nil }
 	}
+	// noRooms is the hotel booking, which always fails.
 	noRooms := func(context.Context) error { did.add("book hotel"); return errors.New("no rooms") }
 	return workflow.Workflow{Name: "trip", Steps: []workflow.Step{{Name: "book", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 		// snippet:saga
@@ -258,6 +345,7 @@ func tripWorkflow(did *log) (workflow.Workflow, error) {
 
 // notifyWorkflow sends on every channel the payload turns on.
 func notifyWorkflow(*log) (workflow.Workflow, error) {
+	// send returns a branch body that reports it sent on channel.
 	send := func(channel string) workflow.Handler {
 		return func(context.Context, []byte) ([]byte, error) { return json.Marshal("sent by " + channel) }
 	}
@@ -295,7 +383,7 @@ func offerWorkflow(*log) (workflow.Workflow, error) {
 			_ = json.Unmarshal(j.Payload, &id) // the offer ID
 			return id
 		}),
-		Timeout: 72 * time.Hour,
+		Timeout: 72 * time.Hour, // how long the customer has to reply
 		Branches: []workflow.Branch{
 			{Name: "accept", Run: func(ctx context.Context, in []byte) ([]byte, error) { return []byte(`"order placed"`), nil }},
 			{Name: "decline", Run: func(ctx context.Context, in []byte) ([]byte, error) {
@@ -313,12 +401,13 @@ func offerWorkflow(*log) (workflow.Workflow, error) {
 
 // sensorWorkflow waits until a partition file exists.
 func sensorWorkflow(did *log) (workflow.Workflow, error) {
-	looks := 0
+	looks := 0 // how many times the sensor has looked so far
 	return workflow.Workflow{Name: "sensor", Steps: []workflow.Step{{Name: "wait-partition", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 		// snippet:poll
+		// First look after 1ms, the gap doubling to at most 8ms, for up to an hour.
 		path, err := workflow.Poll(ctx, "partition", workflow.PollSpec{Every: time.Millisecond, Factor: 2, Max: 8 * time.Millisecond, Timeout: time.Hour},
 			func(ctx context.Context) (string, bool, error) {
-				looks++ // a real sensor would stat the file or list the bucket
+				looks++ // a real sensor would stat the file or list the bucket; here it is there on the third look
 				return "s3://lake/2026-11-20/", looks == 3, nil
 			})
 		if err != nil {
@@ -336,7 +425,7 @@ func refundWorkflow(*log) (workflow.Workflow, error) {
 	approval, err := workflow.ApprovalStep(workflow.ApprovalSpec{
 		Name:    "approve",
 		KeyFrom: workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["refund"] }),
-		Timeout: 7 * 24 * time.Hour,
+		Timeout: 7 * 24 * time.Hour, // a week to answer
 	})
 	if err != nil {
 		return workflow.Workflow{}, err
@@ -362,10 +451,10 @@ func approve(ctx context.Context, c workflow.Client, start func(string, string, 
 	if err != nil {
 		return err
 	}
-	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC) // a fixed send time, so the expiry is the same on every run
 	// snippet:signer
 	signer := workflow.ApprovalSigner{Keys: [][]byte{[]byte("a-secret-of-32-bytes-from-config")}}
-	token, err := signer.Sign("r-19", now.Add(48*time.Hour)) // put it in the email's link
+	token, err := signer.Sign("r-19", now.Add(48*time.Hour)) // valid for two days; put it in the email's link
 	if err != nil {
 		return err
 	}
@@ -378,7 +467,7 @@ func approve(ctx context.Context, c workflow.Client, start func(string, string, 
 		return err
 	}
 	// snippet:end
-	_, err = signer.Verify(token, now.Add(49*time.Hour))
+	_, err = signer.Verify(token, now.Add(49*time.Hour)) // an hour after the link expired
 	fmt.Printf("  %s\n  the same link two days later: %v\n", result(ref), err)
 	return nil
 }
@@ -386,6 +475,7 @@ func approve(ctx context.Context, c workflow.Client, start func(string, string, 
 // importWorkflow fetches, then cleans and counts in parallel, as one
 // group the rest of the workflow sees as a single step.
 func importWorkflow(*log) (workflow.Workflow, error) {
+	// out returns a step body whose output is s.
 	out := func(s string) workflow.Handler {
 		return func(context.Context, []byte) ([]byte, error) { return json.Marshal(s) }
 	}
@@ -408,6 +498,7 @@ func importWorkflow(*log) (workflow.Workflow, error) {
 
 // checkWorkflow ends early, successfully, when the address is blocked.
 func checkWorkflow(did *log) (workflow.Workflow, error) {
+	// step builds a step that logs its name, then runs fn.
 	step := func(name string, after []string, fn workflow.Handler) workflow.Step {
 		return workflow.Step{Name: name, After: after, Run: func(ctx context.Context, in []byte) ([]byte, error) {
 			did.add(name)
@@ -449,4 +540,256 @@ func walkWorkflow(c workflow.Client, did *log) workflow.Workflow {
 		did.add("depth " + depth)
 		return nil, err
 	}}}}
+}
+
+// bookingWorkflow books a car, a flight and a hotel as three parallel
+// steps. The hotel is full, so the undo step cancels the bookings that
+// went through and fails the run; the confirm step is skipped.
+func bookingWorkflow(did *log) (workflow.Workflow, error) {
+	// book builds a booking step for what that fails for good with err,
+	// or succeeds with a booking reference when err is nil.
+	book := func(what string, err error) workflow.Step {
+		return workflow.Step{Name: what, Run: func(context.Context, []byte) ([]byte, error) {
+			if err != nil {
+				return nil, workflow.Permanent(err)
+			}
+			return json.Marshal(what + "-booking-1")
+		}}
+	}
+	// snippet:sagasteps
+	order := []string{"car", "flight", "hotel"} // booking order: undo runs it backwards
+	wf := workflow.Workflow{Name: "booking", Steps: []workflow.Step{
+		book("car", nil), book("flight", nil), book("hotel", errors.New("no rooms")),
+		{Name: "confirm", After: order, Run: func(context.Context, []byte) ([]byte, error) {
+			did.add("confirm")
+			return []byte(`"trip booked"`), nil
+		}},
+		{Name: "undo", After: order, Run: func(ctx context.Context, in []byte) ([]byte, error) {
+			var booked map[string]*string // a failed booking's output is null
+			if err := json.Unmarshal(in, &booked); err != nil {
+				return nil, workflow.Permanent(err)
+			}
+			for _, what := range slices.Backward(order) {
+				if booked[what] != nil {
+					did.add("cancel " + *booked[what])
+				}
+			}
+			f := workflow.ParentFailures(ctx)[0]
+			return nil, workflow.Permanent(fmt.Errorf("trip compensated: %s: %s", f.Step, f.Error))
+		}},
+	}}
+	return workflow.WithRules(wf, workflow.RulesSpec{
+		Tolerate: order, // a failed booking is recorded, not fatal
+		Rules:    map[string]workflow.TriggerRule{"undo": workflow.RuleOneFailed},
+	})
+	// snippet:end
+}
+
+// alertsWorkflow pages on the channels the payload turns on, and an
+// audit step lists the branch steps themselves in After: a local merge
+// that runs once, after the branches taken, and reads what they stored.
+func alertsWorkflow(did *log) (workflow.Workflow, error) {
+	channels := []string{"email", "sms", "push"}
+	branches := make([]workflow.Branch, len(channels))
+	for i, ch := range channels {
+		branches[i] = workflow.Branch{Name: ch, Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			return nil, workflow.SetRunData(ctx, "sent."+ch, ch+"-receipt-1") // one name per branch
+		}}
+	}
+	steps, err := workflow.MultiChoice(workflow.MultiChoiceSpec{
+		Name: "page",
+		Decide: func(ctx context.Context, in []byte) ([]string, error) {
+			var want map[string]bool
+			if err := json.Unmarshal(in, &want); err != nil {
+				return nil, workflow.Permanent(err)
+			}
+			var picked []string
+			for _, ch := range channels {
+				if want[ch] {
+					picked = append(picked, ch)
+				}
+			}
+			return picked, nil
+		},
+		Branches: branches,
+	})
+	if err != nil {
+		return workflow.Workflow{}, err
+	}
+	// snippet:merge
+	steps = append(steps, workflow.Step{
+		Name:  "audit",
+		After: []string{"page.email", "page.sms", "page.push"}, // the branch steps, not the join "page"
+		Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			var sent []string
+			for _, ch := range []string{"email", "sms", "push"} {
+				receipt, ok, err := workflow.RunData[string](ctx, "sent."+ch)
+				if err != nil {
+					return nil, err
+				}
+				if ok { // a branch not taken stored nothing
+					sent = append(sent, receipt)
+				}
+			}
+			did.add("audit after " + strings.Join(sent, ", "))
+			return nil, nil
+		},
+	})
+	// snippet:end
+	return workflow.Workflow{Name: "alerts", Steps: steps}, nil
+}
+
+// renewIn is how far ahead the renewal step sleeps to: short, so the
+// program ends at once.
+const renewIn = 20 * time.Millisecond
+
+// renewalWorkflow renews a subscription at the time its payload names.
+func renewalWorkflow(*log) (workflow.Workflow, error) {
+	return workflow.Workflow{Name: "renewal", Steps: []workflow.Step{{Name: "renew", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+		// snippet:sleepuntil
+		var at time.Time
+		if err := json.Unmarshal(in, &at); err != nil {
+			return nil, workflow.Permanent(err)
+		}
+		if err := workflow.SleepUntil(clock.Real{}, at); err != nil {
+			return nil, err // a Snooze for the time left; the step comes back at `at`
+		}
+		return json.Marshal("renewed") // runs once `at` has passed
+		// snippet:end
+	}}}}, nil
+}
+
+// quote and priced are the typed payload and result of the price
+// workflow.
+type (
+	quote struct {
+		SKU string
+		Qty int
+	}
+	priced struct {
+		SKU   string
+		Total float64
+	}
+)
+
+// unitPrice is the price of one item in the typed example.
+const unitPrice = 2.5
+
+// priceWorkflow prices an order with a typed handler.
+func priceWorkflow(*log) (workflow.Workflow, error) {
+	return workflow.Workflow{Name: "price", Steps: []workflow.Step{{Name: "total", Run: workflow.Define(func(_ context.Context, q quote) (priced, error) {
+		return priced{SKU: q.SKU, Total: float64(q.Qty) * unitPrice}, nil
+	})}}}, nil
+}
+
+// typed enqueues a typed payload and reads a typed result.
+func typed(ctx context.Context, c workflow.Client) error {
+	// snippet:typed
+	ref, err := workflow.EnqueueOf(ctx, c, "price", quote{SKU: "pen", Qty: 4}, func(j *workflow.Job) {
+		j.Labels = map[string]string{"customer": "c-7"} // edit the job before it is sent
+	})
+	if err != nil {
+		return err
+	}
+	p, err := workflow.AwaitResultOf[priced](ctx, c, ref, await)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("  %s costs %.2f\n", p.SKU, p.Total)
+	// snippet:end
+	return nil
+}
+
+// shapeGuard plays a rolling deploy that renamed a step: a worker on the
+// new build runs v2 while an API server on the old build still enqueues
+// under v1, and the guard fails that run before any handler runs.
+func shapeGuard(ctx context.Context) error {
+	// ok is the body of every sync step: the guard fails the run before
+	// any of them would run.
+	ok := func(context.Context, []byte) ([]byte, error) { return []byte(`"done"`), nil }
+	v1 := workflow.Workflow{Name: "sync", Steps: []workflow.Step{{Name: "fetch", Run: ok}, {Name: "save", After: []string{"fetch"}, Run: ok}}}
+	v2 := workflow.Workflow{Name: "sync", Steps: []workflow.Step{{Name: "fetch", Run: ok}, {Name: "store", After: []string{"fetch"}, Run: ok}}}
+	fmt.Printf("  shape v1 %s, v2 %s\n", workflow.Shape(v1), workflow.Shape(v2))
+
+	backend := memory.New() // one backend both deploys share
+	// snippet:shape
+	worker, err := workflow.Use(backend, workflow.ShapeGuard(v2)) // the new deploy: "save" renamed "store"
+	if err != nil {
+		return err
+	}
+	if err := worker.Register(v2); err != nil {
+		return err
+	}
+	if err := worker.Start(ctx); err != nil {
+		return err
+	}
+	api, err := workflow.Use(backend, workflow.ShapeGuard(v1)) // an API server still on the old build
+	if err != nil {
+		return err
+	}
+	ref, err := api.Enqueue(ctx, workflow.Job{Workflow: "sync"}) // stamped with Shape(v1)
+	if err != nil {
+		return err
+	}
+	_, err = workflow.AwaitResult(ctx, worker, ref, await)
+	msg := fmt.Sprint(err) // ErrShapeChanged, Permanent, before any handler ran
+	fmt.Println("  run from the old build failed:", msg[max(strings.Index(msg, "was enqueued"), 0):])
+	// snippet:end
+	return nil
+}
+
+// expireIn is the deadline of a listing nobody answers: short, so the
+// program ends at once; a real app would use days.
+const expireIn = 20 * time.Millisecond
+
+// listingWorkflow races on the buyer's answer to a listing; the expire
+// branch is the default a delayed deadline job answers for.
+func listingWorkflow(*log) (workflow.Workflow, error) {
+	// answer returns a branch body whose output is s.
+	answer := func(s string) workflow.Handler {
+		return func(context.Context, []byte) ([]byte, error) { return json.Marshal(s) }
+	}
+	steps, err := workflow.Race(workflow.RaceSpec{
+		Name:  "answer",
+		Event: "listing.answer",
+		KeyFrom: workflow.KeyFunc(func(j workflow.Job) string {
+			var id string
+			_ = json.Unmarshal(j.Payload, &id) // the listing ID
+			return id
+		}),
+		Branches: []workflow.Branch{{Name: "buy", Run: answer("sold")}, {Name: "expire", Run: answer("listing expired")}},
+	})
+	return workflow.Workflow{Name: "listing", Steps: steps}, err
+}
+
+// deadlineWorkflow answers "expire" for the listing its payload names.
+func deadlineWorkflow(c workflow.Client) workflow.Workflow {
+	// snippet:deadline
+	return workflow.Workflow{Name: "listing.deadline", Steps: []workflow.Step{{Name: "expire",
+		Run: func(ctx context.Context, in []byte) ([]byte, error) {
+			var id string
+			if err := json.Unmarshal(in, &id); err != nil { // the listing ID, as the listing run's payload
+				return nil, workflow.Permanent(err)
+			}
+			return nil, workflow.SignalChoice(ctx, c, "listing.answer", id, "expire", nil) // loses quietly if someone answered
+		},
+	}}}
+	// snippet:end
+}
+
+// listingDeadline starts a listing and its deadline job; nobody answers,
+// so the deadline's expire branch wins.
+func listingDeadline(ctx context.Context, c workflow.Client, result func(workflow.RunRef) string) error {
+	// snippet:deadline-start
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "listing", Payload: []byte(`"listing-3"`)})
+	if err != nil {
+		return err
+	}
+	_, err = c.Enqueue(ctx, workflow.Job{Workflow: "listing.deadline", Payload: []byte(`"listing-3"`), RunAt: time.Now().Add(expireIn)})
+	if err != nil {
+		return err
+	}
+	// snippet:end
+	fmt.Printf("  nobody answered: %s\n", result(ref))
+	return nil
 }

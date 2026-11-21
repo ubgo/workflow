@@ -1,6 +1,6 @@
 # failure-alerts
 
-Tell people when runs fail: an alert sink (a function standing in for Slack, email or a pager) called on final failures and deduplicated per workflow and step, with a count of the alerts held back, and an error reporter (standing in for an error tracker) that receives each final failure and, on opt-in, each failed attempt, without the payload. It runs on the in-memory driver with a fake clock, so nothing needs to be installed and the output never varies.
+Tell people when runs fail: an alert sink (a function standing in for Slack, email or a pager) called on final failures and deduplicated per workflow and step, with a count of the alerts held back, and an error reporter (standing in for an error tracker) that receives each final failure and, on opt-in, each failed attempt, without the payload; then alerts keyed per tenant, filtered and capped across every key by a `MemoryAlertLimiter` of its own. It runs on the in-memory driver with a fake clock, so nothing needs to be installed and the output never varies.
 
 ```sh
 cd examples
@@ -25,6 +25,11 @@ go run ./failure-alerts
   report charge step=capture final=false attempt=1 tenant=acme: card declined
   report charge step=capture final=false attempt=2 tenant=acme: card declined
   report charge step=capture final=true attempt=0 tenant=acme: memory: step "capture" failed after 2 attempt(s): card declined
+-- per tenant, at most 2 alerts an hour: acme, globex, initech and loadtest fail
+  ALERT charge/acme (and 0 more)
+  ALERT charge/globex (and 0 more)
+-- an hour later initech fails again
+  ALERT charge/initech (and 1 more)
 ```
 
 ## The code
@@ -52,6 +57,28 @@ c, err := workflow.Use(mem,
 	// retried.
 	middleware.Report(tracker, middleware.ReportConfig{Attempts: true, Clock: clk}),
 )
+```
+
+The second part keys alerts per tenant, filters out a load-test tenant and caps alerts at two an hour across every key, on the bare `middleware.Alerts` observer:
+
+<!-- snippet: examples/failure-alerts/main.go#limiter -->
+```go
+limiter := middleware.NewMemoryAlertLimiter(clk, middleware.AlertLimits{
+	Dedup: tenantDedup, // one alert per key in this window
+	Max:   alertCap,    // and at most this many alerts, all keys together,
+	Per:   capWindow,   // in any sliding window this long
+})
+alerts := middleware.Alerts(slack, middleware.AlertConfig{
+	// One alert per workflow and tenant, not per workflow and step.
+	Key: func(f workflow.Failure) string { return f.Workflow + "/" + f.Labels["tenant"] },
+	// The load-test tenant fails on purpose: never page for it.
+	When:    func(f workflow.Failure) bool { return f.Labels["tenant"] != "loadtest" },
+	Limiter: limiter,
+	Clock:   clk,
+})
+if err := mem.OnRunFinished(alerts); err != nil { // the bare observer; AlertPlugin wraps it for workflow.Use
+	return err
+}
 ```
 
 `main_test.go` runs the program and compares its whole output with the block above.

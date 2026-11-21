@@ -27,6 +27,39 @@ err = c.(workflow.TickNotifier).OnTick(func(_ context.Context, t workflow.Tick) 
 | `TickSkipped` | the tick was due and on time but did not fire | `Reason`: `TickReasonWhen` (`ScheduleWhen` said no), `TickReasonWindow` (outside the [windows](conditions.md)), `TickReasonPaused` ([paused](manage.md#pause-a-schedule)) |
 | `TickMisfired` | the scheduler woke late and the [misfire policy](misfire.md) dropped ticks | `Missed` (how many), `At` (the newest dropped) |
 
+An observer usually switches on the outcome and, for a skipped tick, on the reason. The example prints each tick with this function:
+
+<!-- snippet: examples/schedule-hooks/main.go#outcome -->
+```go
+func describe(t workflow.Tick) string {
+	switch t.Outcome {
+	case workflow.TickFired: // a run was enqueued (t.Run), or the enqueue failed (t.Err)
+		if t.Err != nil {
+			return "fired, enqueue failed: " + t.Err.Error()
+		}
+		if t.Manual {
+			return "fired by hand"
+		}
+		return "fired"
+	case workflow.TickSkipped: // due and on time, but not fired
+		switch t.Reason {
+		case workflow.TickReasonWindow:
+			return "skipped (window)" // outside the schedule's Windows
+		case workflow.TickReasonWhen:
+			return "skipped (when)" // ScheduleWhen returned false
+		case workflow.TickReasonPaused:
+			return "skipped (paused)" // SchedulePauser holds the schedule
+		}
+		return "skipped (" + t.Reason + ")"
+	case workflow.TickMisfired: // the misfire policy dropped late ticks
+		return fmt.Sprintf("misfired, %d dropped, newest %s", t.Missed, t.At.Format("15:04"))
+	}
+	return string(t.Outcome)
+}
+```
+
+`Tick.Manual` is set on a `TickFired` that [trigger now](overlap.md#trigger-a-schedule-now) (`ScheduleTriggerer`) started by hand; `At` is then the driver's clock at the trigger. A misfired report stands for a batch of ticks, not one: `Missed` says how many were dropped and `At` is the newest.
+
 Every tick also carries `ScheduleID`, `Name` (for a declared cron, its expression), `Workflow`, `Declared`, `At`, `Location` and the schedule's `Labels`. Misfired ticks are reported too: a scheduler that only looks at the current minute cannot see a tick missed during a deploy, so it would simply never exist.
 
 Every run a schedule fires carries two reserved labels, `workflow.LabelSchedule` (the `ScheduleID`) and `workflow.LabelScheduleName` (the name), so a run-finished observer on any node can tell which schedule a run came from.
@@ -45,7 +78,6 @@ Every run a schedule fires carries two reserved labels, `workflow.LabelSchedule`
 
 <!-- snippet: examples/schedule-hooks/main.go#hooks -->
 ```go
-ping := middleware.NewPinger(middleware.HTTPPing(hb.Client()))
 err = workflow.AttachScheduleHooks(c, workflow.ScheduleHooks{
 	Workflow:  "sync-orders",
 	Name:      "office-hours",               // one schedule; empty means all of the workflow's
@@ -58,13 +90,26 @@ err = workflow.AttachScheduleHooks(c, workflow.ScheduleHooks{
 })
 ```
 
+`ping` is the heartbeat pinger built in [the next section](#ping-a-heartbeat-service).
+
 `AttachScheduleHooks` refuses, before registering anything, a hook without a `Workflow` (`workflow.ErrInvalid`) and a client that lacks the notifier a hook needs (an `*workflow.UnsupportedError` naming `CapTickEvents` or `CapRunFinished`). A cancelled run calls only `After`.
 
 `Fired` runs in the scheduler, not on the worker: the run is enqueued and runs on whichever worker takes it. To run code on the worker just before the step, use [step middleware](../middleware/step-middleware.md); `Fired` is for the schedule's side: a ping, a metric, a log line.
 
 ## Ping a heartbeat service
 
-`middleware.NewPinger(send, opts...)` returns a `*middleware.Pinger` whose methods return functions with the shapes `ScheduleHooks` takes, so a ping is one assignment (see the snippet above):
+`middleware.NewPinger(send, opts...)` returns a `*middleware.Pinger`. The example builds one with the HTTP sender, a timeout and a logger:
+
+<!-- snippet: examples/schedule-hooks/main.go#pinger -->
+```go
+ping := middleware.NewPinger(
+	middleware.HTTPPing(hb.Client()),                                  // a GET; a status outside 2xx is a failure
+	middleware.WithPingTimeout(pingTimeout),                           // a dead service cannot hold up the hooks
+	middleware.WithPingLogger(slog.Default().With("check", "orders")), // failures at Warn, never with the URL
+)
+```
+
+Its methods return functions with the shapes `ScheduleHooks` takes, so each ping is one assignment in the hooks above:
 
 | Pinger | Hook field |
 |---|---|

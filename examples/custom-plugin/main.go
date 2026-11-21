@@ -21,6 +21,7 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "custom-plugin:", err)

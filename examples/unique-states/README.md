@@ -8,6 +8,9 @@ go run ./unique-states
 ```
 
 ```text
+key from tagged fields:
+  s-1 with two cursors, same key: true
+  s-1 and s-2, same key: false
 unique while waiting to start:
   s-1 in an hour: accepted
   s-1 now, other cursor, first one scheduled: refused (ErrDuplicate)
@@ -35,6 +38,23 @@ type SyncArgs struct {
 	ShopID string `json:"shop_id" unique:"true"`
 	Cursor string `json:"cursor"`
 }
+```
+
+The key function built from those tags:
+
+<!-- snippet: examples/unique-states/main.go#tagged-key -->
+```go
+by := middleware.UniqueByArgs(middleware.ArgsTagged[SyncArgs]())
+jobs := make([]workflow.Job, 0, 3) // one per payload below
+for _, args := range []SyncArgs{{ShopID: "s-1", Cursor: "a"}, {ShopID: "s-1", Cursor: "b"}, {ShopID: "s-2", Cursor: "a"}} {
+	job, err := workflow.JobOf("sync-shop", args)
+	if err != nil {
+		return err
+	}
+	jobs = append(jobs, job)
+}
+fmt.Println("  s-1 with two cursors, same key:", by(jobs[0]) == by(jobs[1]))
+fmt.Println("  s-1 and s-2, same key:", by(jobs[0]) == by(jobs[2]))
 ```
 
 Unique only while the holder is scheduled or queued:

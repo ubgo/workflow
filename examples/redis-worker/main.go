@@ -24,6 +24,7 @@ import (
 	"github.com/ubgo/workflow/redis"
 )
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "redis-worker:", err)
@@ -33,6 +34,25 @@ func main() {
 
 // envURL names the Redis to run against, such as redis://localhost:7012/0.
 const envURL = "REDIS_URL"
+
+const (
+	// prefixBase writes the prefix's timestamp in base 36: short, and only
+	// letters and digits, so it is safe in a key.
+	prefixBase = 36
+	// workerCount is how many workers share the prefix: two, so the run
+	// once across them and the trigger from another worker are visible.
+	workerCount = 2
+	// sendRetries lets the send step retry twice after its first attempt;
+	// it fails only once, so the run ends after two attempts.
+	sendRetries = 2
+	// retryBackoff is the wait before a retry: short so the demo is fast.
+	retryBackoff = 50 * time.Millisecond
+	// endTimeout bounds waitEnd, and endPoll is how often it reads the run.
+	endTimeout = 10 * time.Second
+	endPoll    = 20 * time.Millisecond
+	// scanBatch is the SCAN count hint when the prefix's keys are deleted.
+	scanBatch = 500
+)
 
 // run is main without the process exit, so the test drives the same code.
 func run(ctx context.Context) error {
@@ -64,6 +84,8 @@ func offline() error {
 	return nil
 }
 
+// live runs the web client, the two workers and the schedule against the
+// Redis at url, all under a fresh prefix that it deletes at the end.
 func live(ctx context.Context, url string) (err error) {
 	opts, err := goredis.ParseURL(url)
 	if err != nil {
@@ -72,11 +94,12 @@ func live(ctx context.Context, url string) (err error) {
 	// snippet:client
 	rdb := goredis.NewClient(opts) // the package is named redis too, hence goredis
 	defer func() { err = errors.Join(err, rdb.Close()) }()
-	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	prefix := "example-" + strconv.FormatInt(time.Now().UnixNano(), prefixBase)
+	// newWorker builds one worker client on the shared prefix.
 	newWorker := func() (*redis.Client, error) {
 		return redis.New(rdb,
-			redis.WithPrefix(prefix), // clients that share a prefix share every run and schedule
-			redis.WithPollInterval(50*time.Millisecond),
+			redis.WithPrefix(prefix),                    // clients that share a prefix share every run and schedule
+			redis.WithPollInterval(50*time.Millisecond), // short for the demo; how often a worker looks for due runs
 		)
 	}
 	// snippet:end
@@ -85,7 +108,7 @@ func live(ctx context.Context, url string) (err error) {
 	var sends, attempts atomic.Int32
 	email := workflow.Workflow{
 		Name:  "send-email",
-		Retry: workflow.RetryPolicy{Max: 2, Backoff: workflow.Backoff{Initial: 50 * time.Millisecond}},
+		Retry: workflow.RetryPolicy{Max: sendRetries, Backoff: workflow.Backoff{Initial: retryBackoff}},
 		Steps: []workflow.Step{{Name: "send", Run: func(context.Context, []byte) ([]byte, error) {
 			if attempts.Add(1) == 1 {
 				return nil, errors.New("smtp 451")
@@ -99,7 +122,7 @@ func live(ctx context.Context, url string) (err error) {
 	wctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var workers []*redis.Client
-	for range 2 {
+	for range workerCount {
 		w, err := newWorker()
 		if err != nil {
 			return err
@@ -169,7 +192,7 @@ func live(ctx context.Context, url string) (err error) {
 
 // waitEnd polls until the run is terminal.
 func waitEnd(ctx context.Context, c workflow.Client, ref workflow.RunRef) error {
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(endTimeout)
 	for {
 		st, err := c.Status(ctx, ref)
 		if err != nil {
@@ -179,15 +202,15 @@ func waitEnd(ctx context.Context, c workflow.Client, ref workflow.RunRef) error 
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("run %s still %s after 10s", ref.RunID, st)
+			return fmt.Errorf("run %s still %s after %s", ref.RunID, st, endTimeout)
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(endPoll)
 	}
 }
 
 // deletePrefix removes every key of the example's prefix.
 func deletePrefix(ctx context.Context, rdb *goredis.Client, prefix string) error {
-	iter := rdb.Scan(ctx, 0, "{"+prefix+"}*", 500).Iterator()
+	iter := rdb.Scan(ctx, 0, "{"+prefix+"}*", scanBatch).Iterator()
 	for iter.Next(ctx) {
 		if err := rdb.Del(ctx, iter.Val()).Err(); err != nil {
 			return err

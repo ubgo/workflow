@@ -30,6 +30,20 @@ metric workflow.enqueue.count workflow.label.tier=pro workflow.name=send-email w
 metric workflow.queue.wait workflow.label.tier=pro workflow.name=send-email workflow.queue=default workflow.step=send
 metric workflow.runs.finished workflow.name=send-email workflow.run.status=succeeded
 Enqueue middleware twice: true
+-- every label, W3C baggage in the trace labels, durations on a fake clock
+span attribute of the user label: workflow.label.user
+span "workflow.enqueue send-email" kind=producer workflow.label.tier=pro workflow.label.user=u-42 workflow.name=send-email workflow.outcome=ok
+span "workflow.step send-email/send" kind=consumer workflow.attempt=1 workflow.label.tier=pro workflow.label.user=u-42 workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+same trace: true, step parent is the enqueue span: true, step links to it: false
+run ID on the enqueue span: true
+metric workflow.step.duration workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+metric workflow.step.outcomes workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok workflow.queue=default workflow.step=send
+metric workflow.enqueue.count workflow.label.tier=pro workflow.name=send-email workflow.outcome=ok
+metric workflow.queue.wait workflow.label.tier=pro workflow.name=send-email workflow.queue=default workflow.step=send
+metric workflow.runs.finished workflow.name=send-email workflow.run.status=succeeded
+trace labels on the run: otel.baggage otel.traceparent; baggage in the step: plan=pro
+step attempts with outcome ok: 1, step time: 1.5s
+Enqueue middleware twice: true
 `
 
 // TestRun runs the program and checks every line it prints.

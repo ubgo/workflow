@@ -1,6 +1,6 @@
 # retention
 
-The SQL driver deleting finished runs on purpose. A fake clock stands in for the days passing. The rules: successes kept a day, failures a week, cancelled runs forever, and the "report" workflow capped at its newest two runs. An archive hook copies each chunk (two runs per chunk here) to a slice standing in for cold storage before it is deleted, and the app calls `Prune` itself.
+The SQL driver deleting finished runs on purpose. A fake clock stands in for the days passing. The rules: successes kept a day, failures a week, cancelled runs forever, and the "report" workflow capped at its newest two runs. An archive hook copies each chunk (two runs per chunk here) to a slice standing in for cold storage before it is deleted, and the app calls `Prune` itself. A third database shows an archive hook that fails: nothing is deleted and `Prune` returns the hook's error.
 
 A second database shows the guard that surprises people: with no `OnRunFinished` observer in the cluster and `Undelivered` left false, nothing is deleted and `Prune` says why in `HeldUndelivered`.
 
@@ -13,14 +13,18 @@ go run ./retention
 now: deleted 3, held undelivered 0, idempotency 0, batch 0
 a day later: deleted 2
 a week later: deleted 1
-archived: email failed "fail", email succeeded "a", email succeeded "b", report succeeded "r1", report succeeded "r2", report succeeded "r3"
+archived: email failed "fail" err=sqlstore: step "send" failed after 1 attempt(s): mailbox does not exist, email succeeded "a" send="sent", email succeeded "b" send="sent", report succeeded "r1" build="r1", report succeeded "r2" build="r2", report succeeded "r3" build="r3"
 no observer, Undelivered false: deleted 0, held undelivered 1
 Undelivered true: deleted 1
+archive failed: deleted 0, error is the hook's: true
+the run is kept: succeeded
 ```
 
 ## The code
 
+- `archive`: an `ArchiveFunc` that writes each `FinishedRun` (workflow, status, payload, error text, step outputs) to cold storage.
 - `retention`: `WithRetention` (ages, `PerWorkflow`, `KeepLast`, `Undelivered`), `WithArchive`, `WithPruneChunk`, `WithoutAutoPrune`.
+- `archive-fails`: an archive hook that fails keeps the chunk, and `Prune` returns its error.
 - `prune`: `Client.Prune` and its `PruneResult`.
 - `housekeeping`: `WithTickRetention` and `WithHousekeepingEvery`, the dispatcher's clean-up cadence.
 

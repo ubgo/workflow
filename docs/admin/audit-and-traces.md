@@ -17,13 +17,7 @@ Two additions to the [admin JSON API](http-api.md) and its [web UI](ui.md) for t
 audit := &admin.MemoryAudit{} // an app writes to its own audit table
 h := admin.NewHandler(admin.New(c, admin.WithClock(clk)), auth,
 	admin.WithAudit(audit),
-	admin.WithTraceLink(func(r workflow.RunInfo) string {
-		id, ok := wfotel.TraceIDOf(r.Labels)
-		if !ok {
-			return ""
-		}
-		return "https://tracing.example.com/trace/" + id
-	}))
+	admin.WithTraceLink(traceLink))
 ```
 
 Each `admin.AuditEntry` carries:
@@ -55,11 +49,40 @@ for _, e := range audit.Entries() {
 
 ## Link each run to its trace
 
-`admin.WithTraceLink(fn)` adds `trace_url` to `GET /runs/{id}` and an "Open trace" link to the run page. `fn` gets the run's `RunInfo`, labels included; `otel.TraceIDOf(labels)` returns the 32-hex-digit trace ID the enqueue middleware carried in them (the W3C `traceparent` under the `otel.` prefix), and `otel.SpanContextOf(labels, propagator)` reads one written by another propagator. The example's handler above builds a link to a tracing UI from it.
+`admin.WithTraceLink(fn)` adds `trace_url` to `GET /runs/{id}` and an "Open trace" link to the run page. `fn` gets the run's `RunInfo`, labels included; `otel.TraceIDOf(labels)` returns the 32-hex-digit trace ID the enqueue middleware carried in them (the W3C `traceparent` under the `otel.` prefix), and false when they hold none. The example's handler above passes this function:
+
+<!-- snippet: examples/admin-audit/main.go#tracelink -->
+```go
+// traceLink builds the run page's "Open trace" link from the trace ID the
+// otel enqueue middleware carried in the run's labels. A run enqueued
+// without that middleware carries none, and gets no link.
+func traceLink(r workflow.RunInfo) string {
+	id, ok := wfotel.TraceIDOf(r.Labels) // 32 hex digits from the W3C traceparent
+	if !ok {
+		return ""
+	}
+	return "https://tracing.example.com/trace/" + id
+}
+```
+
+`otel.SpanContextOf(labels, propagator)` returns the whole span context instead, for code that starts a span linked to the enqueue, and reads labels written by another propagator (the one given to the otel module's `WithPropagator`; nil is W3C trace context). It is invalid (`IsValid()` false) when the labels carry none:
+
+<!-- snippet: examples/admin-audit/main.go#spancontext -->
+```go
+// The whole span context, for code that starts a span linked to the
+// enqueue (nil: the W3C propagator, the otel module's default).
+sc := wfotel.SpanContextOf(page.Runs[0].Labels, nil)
+fmt.Printf("  span context: span %s, sampled %v\n", sc.SpanID(), sc.IsSampled())
+```
 
 Only an absolute `http` or `https` URL with a host is shown. Anything else (a `javascript:` or `data:` URL, a relative path, a control character) is dropped and logged, and the UI checks the scheme again before it builds the link with the DOM. The page keeps its Content-Security-Policy; the link opens in a new tab with `rel="noopener noreferrer"`. Lists do not carry the link, only the run detail.
 
 ## Try it
+
+```sh
+cd examples
+go run ./admin-audit
+```
 
 ```text
 actions:
@@ -74,7 +97,10 @@ audit log:
 run detail:
   status succeeded
   trace_url https://tracing.example.com/trace/4bf92f3577b34da6a3ce929d0e0e4736
+  span context: span 00f067aa0ba902b7, sampled true
 ```
+
+The viewer's refused retry is in the audit log with `allowed=false`; the read is not. The delete of a run that does not exist is recorded with its 404 and the full `workflow.ErrNotFound` error.
 
 ## Pitfalls
 

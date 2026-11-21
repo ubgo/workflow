@@ -26,10 +26,23 @@ import (
 // start is the fake clock's first instant; any fixed time works.
 var start = time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC)
 
-// half is the jitter draw the example pins, so the jittered delays are the
-// same on every run. Production leaves the source at its default
+const (
+	// pinnedDraw is the jitter draw the example pins: the middle of [0, 1),
+	// so each jittered delay sits halfway through its range.
+	pinnedDraw = 0.5
+	// reportBuffer is the room in the attempt and run-finished channels, so
+	// a handler or hook never blocks on the printing goroutine; a run here
+	// makes at most four attempts.
+	reportBuffer = 16
+	// flakySucceedsOn is the attempt the flaky step first succeeds on: two
+	// failures first, enough to show the backoff growing.
+	flakySucceedsOn = 3
+)
+
+// half is the jitter source the example pins, so the jittered delays are
+// the same on every run. Production leaves the source at its default
 // (math/rand/v2).
-func half() float64 { return 0.5 }
+func half() float64 { return pinnedDraw }
 
 // errNotFound is an app error the "lookup" workflow's policy refuses to
 // retry through NoRetryOn.
@@ -45,6 +58,7 @@ type attempt struct {
 	policy workflow.RetryPolicy
 }
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "retries:", err)
@@ -57,8 +71,8 @@ func run(ctx context.Context) error {
 	printBackoff()
 
 	clk := clock.NewFake(start)
-	attempts := make(chan attempt, 16)
-	finished := make(chan workflow.RunEvent, 16)
+	attempts := make(chan attempt, reportBuffer)
+	finished := make(chan workflow.RunEvent, reportBuffer)
 
 	// step returns a handler that fails with fail(n) on attempt n, or
 	// succeeds when fail returns nil, and reports every attempt.
@@ -76,7 +90,7 @@ func run(ctx context.Context) error {
 		Max: 3, // three retries after the first attempt
 		Backoff: workflow.Backoff{
 			Initial: time.Second,
-			Factor:  2,
+			Factor:  2, // each delay doubles: 1s, 2s, 4s
 			Max:     time.Minute,
 			Jitter:  0.5, // each delay is drawn from [d/2, d]
 		},
@@ -85,14 +99,15 @@ func run(ctx context.Context) error {
 
 	// snippet:retry-after
 	rateLimited := workflow.RetryPolicy{
-		Max:      2,
+		Max:      2, // two retries after the first attempt
 		Backoff:  workflow.Backoff{Initial: time.Second},
 		DelayFor: workflow.RetryAfterDelay, // honour RetryAfter(err, d)
 	}
+	// callAPI is rate limited on its first attempt and succeeds after.
 	callAPI := func(n int) error {
 		if n == 1 {
 			// The API answered 429 with Retry-After: 30.
-			return workflow.RetryAfter(errors.New("429 too many requests"), 30*time.Second)
+			return workflow.RetryAfter(errors.New("429 too many requests"), 30*time.Second) // the Retry-After value
 		}
 		return nil
 	}
@@ -100,18 +115,21 @@ func run(ctx context.Context) error {
 
 	// snippet:no-retry
 	noRetry := workflow.RetryPolicy{
-		Max:       5,
+		Max:       5, // never reached: both errors below stop at the first attempt
 		Backoff:   workflow.Backoff{Initial: time.Second},
 		NoRetryOn: func(err error) bool { return errors.Is(err, errNotFound) },
 	}
+	// charge fails with an error marked Permanent; lookup with one NoRetryOn matches.
 	charge := func(int) error {
 		return workflow.Permanent(errors.New("card declined")) // retrying cannot help
 	}
 	lookup := func(int) error { return fmt.Errorf("lookup: %w", errNotFound) }
 	// snippet:end
 
+	// flaky fails until attempt flakySucceedsOn, as an upstream that
+	// recovers would.
 	flaky := func(n int) error {
-		if n < 3 {
+		if n < flakySucceedsOn {
 			return errors.New("upstream returned 503")
 		}
 		return nil
@@ -128,7 +146,7 @@ func run(ctx context.Context) error {
 	}
 
 	// snippet:per-step
-	signupDefault := workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second}}
+	signupDefault := workflow.RetryPolicy{Max: 3, Backoff: workflow.Backoff{Initial: time.Second}} // three retries, 1s apart
 	signup := workflow.Workflow{
 		Name:  "signup",
 		Retry: signupDefault, // the default for every step that leaves Retry nil
@@ -176,7 +194,12 @@ func run(ctx context.Context) error {
 		fmt.Println()
 	}
 
-	return refusals()
+	if err := refusals(); err != nil {
+		return err
+	}
+	printJitter()
+	printPrecedence()
+	return nil
 }
 
 // drive enqueues one run of wf and prints each attempt. After a failed
@@ -236,11 +259,58 @@ func drive(ctx context.Context, c workflow.Client, clk *clock.Fake, wf string,
 // client.
 func printBackoff() {
 	// snippet:delays
-	b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5}
+	b := workflow.Backoff{Initial: time.Second, Factor: 2, Max: 10 * time.Second, Jitter: 0.5} // doubling, capped at 10s
+	// Five retries: the fifth hits the 10s cap.
 	for n := 1; n <= 5; n++ {
 		// JitteredDelay takes the uniform draw in [0, 1) as an argument.
 		fmt.Printf("retry %d: delay %s, with draw 0.5: %s\n", n, b.Delay(n), b.JitteredDelay(n, 0.5))
 	}
+	// snippet:end
+}
+
+// jitterRetry is the retry number printJitter draws for: its exact delay
+// is 4s, which makes the jittered range easy to read.
+const jitterRetry = 2
+
+// printJitter shows the range Jitter draws a delay from and the capability
+// a driver needs to honour it. JitteredDelay is pure: the draw u is an
+// argument, so the three draws below are the shortest, a middle and almost
+// the full delay.
+func printJitter() {
+	fmt.Println("\njitter:")
+	// snippet:jitter
+	b := workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.25} // the last quarter of each delay is random
+	fmt.Println("  needs:", workflow.CapRetryJitter, "| memory has it:", memory.New().Capabilities().Has(workflow.CapRetryJitter))
+	fmt.Println("  retry", jitterRetry, "exact delay:", b.Delay(jitterRetry))
+	for _, u := range []float64{0, 0.5, 0.999} { // the shortest, a middle and almost the full delay
+		fmt.Printf("  draw %.3f: %s\n", u, b.JitteredDelay(jitterRetry, u))
+	}
+	// snippet:end
+}
+
+// printPrecedence resolves the policy of the same step under each of the
+// four levels with EffectiveRetriesFor, the function every driver calls,
+// and prints the Max that wins.
+func printPrecedence() {
+	fmt.Println("\nprecedence:")
+	// snippet:precedence
+	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
+	wf := workflow.Workflow{
+		Name:  "ship",
+		Retry: workflow.RetryPolicy{Max: 2}, // level 3: every step whose Retry is nil
+		Steps: []workflow.Step{
+			{Name: "label", Retry: &workflow.RetryPolicy{Max: 5}, Run: noop}, // level 2: this step only
+			{Name: "notify", Run: noop},
+		},
+	}
+	bare := workflow.Workflow{Name: "bare", Steps: []workflow.Step{{Name: "only", Run: noop}}}
+	override := workflow.Job{Workflow: "ship", Retry: &workflow.RetryPolicy{Max: 1}} // level 1: this run only
+
+	fmt.Println("  job over step:", workflow.EffectiveRetriesFor(wf.Steps[0], wf, override).Max)
+	fmt.Println("  step over workflow:", workflow.EffectiveRetriesFor(wf.Steps[0], wf, workflow.Job{}).Max)
+	fmt.Println("  workflow default:", workflow.EffectiveRetriesFor(wf.Steps[1], wf, workflow.Job{}).Max)
+	fmt.Println("  library default:", workflow.EffectiveRetriesFor(bare.Steps[0], bare, workflow.Job{}).Max,
+		"| DefaultRetryMax:", workflow.DefaultRetryMax)
 	// snippet:end
 }
 
@@ -255,7 +325,7 @@ func refusals() error {
 		Name: "sync",
 		Retry: workflow.RetryPolicy{
 			Max:     3,
-			Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.5},
+			Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Jitter: 0.5}, // the jitter is what Hatchet refuses
 		},
 		Steps: []workflow.Step{{Name: "call", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}},
 	}

@@ -30,10 +30,33 @@ import (
 	"github.com/ubgo/workflow/sqlstore"
 )
 
-// quietWindow is how long the program watches for a fire that must not
-// happen after Unschedule; the fake clock fires synchronously, so a short
-// window is enough.
-const quietWindow = 50 * time.Millisecond
+const (
+	// quietWindow is how long the program watches for a fire that must not
+	// happen after Unschedule; the fake clock fires synchronously, so a short
+	// window is enough.
+	quietWindow = 50 * time.Millisecond
+	// firedBuffer holds the fires of one section without blocking a step:
+	// the declared and run-time sections expect at most two.
+	firedBuffer = 4
+	// misfireBuffer holds every fire the misfire section can see (three
+	// policies, at most a handful of late ticks each) without blocking.
+	misfireBuffer = 16
+	// declaredFires is how many daily fires the declared section walks
+	// through: two show the cron repeating at the same local time.
+	declaredFires = 2
+	// pendingPoll is how often the program checks that the unscheduled
+	// schedule's goroutine has stopped its timer.
+	pendingPoll = time.Millisecond
+	// twoWeeks is how far the clock jumps after Unschedule: two Mondays
+	// pass, each of which would have fired the removed schedule.
+	twoWeeks = 14 * 24 * time.Hour
+	// pause is how long the misfire section keeps the scheduler from
+	// running: five hourly ticks are missed, the sixth not yet due.
+	pause = 5*time.Hour + 30*time.Minute
+	// lateRuns is what the policies fire after the pause: fire-once 1 plus
+	// fire-all 3 (its Max); skip fires nothing.
+	lateRuns = 4
+)
 
 // monday is the fake clock's first instant: Monday 5 January 2026, 00:00 UTC.
 var monday = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
@@ -41,6 +64,7 @@ var monday = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 // layout prints a fire time with its zone, so DST shifts are visible.
 const layout = "Mon 2 Jan 15:04 MST"
 
+// main runs the example and exits non-zero on error.
 func main() {
 	if err := run(context.Background()); err != nil {
 		fmt.Fprintln(os.Stderr, "cron-schedules:", err)
@@ -75,15 +99,15 @@ func syntax(_ context.Context) error {
 		return err
 	}
 	t := monday
-	for range 3 {
+	for range 3 { // the next three fires
 		t = s.Next(t, ny) // strictly after t, evaluated in New York
 		fmt.Println(" ", t.Format(layout))
 	}
 	// snippet:end
 
 	// snippet:vixie
-	both, _ := cron.Parse("0 0 1 * MON") // day of month AND day of week restricted
-	fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10)
+	both, _ := cron.Parse("0 0 1 * MON")                                 // day of month AND day of week restricted
+	fires := both.Between(monday, monday.AddDate(0, 1, 0), time.UTC, 10) // at most 10 in a month
 	var days []string
 	for _, f := range fires {
 		days = append(days, f.Format("Mon 2 Jan"))
@@ -110,20 +134,21 @@ func dst(_ context.Context) error {
 		return err
 	}
 	// snippet:dst
+	// show prints at most n fires of expr in the two days after from, in New York time.
 	show := func(expr string, from time.Time, n int) {
 		s, _ := cron.Parse(expr)
 		var got []string
-		for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) {
+		for _, f := range s.Between(from, from.Add(48*time.Hour), ny, n) { // a two-day window
 			got = append(got, f.In(ny).Format("Jan 2 15:04 MST"))
 		}
 		fmt.Printf("  %-12q %s\n", expr, strings.Join(got, ", "))
 	}
 	spring := time.Date(2026, 3, 7, 12, 0, 0, 0, ny)
 	fall := time.Date(2026, 10, 31, 12, 0, 0, 0, ny)
-	show("30 2 * * *", spring, 2) // 02:30 does not exist on 8 March
-	show("30 * * * *", spring.Add(13*time.Hour), 3)
-	show("30 1 * * *", fall, 2) // 01:30 happens twice on 1 November
-	show("30 * * * *", fall.Add(12*time.Hour), 3)
+	show("30 2 * * *", spring, 2)                   // 02:30 does not exist on 8 March
+	show("30 * * * *", spring.Add(13*time.Hour), 3) // three hourly fires from 01:00 on 8 March
+	show("30 1 * * *", fall, 2)                     // 01:30 happens twice on 1 November
+	show("30 * * * *", fall.Add(12*time.Hour), 3)   // three hourly fires from 00:00 on 1 November
 	// snippet:end
 	return nil
 }
@@ -133,7 +158,7 @@ func dst(_ context.Context) error {
 func declared(ctx context.Context) error {
 	fmt.Println("declared cron:")
 	clk := clock.NewFake(monday)
-	fired := make(chan time.Time, 4)
+	fired := make(chan time.Time, firedBuffer)
 	kolkata, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		return err
@@ -160,7 +185,7 @@ func declared(ctx context.Context) error {
 		return err
 	}
 	s, _ := cron.Parse("0 9 * * *")
-	for range 2 {
+	for range declaredFires {
 		if err := clk.BlockUntil(ctx, 1); err != nil { // the schedule armed its timer
 			return err
 		}
@@ -176,7 +201,7 @@ func declared(ctx context.Context) error {
 func atRunTime(ctx context.Context) error {
 	fmt.Println("schedule at run time:")
 	clk := clock.NewFake(monday)
-	fired := make(chan string, 4)
+	fired := make(chan string, firedBuffer)
 	c := memory.New(memory.WithClock(clk))
 	err := c.Register(workflow.Workflow{
 		Name: "report",
@@ -228,9 +253,9 @@ func atRunTime(ctx context.Context) error {
 	}
 	// snippet:end
 	for clk.Pending() > 0 { // the schedule's goroutine stops its timer
-		time.Sleep(time.Millisecond)
+		time.Sleep(pendingPoll)
 	}
-	clk.Advance(14 * 24 * time.Hour)
+	clk.Advance(twoWeeks)
 	select {
 	case f := <-fired:
 		return fmt.Errorf("fired after Unschedule: %s", f)
@@ -256,6 +281,7 @@ func upsertByName(ctx context.Context) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
+	// noop is the step body: only the schedule matters in this section.
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	report := workflow.Workflow{Name: "report", Steps: []workflow.Step{{Name: "build", Run: noop}}}
 
@@ -308,8 +334,9 @@ func upsertByName(ctx context.Context) (err error) {
 func misfire(ctx context.Context) error {
 	fmt.Println("misfire after a five-hour pause:")
 	clk := clock.NewFake(monday)
-	fired := make(chan string, 16)
+	fired := make(chan string, misfireBuffer)
 	c := memory.New(memory.WithClock(clk))
+	// step sends the input, the name of the schedule's policy, to fired.
 	step := []workflow.Step{{Name: "run", Run: func(ctx context.Context, in []byte) ([]byte, error) {
 		fired <- string(in)
 		return nil, nil
@@ -319,6 +346,12 @@ func misfire(ctx context.Context) error {
 		"skip":      {Policy: workflow.MisfireSkip},                            // fire nothing late
 		"fire-once": {Policy: workflow.MisfireFireOnce, Within: 6 * time.Hour}, // the newest missed tick, if under 6h old
 		"fire-all":  {Policy: workflow.MisfireFireAll, Max: 3},                 // up to 3 missed ticks, oldest first
+	}
+	// snippet:end
+	// snippet:misfire-caps
+	need := workflow.CapsOf(workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll)
+	if missing := c.Capabilities().Missing(need); !missing.IsZero() {
+		return fmt.Errorf("the driver cannot honour the misfire policies %s", missing)
 	}
 	// snippet:end
 	if err := c.Register(workflow.Workflow{Name: "hourly", Steps: step}); err != nil {
@@ -346,12 +379,12 @@ func misfire(ctx context.Context) error {
 	if err := clk.BlockUntil(ctx, len(names)); err != nil {
 		return err
 	}
-	clk.Advance(5*time.Hour + 30*time.Minute)               // nothing ran from 00:00 to 05:30
+	clk.Advance(pause)                                      // nothing ran from 00:00 to 05:30
 	if err := clk.BlockUntil(ctx, len(names)); err != nil { // every schedule caught up and re-armed
 		return err
 	}
 	count := map[string]int{}
-	for range 4 { // fire-once 1 + fire-all 3; skip fires nothing
+	for range lateRuns {
 		count[<-fired]++
 	}
 	for _, name := range names {
@@ -360,7 +393,7 @@ func misfire(ctx context.Context) error {
 
 	// snippet:due
 	hourly, _ := cron.Parse("0 * * * *")
-	last, now := monday, monday.Add(5*time.Hour+30*time.Minute)
+	last, now := monday, monday.Add(5*time.Hour+30*time.Minute) // after the five-hour pause
 	for _, name := range names {
 		var ticks []string
 		for _, t := range policies[name].Due(hourly, last, now, time.UTC) {
@@ -368,6 +401,14 @@ func misfire(ctx context.Context) error {
 		}
 		fmt.Printf("  Due %-9s [%s]\n", name, strings.Join(ticks, " "))
 	}
+	// snippet:end
+
+	// snippet:misfire-check
+	catchUp := workflow.Schedule{Workflow: "hourly", Cron: "0 * * * *", Location: time.UTC, Misfire: policies["fire-all"]}
+	fmt.Println("  fire-all needs", workflow.RequiresSchedule(catchUp))
+	h := hatchet.New(hatchet.Config{}) // never catches up a missed tick
+	err := workflow.CheckScheduleCaps(h.Capabilities(), catchUp)
+	fmt.Println("  hatchet:", errors.Is(err, workflow.ErrUnsupported), err)
 	// snippet:end
 	return nil
 }
@@ -378,6 +419,7 @@ func misfire(ctx context.Context) error {
 func dialect(_ context.Context) error {
 	fmt.Println("another dialect:")
 	// snippet:dialect
+	// withQuarter reads the @quarter-hour macro and hands everything else to cron.Parse.
 	withQuarter := func(expr string) (cron.Schedule, error) {
 		if expr == "@quarter-hour" {
 			expr = "*/15 * * * *"
@@ -386,6 +428,7 @@ func dialect(_ context.Context) error {
 	}
 	c := memory.New(memory.WithCronParser(withQuarter))
 	// snippet:end
+	// noop is the step body: only the cron matters in this section.
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	err := c.Register(workflow.Workflow{Name: "poll", Cron: []string{"@quarter-hour"}, Steps: []workflow.Step{{Name: "poll", Run: noop}}})
 	fmt.Println("  memory with the dialect:", err)
@@ -400,6 +443,7 @@ func dialect(_ context.Context) error {
 // at Start, so Register runs without a server.
 func refusals(ctx context.Context) error {
 	fmt.Println("refusals:")
+	// noop is the step body: only what Register refuses matters here.
 	noop := func(context.Context, []byte) ([]byte, error) { return nil, nil }
 	kolkata, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
@@ -423,7 +467,7 @@ func refusals(ctx context.Context) error {
 	h := hatchet.New(hatchet.Config{})
 	for _, wf := range []workflow.Workflow{
 		{Name: "zoned", Cron: []string{"0 9 * * *"}, CronLocation: kolkata},
-		{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}},
+		{Name: "catch-up", Cron: []string{"0 9 * * *"}, Misfire: workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}}, // any catch-up
 		{Name: "macro", Cron: []string{"@daily"}},
 	} {
 		wf.Steps = []workflow.Step{{Name: "s", Run: noop}}
