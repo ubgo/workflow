@@ -164,7 +164,7 @@ tasks:
   # Not part of check: benchmarks measure, they do not gate, and a run
   # takes minutes against several services. Run it on a quiet machine.
   bench:
-    desc: Run the benchmarks (memory, sqlstore on SQLite, Postgres and Postgres with LISTEN/NOTIFY, Redis, Hatchet) one system at a time and print a results table; REDIS_ADDR overrides the Redis address; see docs/reference/benchmarks.md
+    desc: Run the benchmarks (memory, sqlstore on SQLite, Postgres and Postgres with LISTEN/NOTIFY, Redis, Hatchet) one system at a time and print a results table; STACK_ENV (required) is the local stack's .env path, or empty to take HATCHET_CLIENT_TOKEN and REDIS_PASSWORD from the environment; REDIS_ADDR overrides the Redis address; see docs/reference/benchmarks.md
     dir: bench
     cmds: ['sh ./run.sh {{.CLI_ARGS}}']
 
