@@ -79,7 +79,7 @@ if err != nil {
 fmt.Fprintf(w, "  cancelled %d children\n", n)
 ```
 
-An empty `step` cancels the children of every step of the run. The call finds the children by the parent labels `Spawn` wrote and cancels them with one `BulkCanceller.CancelAll`, so the children's client needs `workflow.CapCancelAll` and must filter by those labels and by every unfinished status (the memory, SQL and Redis drivers do); a client without it is refused with an `*workflow.UnsupportedError` before anything is cancelled, and a zero run ID with an error matching `workflow.ErrInvalid`. Only children that are queued, running, waiting or retrying count: a second call returns 0.
+An empty `step` cancels the children of every step of the run. The call finds the children by the parent labels `Spawn` wrote and cancels them with one `BulkCanceller.CancelAll`, so the children's client needs `workflow.CapCancelAll` and must filter by those labels and by every unfinished status (the memory, SQL, Redis and Hatchet drivers do); a client without it is refused with an `*workflow.UnsupportedError` before anything is cancelled, and a zero run ID with an error matching `workflow.ErrInvalid`. Only children that are scheduled (a delayed start), queued, running, waiting or retrying count: a second call returns 0. The retrying status is asked for only on a client with `workflow.CapRunStates`; elsewhere a child in retry backoff reads queued or running and is cancelled as one.
 
 `workflow.ChildLabels(runID, step)` builds the same label filter (`LabelParentRun`, plus `LabelParentStep` when `step` is not empty), so a `RunQuery` lists the children, for a report or to cancel only some of them:
 
@@ -183,7 +183,7 @@ The run listing is newest first, so the children print in reverse order.
 - `JoinKeepRest` leaves children running after the parent moved on. They still use workers and can still fail; use `JoinCancelRest` when their work is no longer wanted.
 - `CancelChildren` finds children by their parent labels only. Runs a step enqueued with plain `Enqueue` carry no such labels and are not cancelled; start them with `Spawn`.
 - `CancelChildren` cancels children; it does not cancel the parent. Cancelling a parent does not cancel its children either ([child runs](children.md#pitfalls)), so call `CancelChildren` from the tool that cancels the parent.
-- The children's client must declare `CapCancelAll`. When children run on another backend than the parent, pass that backend's client. On Hatchet the call is refused today with an `*workflow.UnsupportedError` naming `RunQuery.Statuses`: it asks for retrying runs too, a status Hatchet cannot filter by; cancel the refs `Spawn` returned instead.
+- The children's client must declare `CapCancelAll`. When children run on another backend than the parent, pass that backend's client.
 
 ## Related
 

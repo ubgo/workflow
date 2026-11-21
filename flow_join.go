@@ -305,6 +305,12 @@ func ChildLabels(run RunID, step string) map[string]string {
 // inside the run or from outside it. It finds them by their parent
 // labels, so it needs a BulkCanceller (CapCancelAll) on the children's
 // client; a client without it is refused with an UnsupportedError.
+//
+// Unfinished means scheduled (a delayed start), queued, running and
+// waiting, plus retrying on a client with CapRunStates. A client without
+// that capability has no retrying status (a run in retry backoff reads
+// queued or running there, so it is still matched), and asking it for
+// one would be refused, as Hatchet does.
 func CancelChildren(ctx context.Context, client Client, run RunID, step string) (int, error) {
 	bc, ok := client.(BulkCanceller)
 	if client == nil || !ok || !client.Capabilities().Has(CapCancelAll) {
@@ -313,16 +319,23 @@ func CancelChildren(ctx context.Context, client Client, run RunID, step string) 
 	if run.IsZero() {
 		return 0, invalidf("CancelChildren: run is zero")
 	}
-	n, err := bc.CancelAll(ctx, RunQuery{Labels: ChildLabels(run, step), Statuses: unfinishedStatuses()})
+	n, err := bc.CancelAll(ctx, RunQuery{Labels: ChildLabels(run, step), Statuses: unfinishedStatuses(client.Capabilities())})
 	if err != nil {
 		return n, fmt.Errorf("workflow: cancel children of %s: %w", run, err)
 	}
 	return n, nil
 }
 
-// unfinishedStatuses lists every status a run can be in before it ends.
-func unfinishedStatuses() []Status {
-	return []Status{StatusQueued, StatusRunning, StatusWaiting, StatusRetrying}
+// unfinishedStatuses lists every status a run can be in before it ends
+// on a client with caps: StatusRetrying only with CapRunStates, because a
+// driver without it reports that moment as queued or running and refuses
+// a filter on a status it does not have.
+func unfinishedStatuses(caps Caps) []Status {
+	s := []Status{StatusScheduled, StatusQueued, StatusRunning, StatusWaiting}
+	if caps.Has(CapRunStates) {
+		s = append(s, StatusRetrying)
+	}
+	return s
 }
 
 // helperKey is the journal key of a helper's own state (a join's

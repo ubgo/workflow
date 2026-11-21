@@ -465,7 +465,7 @@ func TestConformance(t *testing.T) {
 
 | Case function | Harness | What it proves | Needs |
 |---|---|---|---|
-| `RunChildFlows` | `FlowHarness` | `JoinChildren` (discriminator, cancelling and completing partial joins, a failed join), `CancelChildren`, `MapRuns` | `CapSnooze`, `CapIdempotencyKey`, `CapResult`, `CapCancel`, `CapCancelAll`, `CapForceRun`, `CapRunQuery` |
+| `RunChildFlows` | `FlowHarness` | `JoinChildren` (discriminator, cancelling and completing partial joins, a failed join), `CancelChildren` (running and scheduled children), `MapRuns` | `CapSnooze`, `CapIdempotencyKey`, `CapResult`, `CapCancel`, `CapCancelAll`, `CapForceRun`, `CapRunQuery`, `CapDelayedStart` |
 | `RunResetFlows` | `FlowHarness` | `RunResetter`: a failed run re-runs from a step and keeps the outputs before it; an unknown step and a run that is not failed are refused | `RunResetter` |
 | `RunRedoFlows` | `FlowHarness` | `RunResetterWith`: a succeeded run reset with `Succeeded` keeps its `RunRef`, carries `LabelRedo` and does not hand its chain on again | the `OpResetSucceeded` operation |
 | `RunForkFlows` | `FlowHarness` | `RunForker`: a fork starts from the step under a new `RunID` with the outputs before it, gets `LabelForkOf`, `LabelForkStep` (and `LabelRedo` from a succeeded run), and every refusal | the `OpForkRun` operation |

@@ -199,7 +199,7 @@ if err := workflow.SignalChoice(ctx, c, decidedEvent, o.id, "cancel", nil); err 
 }
 ```
 
-A signal reaches only runs enqueued before it was sent, so start the child before the conditions can happen, or have the senders retry; the program waits until the child is waiting before it sends `order.paid`. `CancelChildren` needs `CapCancelAll` (memory, sqlstore, Redis; see the [Hatchet pitfall](joins.md#pitfalls)). Running `go run ./flow-cancel` from `examples/` ends with:
+A signal reaches only runs enqueued before it was sent, so start the child before the conditions can happen, or have the senders retry; the program waits until the child is waiting before it sends `order.paid`. `CancelChildren` needs `CapCancelAll` (memory, sqlstore, Redis and Hatchet). Running `go run ./flow-cancel` from `examples/` ends with:
 
 ```text
 wait for all of, or any of:
