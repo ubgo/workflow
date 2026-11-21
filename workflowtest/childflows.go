@@ -252,30 +252,49 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 	})
 
 	// A child spawned with a later RunAt is StatusScheduled, which is
-	// unfinished: CancelChildren cancels it with the running ones.
+	// unfinished: CancelChildren cancels it with the running ones. A
+	// driver that refuses a delayed job with an idempotency key (Spawn
+	// always sets one; Hatchet refuses the pair) skips the case.
 	t.Run("cancel-children-delayed", func(t *testing.T) {
 		g := newChildGate("flow-child")
 		defer g.release()
 		var c workflow.Client
 		ids := make(chan workflow.RunID, 1)
+		spawned := make(chan error, 1)
 		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
 			jobs := g.jobs("hold", "ok")
 			jobs[1].RunAt = time.Now().Add(time.Hour)
-			if _, err := workflow.Spawn(ctx, c, "kids", jobs); err != nil {
-				return nil, err
+			_, err := workflow.Spawn(ctx, c, "kids", jobs)
+			if err == nil {
+				info, _ := workflow.StepInfoFrom(ctx)
+				select {
+				case ids <- info.RunID:
+				default:
+				}
 			}
-			info, _ := workflow.StepInfoFrom(ctx)
 			select {
-			case ids <- info.RunID:
+			case spawned <- err:
 			default:
 			}
-			return nil, nil
+			return nil, err
 		}}}}
 		c = h.Start(t, g.workflow(), parent)
 		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapCancelAll, workflow.CapRunQuery, workflow.CapDelayedStart)
 		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
 		if err != nil {
 			t.Fatal(err)
+		}
+		select {
+		case err := <-spawned:
+			var ue *workflow.UnsupportedError
+			if errors.As(err, &ue) {
+				t.Skipf("the driver refuses a delayed spawned child: %v", err)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("the parent step never ran")
 		}
 		flowStatus(t, c, ref, workflow.StatusSucceeded)
 		n, err := workflow.CancelChildren(context.Background(), c, <-ids, "")

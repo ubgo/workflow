@@ -12,9 +12,11 @@ import (
 )
 
 // TestChildFlowsLive runs the child-run helper contract on the engine:
-// the cases its capabilities allow run (CancelChildren on running and
-// scheduled children; Hatchet has no StatusRetrying, so CancelChildren
-// must not ask for it), the rest skip with the missing capability named.
+// the cases its capabilities allow run (CancelChildren on running
+// children; Hatchet has no StatusRetrying, so CancelChildren must not ask
+// for it), the rest skip with the reason: no CapSnooze, and a delayed
+// spawned child is refused (Spawn sets an idempotency key, which Hatchet
+// refuses together with Job.RunAt).
 func TestChildFlowsLive(t *testing.T) {
 	skipWithoutEngine(t)
 	workflowtest.RunChildFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
