@@ -18,11 +18,13 @@ import (
 // error that still matches redis.ErrAbandoned once the run has ended, as
 // an OnRunFinished observer gets it (rebuilt from the stored text), and
 // RunInfo.Error keeps the text. It does not match ErrTimeout, and
-// OnTimeout does not run: abandonment is not a deadline.
+// OnFailure runs once with the step's input, not OnTimeout: abandonment
+// is a failure, not a deadline (as on sqlstore).
 func TestAbandonedRunErrorMatchesAfterTheEnd(t *testing.T) {
 	rdb := redisClient(t)
 	prefix := testPrefix(t, rdb)
-	var execs, onTimeout atomic.Int64
+	var execs, onFailure, onTimeout atomic.Int64
+	var failIn atomic.Value
 	blocked := make(chan struct{})
 	wf := workflow.Workflow{Name: "abandon", Steps: []workflow.Step{{Name: "only",
 		Run: func(ctx context.Context, _ []byte) ([]byte, error) {
@@ -30,6 +32,11 @@ func TestAbandonedRunErrorMatchesAfterTheEnd(t *testing.T) {
 			<-blocked // the process is gone: this attempt never returns in time
 			return nil, ctx.Err()
 		}}},
+		OnFailure: func(_ context.Context, in []byte) ([]byte, error) {
+			failIn.Store(string(in))
+			onFailure.Add(1)
+			return nil, nil
+		},
 		OnTimeout: func(context.Context, []byte) ([]byte, error) { onTimeout.Add(1); return nil, nil },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -57,7 +64,7 @@ func TestAbandonedRunErrorMatchesAfterTheEnd(t *testing.T) {
 	// Registered after the client, so it runs before the client's Stop
 	// (cleanups run last first) and frees the victim's blocked attempt.
 	t.Cleanup(func() { close(blocked) })
-	ref, err := victim.Enqueue(ctx, workflow.Job{Workflow: wf.Name})
+	ref, err := victim.Enqueue(ctx, workflow.Job{Workflow: wf.Name, Payload: []byte(`"in"`)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,8 +101,11 @@ func TestAbandonedRunErrorMatchesAfterTheEnd(t *testing.T) {
 	if info := page.Runs[0]; !strings.HasPrefix(info.Error, wfredis.ErrAbandoned.Error()) {
 		t.Errorf("RunInfo.Error = %q, want it to start with %q", info.Error, wfredis.ErrAbandoned)
 	}
-	// The driver ends an abandoned run without its failure handler (it
-	// fails before any step runs); OnTimeout must not run either.
+	if n := onFailure.Load(); n != 1 {
+		t.Errorf("OnFailure ran %d times for an abandoned run, want 1 (sqlstore runs it)", n)
+	} else if in, _ := failIn.Load().(string); in != `"in"` {
+		t.Errorf("OnFailure got input %q, want the abandoned step's input \"in\"", in)
+	}
 	if n := onTimeout.Load(); n != 0 {
 		t.Errorf("OnTimeout ran %d times for an abandoned run, want 0", n)
 	}

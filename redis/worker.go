@@ -278,15 +278,19 @@ func (c *Client) execute(h *held) {
 		c.release(h, time.Time{}, "queued")
 		return
 	}
+	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
 	if h.reclaims > c.maxReclaims {
 		times := "times"
 		if h.reclaims == 1 {
 			times = "time"
 		}
-		c.finish(h, workflow.StatusFailed, "", fmt.Errorf("%w: its lease expired %d %s in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, times, c.maxReclaims))
+		// Through the failure path, as sqlstore does: OnFailure runs with
+		// the input of the step the dead workers were running (ErrAbandoned
+		// is no timeout, so never OnTimeout).
+		step, in := c.current(h, job)
+		c.fail(h, step, in, fmt.Errorf("%w: its lease expired %d %s in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, times, c.maxReclaims))
 		return
 	}
-	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
 	for rounds := 0; ; rounds++ {
 		if c.gone(h) {
 			return

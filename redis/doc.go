@@ -150,7 +150,8 @@
 //   - A run whose lease expires more than WithMaxReclaims times in a row
 //     (default 5) with no step finishing in between fails with
 //     ErrAbandoned, so a step that kills every worker it lands on cannot
-//     loop through the fleet.
+//     loop through the fleet. OnFailure runs for it with that step's
+//     input, as on sqlstore; OnTimeout never does.
 //   - Stopping a client (cancelling the Start ctx, or Drain once its ctx
 //     ends) hands every run it holds back at once, without counting the
 //     cut-off attempts (CapShutdownRequeue): the next worker runs them
