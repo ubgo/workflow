@@ -93,6 +93,9 @@ func validateStep(s Step) error {
 		if w.KeyFrom.Func != nil && w.KeyFrom.Expr != "" {
 			return errors.New("Wait.KeyFrom sets both Func and Expr")
 		}
+		if w.OwnRun && (w.Key != "" || !w.KeyFrom.IsZero()) {
+			return errors.New("Wait sets OwnRun with Key or KeyFrom")
+		}
 	}
 	if s.Retry != nil {
 		if err := validateRetry(*s.Retry); err != nil {
@@ -177,6 +180,9 @@ func validatePolicies(wf Workflow) error {
 		}
 		if c.FIFO && c.Strategy != "" && c.Strategy != ConcurrencyQueueNewest {
 			return invalidf("workflow %q: Concurrency.FIFO needs ConcurrencyQueueNewest, not %q", wf.Name, c.Strategy)
+		}
+		if c.Weight != nil && c.Strategy != ConcurrencyRoundRobin {
+			return invalidf("workflow %q: Concurrency.Weight needs ConcurrencyRoundRobin, not %q", wf.Name, c.Strategy)
 		}
 	}
 	for i, r := range wf.RateLimits {

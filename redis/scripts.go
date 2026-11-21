@@ -53,18 +53,69 @@ local function sincekey(b, wf, q) return b .. ':since:' .. q .. '/' .. wf end
 -- readyNow is when the running script makes runs claimable; every script
 -- that calls enready sets it first.
 local readyNow = 0
+-- Round robin (FC-05, FC-06; admit.go and fair.go). An admitted run of a
+-- ConcurrencyRoundRobin workflow carries ft, its start tag. While it waits
+-- for a worker it is not in its ready set but in: pos:<q>/<rn>, its place
+-- in line (a position token, its id plus a counter, scored like the ready
+-- set, so places order like ready runs do); posrun:<q>/<rn>, position to
+-- run; its fair set (fk: the waiting runs of one queue, workflow and
+-- priority by start tag); and fwait:<workflow>, every waiting run of the
+-- workflow by start tag (the virtual time). The claim takes the best place
+-- in line and hands it to the run with the smallest start tag of that fair
+-- set; the run that held the place takes the claimed run's place, so the
+-- workflow's places among other workflows stay where arrivals put them.
+local function poskey(b, wf, q) return b .. ':pos:' .. q .. '/' .. wf end
+local function posrunkey(b, wf, q) return b .. ':posrun:' .. q .. '/' .. wf end
+-- unfair takes a waiting round-robin run out of every round-robin index.
+local function unfair(b, id)
+  local f = redis.call('HMGET', rk(b, id), 'pos', 'fk', 'fpk', 'fpr', 'wf')
+  if f[1] then
+    redis.call('ZREM', f[3], f[1])
+    redis.call('HDEL', f[4], f[1])
+    redis.call('ZREM', f[2], id)
+    redis.call('ZREM', b .. ':fwait:' .. f[5], id)
+    redis.call('HDEL', rk(b, id), 'pos', 'fk', 'fpk', 'fpr')
+  end
+end
+-- unpark moves the first parked run of a full round-robin bucket that is
+-- still waiting for admission back to its pending set (admit.go parks
+-- them so they do not fill the admission window).
+local function unpark(b, pk)
+  while true do
+    local p = redis.call('ZPOPMIN', pk)
+    if not p[1] then return false end
+    local ph = redis.call('HMGET', rk(b, p[1]), 'status', 'adm', 'wf', 'ver')
+    if ph[1] and not terminal(ph[1]) and ph[2] ~= '1' then
+      redis.call('HDEL', rk(b, p[1]), 'pk')
+      redis.call('ZADD', b .. ':pending:' .. rname(ph[3], ph[4]), p[2], p[1])
+      return true
+    end
+  end
+end
 -- enready puts an unfinished run nobody holds where it waits for a
 -- worker: the ready set of its queue once admitted, else the pending set
 -- of its workflow, which a worker that registered the workflow admits.
 local function enready(b, id)
-  local h = redis.call('HMGET', rk(b, id), 'wf', 'q', 'prio', 'adm', 'seq', 'ver')
+  local h = redis.call('HMGET', rk(b, id), 'wf', 'q', 'prio', 'adm', 'seq', 'ver', 'ft')
   local score = -tonumber(h[3])
   -- a FIFO workflow (Concurrency.FIFO) orders by enqueue order alone
   if redis.call('HEXISTS', b .. ':fifo', h[1]) == 1 then score = tonumber(h[5] or '0') end
   local r = rname(h[1], h[6])
   if r ~= h[1] then redis.call('SADD', b .. ':wfv:' .. h[1], h[6]) end
   if h[4] == '1' then
-    redis.call('ZADD', readykey(b, r, h[2]), score, id)
+    if h[7] then
+      unfair(b, id)
+      local pos = id .. '\n' .. redis.call('INCR', b .. ':posseq')
+      local pk, pr = poskey(b, r, h[2]), posrunkey(b, r, h[2])
+      local fk = b .. ':fair:' .. h[2] .. '/' .. r .. '\n' .. h[3]
+      redis.call('ZADD', pk, score, pos)
+      redis.call('HSET', pr, pos, id)
+      redis.call('ZADD', fk, h[7], id)
+      redis.call('ZADD', b .. ':fwait:' .. h[1], h[7], id)
+      redis.call('HSET', rk(b, id), 'pos', pos, 'fk', fk, 'fpk', pk, 'fpr', pr)
+    else
+      redis.call('ZADD', readykey(b, r, h[2]), score, id)
+    end
     redis.call('ZADD', sincekey(b, r, h[2]), 'NX', readyNow, id)
     redis.call('SADD', b .. ':wfq:' .. r, h[2])
   else
@@ -77,8 +128,10 @@ end
 -- the retention clock starts.
 local function ended(b, id, retention)
   local key = rk(b, id)
-  local h = redis.call('HMGET', key, 'wf', 'q', 'idem', 'ck', 'ver')
+  local h = redis.call('HMGET', key, 'wf', 'q', 'idem', 'ck', 'ver', 'pk')
   local r = rname(h[1], h[5])
+  unfair(b, id)
+  if h[6] and h[6] ~= '' then redis.call('ZREM', h[6], id) end
   redis.call('ZREM', b .. ':due', id)
   redis.call('ZREM', readykey(b, r, h[2] or ''), id)
   redis.call('ZREM', sincekey(b, r, h[2] or ''), id)
@@ -87,7 +140,10 @@ local function ended(b, id, retention)
   redis.call('ZREM', b .. ':floors', id)
   redis.call('ZREM', b .. ':rto', id)
   release_idem(b, id, h[3])
-  if h[4] and h[4] ~= '' then redis.call('ZREM', h[4], id) end
+  if h[4] and h[4] ~= '' then
+    -- a slot of the bucket frees: a run parked on it may be admitted
+    if redis.call('ZREM', h[4], id) == 1 then unpark(b, h[4] .. '\npark') end
+  end
   for _, f in ipairs(redis.call('HKEYS', key)) do
     if string.sub(f, 1, 2) == 'w:' then
       local sk = redis.call('HGET', key, f)
@@ -212,9 +268,8 @@ for i = 0, n - 1 do
   qrank[ARGV[9 + 3 * i]] = tonumber(ARGV[11 + 3 * i])
 end
 local first = 9 + 3 * n
-local qof
 for _ = 1, 100 do
-  local best, bestKey, bp, br, bs
+  local best, bestKey, bp, br, bs, bestKind, bestRn, bestQ
   for i = first, #ARGV, 3 do
     local wf, lo, hi = ARGV[i], tonumber(ARGV[i + 1]), tonumber(ARGV[i + 2])
     if not paused['w:' .. wf] then
@@ -227,14 +282,18 @@ for _ = 1, 100 do
       for _, rn in ipairs(names) do
         for _, q in ipairs(redis.call('SMEMBERS', b .. ':wfq:' .. rn)) do
           if (mode == 'all' or qprio[q]) and not paused['q:' .. q] then
-            local key = readykey(b, rn, q)
-            local r = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-            if r[1] then qof = qof or {} qof[key] = {rn, q} end
-            if r[1] then
-              local p, rank, s = qprio[q] or 0, qrank[q] or 0, tonumber(r[2])
-              if not best or p > bp or (p == bp and (rank < br or (rank == br and
-                  (s < bs or (s == bs and r[1] < best))))) then
-                best, bestKey, bp, br, bs = r[1], key, p, rank, s
+            local p, rank = qprio[q] or 0, qrank[q] or 0
+            -- kind 1: the ready set; kind 2: the round-robin places in line
+            for kind = 1, 2 do
+              local key = readykey(b, rn, q)
+              if kind == 2 then key = poskey(b, rn, q) end
+              local r = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+              if r[1] then
+                local s = tonumber(r[2])
+                if not best or p > bp or (p == bp and (rank < br or (rank == br and
+                    (s < bs or (s == bs and r[1] < best))))) then
+                  best, bestKey, bp, br, bs, bestKind, bestRn, bestQ = r[1], key, p, rank, s, kind, rn, q
+                end
               end
             end
           end
@@ -243,8 +302,48 @@ for _ = 1, 100 do
     end
   end
   if not best then return false end
-  redis.call('ZREM', bestKey, best)
-  redis.call('ZREM', sincekey(b, qof[bestKey][1], qof[bestKey][2]), best)
+  if bestKind == 2 then
+    -- best is a place in line: the run holding it hands it to the run of
+    -- its fair set with the smallest start tag and takes that run's place.
+    local pr = posrunkey(b, bestRn, bestQ)
+    local h = redis.call('HGET', pr, best)
+    local hs = h and redis.call('HGET', rk(b, h), 'status')
+    if not h then
+      redis.call('ZREM', bestKey, best)
+      best = nil
+    elseif not hs or terminal(hs) then
+      -- a run that ended without leaving the indexes gives its place up
+      redis.call('ZREM', bestKey, best)
+      redis.call('HDEL', pr, best)
+      unfair(b, h)
+      best = nil
+    else
+      local fk = redis.call('HGET', rk(b, h), 'fk')
+      -- the smallest start tag; equal tags go by arrival (seq)
+      local m, mseq
+      local top = fk and redis.call('ZRANGE', fk, 0, 0, 'WITHSCORES')
+      if top and top[1] then
+        for _, c in ipairs(redis.call('ZRANGEBYSCORE', fk, top[2], top[2], 'LIMIT', 0, 64)) do
+          local cs = tonumber(redis.call('HGET', rk(b, c), 'seq') or '0')
+          if not m or cs < mseq then m, mseq = c, cs end
+        end
+      end
+      if m and m ~= h then
+        local pm = redis.call('HGET', rk(b, m), 'pos')
+        redis.call('HSET', pr, pm, h)
+        redis.call('HSET', rk(b, h), 'pos', pm)
+        redis.call('HSET', pr, best, m)
+        redis.call('HSET', rk(b, m), 'pos', best)
+        h = m
+      end
+      unfair(b, h)
+      best = h
+    end
+  else
+    redis.call('ZREM', bestKey, best)
+  end
+  if best then
+  redis.call('ZREM', sincekey(b, bestRn, bestQ), best)
   local key = rk(b, best)
   local h = redis.call('HMGET', key, 'status', 'owner')
   if h[1] and not terminal(h[1]) and h[2] == '' then
@@ -253,6 +352,7 @@ for _ = 1, 100 do
     redis.call('HDEL', key, 'sigpend')
     redis.call('ZADD', b .. ':leases', luntil, best)
     return {best, redis.call('HGETALL', key)}
+  end
   end
 end
 return false
@@ -611,13 +711,30 @@ var admitScript = goredis.NewScript(luaPrelude + `
 local b, wf, now, fin, ret = ARGV[1], ARGV[2], tonumber(ARGV[3]), ARGV[4], ARGV[5]
 readyNow = now
 local maxr, strat, nl, fifo = tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8]), ARGV[9] == '1'
+local rr = strat == 'round_robin'
 local lim, per = {}, {}
 for i = 1, nl do lim[i], per[i] = tonumber(ARGV[8 + 2 * i]), tonumber(ARGV[9 + 2 * i]) end
-local first, width = 10 + 2 * nl, 4 + nl
+local first, width = 10 + 2 * nl, 5 + nl
 local wake = 0
 local held = {}
+-- Round robin: a bucket with room again (MaxRuns raised, or a slot freed
+-- by a path that did not unpark) gets its parked runs back first.
+local parked = b .. ':parked:' .. wf
+if rr then
+  for _, pk in ipairs(redis.call('SMEMBERS', parked)) do
+    local ck = string.sub(pk, 1, -6)
+    for _ = 1, maxr - redis.call('ZCARD', ck) do
+      if not unpark(b, pk) then break end
+    end
+    if redis.call('ZCARD', pk) == 0 then redis.call('SREM', parked, pk) end
+  end
+end
+-- fv is the workflow's virtual time (workflow.FairTurn): the smallest
+-- start tag of its runs waiting for a worker, else the largest key pass.
+local fv
+local fpass, fmax = b .. ':fpass:' .. wf, b .. ':fmax:' .. wf
 for j = first, #ARGV, width do
-  local id, q, bucket, rto = ARGV[j], ARGV[j + 1], ARGV[j + 2], ARGV[j + 3]
+  local id, q, bucket, rto, stride = ARGV[j], ARGV[j + 1], ARGV[j + 2], ARGV[j + 3], tonumber(ARGV[j + 4])
   local st = redis.call('HGET', rk(b, id), 'status')
   local pend = b .. ':pending:' .. rname(wf, redis.call('HGET', rk(b, id), 'ver'))
   if not redis.call('ZSCORE', pend, id) then
@@ -627,7 +744,7 @@ for j = first, #ARGV, width do
   else
     local blocked = fifo and held[bucket] or false
     for i = 1, nl do
-      local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 3 + i]
+      local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 4 + i]
       redis.call('ZREMRANGEBYSCORE', wk, '-inf', now - per[i])
       if redis.call('ZCARD', wk) >= lim[i] then
         blocked = true
@@ -654,13 +771,23 @@ for j = first, #ARGV, width do
           end
         else
           blocked = true
+          if rr then
+            -- Parked until a slot of the bucket frees (ended, unpark): a
+            -- run that cannot be admitted must not fill the admission
+            -- window of a later key's runs.
+            local pk = ck .. '\npark'
+            redis.call('ZADD', pk, redis.call('ZSCORE', pend, id), id)
+            redis.call('ZREM', pend, id)
+            redis.call('HSET', rk(b, id), 'pk', pk)
+            redis.call('SADD', parked, pk)
+          end
         end
       end
     end
     if blocked then held[bucket] = true end
     if not blocked then
       for i = 1, nl do
-        local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 3 + i]
+        local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 4 + i]
         redis.call('ZADD', wk, now, id)
         redis.call('PEXPIRE', wk, per[i] * 2 + 60000)
       end
@@ -668,9 +795,27 @@ for j = first, #ARGV, width do
       redis.call('HSET', rk(b, id), 'q', q, 'adm', '1', 'ck', ck, 'rto', rto)
       if tonumber(rto) > 0 then redis.call('ZADD', b .. ':rto', rto, id) end
       redis.call('ZREM', pend, id)
+      if rr then
+        if not fv then
+          local m = redis.call('ZRANGE', b .. ':fwait:' .. wf, 0, 0, 'WITHSCORES')
+          if m[1] then fv = tonumber(m[2]) else fv = tonumber(redis.call('GET', fmax) or '0') end
+        end
+        local start = math.max(tonumber(redis.call('HGET', fpass, bucket) or '0'), fv)
+        local nx = start + stride
+        redis.call('HSET', fpass, bucket, string.format('%d', nx))
+        if nx > tonumber(redis.call('GET', fmax) or '0') then redis.call('SET', fmax, string.format('%d', nx)) end
+        redis.call('HSET', rk(b, id), 'ft', string.format('%d', start))
+      end
       enready(b, id)
       redis.call('PUBLISH', b .. ':wake', 'e')
     end
+  end
+end
+if fv and redis.call('HLEN', fpass) > 256 then
+  -- a key whose pass is behind the virtual time starts at it anyway
+  local all = redis.call('HGETALL', fpass)
+  for i = 1, #all, 2 do
+    if tonumber(all[i + 1]) < fv then redis.call('HDEL', fpass, all[i]) end
   end
 end
 return wake
@@ -678,16 +823,27 @@ return wake
 
 // retryScript re-opens a failed run from its failed step. ARGV base, id,
 // the run's finished value as read (so a run that changed since is not
-// touched), the new steps JSON, now (ms). It takes the idempotency key
-// again. Returns {'ok'}, {'notfound'}, {'state', status} or {'dup', id,
-// status, sid}.
+// touched), the new steps JSON, now (ms), '1' when a succeeded run may be
+// reset too (ResetRunWith with ResetOptions.Succeeded, else '0'), and the
+// labels JSON such a run gets (its labels plus workflow.LabelRedo). It
+// takes the idempotency key again. A succeeded run also gets those labels
+// and loses its stored result; one whose chain field is still set (its
+// handoff did not happen) is refused with {'chain'}, so a chain is never
+// handed on twice. ARGV[8] is the JSON list of the steps that run again:
+// the payload of a wait each of them resolved (wv:<step>) is dropped, so a
+// wait step that runs again waits for a new event, as
+// workflow.RunResetter promises; the events it took stay taken (c:<n>).
+// Returns {'ok'}, {'notfound'}, {'state', status}, {'chain'} or {'dup',
+// id, status, sid}.
 var retryScript = goredis.NewScript(luaPrelude + `
 local b, id = ARGV[1], ARGV[2]
 readyNow = tonumber(ARGV[5])
 local key = rk(b, id)
-local h = redis.call('HMGET', key, 'status', 'finished', 'idem', 'wf', 'sf')
+local h = redis.call('HMGET', key, 'status', 'finished', 'idem', 'wf', 'sf', 'chain')
 if not h[1] then return {'notfound'} end
-if h[1] ~= 'failed' or h[2] ~= ARGV[3] then return {'state', h[1]} end
+local redo = h[1] == 'succeeded' and ARGV[6] == '1'
+if (h[1] ~= 'failed' and not redo) or h[2] ~= ARGV[3] then return {'state', h[1]} end
+if redo and h[6] and h[6] ~= '' then return {'chain'} end
 if h[3] and h[3] ~= '' then
   local cur = redis.call('HGET', b .. ':idem', h[3])
   if cur and cur ~= id then
@@ -700,6 +856,8 @@ redis.call('PERSIST', key)
 redis.call('HSET', key, 'status', 'queued', 'err', '', 'fstep', '', 'finished', '', 'forced', '',
   'steps', ARGV[4], 'owner', '', 'reclaims', '0', 'adm', '0')
 redis.call('HDEL', key, 'ck', 'sigpend', 'rto')
+if redo then redis.call('HSET', key, 'labels', ARGV[7], 'out', '') end
+for _, s in ipairs(cjson.decode(ARGV[8])) do redis.call('HDEL', key, 'wv:' .. s) end
 for _, f in ipairs(redis.call('HKEYS', key)) do
   if string.sub(f, 1, 3) == 'xs:' then redis.call('HDEL', key, f) end
 end
@@ -708,6 +866,27 @@ redis.call('ZADD', b .. ':floors', h[5] or '0', id)
 enready(b, id)
 redis.call('PUBLISH', b .. ':wake', 'e')
 return {'ok'}
+`)
+
+// forkScript starts a fork of a finished run (ForkRun) as a new run.
+// ARGV base, the original's id, its finished value as read (so a run
+// retried or reset since is not forked from outputs it no longer has),
+// the fork's steps JSON (the kept steps done with the original's
+// outputs), the fork's idempotency field (empty for none), then the
+// fork's createArity values. The check, the create (run hash, run index,
+// floors, ready or pending set, idempotency hash) and the steps are one
+// script. Returns {'new'}, {'notfound'}, {'state', status} or {'dup', id,
+// status, sid} when the key is held by an unfinished run.
+var forkScript = goredis.NewScript(luaPrelude + `
+local b, oid = ARGV[1], ARGV[2]
+local h = redis.call('HMGET', rk(b, oid), 'status', 'finished')
+if not h[1] then return {'notfound'} end
+if not terminal(h[1]) or (h[2] or '') ~= ARGV[3] then return {'state', h[1]} end
+local dup = create_idem(b, ARGV[5], ARGV, 6)
+if dup then return dup end
+redis.call('HSET', rk(b, ARGV[6]), 'steps', ARGV[4])
+redis.call('PUBLISH', b .. ':wake', 'e')
+return {'new'}
 `)
 
 // deliverScript claims undelivered run ends of the given workflows for

@@ -147,13 +147,14 @@ func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPag
 // workflow.RunRetrier. The run keeps its RunRef. Its concurrency and rate
 // limits apply again, as for a new run.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
-	return c.retryFrom(ctx, ref, "")
+	return c.retryFrom(ctx, ref, "", workflow.ResetOptions{})
 }
 
 // retryFrom is Retry, and ResetRun when from names a step: the outputs of
 // from and of every step downstream of it are dropped too, so they run
-// again.
-func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string) (workflow.RunRef, error) {
+// again. opts.Succeeded (ResetRunWith) also takes a succeeded run, which
+// gets LabelRedo and no chain.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
 	}
@@ -166,8 +167,12 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 	if err != nil {
 		return workflow.RunRef{}, err
 	}
-	if old.status != workflow.StatusFailed {
-		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; only a failed run can be retried", workflow.ErrWrongState, old.id, old.status)
+	if !workflow.ResetStatusOK(old.status, opts) {
+		what := "a failed run"
+		if opts.Succeeded {
+			what = "a failed or succeeded run"
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; only %s can be retried", workflow.ErrWrongState, old.id, old.status, what)
 	}
 	if old.idem != nil {
 		if holder, held := c.idem[*old.idem]; held && holder != old {
@@ -180,8 +185,17 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 			return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, old.reg.wf.Name, from)
 		}
 	}
+	redo := old.status == workflow.StatusSucceeded
+	job := old.job
+	if redo {
+		job.Labels = maps.Clone(job.Labels)
+		if job.Labels == nil {
+			job.Labels = map[string]string{}
+		}
+		job.Labels[workflow.LabelRedo] = "true"
+	}
 	c.forgetFinishedLocked(old)
-	r := c.newRunLocked(old.reg, old.job)
+	r := c.newRunLocked(old.reg, job)
 	r.id, r.sid, r.seq = old.id, old.sid, old.seq // the same run, seen by signals as enqueued when it was
 	r.enqueuedAt, r.startedAt, r.attempts = old.enqueuedAt, old.startedAt, old.attempts
 	r.outputs = maps.Clone(old.outputs)
@@ -190,6 +204,9 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 	}
 	r.consumed = maps.Clone(old.consumed)
 	r.chain = old.chain // edits of the steps that succeeded before the failure
+	if redo {
+		r.chain = nil // handed on when the run succeeded; never twice
+	}
 	r.errs = old.errs
 	if old.idem != nil {
 		k := *old.idem

@@ -308,25 +308,7 @@ func (s *extSpec) firstOnDay(day, after time.Time, loc *time.Location) (time.Tim
 	if s.month&(1<<uint(day.Month())) == 0 || !s.dayMatches(day) {
 		return time.Time{}, false
 	}
-	periodic := s.hour == allHours
-	var best time.Time
-	found := false
-	for h := 0; h < 24; h++ {
-		if s.hour&(1<<uint(h)) == 0 {
-			continue
-		}
-		for m := 0; m < 60; m++ {
-			if s.minute&(1<<uint(m)) == 0 {
-				continue
-			}
-			for _, t := range resolve(day.Year(), day.Month(), day.Day(), h, m, loc, periodic) {
-				if t.After(after) && (!found || t.Before(best)) {
-					best, found = t, true
-				}
-			}
-		}
-	}
-	return best, found
+	return firstFire(day, after, loc, s.hour, s.minute)
 }
 
 // Between implements Schedule.

@@ -41,6 +41,7 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	pipe := c.rdb.Pipeline()
 	type pair struct {
 		depth *goredis.IntCmd
+		fair  *goredis.IntCmd // round-robin runs wait in pos:, not ready: (scripts.go)
 		head  *goredis.ZSliceCmd
 	}
 	cmds := make([][]pair, len(cfgs))
@@ -49,6 +50,7 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 			for _, rn := range routes[wf] {
 				cmds[i] = append(cmds[i], pair{
 					depth: pipe.ZCard(ctx, c.base+":ready:"+q.Name+"/"+rn),
+					fair:  pipe.ZCard(ctx, c.base+":pos:"+q.Name+"/"+rn),
 					head:  pipe.ZRangeWithScores(ctx, c.base+":since:"+q.Name+"/"+rn, 0, 0),
 				})
 			}
@@ -68,7 +70,7 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 		}
 		var oldest int64
 		for _, p := range cmds[i] {
-			l.Depth += int(p.depth.Val())
+			l.Depth += int(p.depth.Val() + p.fair.Val())
 			if h := p.head.Val(); len(h) > 0 && (oldest == 0 || int64(h[0].Score) < oldest) {
 				oldest = int64(h[0].Score)
 			}

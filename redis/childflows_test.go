@@ -112,3 +112,31 @@ func TestResetFlows(t *testing.T) {
 		return rc
 	}})
 }
+
+// resetHarness starts a Redis client with the given workflows registered,
+// for the reset, redo and fork flows.
+func resetHarness(t *testing.T) workflowtest.FlowHarness {
+	rdb := redisClient(t)
+	return workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+		rc := newClient(t, rdb, testPrefix(t, rdb))
+		for _, wf := range wfs {
+			if err := rc.Register(wf); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+		if err := rc.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		return rc
+	}}
+}
+
+// TestRedoFlows proves ResetRunWith with ResetOptions.Succeeded against
+// Redis: the run is reset in place, gets LabelRedo, and its chain is not
+// handed on a second time.
+func TestRedoFlows(t *testing.T) { workflowtest.RunRedoFlows(t, resetHarness(t)) }
+
+// TestForkFlows proves ForkRun against Redis.
+func TestForkFlows(t *testing.T) { workflowtest.RunForkFlows(t, resetHarness(t)) }

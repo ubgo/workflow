@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -430,7 +431,7 @@ func (c *Client) plan(h *held, job workflow.Job, now time.Time) (planned, error)
 				return c.plan(h, job, now)
 			}
 			if deadline != 0 && deadline <= now.UnixNano() {
-				key, _ := s.Wait.ResolveKey(job)
+				key, _ := s.Wait.ResolveKeyFor(job, workflow.RunID(h.id))
 				p.timedOut = &waitTimeout{step: s.Name, in: h.input(s, job),
 					err: fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrWaitTimeout,
 						fmt.Sprintf("redis: wait step %q for event %q key %q", s.Name, s.Wait.Event, key)), context.DeadlineExceeded)}
@@ -463,7 +464,7 @@ func (c *Client) beginWait(h *held, s workflow.Step, job workflow.Job, now time.
 	if v, ok := h.waitVals[s.Name]; ok {
 		return v, true, 0, nil
 	}
-	key, err := s.Wait.ResolveKey(job) // Start refused Expr keys, so this is Func or the fixed Key
+	key, err := s.Wait.ResolveKeyFor(job, workflow.RunID(h.id)) // Start refused Expr keys, so this is Func, the fixed Key or the run address
 	if err != nil {
 		return nil, false, 0, err
 	}
@@ -761,12 +762,14 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 		delete(h.live, s.Name)
 		h.mu.Unlock()
 	}()
-	beat := make(chan struct{}, 1)
+	// lastBeat is the clock's UnixNano at the latest heartbeat (the start
+	// counts as one). A beat stores it at once, in the handler's goroutine,
+	// and the watchdog below re-checks it when its timer fires, so a beat
+	// made in time never loses to a timer the watchdog has not seen yet.
+	var lastBeat atomic.Int64
+	lastBeat.Store(c.clk.Now().UnixNano())
 	actx = workflow.WithHeartbeater(actx, workflow.HeartbeatFunc(func(context.Context, []byte) error {
-		select {
-		case beat <- struct{}{}:
-		default:
-		}
+		lastBeat.Store(c.clk.Now().UnixNano())
 		return c.renew(h)
 	}))
 	if d > 0 {
@@ -782,19 +785,21 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 	}
 	if hb := s.HeartbeatTimeout; hb > 0 {
 		go func() {
-			tm := c.clk.NewTimer(hb)
+			wait := hb
 			for {
+				tm := c.clk.NewTimer(wait)
 				select {
-				case <-beat:
-					tm.Stop()
-					tm = c.clk.NewTimer(hb)
 				case <-tm.C():
-					cancel(errHeartbeatTimeout)
-					return
 				case <-actx.Done():
 					tm.Stop()
 					return
 				}
+				since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
+				if since >= hb {
+					cancel(errHeartbeatTimeout)
+					return
+				}
+				wait = hb - since
 			}
 		}()
 	}

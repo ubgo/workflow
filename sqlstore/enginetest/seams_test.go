@@ -70,18 +70,21 @@ var frozenChecksums = map[string]string{
 	"mysql ubgo/workflow/sqlstore/unique 002_unique_holder":    "07fbe8621a3e4fc367c96f2bb025ce800d390e115961713706be0eb15d5e61c7",
 	"sqlite ubgo/workflow/sqlstore 009_schedule_tenant":        "ddb147de02e8c702346b0a52c48e94e86d5ed4597bc4ae2e8e5bd2c50f80a082",
 	"sqlite ubgo/workflow/sqlstore 010_run_version":            "305f439051573474dbead0f422675b6c6ea6c8e44cdcf8e4227fb5e301668778",
+	"sqlite ubgo/workflow/sqlstore 011_fair_turns":             "1f273616d2e581f06bcce02706fa0f20812e535dc4a658069b4f6c77bec76d59",
 	"sqlite ubgo/workflow/sqlstore/journal 001_journal":        "2a559bdaaa463913a28d2c5d72bd350609b0dc2d2b38245a85c2a53ec301bcdb",
 	"sqlite ubgo/workflow/sqlstore/bucket 001_buckets":         "d1d74bc8f75b17ada1cf5fe4fc716e68646fdda36c712f83fb56d3c4f8da08fa",
 	"sqlite ubgo/workflow/sqlstore/data 001_data":              "42ad4aab91f9d4d7a9169fde5cf791adbb0872380e942ef73cdc49cfeacd85d6",
 	"sqlite ubgo/workflow/sqlstore/inbox 001_inbox":            "c5542446a75fd565b261094c4302e6358150a37966584896144c2be288b384f6",
 	"postgres ubgo/workflow/sqlstore 009_schedule_tenant":      "6157cd6351fa3636ac58e9015021effb8c8fe96fadfa07ab3fbaa28a9eb7db0d",
 	"postgres ubgo/workflow/sqlstore 010_run_version":          "45aaac0c661b8f326ed8fadcbe033bddd5fb9ec98fcb9ebc12aa9e100ad598df",
+	"postgres ubgo/workflow/sqlstore 011_fair_turns":           "2bb5e7aa7dfb341999b084a577632922f032f254dfb339d2c37c6ed85d6a1f7d",
 	"postgres ubgo/workflow/sqlstore/journal 001_journal":      "88daf7de07728cd1bb358518f3294495f91f264bc94b63382584ad10b45a1f7a",
 	"postgres ubgo/workflow/sqlstore/bucket 001_buckets":       "6aef137b46458c4029373aa0228aa73e3b46ea666dc10597a385804e62638a99",
 	"postgres ubgo/workflow/sqlstore/data 001_data":            "075b8ff10da2e595954a16e823be39c13d2fcb3e4e1124d94ff5f42724e0149b",
 	"postgres ubgo/workflow/sqlstore/inbox 001_inbox":          "024f73303868917c9f916498391b4adca115a138c3a932ffd21419c7d8f9ad6f",
 	"mysql ubgo/workflow/sqlstore 009_schedule_tenant":         "efb477c49811861bfbff552194aee728b755fefa2d60978fc2fb5a1ff3abaf92",
 	"mysql ubgo/workflow/sqlstore 010_run_version":             "70f20002d8f7128a940c074ff4cb66420ae65cfe499dab9723bbe423a7cb4075",
+	"mysql ubgo/workflow/sqlstore 011_fair_turns":              "476cc9b9d2cff51d46e4ad5fed4ec643b0b7e8012702195e1922f288bae6802d",
 	"mysql ubgo/workflow/sqlstore/journal 001_journal":         "15848682e620817a67d8ecd16d913e24625af32f406af928b63b119d5f7eb4ec",
 	"mysql ubgo/workflow/sqlstore/bucket 001_buckets":          "4740aa81988d327e2c9f1764807d053c7b3e1c53688b6a38aebab25d839ac1a6",
 	"mysql ubgo/workflow/sqlstore/data 001_data":               "a98f0bd29e481302e69eedf954df1b61bb44fa7cd462219073aa1d03a0be713b",
@@ -271,6 +274,15 @@ func TestSchemaAppliedElsewhereStarts(t *testing.T) {
 			applyScripts(t, e, db, prefix, func(m sqlstore.MigrationScript) bool {
 				return m.Name == "009_schedule_tenant" || m.Name == "001_journal" || m.Name == "001_buckets" || m.Name == "001_data" || m.Name == "001_inbox" || m.Name == "010_run_version"
 			})
+			pre11, err := sqlstore.New(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := pre11.Start(ctx); err == nil || !strings.Contains(err.Error(), "fair_keys") {
+				pre11.Stop()
+				t.Fatalf("Start on a schema up to 010: %v, want an error naming fair_keys", err)
+			}
+			applyScripts(t, e, db, prefix, func(m sqlstore.MigrationScript) bool { return m.Name == "011_fair_turns" })
 			c, err := sqlstore.New(db, e.dialect, sqlstore.WithTablePrefix(prefix), sqlstore.WithPollInterval(testPoll))
 			if err != nil {
 				t.Fatal(err)
@@ -479,21 +491,6 @@ func idemWorkflow(release <-chan struct{}) workflow.Workflow {
 		}
 		return in, nil
 	}}}}
-}
-
-func startWith(t *testing.T, c *sqlstore.Client, wfs ...workflow.Workflow) context.Context {
-	t.Helper()
-	for _, wf := range wfs {
-		if err := c.Register(wf); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	if err := c.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	return ctx
 }
 
 // TestErrorClassifier: the default answers a held idempotency key with the

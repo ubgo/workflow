@@ -7,13 +7,16 @@ type Op string
 
 // The operations Supports answers for.
 const (
-	OpReschedule    Op = "reschedule"     // RunRescheduler
-	OpEditRun       Op = "edit-run"       // RunEditor
-	OpResetRun      Op = "reset-run"      // RunResetter
-	OpSignalWaiting Op = "signal-waiting" // TransientSignaller
-	OpCancelStep    Op = "cancel-step"    // StepCanceller
-	OpNodes         Op = "nodes"          // NodeLister
-	OpLifecycle     Op = "lifecycle"      // LifecycleNotifier
+	OpReschedule     Op = "reschedule"      // RunRescheduler
+	OpEditRun        Op = "edit-run"        // RunEditor
+	OpResetRun       Op = "reset-run"       // RunResetter
+	OpResetSucceeded Op = "reset-succeeded" // RunResetterWith (ResetOptions.Succeeded)
+	OpForkRun        Op = "fork-run"        // RunForker
+	OpSignalWaiting  Op = "signal-waiting"  // TransientSignaller
+	OpCancelStep     Op = "cancel-step"     // StepCanceller
+	OpNodes          Op = "nodes"           // NodeLister
+	OpLifecycle      Op = "lifecycle"       // LifecycleNotifier
+	OpRunSignals     Op = "run-signals"     // RunSignalReader
 )
 
 // OpProber is implemented by a client wrapper whose optional methods
@@ -43,6 +46,12 @@ func Supports(c Client, op Op) bool {
 	case OpResetRun:
 		_, ok := c.(RunResetter)
 		return ok
+	case OpResetSucceeded:
+		_, ok := c.(RunResetterWith)
+		return ok
+	case OpForkRun:
+		_, ok := c.(RunForker)
+		return ok
 	case OpSignalWaiting:
 		_, ok := c.(TransientSignaller)
 		return ok
@@ -51,6 +60,9 @@ func Supports(c Client, op Op) bool {
 		return ok
 	case OpLifecycle:
 		_, ok := c.(LifecycleNotifier)
+		return ok
+	case OpRunSignals:
+		_, ok := c.(RunSignalReader)
 		return ok
 	}
 	return false

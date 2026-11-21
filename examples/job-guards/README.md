@@ -1,6 +1,6 @@
 # job-guards
 
-The guards that keep a job from running when it should not, on the in-memory driver: an expiry for a one-time code that must not be mailed late, a sweep that cancels runs no worker took, a bounded queue and a per-tenant quota, quiet hours in the recipient's zone, payload validation at enqueue, an explicit retry ladder, an invariant and a precondition that fail a step at once, a pool of two GPU slots, a critical section inside one run, and a webhook endpoint that switches itself off after three failures.
+The guards that keep a job from running when it should not, on the in-memory driver: an expiry for a one-time code that must not be mailed late, a sweep that cancels runs no worker took, a bounded queue and a per-tenant quota, quiet hours in the recipient's zone, payload validation at enqueue, an explicit retry ladder, an invariant and a precondition that fail a step at once, a pool of two GPU slots, a critical section inside one run, and a webhook endpoint that switches itself off after three failures, alone and on two workers sharing the switch through `sqlstore.DisableStore` on a SQLite file.
 
 ```sh
 cd examples
@@ -43,6 +43,14 @@ auto-disable:
   delivery 5: discarded
   endpoint called 3 time(s)
   disabled after Enable: false
+auto-disable across workers:
+  delivery 1 on worker 1: failed
+  delivery 2 on worker 2: failed
+  worker 1 disabled https://hooks.example.com/b
+  delivery 3 on worker 1: failed
+  delivery 4 on worker 2: discarded
+  delivery 5 on worker 1: discarded
+  endpoint called 3 time(s)
 ```
 
 The guides that copy this program are [job guards](../../docs/jobs/guards.md) and [pools and critical sections](../../docs/reliability/pools.md). `go test ./job-guards` checks every line.

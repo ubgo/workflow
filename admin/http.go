@@ -66,6 +66,13 @@ const (
 	ActionCancelStep    Action = "runs.cancel_step" // POST /runs/{id}/steps/{step}/cancel
 	// ActionEditRun changes a scheduled run's payload, priority or start.
 	ActionEditRun Action = "runs.edit" // POST /runs/{id}/edit
+	// ActionResetRun re-runs a finished run in place from a step;
+	// ActionForkRun starts a new run from a finished one at a step.
+	ActionResetRun Action = "runs.reset" // POST /runs/{id}/reset
+	ActionForkRun  Action = "runs.fork"  // POST /runs/{id}/fork
+	// ActionSignalWaiting delivers an event only to the runs waiting for
+	// it now.
+	ActionSignalWaiting Action = "signals.waiting" // POST /signals/waiting
 	// ActionUI is loading the web UI's page and its files. The UI's data
 	// comes from the routes above, each authorized with its own action,
 	// so a caller allowed only ActionUI sees an empty screen.
@@ -82,6 +89,7 @@ var Actions = []Action{
 	ActionForceComplete, ActionForceFail, ActionShowOutput, ActionUI,
 	ActionRetryRuns, ActionDeleteRuns, ActionMetrics,
 	ActionListNodes, ActionHealth, ActionRescheduleRun, ActionCancelStep, ActionEditRun,
+	ActionResetRun, ActionForkRun, ActionSignalWaiting,
 }
 
 // ReadOnly reports whether the action only reads. An Authorizer that gives
@@ -101,8 +109,8 @@ func (a Action) ReadOnly() bool {
 type Resource struct {
 	// Run is the run for ActionShowRun, ActionRetryRun, ActionCancelRun,
 	// ActionDeleteRun, ActionForceComplete, ActionForceFail,
-	// ActionShowOutput, ActionRescheduleRun, ActionCancelStep and
-	// ActionEditRun.
+	// ActionShowOutput, ActionRescheduleRun, ActionCancelStep,
+	// ActionEditRun, ActionResetRun and ActionForkRun (the original).
 	Run workflow.RunRef
 	// Query is the filter for ActionListRuns, ActionListFailures,
 	// ActionCancelRuns, ActionRetryRuns and ActionDeleteRuns, so an
@@ -115,13 +123,21 @@ type Resource struct {
 	DryRun bool
 	// Metrics is the query for ActionMetrics.
 	Metrics *MetricsQuery
-	// Step is the step for ActionCancelStep.
+	// Step is the step for ActionCancelStep, and the step ActionResetRun
+	// and ActionForkRun start from.
 	Step string
 	// At is the new time for ActionRescheduleRun.
 	At time.Time
 	// Edit is the change for ActionEditRun, so an Authorizer can allow
 	// some fields and not others.
 	Edit *workflow.JobEdit
+	// Reset is the options of ActionResetRun, so an Authorizer can allow
+	// resetting a failed run and not redoing one that succeeded.
+	Reset *workflow.ResetOptions
+	// Fork is the options of ActionForkRun (the fork's key and labels).
+	Fork *workflow.ForkOptions
+	// Event is the event for ActionSignalWaiting.
+	Event *workflow.Event
 	// Pause is the target for ActionPause and ActionResume.
 	Pause *workflow.PauseTarget
 	// Schedule is the schedule for ActionPauseSchedule,
@@ -265,6 +281,9 @@ type handler[P any] struct {
 //	POST   /runs/{id}/reschedule   move a delayed run; body {"at":"RFC 3339"}
 //	POST   /runs/{id}/steps/{step}/cancel  withdraw one step of a run
 //	POST   /runs/{id}/edit         change a scheduled run; body {"payload":<JSON>,"priority":n,"run_at":"RFC 3339"}, each optional
+//	POST   /runs/{id}/reset        re-run a failed run in place from a step; body {"step":"..","succeeded":true} (succeeded also resets a run that succeeded); returns its ref
+//	POST   /runs/{id}/fork         start a new run from a finished one at a step; body {"step":"..","idempotency_key":"..","labels":{..}}; returns the new run's ref ("duplicate":true when the key's holder was returned)
+//	POST   /signals/waiting        deliver an event only to the runs waiting for it now; body {"name":"..","key":"..","payload":<JSON>}; returns {"resumed":n}
 //	GET    /ui/               the web UI (see below); GET / and GET /ui redirect to it
 //
 // Run filters: workflow, queue, tenant (CapTenant), due_from and due_to
@@ -324,6 +343,9 @@ func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handl
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("POST /runs/{id}/reschedule", h.reschedule)
 	mux.HandleFunc("POST /runs/{id}/edit", h.editRun)
+	mux.HandleFunc("POST /runs/{id}/reset", h.resetRun)
+	mux.HandleFunc("POST /runs/{id}/fork", h.forkRun)
+	mux.HandleFunc("POST /signals/waiting", h.signalWaiting)
 	mux.HandleFunc("POST /runs/{id}/steps/{step}/cancel", h.cancelStep)
 	mux.HandleFunc("GET /{$}", h.uiRedirect)
 	mux.HandleFunc("GET /ui", h.uiRedirect)

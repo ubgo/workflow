@@ -505,6 +505,7 @@
       supported('cancel_step') && !TERMINAL.has(r.status) && r.status !== 'scheduled' && r.status !== 'queued' ? cancelStepNodes(path, r.failed_step) : null,
       canForce && canForceFail(r.status) ? button('Force fail', async () => { await api('POST', withSuffix(path, '/fail'), { reason: reason.value.trim() }); counts.clear(); return 'Marked failed'; }, { danger: true, title: 'End the run as failed now, with no retry' }) : null,
     );
+    const redo = r.ref.run_id ? redoNodes(r, path) : null;
     const wait = secsBetween(r.enqueued_at, r.started_at);
     const took = secsBetween(r.started_at, r.finished_at);
     const grid = el('dl', { class: 'kv' },
@@ -531,7 +532,7 @@
       kv('Labels', r.labels && Object.keys(r.labels).length ? labelChips(r.labels) : '—'),
     );
     const output = hasOutput && r.ref.run_id ? await api('GET', withSuffix(path, '/output')).catch((e) => ({ error: e.message })) : null;
-    return el('div', null, actions, grid,
+    return el('div', null, actions, redo, grid,
       r.error ? [el('h2', null, r.status === 'retrying' ? 'Error of the failed attempt' : 'Error'), el('pre', { class: 'box' }, r.error)] : null,
       attemptsNode(r.errors),
       resultNode(r),
@@ -589,6 +590,51 @@
       counts.clear();
       return 'Cancelled step ' + name;
     }, { danger: true, title: 'Withdraw this step: a running attempt is told to stop; a waiting one fails' })];
+  }
+
+  // redoNodes is the "run again from a step" row of a finished run: reset
+  // re-runs it in place (a failed run; a succeeded one only with the box
+  // ticked), fork starts a new run from it and opens that run. Each shows
+  // only when the capabilities say the client does it. A run does not
+  // list its workflow's steps, so the step is typed, with the steps this
+  // run reported as suggestions.
+  function redoNodes(r, path) {
+    const canReset = (supported('reset_run') && r.status === 'failed') || (supported('reset_succeeded') && r.status === 'succeeded');
+    const canFork = supported('fork_run') && TERMINAL.has(r.status);
+    if (!canReset && !canFork) return null;
+    const known = new Set([r.failed_step, r.progress && r.progress.step, ...(r.errors || []).map((e) => e.step)].filter(Boolean));
+    const list = el('datalist', { id: 'redo-steps' }, [...known].map((n) => el('option', { value: n })));
+    const step = el('input', { type: 'text', name: 'redo-step', list: 'redo-steps', placeholder: 'from step', value: r.failed_step || '', 'aria-label': 'Step to run again from', class: 'mono w-md' });
+    const stepName = () => {
+      const n = step.value.trim();
+      if (!n) throw new Error('enter the step to run again from');
+      return n;
+    };
+    const redoBox = r.status === 'succeeded' ? el('input', { type: 'checkbox', name: 'redo-succeeded' }) : null;
+    const key = canFork ? el('input', { type: 'text', name: 'fork-key', placeholder: 'idempotency key (optional)', 'aria-label': 'Idempotency key of the fork', class: 'mono w-lg' }) : null;
+    return el('div', { class: 'toolbar' },
+      el('span', { class: 'muted' }, 'Run again from a step:'), list, step,
+      canReset && redoBox ? el('label', { title: 'Redo work that already succeeded; the run gets the redo label' }, redoBox, 'also if it succeeded') : null,
+      canReset ? button('Reset', async () => {
+        const body = { step: stepName() };
+        if (redoBox) {
+          if (!redoBox.checked) throw new Error('tick "also if it succeeded" to redo a run that succeeded');
+          body.succeeded = true;
+        }
+        await api('POST', withSuffix(path, '/reset'), body);
+        counts.clear();
+        return 'Reset from ' + body.step;
+      }, { danger: true, title: 'Run this step and every step after it again, in this run; the steps before keep their outputs' }) : null,
+      key,
+      canFork ? button('Fork', async () => {
+        const body = { step: stepName() };
+        if (key.value.trim()) body.idempotency_key = key.value.trim();
+        const o = await api('POST', withSuffix(path, '/fork'), body);
+        counts.clear();
+        location.hash = runHref(o.ref);
+        return (o.duplicate ? 'Key held by run ' : 'Forked as ') + runID(o.ref);
+      }, { title: 'Start a new run from this step with the outputs of the steps before it; this run is not changed', noReload: true }) : null,
+    );
   }
 
   // attemptsNode is the per-attempt error history, oldest first, with a

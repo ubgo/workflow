@@ -37,7 +37,7 @@ var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapForceRun,
 	workflow.CapTenant, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
-	workflow.CapWorkflowVersion,
+	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun, workflow.CapKeyWeights,
 )
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
@@ -199,6 +199,7 @@ type Fake struct {
 
 	ops      map[workflow.Op]bool     // fakeOps the Fake does; nil: all (FakeLike narrows it)
 	resets   []FakeReset              // successful ResetRun calls, in order
+	forks    []FakeFork               // successful ForkRun calls, in order
 	waiting  []workflow.Event         // SignalWaiting calls, in order
 	promises *workflow.MemoryPromises // the store Promises returns; nil until asked
 }

@@ -441,6 +441,7 @@ Batch features the engine can honour, each proven against a live engine:
 - **Results** (`CapResult`): `Client.Result` and `RunInfo.Output` are the final steps' outputs, which the engine keeps with the run. A client that never registered the workflow rebuilds its steps from the run's shape, so a result with several final steps has its keys in name order there ([Results](../jobs/results.md)).
 - **Due-time queries and reschedule** (`CapDueQuery`, `RunRescheduler`): `RunQuery.DueFrom`/`DueTo` filter on `RunInfo.RunAt`, applied to each listed page, so a page can be short. `Reschedule` creates the delayed start again at the new time with the same token and deletes the old one, so the `RunRef` is unchanged; a start due within 15 seconds is refused with `ErrWrongState`, because the engine loads a scheduled run into its ticker about five seconds before it is due and fires it at the loaded time whatever a later change says.
 - **FIFO per key** (`CapKeyFIFO`): the engine queues a key's waiting runs in insert order; `Priority` still goes first.
+- **Round robin** (`ConcurrencyRoundRobin`): maps onto the engine's group round-robin, which serves keys in equal turns. `Concurrency.Weight` is refused (no `CapKeyWeights`), and `CapRoundRobin` is not declared until a live test measures the engine's turns the way the conformance suite does.
 - **Nodes and health** (`NodeLister`, `HealthChecker`): `Config.NodeID` is `StepInfo.Node` and a label on every worker the client registers; `Nodes` lists the nodes whose workers the engine shows active. `CapNodeIdentity` is not claimed: the engine returns no per-attempt worker, so `RunInfo.AttemptedBy` stays empty. `Health` is live until a recycle, and ready while the client is started, the engine answers and its workers are active ([Nodes and health](../operations/nodes.md)).
 - **Payload limit** (`PayloadLimiter`): `Enqueue` refuses a payload over `Config.PayloadLimit` (`hatchet.DefaultPayloadLimit`, 1.5 MiB, sized for the engine's default 4 MiB gRPC message) with a `*workflow.PayloadTooLargeError` before it reaches the engine.
 - **Outcomes and errors**: `Enqueue` reports a new run or a duplicate key through `workflow.WithEnqueueOutcome`, and a failed run's `RunEvent.Err` is a `*workflow.RunError`.
@@ -464,8 +465,8 @@ Checked on hatchet-lite v0.110.5 with SDK v0.107.1, each with the driver's worka
 - Runs are listed by creation time only: the run-end notifier tracks unfinished runs between polls.
 - A run's stored input nests the trigger input under `input`: `Runs` reads the payload from there.
 - The run details' task events come back empty on hatchet-lite v0.110.5, so the worker that ran each attempt is not known.
-- The engine loads a scheduled run into its ticker about five seconds before it is due and fires it at the loaded time: `Reschedule` refuses a start due within 15 seconds.
-- The engine deletes a scheduled run's record as it fires it, a moment before its read side lists the run, so a delayed start with no record and no listed run could be fired or cancelled. `Status` calls it cancelled only after `VisibilityLag`, or at once when this client's `Cancel` deleted it at least 15 seconds before it was due. It never decides by the `ScheduledID`'s first `RunAt`, which `Reschedule` can move earlier. `Status` of a delayed start that another process cancelled takes up to `VisibilityLag`.
+- The engine loads a scheduled run into its ticker up to five seconds before it is due and fires it at the loaded time, whatever a later delete says: `Reschedule` refuses a start due within 15 seconds, and `Cancel` of such a start waits to see whether it fires (below).
+- The engine deletes a scheduled run's record as it fires it, a moment before its read side lists the run, so a delayed start with no record and no listed run could be fired or cancelled. `Status` calls it cancelled only after `VisibilityLag`, or at once when this client's `Cancel` deleted it at least 15 seconds before it was due or watched it past its due time with no run fired. It never decides by the `ScheduledID`'s first `RunAt`, which `Reschedule` can move earlier. `Status` of a delayed start that another process cancelled takes up to `VisibilityLag`.
 - Workflow pause takes a mandatory queue TTL, after which the engine cancels the held runs, and an empty or unparsable TTL silently becomes five minutes. `Pause` sends a hundred years. Anyone pausing through the dashboard or their own REST calls must set a long TTL too.
 
 ## Record run history
@@ -517,7 +518,7 @@ go run ./hatchet-worker
 ```
 
 ```text
-capabilities: Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|Queue|RunQuery|RetryRun|CancelAll|ScheduleList|Drain|ScheduleTrigger|ScheduleHistory|EnqueueOnly|Tenant|KeyFIFO|DueQuery|Result|CronSeconds|TickTime|DrainReport
+capabilities: Durable|DelayedStart|WaitForEvent|DurableSleep|ConcurrencyKey|RateLimit|IdempotencyKey|Cron|Cancel|Queue|RunQuery|RetryRun|CancelAll|ScheduleList|Drain|ScheduleTrigger|ScheduleHistory|EnqueueOnly|Tenant|KeyFIFO|DueQuery|Result|CronSeconds|TickTime|DrainReport|WaitOwnRun
 berlin-report: ErrUnsupported=true
   workflow: Workflow.CronLocation unsupported by this driver (missing CronZone): workflow berlin-report: Hatchet evaluates crons in UTC only, not Europe/Berlin; shifting the expression would break across DST
 per-tenant: ErrUnsupported=true
@@ -544,6 +545,7 @@ worker listed through Native: true
 - `OnRunFinished` is best-effort. Use the memory or SQL driver when every run end must reach an observer.
 - A run recorder without a Reconciler can leave records unfinished: `OnRunFinished` is the recorder's only end signal on a run whose end the poller missed ([Record run history](#record-run-history)).
 - `Clock` does not make the engine's own timers fake: steps, sleeps and crons run on the engine's time.
+- `Cancel` of a delayed start due within 15 seconds can block until the start's due time plus `VisibilityLag`, and can return `ErrCancelTooLate`. The engine fires a start it has already loaded into its ticker even after its record is deleted: measured on hatchet-lite v0.110.5 with 15 samples per offset, a delete 10 or 5 seconds before due stopped every start, 3 seconds before let 6 of 15 start, 1 second before 12 of 15, and half a second before 13 of 15. `Cancel` therefore deletes the start, then watches for its run: none by the deadline, it returns nil and the start will not run; one listed, it cancels that run (unless it already ended) and returns `ErrCancelTooLate`, which matches `workflow.ErrWrongState`. A fast step can finish before that cancel lands, so cancel a delayed start well ahead of its due time when it must not run at all. `CancelAll` deletes every start first, watches the late ones together, and counts one that fired as cancelled with no error.
 
 ## Related
 

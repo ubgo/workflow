@@ -14,9 +14,9 @@ import (
 // who did what to which resource, how it ended and when. A write is any
 // Action whose ReadOnly is false (retry, delete, cancel, cancel-all,
 // pause and resume, schedule pause, resume and trigger, force complete
-// and fail, the bulk retries and deletes, reschedule, cancel-step, and
-// any write a later version adds), dry runs included (Resource.DryRun
-// says so).
+// and fail, the bulk retries and deletes, reschedule, edit, cancel-step,
+// reset, fork, signal-waiting, and any write a later version adds), dry
+// runs included (Resource.DryRun says so).
 type AuditEntry struct {
 	// Who is the principal Auth.Identify returned for the request (the
 	// handler's P), as an any so one sink serves every handler.

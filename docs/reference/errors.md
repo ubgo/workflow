@@ -41,6 +41,8 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrNoSecretRef` | A `SecretRef` has no name; permanent | `ResolveSecret` |
 | `ErrThrottled` | An `UpstreamLimit` bucket has no room; marked with `RetryAfter` for the wait | `UpstreamLimit.Take` ([Upstream rate limits](../jobs/upstream-limits.md)); not the same variable as `middleware.ErrThrottled` |
 | `ErrPromiseSettled` | A promise was settled already with a different outcome: the first settlement wins | `ResolvePromise`, `RejectPromise` |
+| `ErrUnhandledEvent` | An event no active state handles, under `MachineReject`, or any event sent to a machine instance that reached a top-level final state; matches `ErrInvalid`, permanent | `SendEvent`'s run; `IsUnhandledEvent` recognises it through `AwaitResult`'s `RunFailedError` ([State machines › Unhandled events](../workflows/state-machines.md#unhandled-events)) |
+| `ErrNondeterminism` | A replayed handler made a call that differs from its recorded history at that position, or returned with recorded calls left over (`*NondeterminismError` with `Position`, `Recorded`, `Got`); permanent | `NewReplay` ([Replay › Keep the code deterministic](../workflows/replay.md#keep-the-code-deterministic)) |
 | `ErrStepsFailed` | A step before a `Finally` exit handler failed; the run ends with it after the handler ran | A `WithRules` workflow with `Finally` |
 | `ErrSagaAborted` | The saga started compensating, so no new action runs | `Saga.Do` after `Abort` (in this attempt or an earlier one) |
 | `ErrCompensated` | Every compensation of an aborted saga ran; permanent | `Saga.Abort` |
@@ -102,6 +104,7 @@ Every error the library returns for a condition a caller can act on wraps one of
 | `ErrAbandoned` | `sqlstore` | A step attempt failed because its lease expired more than `WithMaxReclaims` times: every worker that took it died. The retry policy treats it like any failure |
 | `ErrDriver` | `sqlstore/pgnotify` | `Listen` on a pool whose driver is not the pgx stdlib driver, which alone exposes notifications; the client keeps polling |
 | `ErrSchemaTooNew` | `sqlstore/outbox` | The ledger records an outbox migration this code does not know. `Migrate` refuses it |
+| `ErrCancelTooLate` | `hatchet` | A delayed start fired although `Cancel` deleted it before its due time (Cancel within 15 s of due); Cancel cancelled the run unless it had ended. Also matches `workflow.ErrWrongState` |
 
 The two `ErrSchemaTooNew` values are different variables in different packages, as are `workflow.ErrThrottled` and `middleware.ErrThrottled`; match the one of the package you called.
 

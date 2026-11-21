@@ -52,7 +52,16 @@
 // cap). Concurrency, rate and wait keys are Go
 // functions (workflow.KeyFunc); Start refuses an expression key (KeyExpr).
 // QueueConfig.Weight orders queues of equal priority by a weighted draw
-// (workflow.PickWeighted on the jitter source).
+// (workflow.PickWeighted on the jitter source). Under
+// ConcurrencyRoundRobin the keys take turns (CapRoundRobin) in proportion
+// to Concurrency.Weight (CapKeyWeights): the admission script gives each
+// run a turn from its key (workflow.FairTurn; {prefix}:fpass:<workflow>,
+// {prefix}:fmax:<workflow>), a waiting round-robin run keeps its place in
+// line in {prefix}:pos:<queue>/<workflow> instead of the ready set, and
+// the claim hands the best place to the run of that workflow, queue and
+// priority with the earliest turn; a run whose bucket is full is parked
+// per bucket ({bucket}\npark) until a run of the bucket ends, so one key's
+// backlog never fills the admission window.
 //
 // # How work moves
 //
@@ -103,13 +112,32 @@
 //     and resolves every registered wait on its name and key, one per run,
 //     in one script, and makes those runs ready. A wait past its deadline
 //     fails its step (OnFailure runs). Kept signals are dropped once no
-//     unfinished run may take them.
+//     unfinished run may take them. A wait with WaitSpec.OwnRun waits on
+//     the run's address (workflow.RunKey; CapWaitOwnRun). PendingSignals
+//     and TakeSignal (workflow.RunSignalReader, for workflow.OnSignals)
+//     list a run's addressed signals above its floor without its consumed
+//     marker, and set that marker with HSETNX, in one script each.
 //   - A step that fails for good runs OnFailure once with its input (under
 //     the lease, so a crash reruns it: at least once), then the run is
 //     failed. A step returning workflow.Discard ends the run
 //     StatusDiscarded, without retries or OnFailure. Retry re-opens a
 //     failed run from its failed step, admitted again under its
 //     workflow's policies.
+//   - ResetRun re-opens a failed run from a chosen step (that step and
+//     every step downstream of it run again); ResetRunWith with
+//     ResetOptions.Succeeded also takes a succeeded run, in the same
+//     script as Retry, which checks the status, writes workflow.LabelRedo
+//     into the run's labels and clears its result. The chain was handed
+//     on and cleared when the run succeeded, so it is not handed on
+//     again; a succeeded run still holding a chain (its handoff failed)
+//     is refused with ErrWrongState. ForkRun starts a new run from a
+//     finished one at a step, on the original's workflow version, queue,
+//     priority, tenant and job retry policy, with workflow.ForkLabels, no
+//     chain and only ForkOptions.IdempotencyKey; one script checks the
+//     original is still the finished run read, creates the fork through
+//     Enqueue's create helper and writes the kept steps done with the
+//     original's outputs. Both need the workflow registered on the
+//     client (ErrInvalid otherwise).
 //   - A run's chain (Job.Chain and the edits its steps made with
 //     PrependToChain and AppendToChain, applied only when the attempt
 //     succeeds) is stored with the run; the script that ends the run
@@ -199,12 +227,19 @@
 //     clock), DebounceStore (middleware.DebounceStore: Swap is one
 //     script), DataStore (workflow.DataStore, folder, workflow and
 //     global data: a hash per value with its version, a conditional Put
-//     is one script) and Inbox (workflow.Inbox, idempotent consumption:
+//     is one script), Inbox (workflow.Inbox, idempotent consumption:
 //     a hash per consumer and message, claim, complete and release each
-//     one script) keep state other processes share; each has a
-//     constructor (NewJournalStore, NewBucketStore, NewDebounceStore,
-//     NewDataStore, NewInbox) and a Client method over the client's
-//     prefix.
+//     one script) and DisableStore (middleware.DisableStore, the
+//     switches of middleware.AutoDisable: a hash per key, Fail one
+//     script, so exactly one of many concurrent Fails reports the
+//     crossing and an endpoint is switched off for every worker) and
+//     LineageStore (events.LineageStore, the dataset versions and trigger
+//     consumption of events.Datasets: a record is one script that keeps
+//     the first of equal facts, indexed by sorted sets read newest first)
+//     keep state other processes share; each has a constructor
+//     (NewJournalStore, NewBucketStore, NewDebounceStore, NewDataStore,
+//     NewInbox, NewDisableStore, NewLineageStore) and a Client method over
+//     the client's prefix.
 //   - WithEnqueueOnly makes a client for web nodes that enqueue and never
 //     run work; Register is optional there.
 package redis

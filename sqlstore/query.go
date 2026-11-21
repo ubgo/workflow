@@ -415,12 +415,15 @@ func (c *Client) nextAttempts(ctx context.Context, infos []workflow.RunInfo, now
 // holds it), and its end is delivered to run-finished observers again. A
 // run that is not failed returns ErrWrongState.
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
-	return c.retryFrom(ctx, ref, nil)
+	return c.retryFrom(ctx, ref, nil, workflow.ResetOptions{})
 }
 
 // retryFrom is Retry, and ResetRun when rerun lists steps: those steps
-// go back to pending with the ones that had not succeeded.
-func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []string) (workflow.RunRef, error) {
+// go back to pending with the ones that had not succeeded. opts.Succeeded
+// (ResetRunWith) also takes a succeeded run, which gets LabelRedo; its
+// chain was handed on and deleted when it succeeded, so it is not handed
+// on again, and a run whose chain still waits for a handoff is refused.
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {
 		return workflow.RunRef{}, err
@@ -440,8 +443,18 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []str
 		if err != nil {
 			return err
 		}
-		if row.status != runFailed {
-			return fmt.Errorf("%w: run %s is %s, only a failed run can be retried", workflow.ErrWrongState, row.id, row.status)
+		redo := opts.Succeeded && row.status == runSucceeded
+		if row.status != runFailed && !redo {
+			what := "a failed run"
+			if opts.Succeeded {
+				what = "a failed or succeeded run"
+			}
+			return fmt.Errorf("%w: run %s is %s, only %s can be retried", workflow.ErrWrongState, row.id, row.status, what)
+		}
+		if redo {
+			if err := c.markRedo(ctx, tx, row); err != nil {
+				return err
+			}
 		}
 		var key sql.NullString
 		if err := c.st.one(ctx, tx, "SELECT idem_key FROM {run_ext} WHERE run_id = ?", []any{row.id}, &key); err != nil && !isNoRows(err) {

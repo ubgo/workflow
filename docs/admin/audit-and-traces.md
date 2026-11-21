@@ -10,7 +10,7 @@ Two additions to the [admin JSON API](http-api.md) and its [web UI](ui.md) for t
 
 ## Audit every write action
 
-`admin.WithAudit(sink)` calls `sink.Record(ctx, entry)` once for every write request that reached `Authorize`, after the action ran or was refused. A write is any action whose `ReadOnly()` is false: retry, delete, cancel, cancel-all, pause and resume, schedule pause, resume and trigger, force complete and fail, the bulk retries and deletes (dry runs included, with `Resource.DryRun` set), reschedule and cancel-step. `admin.MemoryAudit` keeps entries in memory for tests; an app implements `AuditSink` (or wraps a function with `admin.AuditFunc`) to write to its own audit table.
+`admin.WithAudit(sink)` calls `sink.Record(ctx, entry)` once for every write request that reached `Authorize`, after the action ran or was refused. A write is any action whose `ReadOnly()` is false: retry, delete, cancel, cancel-all, pause and resume, schedule pause, resume and trigger, force complete and fail, the bulk retries and deletes (dry runs included, with `Resource.DryRun` set), reschedule, edit, cancel-step, reset (with `Resource.Step` and `Resource.Reset`), fork (with `Resource.Step` and `Resource.Fork`; the entry names the original run, not the fork) and signal-waiting (with `Resource.Event`). `admin.MemoryAudit` keeps entries in memory for tests; an app implements `AuditSink` (or wraps a function with `admin.AuditFunc`) to write to its own audit table.
 
 <!-- snippet: examples/admin-audit/main.go#handler -->
 ```go

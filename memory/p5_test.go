@@ -39,9 +39,13 @@ func TestRunAllRunsDelayedRetriedSnoozedAndSleepingWorkNow(t *testing.T) {
 	failing := one("failing", func(context.Context, []byte) ([]byte, error) { return nil, workflow.Permanent(errors.New("no")) })
 	c, _ := newClient(t, []workflow.Workflow{one("delayed", ok), retried, snoozed, sleeper, waiter, failing})
 	enqueue(t, c, workflow.Job{Workflow: "delayed", RunAt: start.Add(48 * time.Hour)})
-	for _, wf := range []string{"retried", "snoozed", "sleeper", "waiter", "failing"} {
+	for _, wf := range []string{"retried", "snoozed", "sleeper", "waiter"} {
 		enqueue(t, c, workflow.Job{Workflow: wf})
 	}
+	// RunAll reports only the runs unfinished when it is called, so the
+	// failing run is delayed too: started at once, a loaded machine could
+	// finish it before RunAll begins and leave it out of the report.
+	enqueue(t, c, workflow.Job{Workflow: "failing", RunAt: start.Add(time.Hour)})
 	rep, err := c.RunAll(context.Background())
 	if err != nil {
 		t.Fatalf("RunAll: %v", err)

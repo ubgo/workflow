@@ -40,16 +40,19 @@ type TenantScope[P any] func(r *http.Request, who P) (tenant string, err error)
 //   - POST /runs/cancel, /runs/retry and /runs/delete act only on T's
 //     runs, the same way, dry runs included.
 //   - Every route on one run (show, retry, cancel, delete, complete,
-//     fail, output, reschedule, cancel a step) reads the run first and
-//     answers 404, the answer for a run that does not exist, when it
-//     belongs to another tenant or to none.
+//     fail, output, reschedule, edit, cancel a step, reset, fork) reads
+//     the run first and answers 404, the answer for a run that does not
+//     exist, when it belongs to another tenant or to none. A fork keeps
+//     the original's tenant; a fork whose idempotency key is held by
+//     another tenant's run answers 409 without naming that run.
 //   - GET /schedules lists only the schedules whose Schedule.Tenant is T,
 //     and every route on one schedule answers 404 for any other, so a
 //     declared Cron (which has no tenant) is hidden.
 //   - The routes that act on the whole system rather than on runs (POST
 //     /pause, POST /resume, GET /pauses, GET /queues, GET /metrics, GET
-//     /nodes, GET /health) are refused with 403: a queue, a pause, a node
-//     or a chart is shared by every tenant. GET /capabilities reports
+//     /nodes, GET /health, POST /signals/waiting) are refused with 403: a
+//     queue, a pause, a node or a chart is shared by every tenant, and an
+//     event has no tenant, so it would reach every tenant's waiting runs. GET /capabilities reports
 //     them as unsupported, with the tenant, so the web UI hides them.
 //   - Any route this list does not name is refused with 403, so a route
 //     added later is closed to scoped callers until it is scoped.
@@ -130,6 +133,9 @@ var tenantRoutes = map[string]tenantRoute{
 	"GET /health":                         {tenantRefused, ActionHealth},
 	"POST /runs/{id}/reschedule":          {tenantRun, ActionRescheduleRun},
 	"POST /runs/{id}/edit":                {tenantRun, ActionEditRun},
+	"POST /runs/{id}/reset":               {tenantRun, ActionResetRun},
+	"POST /runs/{id}/fork":                {tenantRun, ActionForkRun},
+	"POST /signals/waiting":               {tenantRefused, ActionSignalWaiting},
 	"POST /runs/{id}/steps/{step}/cancel": {tenantRun, ActionCancelStep},
 	"GET /{$}":                            {tenantOpen, ActionUI},
 	"GET /ui":                             {tenantOpen, ActionUI},
@@ -138,7 +144,7 @@ var tenantRoutes = map[string]tenantRoute{
 
 // refusedOps are the operations of the tenantRefused routes, reported as
 // unsupported to a scoped caller by GET /capabilities.
-var refusedOps = map[Operation]bool{OpQueues: true, OpPause: true, OpNodes: true, OpHealth: true}
+var refusedOps = map[Operation]bool{OpQueues: true, OpPause: true, OpNodes: true, OpHealth: true, OpSignalWaiting: true}
 
 // tenantGate is a handler's tenant scope, built by NewHandler.
 type tenantGate[P any] struct {

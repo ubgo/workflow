@@ -1,5 +1,10 @@
 package enginetest
 
+// The tests in this file are plain functions, not Test functions: the
+// package shards/retention wraps each in a Test function of the same name, so
+// they run as a test binary of their own beside this package (see
+// conformance.go for why processes, not parallel subtests).
+
 import (
 	"context"
 	"database/sql"
@@ -121,7 +126,7 @@ func (r *retEnv) exists(ref workflow.RunRef) bool {
 	return err == nil
 }
 
-func TestRetentionAgesPerStatusAndOverride(t *testing.T) {
+func RetentionAgesPerStatusAndOverride(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			r := newRetEnv(t, e, sqlstore.WithRetention(sqlstore.Retention{
@@ -158,7 +163,7 @@ func TestRetentionAgesPerStatusAndOverride(t *testing.T) {
 	}
 }
 
-func TestRetentionGuards(t *testing.T) {
+func RetentionGuards(t *testing.T) {
 	keepHour := sqlstore.Retention{Succeeded: time.Hour}
 	for _, e := range engines(t) {
 		t.Run(e.name+"/undelivered end", func(t *testing.T) {
@@ -223,7 +228,7 @@ func TestRetentionGuards(t *testing.T) {
 	}
 }
 
-func TestRetentionArchiveAndChunks(t *testing.T) {
+func RetentionArchiveAndChunks(t *testing.T) {
 	const runs = 230 // three chunks: 100, 100, 30
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -287,7 +292,7 @@ func TestRetentionArchiveAndChunks(t *testing.T) {
 	}
 }
 
-func TestRetentionTwoClientsPruneAtOnce(t *testing.T) {
+func RetentionTwoClientsPruneAtOnce(t *testing.T) {
 	const runs = 150
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -331,9 +336,9 @@ func TestRetentionTwoClientsPruneAtOnce(t *testing.T) {
 	}
 }
 
-// TestAutoPruneRuns checks the background loop deletes without a Prune
+// AutoPruneRuns checks the background loop deletes without a Prune
 // call, on the one client that takes the prune lock.
-func TestAutoPruneRuns(t *testing.T) {
+func AutoPruneRuns(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -368,10 +373,10 @@ func TestAutoPruneRuns(t *testing.T) {
 	}
 }
 
-// TestPruneReportsHeldRuns checks every guard's hold is counted, so a
+// PruneReportsHeldRuns checks every guard's hold is counted, so a
 // retention that can never delete anything is visible: the no-observer
 // trap shows as HeldUndelivered.
-func TestPruneReportsHeldRuns(t *testing.T) {
+func PruneReportsHeldRuns(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			r := newRetEnv(t, e, sqlstore.WithRetention(sqlstore.Retention{Succeeded: time.Hour}))

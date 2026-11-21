@@ -74,6 +74,9 @@ func newFake(t *testing.T) (*fakeAPI, *httptest.Server) {
 		"POST /admin/schedules/s1/trigger":      fixed(200, `{"ref":{"run_id":"t1"}}`),
 		"POST /admin/runs/r1/reschedule":        fixed(200, `{"ref":{"run_id":"r1"}}`),
 		"POST /admin/runs/r1/steps/send/cancel": fixed(200, `{"ok":true}`),
+		"POST /admin/runs/r1/reset":             fixed(200, `{"ref":{"run_id":"r1"}}`),
+		"POST /admin/runs/r1/fork":              fixed(200, `{"ref":{"run_id":"f1"}}`),
+		"POST /admin/signals/waiting":           fixed(200, `{"resumed":2}`),
 		"GET /admin/pauses":                     fixed(200, `{"pauses":[{"queue":"emails"}]}`),
 		"GET /admin/health":                     fixed(200, `{"live":true,"ready":false,"checks":[{"name":"database","ok":false,"detail":"connection refused"}]}`),
 		"GET /admin/nodes":                      fixed(200, `{"nodes":[{"id":"web-1:9","mode":"full","queues":[],"workers":4,"running":1}]}`),
@@ -117,6 +120,14 @@ func TestRun_UsageErrorsExit2(t *testing.T) {
 		{"runs", "--bogus"},
 		{"drain", "--wait", "0s"},
 		{"--header", "no colon here", "caps"},
+		{"reset", "r1"},
+		{"reset", "--step", "load"},
+		{"reset", "r1", "r2", "--step", "load"},
+		{"fork", "r1"},
+		{"fork", "r1", "--step", "load", "--label", "novalue"},
+		{"signal-waiting"},
+		{"signal-waiting", "a", "b"},
+		{"signal-waiting", "go", "--payload", "{not json"},
 	} {
 		if code, _, stderr := runCLI(t, srv, nil, args...); code != ExitUsage || stderr == "" {
 			t.Errorf("%q: exit %d stderr %q, want 2 with a message", args, code, stderr)
@@ -219,6 +230,9 @@ func TestRun_DryRunNeverWrites(t *testing.T) {
 		{"retry", "--all", "--workflow", "send", "--dry-run"},
 		{"delete", "--all", "--status", "failed", "--dry-run"},
 		{"trigger", "s1", "--dry-run"},
+		{"reset", "r1", "--step", "load", "--dry-run"},
+		{"fork", "r1", "--step", "load", "--dry-run"},
+		{"signal-waiting", "go", "--dry-run"},
 	} {
 		runCLI(t, srv, nil, args...)
 	}
@@ -390,5 +404,109 @@ func TestRun_Drain(t *testing.T) {
 	code = Run(context.Background(), []string{"drain", "--wait", "6s", "--interval", "2s"}, opts(&out, &errb))
 	if code != ExitError || !strings.Contains(errb.String(), "2 runs still") {
 		t.Errorf("timeout: %d %q", code, errb.String())
+	}
+}
+
+// TestRun_ResetForkSignalWaiting: the three commands send their bodies,
+// print one line (or the API's JSON), and their dry runs read the run or
+// the capabilities, say whether the server would refuse, and write
+// nothing.
+func TestRun_ResetForkSignalWaiting(t *testing.T) {
+	f, srv := newFake(t)
+	last := func() call { c := f.Calls(); return c[len(c)-1] }
+
+	if code, out, _ := runCLI(t, srv, nil, "reset", "r1", "--step", "load"); code != ExitOK || out != "reset r1 from step load\n" {
+		t.Errorf("reset: %d %q", code, out)
+	}
+	if c := last(); c.method != "POST" || c.path != "/admin/runs/r1/reset" || c.body != `{"step":"load"}` {
+		t.Errorf("reset sent %+v", c)
+	}
+	runCLI(t, srv, nil, "reset", "r1", "--step", "extract", "--succeeded")
+	if c := last(); c.body != `{"step":"extract","succeeded":true}` {
+		t.Errorf("reset --succeeded sent %s", c.body)
+	}
+	if code, out, _ := runCLI(t, srv, nil, "reset", "r1", "--step", "load", "--json"); code != ExitOK || !strings.Contains(out, `"run_id": "r1"`) {
+		t.Errorf("reset --json: %d %q", code, out)
+	}
+
+	if code, out, _ := runCLI(t, srv, nil, "fork", "r1", "--step", "load", "--key", "k1", "--label", "why=replay", "--label", "by=ops"); code != ExitOK || out != "forked r1 from step load as run f1\n" {
+		t.Errorf("fork: %d %q", code, out)
+	}
+	var fb struct {
+		Step           string            `json:"step"`
+		IdempotencyKey string            `json:"idempotency_key"`
+		Labels         map[string]string `json:"labels"`
+	}
+	if c := last(); c.path != "/admin/runs/r1/fork" || json.Unmarshal([]byte(c.body), &fb) != nil || fb.Step != "load" || fb.IdempotencyKey != "k1" || fb.Labels["why"] != "replay" || fb.Labels["by"] != "ops" {
+		t.Errorf("fork sent %+v", last())
+	}
+	runCLI(t, srv, nil, "fork", "r1", "--step", "load")
+	if c := last(); c.body != `{"step":"load"}` {
+		t.Errorf("fork without key or labels sent %s", c.body)
+	}
+	f.answers["POST /admin/runs/r1/fork"] = fixed(200, `{"ref":{"run_id":"f0"},"duplicate":true}`)
+	if code, out, _ := runCLI(t, srv, nil, "fork", "r1", "--step", "load", "--key", "k1"); code != ExitOK || out != "key k1 is held by run f0; nothing started\n" {
+		t.Errorf("fork with a held key: %d %q", code, out)
+	}
+
+	if code, out, _ := runCLI(t, srv, nil, "signal-waiting", "go", "--key", "k", "--payload", `{"n":1}`); code != ExitOK || out != "signalled go: 2 waiting runs resumed\n" {
+		t.Errorf("signal-waiting: %d %q", code, out)
+	}
+	if c := last(); c.path != "/admin/signals/waiting" || c.body != `{"name":"go","key":"k","payload":{"n":1}}` {
+		t.Errorf("signal-waiting sent %+v", c)
+	}
+	runCLI(t, srv, nil, "signal-waiting", "go")
+	if c := last(); c.body != `{"name":"go"}` {
+		t.Errorf("signal-waiting without key or payload sent %s", c.body)
+	}
+	if code, out, _ := runCLI(t, srv, nil, "signal-waiting", "go", "--json"); code != ExitOK || !strings.Contains(out, `"resumed": 2`) {
+		t.Errorf("signal-waiting --json: %d %q", code, out)
+	}
+
+	// Dry runs: r1 is failed, so reset and fork would be accepted;
+	// signal_waiting is not in the fake's capabilities, so it is refused.
+	n := len(f.Calls())
+	if code, out, _ := runCLI(t, srv, nil, "reset", "r1", "--step", "load", "--dry-run"); code != ExitOK || !strings.Contains(out, "would reset run r1 (send, failed) from step load") {
+		t.Errorf("dry reset: %d %q", code, out)
+	}
+	if code, out, _ := runCLI(t, srv, nil, "fork", "r1", "--step", "load", "--dry-run"); code != ExitOK || !strings.Contains(out, "would fork run r1") {
+		t.Errorf("dry fork: %d %q", code, out)
+	}
+	if code, _, stderr := runCLI(t, srv, nil, "signal-waiting", "go", "--dry-run"); code != ExitError || !strings.Contains(stderr, "would be refused") {
+		t.Errorf("dry signal-waiting on a server without it: %d %q", code, stderr)
+	}
+	f.answers["GET /admin/capabilities"] = fixed(200, `{"operations":[{"operation":"signal_waiting","supported":true}]}`)
+	if code, out, _ := runCLI(t, srv, nil, "signal-waiting", "go", "--key", "k", "--dry-run"); code != ExitOK || !strings.Contains(out, `would signal go (key "k")`) {
+		t.Errorf("dry signal-waiting: %d %q", code, out)
+	}
+	f.answers["GET /admin/capabilities"] = fixed(200, `{"operations":[{"operation":"signal_waiting","supported":false,"reason":"not available to a tenant-scoped caller"}]}`)
+	if code, _, stderr := runCLI(t, srv, nil, "signal-waiting", "go", "--dry-run"); code != ExitError || !strings.Contains(stderr, "tenant-scoped") {
+		t.Errorf("dry signal-waiting for a scoped caller: %d %q", code, stderr)
+	}
+	for _, status := range []string{"succeeded", "running"} {
+		f.answers["GET /admin/runs/r1"] = fixed(200, strings.Replace(failedRun, `"status":"failed"`, `"status":"`+status+`"`, 1))
+		code, _, stderr := runCLI(t, srv, nil, "reset", "r1", "--step", "load", "--dry-run")
+		if code != ExitError || !strings.Contains(stderr, "would be refused") {
+			t.Errorf("dry reset of a %s run: %d %q", status, code, stderr)
+		}
+	}
+	f.answers["GET /admin/runs/r1"] = fixed(200, strings.Replace(failedRun, `"status":"failed"`, `"status":"succeeded"`, 1))
+	if code, out, _ := runCLI(t, srv, nil, "reset", "r1", "--step", "load", "--succeeded", "--dry-run"); code != ExitOK || !strings.Contains(out, "would reset") {
+		t.Errorf("dry reset --succeeded of a succeeded run: %d %q", code, out)
+	}
+	f.answers["GET /admin/runs/r1"] = fixed(200, strings.Replace(failedRun, `"status":"failed"`, `"status":"waiting"`, 1))
+	if code, _, stderr := runCLI(t, srv, nil, "fork", "r1", "--step", "load", "--dry-run"); code != ExitError || !strings.Contains(stderr, "only a finished run") {
+		t.Errorf("dry fork of a waiting run: %d %q", code, stderr)
+	}
+	for _, c := range f.Calls()[n:] {
+		if c.method != http.MethodGet {
+			t.Errorf("dry run wrote %s %s", c.method, c.path)
+		}
+	}
+
+	// A refusal from the server exits 1 with its message.
+	f.answers["POST /admin/runs/r1/reset"] = fixed(409, `{"error":{"code":"conflict","message":"run r1 is succeeded; only a failed run can be retried"}}`)
+	if code, _, stderr := runCLI(t, srv, nil, "reset", "r1", "--step", "load"); code != ExitError || !strings.Contains(stderr, "409") {
+		t.Errorf("refused reset: %d %q", code, stderr)
 	}
 }

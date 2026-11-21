@@ -64,10 +64,10 @@ mux.Handle("/admin/", http.StripPrefix("/admin", admin.NewHandler(admin.New(c), 
 |---|---|
 | `GET /runs`, `/failures`, `/discarded` (with `count=1`) | Only T's runs. The `tenant` filter is set to T before the request is parsed and authorized, so `Resource.Query.Tenant` is T when `Authorize` runs. A request naming another tenant is refused with 403. |
 | `POST /runs/cancel`, `/runs/retry`, `/runs/delete` | Act on T's runs only, dry runs included. The body's `tenant` is set to T (whatever its spelling, since JSON field names match without regard to case); a body naming another tenant is 403, one that is not a single JSON object is 400. |
-| Every route on one run: `GET /runs/{id}`, retry, cancel, delete, complete, fail, output, reschedule, cancel a step | The run is read first. A run of another tenant, or of none, answers 404 with the very body a run that does not exist gets, so a caller cannot tell the two apart. |
+| Every route on one run: `GET /runs/{id}`, retry, cancel, delete, complete, fail, output, reschedule, edit, cancel a step, reset, fork | The run is read first. A run of another tenant, or of none, answers 404 with the very body a run that does not exist gets, so a caller cannot tell the two apart. |
 | `GET /schedules`, and every route on one schedule | Only the schedules whose `Schedule.Tenant` is T; any other answers 404. A declared `Cron` has no tenant, so it is hidden. |
-| `POST /pause`, `POST /resume`, `GET /pauses`, `GET /queues`, `GET /metrics`, `GET /nodes`, `GET /health` | 403. A queue, a pause, a chart or a node is shared by every tenant, so none of it can be shown to one. |
-| `GET /capabilities` and the UI's files | Served. The capabilities answer names the tenant and reports queues, pauses, nodes and health as unsupported and metrics as absent, so the UI hides those pages and opens on the runs list. |
+| `POST /pause`, `POST /resume`, `GET /pauses`, `GET /queues`, `GET /metrics`, `GET /nodes`, `GET /health`, `POST /signals/waiting` | 403. A queue, a pause, a chart or a node is shared by every tenant, so none of it can be shown to one, and an event has no tenant: it would resume every tenant's waiting runs. |
+| `GET /capabilities` and the UI's files | Served. The capabilities answer names the tenant and reports queues, pauses, nodes, health and signal-waiting as unsupported and metrics as absent, so the UI hides those pages and opens on the runs list. |
 | Any other path | 403, so a route added to the handler later stays closed to scoped callers until it has a rule. |
 
 `Authorize` still runs on every request the scope lets through, with the same actions as before; `admin.TenantFrom(req.HTTP.Context())` gives it the caller's tenant. A caller given `AllTenants` is served exactly as without the scope.
@@ -102,6 +102,7 @@ ops GET /queues: 200
 - A run enqueued without `Job.Tenant` belongs to no tenant and is visible only to `AllTenants` callers.
 - With `admin.WithRunQuerier`, the querier's capabilities must include `workflow.CapTenant` too, since lists and run reads go through it.
 - Captured output (`WithOutputs`) is read by run ID; the scope checks the run's tenant before the output route runs, so an output store shared by every tenant is safe to wire.
+- A fork keeps the original's tenant, so `POST /runs/{id}/fork` needs only the run-in-scope check. An idempotency key is not per tenant, though: when the fork's key is held by another tenant's unfinished run, the driver returns that run, and the handler answers 409 without naming it. The caller learns only that the key is in use; give forks keys that include the tenant.
 - `POST /runs/delete` needs a filter besides the tenant: "forget every finished run of this tenant" still has to list the statuses, as it does without a scope.
 
 ## Related

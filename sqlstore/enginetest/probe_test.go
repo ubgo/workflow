@@ -12,10 +12,6 @@ import (
 // The typed side of sqlstore/internal/probe: each wrapper hands the probe
 // the concrete value sqlstore's init expects.
 
-// crash abandons c the way a killed process would, for the conformance
-// suite's crash case and the lease tests.
-func crash(c *sqlstore.Client) { probe.Crash(c) }
-
 // txOnRuns runs one transaction that touches the runs table through the
 // client's retry loop and reports how many times its body ran.
 func txOnRuns(ctx context.Context, c *sqlstore.Client) (int, error) { return probe.TxOnRuns(ctx, c) }

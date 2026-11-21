@@ -25,6 +25,7 @@ var caps = workflow.CapsOf(
 	workflow.CapDurable,
 	workflow.CapDelayedStart,
 	workflow.CapWaitForEvent,
+	workflow.CapWaitOwnRun, // TestOwnRunWaitLive
 	workflow.CapDurableSleep,
 	workflow.CapConcurrencyKey,
 	workflow.CapRateLimit,
@@ -1069,51 +1070,29 @@ func runDetailsLagged(ctx context.Context, sdk *hatchetsdk.Client, runID string,
 
 // Cancel stops a run, or deletes a scheduled run that has not fired. A
 // finished or already cancelled run is left alone and nil returned.
+//
+// A delayed start deleted within dueGuard (15s) of its due time may
+// already be loaded into the engine's ticker, which fires it whatever the
+// delete says. Cancel then waits until the start's due time plus
+// Config.VisibilityLag for the run it may fire (ctx bounds the wait):
+// none listed by then, it returns nil; one listed, it cancels that run
+// (unless it already ended) and returns ErrCancelTooLate, which matches
+// workflow.ErrWrongState. So a nil Cancel of a delayed start means it
+// will not run.
 func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 	sdk, err := c.ready()
 	if err != nil {
 		return err
 	}
-	runID, state, err := c.resolve(ctx, sdk, ref)
-	if err != nil {
+	late, err := c.cancelRef(ctx, sdk, ref)
+	if err != nil || late == nil {
 		return err
 	}
-	switch state {
-	case stateGone:
-		return nil
-	case statePending:
-		sid, _ := parseScheduledID(ref.ScheduledID) // parsed in resolve
-		sched, err := findSchedule(ctx, sdk, sid.token)
-		if err != nil || sched == nil {
-			return err // nil: it fired or vanished in between
-		}
-		err = sdk.Schedules().Delete(ctx, sched.Metadata.Id)
-		if err != nil && !isNotFound(err) && !isNoContent(err) {
-			return engineErr(err, "delete scheduled run")
-		}
-		// Deleted by this call (not already gone: a 404 may mean it just
-		// fired) and far enough from due that the engine had not loaded it
-		// to fire (rescheduleGuard): Status may call it cancelled at once.
-		if !isNotFound(err) && sched.TriggerAt.Sub(time.Now()) >= rescheduleGuard {
-			c.deleted.add(sid.token)
-		}
-		c.cancelledBeforeFire(ref, sched)
-		return nil
-	}
-	st, err := c.Status(ctx, workflow.RunRef{RunID: workflow.RunID(runID)})
-	if err != nil {
+	if err := c.settleLate(ctx, sdk, []*lateStart{late}); err != nil {
 		return err
 	}
-	if st.IsTerminal() {
-		return nil
-	}
-	id, err := uuid.Parse(runID)
-	if err != nil {
-		return fmt.Errorf("%w: run %q", workflow.ErrNotFound, runID)
-	}
-	ids := []openapi_types.UUID{id}
-	if _, err := sdk.Runs().Cancel(ctx, rest.V1CancelTaskRequest{ExternalIds: &ids}); err != nil {
-		return engineErr(err, "cancel")
+	if late.runID != "" {
+		return late.err()
 	}
 	return nil
 }

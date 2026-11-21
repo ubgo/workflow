@@ -113,3 +113,32 @@ func TestSlotFlows(t *testing.T) {
 		return c, c.Start(ctx)
 	}})
 }
+
+// startUsed starts a memory client behind Use with the Journal plugin.
+func startUsed(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
+	c, err := workflow.Use(memory.New(), workflow.Journal(workflow.NewMemoryJournal()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, wf := range wfs {
+		if err := c.Register(wf); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := c.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// TestRedoFlows proves ResetRunWith on the memory driver, through Use.
+func TestRedoFlows(t *testing.T) {
+	workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: startUsed})
+}
+
+// TestForkFlows proves ForkRun on the memory driver, through Use.
+func TestForkFlows(t *testing.T) {
+	workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: startUsed})
+}

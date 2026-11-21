@@ -53,6 +53,12 @@
 //     step after the Signal takes the first one sent after the run was
 //     enqueued, and never takes the same signal twice. Signals older than
 //     the oldest unfinished run are dropped.
+//   - A wait with WaitSpec.OwnRun waits on the run's own address
+//     (workflow.RunKey of its RunID; CapWaitOwnRun). The client is a
+//     workflow.RunSignalReader: PendingSignals lists the kept signals
+//     addressed to a run that it has not taken, by sequence, and
+//     TakeSignal marks one taken in the same per-run record a wait uses,
+//     so workflow.OnSignals handles them between steps.
 //
 // # Policies
 //
@@ -64,8 +70,11 @@
 //     with an UnsupportedError. QueueNewest and
 //     RoundRobin hold the new run until its bucket has room (each bucket is
 //     capped at MaxRuns, so no key can starve another); with RoundRobin the
-//     workers also take the waiting steps of different keys in turn (the
-//     key served longest ago first), so a key with a backlog does not
+//     keys also take turns for the workers (CapRoundRobin): each admitted
+//     run gets a turn from its key (workflow.FairTurn, strides from
+//     Concurrency.Weight, CapKeyWeights), and a worker hands the place in
+//     line it picked to the waiting task of the same workflow, queue and
+//     priority with the earliest turn, so a key with a backlog does not
 //     delay the others behind it; DropNewest and
 //     CancelNewest record the new run as StatusCancelled; CancelInProgress
 //     cancels the bucket's oldest running run to make room. A cancelled
@@ -115,6 +124,12 @@
 // goes to OnTick observers on the notifier goroutine. A paused schedule
 // reports its ticks as skipped and never fires them, not even on resume;
 // it resumes at its next tick.
+//
+// By default each schedule runs its own goroutine and clock timer.
+// WithScheduleHeap runs them all from one scheduler goroutine and one
+// timer instead (a heap by next tick), for thousands of schedules: the
+// same ticks fire, a fake clock holds one pending timer for all of them,
+// and schedules due together are handled one after another.
 //
 // # Chains, scaling and closures
 //

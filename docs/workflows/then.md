@@ -44,6 +44,10 @@ Each next job carries the label `workflow.LabelThenFrom` with the finished run's
 
 `Then` enqueues through the client `Use` returns, below the `Then` plugin itself: put `Then` first in `Use` so the other plugins' enqueue middleware (unique jobs, tracing) applies to the next job. One `Then` value may be used with several clients; each enqueues on its own.
 
+## Redo runs
+
+A run reset after it had succeeded (`ResetOptions.Succeeded`) and a fork of a run that had succeeded carry `workflow.LabelRedo` ([manage runs](../jobs/manage-runs.md#reset-a-run-that-succeeded)). Their first success already started each rule's next job, and the key above deduplicates only while that job is unfinished, so `Then` skips the ends of runs carrying the label. Pass `workflow.ThenAfterRedo()` when the next job must follow the corrected result too, and make that job idempotent.
+
 ## Errors
 
 An observer has no caller, so `Then` hands its errors to `workflow.ThenErrors(fn)`: each is a `*workflow.ThenError` with the rule, the finished run, the job (when `Start` built one) and the cause, so an app that must not lose the next job can enqueue it again from there. Without the option they are logged with `slog.Default` at error level. The errors are a `Start` error, a reserved label in the job `Start` returned (`ErrInvalid`), and the enqueue's error.

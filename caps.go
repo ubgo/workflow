@@ -214,6 +214,20 @@ var (
 	// CapPayloadSearch: RunQuery.Payload is honoured: runs are matched on
 	// fields of their JSON payload (RS-08).
 	CapPayloadSearch = defineCap(63, "PayloadSearch")
+	// CapWaitOwnRun: WaitSpec.OwnRun is honoured: a wait step takes the
+	// signals addressed to its own run (RunKey, SignalRun, SignalParent),
+	// its key resolved from the run ID when the wait begins (WP-22).
+	CapWaitOwnRun = defineCap(64, "WaitOwnRun")
+	// CapRoundRobin: under ConcurrencyRoundRobin the keys of a workflow
+	// take turns for its workers (FC-05): a key that enqueued a backlog
+	// first does not hold back keys that enqueue later. A driver without
+	// it still caps each bucket at MaxRuns but serves the runs in
+	// priority and arrival order.
+	CapRoundRobin = defineCap(65, "RoundRobin")
+	// CapKeyWeights: Concurrency.Weight is honoured: while keys of a
+	// ConcurrencyRoundRobin workflow have work waiting, each gets turns in
+	// proportion to its weight (FC-06).
+	CapKeyWeights = defineCap(66, "KeyWeights")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -242,6 +256,9 @@ func Requires(wf Workflow) Caps {
 		c = c.With(CapConcurrencyKey)
 		if wf.Concurrency.FIFO {
 			c = c.With(CapKeyFIFO)
+		}
+		if wf.Concurrency.Weight != nil {
+			c = c.With(CapKeyWeights)
 		}
 	}
 	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
@@ -277,6 +294,9 @@ func Requires(wf Workflow) Caps {
 			}
 		case StepWait:
 			c = c.With(CapWaitForEvent)
+			if s.Wait.OwnRun {
+				c = c.With(CapWaitOwnRun)
+			}
 		case StepSleep:
 			c = c.With(CapDurableSleep)
 		}

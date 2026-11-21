@@ -74,6 +74,13 @@ func decodeRetry(s string) (*workflow.RetryPolicy, error) {
 // that registered the workflow admits it (its queue and keys come from
 // that registration).
 func (c *Client) createArgs(id string, job workflow.Job, idem string, delayed bool, now time.Time) ([]any, error) {
+	return c.createArgsAt(id, job, idem, delayed, now, -1)
+}
+
+// createArgsAt is createArgs for a run of workflow version ver; a negative
+// ver takes the version of this client's definition, as every new run
+// does (a fork keeps its original's version).
+func (c *Client) createArgsAt(id string, job workflow.Job, idem string, delayed bool, now time.Time, ver int) ([]any, error) {
 	labels := "{}"
 	if len(job.Labels) > 0 {
 		b, err := json.Marshal(job.Labels)
@@ -94,12 +101,15 @@ func (c *Client) createArgs(id string, job workflow.Job, idem string, delayed bo
 	if delayed {
 		due, sid = job.RunAt.UnixMilli(), scheduledPrefix+id
 	}
-	queue, adm, rto, ver := "", "0", int64(0), 0
+	queue, adm, rto := "", "0", int64(0)
 	c.mu.Lock()
 	reg, ok := c.wfs[job.Workflow]
 	c.mu.Unlock()
-	if ok {
-		ver = reg.wf.Version // the run's version is the enqueuing definition's (LO-11)
+	if ver < 0 {
+		ver = 0
+		if ok {
+			ver = reg.wf.Version // the run's version is the enqueuing definition's (LO-11)
+		}
 	}
 	if ok && !hasPolicy(reg.wf) {
 		queue, adm = workflow.EffectiveQueue(reg.wf, job), "1"
@@ -358,6 +368,7 @@ type stored struct {
 	failedStep  string
 	errs        []workflow.AttemptError
 	queue       string // the run's queue: q once admitted, else Job.Queue or DefaultQueue
+	jobQueue    string // Job.Queue as enqueued (jq); "" for none
 	chain       []workflow.Job
 	waitVals    map[string][]byte // payloads of signals that resolved waits, by step
 	forced      bool
@@ -427,6 +438,7 @@ func decodeRun(id string, h map[string]string) (*stored, error) {
 	if r.chain, err = decodeChain(h["chain"]); err != nil {
 		return nil, fmt.Errorf("redis: run %s chain: %w", id, err)
 	}
+	r.jobQueue = h["jq"]
 	r.queue = h["q"]
 	if r.queue == "" {
 		r.queue = h["jq"]

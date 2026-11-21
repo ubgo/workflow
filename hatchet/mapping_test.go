@@ -106,6 +106,10 @@ func TestCheckSupported(t *testing.T) {
 		{"Workflow.Concurrency.Key.Func", func(w *workflow.Workflow) {
 			w.Concurrency = &workflow.Concurrency{Key: workflow.KeyFunc(func(workflow.Job) string { return "" }), MaxRuns: 1}
 		}},
+		{"Workflow.Concurrency.Weight", func(w *workflow.Workflow) {
+			w.Concurrency = &workflow.Concurrency{Key: workflow.KeyExpr("input.t"), MaxRuns: 1, Strategy: workflow.ConcurrencyRoundRobin,
+				Weight: workflow.KeyWeights(map[string]int{"gold": 3}, 1)}
+		}},
 		{"WaitSpec.KeyFrom.Expr", func(w *workflow.Workflow) {
 			w.Steps = append(w.Steps, workflow.Step{Name: "wait", After: []string{"a"}, Wait: &workflow.WaitSpec{Event: "e", KeyFrom: workflow.KeyExpr("input.x")}})
 		}},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/ubgo/workflow"
@@ -105,38 +106,48 @@ func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 
 // watchHeartbeat returns the attempt's Heartbeater. With a HeartbeatTimeout
 // d it also starts a watchdog that cancels the attempt with errHeartbeat
-// when d passes without a beat; each beat restarts the wait. Without one a
-// beat does nothing (this driver has no lease to extend).
+// when d passes on the client's clock without a beat (from the start, then
+// from each beat). Without one a beat does nothing (this driver has no
+// lease to extend).
+//
+// A beat stores the clock's time at once, in the handler's goroutine, and
+// the watchdog sleeps until d after the latest beat it knows of, then
+// fails the attempt only if no beat came meanwhile, so a beat is never
+// lost to a watchdog that has not woken yet. Handing beats to the
+// watchdog over a channel instead would let a beat made just before the
+// deadline lose to the timer (select picks either ready case) and count
+// each beat from when the watchdog woke rather than when it was made.
 func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration) workflow.Heartbeater {
 	if d <= 0 {
 		return workflow.HeartbeatFunc(func(context.Context, []byte) error { return nil })
 	}
-	beats := make(chan struct{}, 1)
+	var lastBeat atomic.Int64 // the clock's UnixNano at the latest beat; the start counts as one
+	lastBeat.Store(c.clk.Now().UnixNano())
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
+		wait := d
 		for {
-			tm := c.clk.NewTimer(d)
+			tm := c.clk.NewTimer(wait)
 			select {
 			case <-tm.C():
-				cancel(errHeartbeat)
-				return
-			case <-beats:
-				tm.Stop()
 			case <-ctx.Done():
 				tm.Stop()
 				return
 			}
+			since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
+			if since >= d {
+				cancel(errHeartbeat)
+				return
+			}
+			wait = d - since
 		}
 	}()
 	return workflow.HeartbeatFunc(func(context.Context, []byte) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("%w: the attempt has ended", workflow.ErrCancelled)
 		}
-		select {
-		case beats <- struct{}{}:
-		default: // a beat is already pending; one is enough
-		}
+		lastBeat.Store(c.clk.Now().UnixNano())
 		return nil
 	})
 }

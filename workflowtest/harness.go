@@ -92,6 +92,18 @@ type Harness struct {
 	// "wftest". Names also carry a per-Run nonce, because real engines
 	// keep state across runs of the suite.
 	Prefix string
+
+	// Groups, when set, picks the groups Run executes: a group runs only
+	// when Groups returns true for its name (as its subtest is named:
+	// "queuelimit", "durable"; GroupNames lists them all). Nil runs every
+	// group, as before. It lets a driver split the suite across several
+	// test binaries, which go test runs as parallel processes: each runs
+	// its share one case at a time, so no case sees more of its own
+	// process than before, while the whole suite takes about as long as
+	// its largest share. The shares must cover every group: a driver
+	// that shards gives the last share every group no other share names,
+	// so a group added to the suite later is never left out.
+	Groups func(name string) bool
 }
 
 // Instance is one client under test plus what the suite needs to drive it.

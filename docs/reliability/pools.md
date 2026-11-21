@@ -59,7 +59,29 @@ if err := switches.Enable(ctx, "https://hooks.example.com/a"); err != nil { // a
 }
 ```
 
-Every failed attempt counts by default, which suits endpoint health: each attempt is a delivery the endpoint failed. `DisableCountFinal(policy)` counts only the failures that end a step (permanent, or the last attempt the policy allows). `MemoryDisable` keeps the switches in one process; implement `DisableStore` (four methods, with `Fail` atomic) over a shared table or Redis to switch an endpoint off for every worker.
+Every failed attempt counts by default, which suits endpoint health: each attempt is a delivery the endpoint failed. `DisableCountFinal(policy)` counts only the failures that end a step (permanent, or the last attempt the policy allows).
+
+### Switch it off for every worker
+
+`MemoryDisable` keeps the switches in one process: with three worker processes, each counts its own failures and each trips on its own. Give every worker one shared store instead, and the failures of all of them count together, the switch trips once (one `onDisable`, fleet-wide), and every worker stops calling the endpoint:
+
+- `sqlstore.DisableStore` on SQLite, Postgres or MySQL: one row per key in `<prefix>disabled_endpoints`. Build it with `sqlstore.NewDisableStore(db, dialect, opts...)` over any `*sql.DB` (an app on Hatchet or Redis with a database works too) or take `Client.DisableStore()`, then call its own `Migrate` once: `Client.Migrate` does not create this table.
+- `redis.DisableStore`: one hash per key under the prefix, `redis.NewDisableStore(rdb, prefix)` or `Client.DisableStore()`.
+
+<!-- snippet: examples/job-guards/main.go#fleet -->
+```go
+// One table every worker shares (Postgres or MySQL the same way; or
+// redis.NewDisableStore). Its own Migrate creates it.
+switches, err := sqlstore.NewDisableStore(db, sqlb.SQLiteDialect{})
+if err != nil {
+	return err
+}
+if err := switches.Migrate(ctx); err != nil {
+	return err
+}
+```
+
+Pass `switches` to `AutoDisable` on every worker. In the example two workers take turns delivering to one failing endpoint: the third failure, on either worker, trips the switch, and the next delivery on the other worker is discarded without calling it. `Fail` is atomic on every store (one upsert on SQL, one script on Redis), so of many workers failing at once exactly one sees the crossing. An operator re-enables the endpoint with `Enable` on any store over the same table or prefix. To keep the switches in another system, implement `DisableStore` (four methods, with `Fail` atomic) and check it with `workflowtest.DisableStoreContract`.
 
 Per-endpoint ordering and isolation come from the workflow, not from this middleware: `Concurrency{Key: endpoint, MaxRuns: 1, FIFO: true}` delivers one message per endpoint at a time and in order (FIFO needs `CapKeyFIFO`), so a slow endpoint holds back only its own deliveries.
 
@@ -70,4 +92,5 @@ Per-endpoint ordering and isolation come from the workflow, not from this middle
 - With `MemoryUnique` the limit holds inside one process only. Two worker processes each with their own memory store get `slots` each.
 - `PoolRetryAfter` spends an attempt every time the pool is busy, so the step needs retries to spare, and the delay is honoured only under a policy whose `DelayFor` reads it (`workflow.RetryAfterDelay`).
 - A store error fails the attempt (it is retried); the step never runs without a slot. A slot that could not be released frees itself after `ttl`.
+- With `MemoryDisable` each process counts apart, so an endpoint failing on three workers trips three times, once per worker, and each `onDisable` fires; use a shared store for one switch.
 - `AutoDisable` drops a store error while recording an outcome, so the switch may trip one failure late; an error reading the switch fails the attempt rather than calling an endpoint that may be disabled.

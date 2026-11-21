@@ -268,14 +268,18 @@
 // (CapKeyFIFO) needs nothing of the driver: the engine queues a key's
 // waiting runs by insert order (the concurrency slot's sort_id), proven
 // for 40 runs over two keys by TestKeyFIFOLive and by the conformance
-// case, and a run's Priority still goes first.
+// case, and a run's Priority still goes first. ConcurrencyRoundRobin maps
+// onto the engine's GROUP_ROUND_ROBIN, which serves keys in equal turns
+// and takes no weight: Concurrency.Weight is refused (no CapKeyWeights),
+// and CapRoundRobin is not declared until a live test measures the
+// engine's turns the way the workflowtest "fair" group does.
 //
 // Reschedule (workflow.RunRescheduler) creates the delayed start again at
 // the new time with the same token, payload, labels and priority, then
 // deletes the old one, so the RunRef is unchanged; if the delete fails the
 // copy is removed again and the error says whether that worked. A start
 // due within 15 seconds is refused with ErrWrongState: the engine loads a
-// scheduled run into its ticker about five seconds before it is due and
+// scheduled run into its ticker up to five seconds before it is due and
 // then fires it at the loaded time whatever a later change says. The
 // ScheduledID still names the first RunAt, and new tokens are UUIDv7, so
 // Status, Cancel and Runs find a run moved earlier by searching from when
@@ -284,7 +288,8 @@
 // record is gone and whose run is not listed reads cancelled only after
 // Config.VisibilityLag (never by comparing with the first RunAt, which a
 // move earlier makes wrong), or at once when this client's Cancel deleted
-// it at least 15 seconds before it was due. Status of a delayed start that
+// it at least 15 seconds before it was due or watched it past its due
+// time with no run fired. Status of a delayed start that
 // another process cancelled therefore takes up to VisibilityLag.
 //
 // Config.NodeID (workflow.DefaultNodeID by default) is StepInfo.Node and
@@ -325,6 +330,23 @@
 //   - A scheduled-run record is deleted when it fires: the run carries a
 //     token in its metadata and the ScheduledID encodes it, so Status and
 //     Cancel find the fired run by that token.
+//   - The engine's ticker polls every five seconds for scheduled runs due
+//     within five seconds and arms a timer for each; a delete is noticed
+//     only at its next poll, at or after the due time, so a start deleted
+//     after it was loaded still fires. Measured by TestLateCancelLive
+//     (15 samples per offset, the old Cancel): deleted 10s or 5s before
+//     due, 0 of 15 started; 3s before, 6 of 15; 1s before, 12 of 15; 0.5s
+//     before, 13 of 15, while Cancel returned nil and reported a cancelled
+//     RunEvent. Cancel now deletes a start due within 15 seconds and then
+//     watches for its run until the due time plus Config.VisibilityLag
+//     (so it can block that long, bounded by ctx): no run listed, it
+//     returns nil and the start will not run; a run listed, it cancels
+//     that run (unless it already ended) and returns ErrCancelTooLate,
+//     which matches workflow.ErrWrongState. The RunEvent is reported only
+//     on nil. CancelAll deletes every start first and watches the late
+//     ones together; one that fired anyway has its run cancelled and is
+//     counted, with no error. Reschedule refuses a start due within 15
+//     seconds (ErrWrongState).
 //   - A run is missing from the REST read side for about a second after
 //     RunNoWait: Status retries a 404 for up to Config.VisibilityLag (5s by
 //     default) before ErrNotFound.
@@ -336,7 +358,7 @@
 //     function judges every FAILED read (failed.go): it is final when the
 //     failure carries the driver's marker (every failure the driver makes
 //     non-retryable: Permanent, Discard, NoRetryOn, a wait timeout, an
-//     unreadable input), when the task used the Retries the engine
+//     unreadable input, the last attempt the policy allows), when the task used the Retries the engine
 //     registered for it, or when the task failed more than
 //     Config.FailedSettle ago (5s by default); otherwise the run reads
 //     Running or Queued, as between attempts. The marker is stripped from
@@ -344,6 +366,12 @@
 //     but Hatchet's dashboard shows it. The REST task event list, which
 //     would name a retry, returned no rows on hatchet-lite v0.110.5 and is
 //     not used.
+//   - The engine sometimes retries a failed task past the Retries it was
+//     registered with, a step declared with RetriesNone included (seen
+//     live: 2 to 4 attempts of such a step in about one run of twelve
+//     workflows in two). The driver therefore marks the error of the
+//     last attempt the policy allows non-retryable, so the attempt count
+//     is the policy's and does not rest on the engine's count alone.
 //   - Runs whose failures were stored before the marker existed have no
 //     marker: a Permanent failure of such a run with retries left reads
 //     Queued for Config.FailedSettle after it failed, then Failed, as
@@ -365,6 +393,13 @@
 //     204 is treated as success.
 //   - A DAG wait condition exposes neither the event payload nor which
 //     condition fired: wait steps run as durable tasks (WaitFor).
+//   - A wait with WaitSpec.OwnRun resolves its key inside that durable
+//     task from the engine's workflow run ID (the RunID refs and StepInfo
+//     carry), so SignalRun and SignalParent reach one run
+//     (CapWaitOwnRun, TestOwnRunWaitLive). The driver has no
+//     workflow.RunSignalReader: the engine keeps no record of which
+//     events a run took that a step could read, so workflow.OnSignals is
+//     refused at Use.
 //   - A durable wait filtered by a CEL expression never resumed once a
 //     non-matching event of the same name arrived in its look-back window:
 //     the correlation key is part of the event key and scope instead, and

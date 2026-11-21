@@ -40,6 +40,9 @@ workflow --header 'Cookie: session=...' inspect 01J9Z...
 | `delete RUN`, `delete --all` | Forget a finished run, or every finished run the filter flags match | `--dry-run`, `--scheduled`, the filter flags, `--max` |
 | `reschedule RUN` | Move a delayed run that has not started | `--at` (RFC 3339, required), `--scheduled`, `--dry-run` |
 | `cancel-step RUN STEP` | Withdraw one step of a run ([Admin operations › Step 3](operations.md#step-3-act-on-runs)) | `--scheduled`, `--dry-run` |
+| `reset RUN` | Re-run a failed run in place from a step; the steps before it keep their outputs ([Re-run from a step or fork a run](#re-run-from-a-step-or-fork-a-run)) | `--step` (required), `--succeeded` (also a run that succeeded), `--dry-run` |
+| `fork RUN` | Start a new run from a finished one at a step; the original is not changed | `--step` (required), `--key` (the fork's idempotency key), `--label k=v` (repeatable), `--dry-run` |
+| `signal-waiting NAME` | Deliver an event only to the runs waiting for it now, and say how many resumed ([Signal the runs waiting now](#signal-the-runs-waiting-now)) | `--key`, `--payload` (JSON), `--dry-run` |
 | `pause`, `resume` | Pause or resume one workflow, one queue or everything | Exactly one of `--workflow`, `--queue`, `--everything`; `--dry-run` |
 | `pauses` | The active pauses | |
 | `queues` | Depth and oldest wait per queue, with workers and running attempts where the driver scales workers | |
@@ -68,7 +71,46 @@ matched 3, retried 3, skipped 0 (changed meanwhile)
 exit 0
 ```
 
-A bulk retry or delete acts on at most the server's bound (`admin.WithMaxBulk`, 1,000 by default) or `--max`; when more match it says so, and running the same command again does the next batch. `delete --all` with no filter is refused by the server: list the statuses to mean every finished run ([Admin operations › Act on many runs at once](operations.md#act-on-many-runs-at-once)). `trigger --dry-run` shows the schedule that would run and warns when its overlap policy would refuse the trigger. For the single-run commands the dry run reads the run and exits 1 when the action would be refused: `reschedule --dry-run` unless the run is still delayed (`scheduled`), `cancel-step --dry-run` when the run has finished. `pause --dry-run` and `resume --dry-run` read the active pauses, say whether the target is paused and how many pauses are active, and write nothing.
+A bulk retry or delete acts on at most the server's bound (`admin.WithMaxBulk`, 1,000 by default) or `--max`; when more match it says so, and running the same command again does the next batch. `delete --all` with no filter is refused by the server: list the statuses to mean every finished run ([Admin operations › Act on many runs at once](operations.md#act-on-many-runs-at-once)). `trigger --dry-run` shows the schedule that would run and warns when its overlap policy would refuse the trigger. For the single-run commands the dry run reads the run and exits 1 when the action would be refused: `reschedule --dry-run` unless the run is still delayed (`scheduled`), `cancel-step --dry-run` when the run has finished, `reset --dry-run` unless the run failed (or succeeded, with `--succeeded`), `fork --dry-run` unless the run has finished. `signal-waiting --dry-run` reads the server's capabilities and exits 1 when it would refuse the call. `pause --dry-run` and `resume --dry-run` read the active pauses, say whether the target is paused and how many pauses are active, and write nothing.
+
+## Re-run from a step or fork a run
+
+When a run failed, or succeeded with a wrong result, because of something upstream of the step that failed (bad data fixed at the source, a transform deployed with a fix), `retry` is not enough: it resumes at the step that failed. `reset` re-runs the run in place from the step you name, and `fork` starts a new run from it, leaving the original as it was ([Manage runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step)):
+
+```text
+$ workflow reset run-7 --step transform --dry-run
+dry run: would reset run run-7 (etl, failed) from step transform; nothing changed
+exit 0
+$ workflow reset run-7 --step transform
+reset run-7 from step transform
+exit 0
+$ workflow reset run-9 --step transform
+workflow: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-9 is succeeded; only a failed run can be retried
+exit 1
+$ workflow reset run-9 --step transform --succeeded
+reset run-9 from step transform
+exit 0
+$ workflow fork run-9 --step publish --key replay-run-9 --label ticket=OPS-7
+forked run-9 from step publish as run run-12
+exit 0
+$ workflow fork run-9 --step publish --key replay-run-9
+key replay-run-9 is held by run run-12; nothing started
+exit 0
+```
+
+`--succeeded` is the explicit opt-in for redoing work that already succeeded: the run gets the `ubgo.workflow/redo` label and its chain is not handed on again ([Manage runs › Reset a run that succeeded](../jobs/manage-runs.md#reset-a-run-that-succeeded)). A fork keeps the original's workflow, payload, tenant, queue and priority, gets a new run ID and the `ubgo.workflow/fork-of` and `ubgo.workflow/fork-step` labels, and never copies the original's idempotency key: `--key` gives it its own, and while an unfinished run holds that key the command prints that run and starts nothing ([Manage runs › Fork a run into a new run](../jobs/manage-runs.md#fork-a-run-into-a-new-run)). `--label` adds app labels; a reserved prefix is refused with a 400. `caps` shows whether the server's driver does each (`reset_run`, `reset_succeeded`, `fork_run`).
+
+## Signal the runs waiting now
+
+`signal-waiting` sends an event that only the runs already waiting for it receive; a run that reaches its wait step a moment later never sees it, where a plain signal is kept for it. Use it for hints whose loss is harmless, such as a "refresh now" nudge ([Signals › Deliver only to runs waiting now](../workflows/signals.md#deliver-only-to-runs-waiting-now)):
+
+```text
+$ workflow signal-waiting cache.refresh --key eu --payload '{"reason":"deploy"}'
+signalled cache.refresh: 2 waiting runs resumed
+exit 0
+```
+
+Zero resumed is not an error. The payload must be JSON (a usage error, exit 2, otherwise). A caller the server confines to one tenant is refused with a 403: an event has no tenant and would reach every tenant's waiting runs ([Per-tenant dashboard](tenants.md)).
 
 ## Script with it
 
@@ -135,6 +177,7 @@ It prints each command, its output and its exit code: the bulk retry previewed a
 - **Times in tables are local.** Tables print times in the terminal's zone, to the second; `--json` keeps the API's RFC 3339 times.
 - **The CLI checks only shape.** It validates label and time formats; status names, queue names and what the driver supports are the server's to refuse, and its refusal is printed with exit 1.
 - **`--all` without filters means every match.** `retry --all` with no filter retries every failed run, up to the bound; preview with `--dry-run` first.
+- **`reset` and `fork` do the work again.** The named step and every step after it run again, side effects included; preview with `--dry-run` and pick the latest step that fixes the result.
 - **It is as allowed as its token.** Every call goes through your `Authorize`; give automation a token whose role allows only what the script does.
 
 ## Related

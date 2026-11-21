@@ -55,13 +55,20 @@ The stores that apps use without the queue have their own lists, under their own
 
 | Store | Owner constant | Migrations | Applied by |
 |---|---|---|---|
-| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history` | `Client.Migrate` |
-| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique` | `Client.Migrate` or `UniqueStore.Migrate` |
+| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version` | `Client.Migrate` |
+| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
 | `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
 | `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
+| `JournalStore` (memoised results; `PromiseStore` shares its table) | `sqlstore.JournalMigrationOwner` | `001_journal` | `Client.Migrate` or `JournalStore.Migrate` |
+| `BucketStore` (upstream limits) | `sqlstore.BucketMigrationOwner` | `001_buckets` | `Client.Migrate` or `BucketStore.Migrate` |
+| `DataStore` (run, folder and global data) | `sqlstore.DataMigrationOwner` | `001_data` | `Client.Migrate` or `DataStore.Migrate` |
+| `Inbox` (consumer inbox) | `sqlstore.InboxMigrationOwner` | `001_inbox` | `Client.Migrate` or `Inbox.Migrate` |
 | The transactional outbox | `outbox.MigrationOwner` (`ubgo/workflow/sqlstore/outbox`) | `001_outbox` | `Outbox.Migrate` only |
+| `AggregateStore` (aggregated jobs) | `sqlstore.AggregateMigrationOwner` | `001_aggregate` | `AggregateStore.Migrate` only |
+| `DisableStore` (endpoint switches for `AutoDisable`) | `sqlstore.DisableMigrationOwner` | `001_disable` | `DisableStore.Migrate` only |
+| `LineageStore` (dataset lineage) | `sqlstore.LineageMigrationOwner` | `001_lineage` | `LineageStore.Migrate` only |
 
-`Client.Migrate` applies the first four. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
+`Client.Migrate` applies the first eight, a set fixed at v0.2.0. The others migrate only through their own `Migrate` (or their `MigrationScripts`), and so will every store added later: upgrading the library never makes `Client.Migrate` create tables your app did not ask for. An app that uses one of them calls its `Migrate` next to `Client.Migrate`; each takes the same ledger lock, so both are safe from every process at start-up. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
 
 <!-- snippet: examples/migrations-export/main.go#unique -->
 ```go
@@ -74,7 +81,7 @@ if err := locks.Migrate(ctx); err != nil { // its own list: only the lock table
 }
 ```
 
-The ledger then holds one row, `ubgo/workflow/sqlstore/unique 001_unique`. The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)).
+The ledger then holds the unique store's rows only. The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
 
 ## Rolling back the code
 
@@ -192,6 +199,7 @@ ledger after Migrate:
   ubgo/workflow/sqlstore 008_run_info_nodes
   ubgo/workflow/sqlstore 009_schedule_tenant
   ubgo/workflow/sqlstore 010_run_version
+  ubgo/workflow/sqlstore 011_fair_turns
   ubgo/workflow/sqlstore/bucket 001_buckets
   ubgo/workflow/sqlstore/data 001_data
   ubgo/workflow/sqlstore/debounce 001_debounce
@@ -210,14 +218,15 @@ wrote 007_ubgo_workflow_sqlstore_007_leader_archive.sql
 wrote 008_ubgo_workflow_sqlstore_008_run_info_nodes.sql
 wrote 009_ubgo_workflow_sqlstore_009_schedule_tenant.sql
 wrote 010_ubgo_workflow_sqlstore_010_run_version.sql
-wrote 011_ubgo_workflow_sqlstore_unique_001_unique.sql
-wrote 012_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
-wrote 013_ubgo_workflow_sqlstore_debounce_001_debounce.sql
-wrote 014_ubgo_workflow_sqlstore_output_001_output.sql
-wrote 015_ubgo_workflow_sqlstore_journal_001_journal.sql
-wrote 016_ubgo_workflow_sqlstore_bucket_001_buckets.sql
-wrote 017_ubgo_workflow_sqlstore_data_001_data.sql
-wrote 018_ubgo_workflow_sqlstore_inbox_001_inbox.sql
+wrote 011_ubgo_workflow_sqlstore_011_fair_turns.sql
+wrote 012_ubgo_workflow_sqlstore_unique_001_unique.sql
+wrote 013_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
+wrote 014_ubgo_workflow_sqlstore_debounce_001_debounce.sql
+wrote 015_ubgo_workflow_sqlstore_output_001_output.sql
+wrote 016_ubgo_workflow_sqlstore_journal_001_journal.sql
+wrote 017_ubgo_workflow_sqlstore_bucket_001_buckets.sql
+wrote 018_ubgo_workflow_sqlstore_data_001_data.sql
+wrote 019_ubgo_workflow_sqlstore_inbox_001_inbox.sql
 started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique

@@ -43,7 +43,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | Send a reminder tomorrow at 09:00, and cancel it if the user acts first | [Run a job later](jobs/delays.md), [Cancel and status](jobs/cancel-and-status.md) | [delayed-jobs](../examples/delayed-jobs/) |
 | Run a nightly job, or a report per tenant in the tenant's zone | [Cron schedules](schedules/cron.md), [Time zones](schedules/time-zones.md) | [cron-schedules](../examples/cron-schedules/) |
 | Accept a webhook twice and process it once | [Idempotency keys](jobs/idempotency.md) | [idempotency](../examples/idempotency/) |
-| Keep one tenant from taking every worker | [Concurrency and rate limits](jobs/concurrency.md) | [concurrency](../examples/concurrency/) |
+| Keep one tenant from taking every worker | [Concurrency and rate limits](jobs/concurrency.md) | [concurrency](../examples/concurrency/), [fair-share](../examples/fair-share/) |
 | Pause a run until a payment or an approval arrives | [Wait for an event](workflows/signals.md) | [signals-and-sleep](../examples/signals-and-sleep/) |
 | Save an order and enqueue its job atomically | [Transactional enqueue](reliability/transactional-enqueue.md), [Outbox](reliability/outbox.md) | [transactional-enqueue](../examples/transactional-enqueue/), [outbox](../examples/outbox/) |
 | Allow one export per user at a time | [Unique jobs](reliability/unique-jobs.md) | [unique-jobs](../examples/unique-jobs/) |
@@ -56,11 +56,9 @@ Read in this order to go from a first job to a production setup. Each step build
 | Say who started each run, and refuse a job that does not | [Trigger source](concepts/trigger-source.md) | [trigger-source](../examples/trigger-source/) |
 | Mark a run that succeeded but skipped work or rejected rows | [Run outcome](concepts/run-outcome.md), [Step events](concepts/step-events.md) | [step-events](../examples/step-events/) |
 | Keep accepting jobs while the engine is down | [Failover](reliability/failover.md) | [failover](../examples/failover/) |
-| [Secrets in payloads](reliability/secrets.md) | `SecretGuard` refusing credentials at enqueue, `SecretRef` resolved in the step |
 | Run several worker machines on one Postgres | [Deploy workers](operations/deploy.md) | [postgres-cluster](../examples/postgres-cluster/) |
 | Run my jobs on the Redis I already have | [The Redis driver](drivers/redis.md) | [redis-worker](../examples/redis-worker/) |
 | Run my jobs on Hatchet | [The Hatchet driver](drivers/hatchet.md) | [hatchet-worker](../examples/hatchet-worker/) |
-| [Hybrid placement](drivers/hybrid.md) | Crons fire on one client, runs live on another; what the split refuses; several nodes; what a run recorder sees |
 | Test the code that enqueues, without running workers | [Test app code with the Fake](testing/fake.md) | [app-tests](../examples/app-tests/) |
 | Send slow imports to their own workers and pause them during maintenance | [Named queues](jobs/queues.md) | [named-queues](../examples/named-queues/) |
 | See failed runs, retry one from the failed step, or clear a backlog | [Manage runs](jobs/manage-runs.md), [Admin operations](admin/operations.md) | [manage-runs](../examples/manage-runs/), [admin](../examples/admin/) |
@@ -68,34 +66,13 @@ Read in this order to go from a first job to a production setup. Each step build
 | Send a confirmation email only if the request that ordered it succeeded | [Deferred dispatch](jobs/deferred.md) | [deferred-dispatch](../examples/deferred-dispatch/) |
 | Tell a run waiting to retry from one waiting for a worker, and a dropped run from a failed one | [Run states](jobs/run-states.md) | [run-states](../examples/run-states/) |
 | Let a job decide what runs after it | [Chains of jobs](workflows/chains.md) | [chain-edits](../examples/chain-edits/) |
-| [Memoise work inside a step](workflows/memoisation.md) | `Memo` and the journal, `MapEach`, `Loop`, `ProcessChunks` with progress, run data |
-| [Branching](workflows/branching.md) | `Choice`: one branch picked at run time, built from ordinary steps |
-| [Child runs](workflows/children.md) | `Spawn` and `AwaitChildren`: children started once per run, waiting without holding a worker |
-
-### Events
-
-| Page | What it covers |
-|---|---|
-| [Events](events/README.md) | What the events package is and is not, quick answers |
-| [Publish and subscribe](events/publish-subscribe.md) | A `Bus`, subscriptions and filters, deduplication by event ID, delivering to waiting runs |
-| [Inbound webhooks](events/webhooks.md) | `NewWebhook` and its status codes, HMAC signatures, Standard Webhooks, your own verifier |
 | Give a backed-up queue the workers an idle one does not need | [Worker balancing](operations/balancing.md) | [worker-balancing](../examples/worker-balancing/) |
 | Run a small Go function in the background without registering a workflow | [Closures](jobs/closures.md) | [closures](../examples/closures/) |
 | Run a small Go function in the background so it survives a restart | [Functions by name](jobs/functions.md) | [functions](../examples/functions/) |
-| [Typed payloads](jobs/payloads.md) | `JobOf`, `DecodePayload`, payload size limits, payload versions with upcasters |
-| [Progress and heartbeats](jobs/progress.md) | `ReportProgress`, `RunInfo.Progress`, progress events, `Heartbeat` and `Step.HeartbeatTimeout` |
-| [Results and awaiting a run](jobs/results.md) | A run's result, `Await`, `AwaitResult`, `RunFailedError` |
-| [Timeouts](jobs/timeouts.md) | The four deadlines, `Workflow.RunTimeout`, `OnTimeout`, the `ErrTimeout` family |
-| [Tenants](jobs/tenants.md) | `Job.Tenant`, reading it in steps and events, `RunQuery.Tenant` |
-| [Upstream rate limits](jobs/upstream-limits.md) | A leaky-bucket, cost-based limit on calls to an outside API, `Observe`, your own bucket store |
 | Keep what a nightly task logged in a file, and mail it when the task fails | [Task output](schedules/output.md) | [task-output](../examples/task-output/) |
 | Restart a worker after so many jobs, so long, or above a memory size | [Worker recycling](operations/recycling.md) | [worker-recycling](../examples/worker-recycling/) |
-| [Nodes and health](operations/nodes.md) | Which node ran each attempt, the online nodes, liveness and readiness probes, scheduler-only and worker-only processes |
 | Keep a slow hourly job from starting again while it still runs, and run it now by hand | [Overlap, trigger now and last fire](schedules/overlap.md) | [schedule-overlap](../examples/schedule-overlap/) |
-| [Local cron](schedules/local-cron.md) | An in-process cron that runs on every node: cache warmers, local cleanup |
 | Be told once when runs keep failing, and send their errors to Sentry | [Failure alerts and error reporting](observability/failure-alerts.md) | [failure-alerts](../examples/failure-alerts/), [sentry-reporting](../examples/sentry-reporting/) |
-| [Lifecycle events](observability/lifecycle.md) | A live feed of inserts, attempts, retries, progress and ends; best effort, local; how it differs from the run-finished hook |
-| [Stuck jobs](observability/stuck-jobs.md) | Report an attempt that runs far too long without touching it; Stuck vs Timeout vs HeartbeatTimeout |
 | See every attempt's error, or end a stuck run by hand | [Manage runs › Error history](jobs/manage-runs.md#error-history), [Force a run to an end](jobs/manage-runs.md#force-a-run-to-an-end) | [run-repair](../examples/run-repair/) |
 | Let web servers enqueue without running workers | [Deploy workers › Web nodes that only enqueue](operations/deploy.md#web-nodes-that-only-enqueue) | [enqueue-only](../examples/enqueue-only/) |
 | Record runs enqueued on web nodes that run no workers | [Record run history › Web nodes that only enqueue](observability/run-recorder.md#web-nodes-that-only-enqueue), [The Hatchet driver › Record runs from web nodes](drivers/hatchet.md#record-runs-from-web-nodes) | [recorder-split](../examples/recorder-split/) |
@@ -127,10 +104,13 @@ Read in this order to go from a first job to a production setup. Each step build
 | Start a job from an HTTP call and stream its progress to the browser | [Start a run over HTTP and follow it live](jobs/http-start.md) | [http-status](../examples/http-status/) |
 | Turn many small notifications into one digest mail | [Aggregation and chunked fan-out](reliability/aggregate.md) | [aggregate-digest](../examples/aggregate-digest/) |
 | Change a scheduled job before it runs | [Edit a scheduled run](jobs/edit-runs.md) | [edit-run](../examples/edit-run/) |
+| Let a child run tell its parent something without stopping, or react to signals while a run goes on | [Escalation and signal handlers](workflows/escalation.md) | [escalation](../examples/escalation/) |
+| Move an order through its states, refuse events that are not valid in its current state, and cancel it if it is not paid within 30 minutes | [State machines](workflows/state-machines.md) | [state-machine](../examples/state-machine/) |
+| Write a process that waits for days as one function with local variables | [Deterministic replay](workflows/replay.md) | [flow-replay](../examples/flow-replay/) |
+| Change a workflow's steps, waits or retries without a new build | [Definitions as data](workflows/definitions-as-data.md) | [workflow-json](../examples/workflow-json/) |
+| Let services react to each other's events, compensations included, and still see one order's whole saga | [Choreography and saga choreography](events/choreography.md#list-a-chain) | [saga-choreography](../examples/saga-choreography/) |
+| Re-run a run that succeeded from one step, or fork it into a new run | [Manage runs › Reset a run that succeeded](jobs/manage-runs.md#reset-a-run-that-succeeded) | [reset-fork](../examples/reset-fork/) |
 | Check whether the library has a feature | [Feature index](reference/features.md) | |
-| [Datasets and lineage](events/datasets.md) | `Datasets.Updated` and any-of or all-of triggers that start workflows when their input data changes, never twice for one version; who produced a version and what a run read |
-| [CloudEvents and payload versions](events/cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, upcasting old payload versions |
-| [Event log, replay and cancel on event](events/replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID, cancel subscriptions, divert |
 
 ## All pages
 
@@ -174,7 +154,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Run a job later](jobs/delays.md) | `Job.RunAt` and scheduled runs |
 | [Idempotency keys](jobs/idempotency.md) | One run per key, and requiring or ignoring keys per workflow |
 | [Retries](jobs/retries.md) | Retry policies, per-step retries, backoff and jitter, `Retry-After`, permanent errors, snooze |
-| [Concurrency and rate limits](jobs/concurrency.md) | Limits per key, strategies for the run over the limit, FIFO per key, rate limits |
+| [Concurrency and rate limits](jobs/concurrency.md) | Limits per key, strategies for the run over the limit, FIFO per key, fair turns and weights between keys, rate limits |
 | [Cancel and status](jobs/cancel-and-status.md) | Stopping a run and reading where it is |
 | [Named queues](jobs/queues.md) | `Workflow.Queue` and `Job.Queue`, workers, priority and weights per queue, pausing a queue |
 | [Manage runs](jobs/manage-runs.md) | List, search by label, retry, delete and bulk-cancel runs; due-time filters, reschedule, cancel one step; pause a workflow, a queue or everything |
@@ -188,6 +168,12 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Job guards](jobs/guards.md) | Expiry, the waiting-run sweep, bounded queues and tenant quotas, quiet hours, payload validation, retry ladders, invariants |
 | [Start a run over HTTP and follow it live](jobs/http-start.md) | `httprun`: 202 and `Location`, status and result, Server-Sent Events, streamed step output |
 | [Push delivery to an HTTP endpoint](jobs/push-delivery.md) | `push.Deliver` signed with Standard Webhooks, and `push.Handler` on the receiving side |
+| [Typed payloads](jobs/payloads.md) | `JobOf`, `DecodePayload`, payload size limits, payload versions with upcasters |
+| [Progress and heartbeats](jobs/progress.md) | `ReportProgress`, `RunInfo.Progress`, progress events, `Heartbeat` and `Step.HeartbeatTimeout` |
+| [Results and awaiting a run](jobs/results.md) | A run's result, `Await`, `AwaitResult`, `RunFailedError` |
+| [Timeouts](jobs/timeouts.md) | The four deadlines, `Workflow.RunTimeout`, `OnTimeout`, the `ErrTimeout` family |
+| [Tenants](jobs/tenants.md) | `Job.Tenant`, reading it in steps and events, `RunQuery.Tenant` |
+| [Upstream rate limits](jobs/upstream-limits.md) | A leaky-bucket, cost-based limit on calls to an outside API, `Observe`, your own bucket store |
 
 ### Schedules
 
@@ -205,6 +191,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Export a schedule](schedules/export.md) | Kubernetes CronJob, systemd timer, launchd, Task Scheduler, and the next-fire handoff for a closed desktop app |
 | [Cron expression tools](schedules/expressions.md) | The extended `L`, `W` and `#` fields, H spread, English descriptions |
 | [Backfill and schedule lifetimes](schedules/backfill.md) | `Backfill`, runs limited to n or one, startup runs, exclusion calendars, fire jitter |
+| [Local cron](schedules/local-cron.md) | An in-process cron that runs on every node: cache warmers, local cleanup |
 
 ### Workflows
 
@@ -216,8 +203,12 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Chains of jobs](workflows/chains.md) | `Job.Chain`, editing the rest of a chain from a running step, failure, and child runs on Hatchet |
 | [Stages, conditions and milestones](workflows/stages.md) | `Stages`, `When`, `Milestone`, one-at-a-time routing, `Memo` as the local activity, `middleware.SoftTimeout` |
 | [Joins and distributed maps](workflows/joins.md) | `JoinChildren` (first of, N of M, cancel or complete the rest, dynamic), `CancelChildren`, `MapRuns`, the multi-merge recipe |
+| [Escalation and signal handlers](workflows/escalation.md) | Signal one run by its ID (`OwnRun`, `SignalRun`), a child escalating to its parent (`SignalParent`), handlers between steps (`OnSignals`), approvals, races and updates by run ID |
 | [Promises, updates and signal helpers](workflows/promises.md) | `PromiseStore`, `ResolvePromise`, `AwaitPromise`, `Update`, `SignalWithStart`, `ContinueAsNew`, `CancelSteps` |
 | [Virtual objects](workflows/objects.md) | `DefineObject` and `CallObject`: one serial lane and durable state per key |
+| [State machines](workflows/state-machines.md) | `DefineMachine`: a durable statechart per key with guards, entry and exit actions, compound and parallel states, done events, history, timers per state and a log |
+| [Deterministic replay](workflows/replay.md) | `NewReplay`: one function with local variables across sleeps, promise waits and child runs, recorded calls (`ReplayStep`, `Now`, `Sleep`, `SleepUntil`, `AwaitPromise`, `ReplayChild`), the determinism rule and deploying changed code |
+| [Definitions as data](workflows/definitions-as-data.md) | `dsl`: workflow and state-machine definitions in JSON (YAML through the app's own converter) built at run time from registered handler, guard and action names, refusals with their JSON path |
 | [Partitioned runs](workflows/partitions.md) | `EnqueuePartitions`, `PartitionStatus` and `RetryFailedPartitions`: one run per day or tenant, a status per partition, re-running only the failed ones |
 | [Trigger rules and exit handlers](workflows/trigger-rules.md) | `WithRules`: tolerated steps, trigger rules, error routes, `Finally`, `Boundary` |
 | [Sagas](workflows/sagas.md) | `Saga`: actions with memoised compensations inside one step |
@@ -225,6 +216,21 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Polling, sleeping until, and approvals](workflows/polling-and-approval.md) | `Poll`, `SleepUntil`, `ApprovalStep` with signed links |
 | [Groups, early ends and guards](workflows/groups-and-guards.md) | `Group`, `EndRun`, `RecursionLimit`, `ShapeGuard`, typed `EnqueueOf` and `AwaitResultOf` |
 | [Completion triggers](workflows/then.md) | `Then`: start the next workflow when a run ends |
+| [Memoise work inside a step](workflows/memoisation.md) | `Memo` and the journal, `MapEach`, `Loop`, `ProcessChunks` with progress, run data |
+| [Branching](workflows/branching.md) | `Choice`: one branch picked at run time, built from ordinary steps |
+| [Child runs](workflows/children.md) | `Spawn` and `AwaitChildren`: children started once per run, waiting without holding a worker |
+
+### Events
+
+| Page | What it covers |
+|---|---|
+| [Events](events/README.md) | What the events package is and is not, quick answers |
+| [Publish and subscribe](events/publish-subscribe.md) | A `Bus`, subscriptions and filters, deduplication by event ID, delivering to waiting runs |
+| [Inbound webhooks](events/webhooks.md) | `NewWebhook` and its status codes, HMAC signatures, Standard Webhooks, your own verifier |
+| [Datasets and lineage](events/datasets.md) | `Datasets.Updated` and any-of or all-of triggers that start workflows when their input data changes, never twice for one version; who produced a version and what a run read |
+| [CloudEvents and payload versions](events/cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, upcasting old payload versions |
+| [Event log, replay and cancel on event](events/replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID, cancel subscriptions, divert |
+| [Choreography and saga choreography](events/choreography.md) | `WithCorrelation`, correlation and causation labels, `Trail` to list one chain's runs, compensation by events compared with `Saga` |
 
 ### Drivers
 
@@ -235,6 +241,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [The Redis driver](drivers/redis.md) | Durable runs and cron on Redis: whole-run leases, fenced writes, what it still refuses, shared stores, deployment, upgrading, a run recorder next to it |
 | [The Hatchet driver](drivers/hatchet.md) | Configuration, what it refuses, engine quirks, the native SDK, a run recorder with the Reconciler and on web nodes |
 | [Enqueue from other languages](drivers/sqlstore-insert-contract.md) | The rows another language writes to enqueue a sqlstore run, idempotency keys, waking the workers |
+| [Hybrid placement](drivers/hybrid.md) | Crons fire on one client, runs live on another; what the split refuses; several nodes; what a run recorder sees |
 
 ### Middleware
 
@@ -253,6 +260,8 @@ Read in this order to go from a first job to a production setup. Each step build
 | [React when a run finishes](observability/run-finished.md) | The run-finished hook, and its best-effort form on Hatchet |
 | [Record run history](observability/run-recorder.md) | A run history the app owns on any driver: trigger source, steps with events, outcome, redaction, two-stage retention, the Reconciler, a SQL store, web nodes that only enqueue, what differs per driver |
 | [Failure alerts and error reporting](observability/failure-alerts.md) | Alerts on final failures with dedup and rate limits, error reporters, Sentry |
+| [Lifecycle events](observability/lifecycle.md) | A live feed of inserts, attempts, retries, progress and ends; best effort, local; how it differs from the run-finished hook |
+| [Stuck jobs](observability/stuck-jobs.md) | Report an attempt that runs far too long without touching it; Stuck vs Timeout vs HeartbeatTimeout |
 
 ### Batches
 
@@ -279,6 +288,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Complete inside your transaction](reliability/complete-in-transaction.md) | `CompleteTx`: a step's success written in the app's transaction, fenced by its lease |
 | [Change triggers](reliability/change-triggers.md) | `outbox.ChangeTrigger`: row changes become outbox entries through generated triggers |
 | [Aggregation and chunked fan-out](reliability/aggregate.md) | `Aggregate`: many jobs become one run per group and window; `EnqueueChunked` fan-out that resumes |
+| [Secrets in payloads](reliability/secrets.md) | `SecretGuard` refusing credentials at enqueue, `SecretRef` resolved in the step |
 
 ### Testing
 
@@ -307,6 +317,7 @@ Read in this order to go from a first job to a production setup. Each step build
 | [Laptops that sleep](operations/sleep-and-wake.md) | `clock.WakeChecked`: timers that fire by the wall clock after a suspend |
 | [Namespaces](operations/namespaces.md) | One client per namespace on every driver, and how a namespace differs from a tenant |
 | [Backend cutover](operations/cutover.md) | `cutover`: move to a new backend while running, old refs answering, schedules moved |
+| [Nodes and health](operations/nodes.md) | Which node ran each attempt, the online nodes, liveness and readiness probes, scheduler-only and worker-only processes |
 
 ### Admin
 

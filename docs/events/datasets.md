@@ -6,7 +6,7 @@ A revenue report should run when its input tables have new data, not at a guesse
 
 - A `Datasets` sits on an [`events.Bus`](publish-subscribe.md) and starts trigger runs on the bus's client, so deduplication rides on the client's idempotency keys: `events.New` refuses a client without `workflow.CapIdempotencyKey` unless you pass `events.AllowDuplicates()`. Every driver declares the capability.
 - Triggers are code, registered at boot in every process that announces versions, as workflows and bus subscriptions are.
-- Trigger state and lineage live in an `events.LineageStore`. The default, `events.MemoryLineage`, is in-process; processes that announce versions of the same datasets need one shared store (see [Share the store](#share-the-store-between-processes)).
+- Trigger state and lineage live in an `events.LineageStore`. The default, `events.MemoryLineage`, is in-process; processes that announce versions of the same datasets need one shared store, `sqlstore.LineageStore` or `redis.LineageStore` (see [Share the store](#share-the-store-between-processes)).
 - The example is [`examples/datasets`](../../examples/datasets). Run it with `go run ./datasets` from `examples/`.
 
 ## Start a workflow when a dataset changes
@@ -92,12 +92,27 @@ Each `events.Lineage` record has a `Kind` (`events.LineageProduced` or `events.L
 
 ## Share the store between processes
 
-A trigger's decision is a function of the store alone: the newest produced version of each dataset against the version the trigger consumed last. Nothing is kept in the process, so a restart or another process sharing the store decides the same way. `events.MemoryLineage` is right for tests and a single process; it is lost on restart and grows by one record per new version and per trigger run. With several processes, implement `events.LineageStore` on your database and pass it with `events.WithLineage`. The interface has two methods:
+A trigger's decision is a function of the store alone: the newest produced version of each dataset against the version the trigger consumed last. Nothing is kept in the process, so a restart or another process sharing the store decides the same way. `events.MemoryLineage` is right for tests and a single process; it is lost on restart and grows by one record per new version and per trigger run. With several processes (web replicas announcing uploads, workers announcing loads), give every `Datasets` one durable store with `events.WithLineage`:
+
+- `sqlstore.LineageStore` on SQLite, Postgres or MySQL: an append-only table `<prefix>lineage`. Build it with `sqlstore.NewLineageStore(db, dialect, opts...)` over any `*sql.DB` (an app on Hatchet or Redis with a database works too) or take `Client.LineageStore()`, and call its own `Migrate` once: `Client.Migrate` does not create this table.
+- `redis.LineageStore`: records and their indexes under the prefix, `redis.NewLineageStore(rdb, prefix)` or `Client.LineageStore()`.
+
+```go
+lineage := client.LineageStore() // a *sqlstore.Client; or sqlstore.NewLineageStore(db, dialect)
+if err := lineage.Migrate(ctx); err != nil {
+	return err
+}
+ds, err := events.NewDatasets(bus, events.WithLineage(lineage))
+```
+
+Both keep `MemoryLineage`'s rules across processes: a record already saved by any process is ignored (a unique hash of the identifying fields on SQL, one script on Redis), and `Find` orders by `At` to the nanosecond, ties in reverse order of recording, with indexes for the lookups `Datasets` makes on every update (a dataset's newest produced version, a trigger's last consumed version of a dataset) and for `Outputs` and `Inputs`. Two processes that announce the last dataset of an all-of trigger at the same moment may both decide to fire; the run's idempotency key, a hash of the trigger and the versions, makes the client start it once, as long as the clients share one backend that honours idempotency keys across processes (sqlstore on one database, Redis on one prefix).
+
+To keep lineage elsewhere, implement `events.LineageStore`. The interface has two methods:
 
 - `Record(ctx, l)` saves a record, ignoring one equal to a saved record in `Kind`, `Dataset`, `Version`, `Run`, `Workflow`, `Step` and `Trigger` (the first one's `Meta` and `At` are kept);
-- `Find(ctx, q)` returns the records matching an `events.LineageQuery` (`Kind`, `Dataset`, `Run`, `Trigger`, each empty to match any, and `Limit`, zero for all), newest first by `At`, ties in reverse order of recording.
+- `Find(ctx, q)` returns the records matching an `events.LineageQuery` (`Kind`, `Dataset`, `Run`, `Trigger`, each empty to match any, and `Limit`, zero for all, negative refused with `ErrInvalid`), newest first by `At`, ties in reverse order of recording.
 
-A table with a unique index on the identifying columns and an index on (`kind`, `dataset`, `at`) serves both.
+`workflowtest.LineageStoreContract(t, a, b)` checks an implementation through two handles on one backend, and `workflowtest.DatasetsSharedLineage` runs two `Datasets` on two clients against it.
 
 ## Try it
 
@@ -125,7 +140,8 @@ The orders loader's retry announced its version again and started nothing, and t
 
 ## Pitfalls
 
-- **Each process keeps its own `MemoryLineage`.** Two processes with the default store each think a version is new and each start the trigger once; give them one shared store.
+- **Each process keeps its own `MemoryLineage`.** Two processes with the default store each think a version is new and each start the trigger once; give them one shared store, `sqlstore.LineageStore` or `redis.LineageStore`.
+- **The lineage table needs its own `Migrate`.** `sqlstore.Client.Migrate` does not create `<prefix>lineage`; call `LineageStore.Migrate` (or apply its `MigrationScripts`) before the first `Updated`, or every update fails to record its version.
 - **Versions are compared, not ordered.** A step that announces an older version after a newer one makes the older the newest recorded, and the trigger fires for it. Announce from the code that wrote the data, in the order it wrote it.
 - **Two different versions at the same moment can both fire.** Two processes announcing a new orders version a moment apart may each start the trigger, one run per version: delivery is at least once per version, never twice for one version set.
 - **A trigger fires on its first sight of a dataset.** A trigger added after versions were recorded treats the newest of each as unused, so an all-of trigger can fire on the first update after it is added.

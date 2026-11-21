@@ -107,7 +107,7 @@ func TestNewOps_ReachTheOldBackend(t *testing.T) {
 	}
 	waitFor(t, c, onOld, workflow.StatusSucceeded)
 	waitFor(t, c, onNew, workflow.StatusSucceeded)
-	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting, workflow.OpNodes} {
+	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting, workflow.OpNodes} {
 		if !workflow.Supports(c, op) {
 			t.Errorf("Supports(%s) = false over two memory backends", op)
 		}
@@ -136,6 +136,12 @@ func TestNewOps_RefusedWhenABackendLacksThem(t *testing.T) {
 	if _, err := c.ResetRun(ctx, ref, "w"); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("ResetRun on a backend without it: %v, want ErrUnsupported", err)
 	}
+	if _, err := c.ResetRunWith(ctx, ref, "w", workflow.ResetOptions{Succeeded: true}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ResetRunWith on a backend without it: %v, want ErrUnsupported", err)
+	}
+	if _, err := c.ForkRun(ctx, ref, "w", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ForkRun on a backend without it: %v, want ErrUnsupported", err)
+	}
 	payload := []byte(`1`)
 	if _, err := c.EditRun(ctx, ref, workflow.JobEdit{Payload: &payload}); !errors.Is(err, workflow.ErrUnsupported) {
 		t.Errorf("EditRun on a backend without it: %v, want ErrUnsupported", err)
@@ -149,7 +155,7 @@ func TestNewOps_RefusedWhenABackendLacksThem(t *testing.T) {
 	if n, err := c.SignalWaiting(ctx, workflow.Event{Name: "go"}); !errors.Is(err, workflow.ErrUnsupported) || n != 0 {
 		t.Errorf("SignalWaiting with a backend without it = %d, %v; want 0, ErrUnsupported", n, err)
 	}
-	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpSignalWaiting, workflow.OpNodes} {
+	for _, op := range []workflow.Op{workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting, workflow.OpNodes} {
 		if workflow.Supports(c, op) {
 			t.Errorf("Supports(%s) = true with a backend without it", op)
 		}
@@ -170,4 +176,11 @@ func waitFor(t *testing.T, c workflow.Client, ref workflow.RunRef, want workflow
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// TestRedoAndForkFlows runs the shared succeeded-reset and fork suites
+// through cutover.
+func TestRedoAndForkFlows(t *testing.T) {
+	t.Run("redo", func(t *testing.T) { workflowtest.RunRedoFlows(t, workflowtest.FlowHarness{Start: startCutover}) })
+	t.Run("fork", func(t *testing.T) { workflowtest.RunForkFlows(t, workflowtest.FlowHarness{Start: startCutover}) })
 }

@@ -524,9 +524,11 @@ func parseCursor(cursor string) (runs, sched int64, err error) {
 // lists every match first and then cancels, so cancelling cannot shift
 // the listing under it. Delayed starts are cancelled one by one as Cancel
 // does (each reported to run-finished observers by this process); runs in
-// bulk cancel calls of up to 500. It returns how many it asked the engine
-// to cancel; a run that finished between the listing and the cancel is
-// counted but left as it ended.
+// bulk cancel calls of up to 500. Starts deleted within dueGuard of their
+// due time are then watched together, as Cancel watches one: a start the
+// engine fired anyway has its run cancelled, with no error. It returns how
+// many it asked the engine to cancel; a run that finished between the
+// listing and the cancel is counted but left as it ended.
 func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	if err := workflow.ValidateCancelQuery(q); err != nil {
 		return 0, err
@@ -566,11 +568,21 @@ func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error
 		q.Cursor = page.Next
 	}
 	n := 0
+	var late []*lateStart
 	for _, ref := range scheduled {
-		if err := c.Cancel(ctx, ref); err != nil {
+		l, err := c.cancelRef(ctx, sdk, ref)
+		if err != nil {
 			return n, err
 		}
+		if l != nil {
+			late = append(late, l)
+		}
 		n++
+	}
+	// Starts deleted close to their due time are watched together; one
+	// the engine fired anyway has its run cancelled and stays counted.
+	if err := c.settleLate(ctx, sdk, late); err != nil {
+		return n, err
 	}
 	for chunk := range slices.Chunk(ids, cancelChunk) {
 		if _, err := sdk.Runs().Cancel(ctx, rest.V1CancelTaskRequest{ExternalIds: &chunk}); err != nil {

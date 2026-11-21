@@ -3,9 +3,9 @@ module github.com/ubgo/workflow/cli/e2e
 go 1.24.0
 
 require (
-	github.com/ubgo/workflow v0.1.0
-	github.com/ubgo/workflow/admin v0.0.0
-	github.com/ubgo/workflow/cli v0.0.0
+	github.com/ubgo/workflow v0.2.0
+	github.com/ubgo/workflow/admin v0.2.0
+	github.com/ubgo/workflow/cli v0.2.0
 )
 
 replace (

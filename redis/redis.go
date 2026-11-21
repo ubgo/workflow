@@ -27,7 +27,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapJobRetry,
 	workflow.CapRetryUntil, workflow.CapRetryMaxErrors,
 	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
-	workflow.CapCronZone, workflow.CapRunQuery, workflow.CapDeleteRun, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch,
+	workflow.CapCronZone, workflow.CapRunQuery, workflow.CapDeleteRun, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch, workflow.CapWaitOwnRun,
 	workflow.CapScheduleList, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
 	workflow.CapOverlapSkip, workflow.CapEnqueueOnly, workflow.CapErrorHistory,
 	workflow.CapShutdownRequeue, workflow.CapForceRun,
@@ -41,6 +41,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRunTimeout, workflow.CapKeyFIFO, workflow.CapWorkflowVersion,
 	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents, workflow.CapSchedulePause,
 	workflow.CapWorkerScale,
+	workflow.CapRoundRobin, workflow.CapKeyWeights,
 )
 
 // Defaults. Each has an option that changes it.
