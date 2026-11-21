@@ -428,7 +428,7 @@ if _, err := c.Status(ctx, first); errors.Is(err, workflow.ErrNotFound) {
 }
 ```
 
-Step 3: read the history back. `Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, Limit})` returns `FinishedRun` values, newest finish first, each with its step outputs; `Limit` is 100 when zero. Page by passing the last `FinishedAt` of one page as the next page's `FinishedBefore`. It reads the tables directly, so it needs `Migrate`, not `Start`:
+Step 3: read the history back. `Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, AfterRunID, Limit})` returns `FinishedRun` values, newest finish first (ties by run ID), each with its step outputs; `Limit` is 100 when zero. Page by passing the last run of one page as the next page's cursor: its `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as `AfterRunID`, so runs that finished at the same instant are neither skipped nor repeated. `FinishedBefore` alone is a strict "before" (the example below, whose runs all finish at different times, uses only that). It reads the tables directly, so it needs `Migrate`, not `Start`:
 
 <!-- snippet: examples/sql-archive/main.go#read -->
 ```go

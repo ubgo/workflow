@@ -40,7 +40,7 @@ The SQL driver keeps every finished run until you turn on retention, and the hot
 ## Pitfalls
 
 - `WithArchiveTable` without `WithRetention` moves nothing: retention decides what is moved and when. Nothing refuses the combination.
-- `ArchivedRuns` pages by `FinishedBefore`, a strict "before". Two archived runs with the same finish time on either side of a page boundary lose the second one; use a page size larger than any burst of identical finish times, or read by `RunID`.
+- Page `ArchivedRuns` with both halves of the cursor: the last run's `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as `AfterRunID`. `FinishedBefore` alone is a strict "before", so of two runs with the same finish time on either side of a page boundary the second would be skipped.
 - The `WithArchive` hook sees a chunk at least once: it runs before the delete transaction, so a delete that fails hands the same runs to the next prune. A run that a guard keeps (it was retried meanwhile) is copied but not deleted. Key what the hook writes by run ID.
 - A hook that keeps failing stops every prune, and the hot tables grow again; log its error and alert on it.
 - Retention in a cluster where no client registers an `OnRunFinished` observer deletes nothing unless `Retention.Undelivered` is true; watch `PruneResult.HeldUndelivered`.

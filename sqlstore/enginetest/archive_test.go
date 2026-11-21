@@ -148,3 +148,44 @@ func TestArchivePruneUnderWriteContention(t *testing.T) {
 		})
 	}
 }
+
+// TestArchivedRunsPagesTies: paging ArchivedRuns two at a time through
+// three runs that finished at the same instant returns each run once.
+// Before the (finished_at, id) cursor, a strict finished_at < cursor made
+// the third run unreachable.
+func TestArchivedRunsPagesTies(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			r := newRetEnv(t, e, sqlstore.WithArchiveTable(), sqlstore.WithRetention(sqlstore.Retention{Succeeded: time.Hour, Undelivered: true}))
+			want := map[workflow.RunID]bool{}
+			for range 3 { // the fake clock stands still: one finish time for all
+				want[r.finish(workflow.Job{Workflow: "w"}, workflow.StatusSucceeded).RunID] = true
+			}
+			r.clk.Advance(2 * time.Hour)
+			if n := r.prune(r.c); n != len(want) {
+				t.Fatalf("prune moved %d runs, want %d", n, len(want))
+			}
+			seen := map[workflow.RunID]int{}
+			q := sqlstore.ArchiveQuery{Workflow: "w", Limit: 2}
+			for page := 0; page < len(want)+1; page++ {
+				got, err := r.c.ArchivedRuns(r.ctx, q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(got) == 0 {
+					break
+				}
+				for _, fr := range got {
+					seen[fr.Ref.RunID]++
+				}
+				last := got[len(got)-1]
+				q.FinishedBefore, q.AfterRunID = last.FinishedAt, last.Ref.RunID
+			}
+			for id := range want {
+				if seen[id] != 1 {
+					t.Errorf("run %s returned %d times across the pages, want once", id, seen[id])
+				}
+			}
+		})
+	}
+}

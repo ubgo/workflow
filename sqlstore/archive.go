@@ -67,9 +67,19 @@ type ArchiveQuery struct {
 	Workflow string
 	// RunID keeps one run.
 	RunID workflow.RunID
-	// FinishedBefore keeps runs that finished before it, for paging: pass
-	// the last FinishedAt of the previous page.
+	// FinishedBefore keeps runs that finished before it. To page, pass the
+	// previous page's last FinishedAt here and its RunID in AfterRunID:
+	// FinishedBefore alone is strict, so a run that finished at the same
+	// instant as the last one shown but did not fit on its page would be
+	// skipped.
 	FinishedBefore time.Time
+	// AfterRunID, with FinishedBefore, is the paging cursor's tie-breaker:
+	// runs that finished exactly at FinishedBefore are kept too when their
+	// ID orders after it. The page order is (finished_at DESC, id), so
+	// (FinishedBefore, AfterRunID) taken from a page's last run starts the
+	// next page right after it and no run is returned twice or skipped.
+	// Ignored without FinishedBefore.
+	AfterRunID workflow.RunID
 	// Limit caps the result; zero or less means 100.
 	Limit int
 }
@@ -78,8 +88,10 @@ type ArchiveQuery struct {
 const defaultArchivePage = 100
 
 // ArchivedRuns reads runs WithArchiveTable moved to the cold tables,
-// newest finish first, each with its succeeded steps' outputs. It reads
-// the tables directly and needs Migrate, not Start.
+// newest finish first (ties by run ID), each with its succeeded steps'
+// outputs. Page with FinishedBefore and AfterRunID from the last run of
+// the previous page. It reads the tables directly and needs Migrate, not
+// Start.
 func (c *Client) ArchivedRuns(ctx context.Context, q ArchiveQuery) ([]FinishedRun, error) {
 	where := "1 = 1"
 	var args []any
@@ -91,7 +103,14 @@ func (c *Client) ArchivedRuns(ctx context.Context, q ArchiveQuery) ([]FinishedRu
 		where += " AND id = ?"
 		args = append(args, string(q.RunID))
 	}
-	if !q.FinishedBefore.IsZero() {
+	switch {
+	case q.FinishedBefore.IsZero():
+	case q.AfterRunID != "":
+		// Keyset paging on (finished_at DESC, id ASC), the ORDER BY below.
+		where += " AND (finished_at < ? OR (finished_at = ? AND id > ?))"
+		at := q.FinishedBefore.UnixNano()
+		args = append(args, at, at, string(q.AfterRunID))
+	default:
 		where += " AND finished_at < ?"
 		args = append(args, q.FinishedBefore.UnixNano())
 	}
