@@ -48,7 +48,7 @@ err := c.Register(workflow.Workflow{Name: "refresh-cache", Steps: []workflow.Ste
 }})
 ```
 
-For each attempt it reads the run's tick (`StepInfo.TickAt`), looks up the schedule that fired the run (the `workflow.LabelSchedule` label) in `Schedules`, computes the tick after the run's own in the schedule's zone, and compares it with `Clock`. When that next tick is already due, a newer run exists or is about to, so the step returns its input unchanged without calling the handler, and `OnSkip` is told the run's tick and the newer one. Otherwise the handler runs.
+For each attempt it reads the run's tick (`StepInfo.TickAt`), looks up the schedule that fired the run (the `workflow.LabelSchedule` label) in `Schedules`, finds the first tick after the run's own that the schedule really fires, and compares it with `Clock`. That tick follows the schedule's own rules: the cron in its zone, its `Active` period and `Windows` (as `workflow.NextRuns` lists them), and `When` for the workflow's `ScheduleWhen`; a paused schedule fires no tick, and neither does one with `OverlapSkip` while this run is unfinished. When that tick is already due, a newer run exists or is about to, so the step returns its input unchanged without calling the handler, and `OnSkip` is told the run's tick and the newer one. A fire the driver recorded after the run's tick (`ScheduleInfo.Last`, on drivers with `workflow.CapScheduleHistory`) makes the run stale too. Otherwise the handler runs.
 
 The `LatestOnlyConfig` fields:
 
@@ -56,6 +56,7 @@ The `LatestOnlyConfig` fields:
 |---|---|
 | `Schedules` | looks up the schedule that fired the run; usually the client. Required unless `Next` is set |
 | `Next` | `func(ctx, info, tick) (next time.Time, ok bool, err error)`: the tick after `tick`, in place of the lookup, for a schedule kept outside the client or a custom calendar; `ok` false means unknown, and the step runs |
+| `When` | the workflow's `ScheduleWhen`, when it has one: a due tick the condition rejects fired no run, so it does not make a run stale. Asked on the step's context about each due tick after the run's own; not used with `Next` |
 | `Parser` | the cron dialect of the schedules when the drivers use a custom one (their `WithCronParser` option); nil is the default parser |
 | `OnSkip` | told about every attempt it skips, for a log line or a metric |
 | `Clock` | the now the next tick is compared with; nil is the real clock. Pass the driver's clock |
@@ -90,7 +91,7 @@ if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "refresh-cache"}); err != nil
 }
 ```
 
-A run started with `ScheduleTriggerer.TriggerSchedule` carries the clock at the trigger as its tick, so its next tick is in the future and it works too.
+A run someone asked for always works too: a manual `ScheduleTriggerer.TriggerSchedule`, a [`workflow.Backfill`](backfill.md) run and a `workflow.FireAtStartup` run carry `workflow.LabelTrigger`, and `LatestOnly` never skips a run with that label, whatever its tick.
 
 ## Try it
 
@@ -115,8 +116,8 @@ The 09:00 run is on time: its next tick, 10:00, is in the future. The process is
 ## Pitfalls
 
 - **A skipped step still succeeds.** It returns its input as its output, and the steps after it run with that input. Put `LatestOnly` on the step that does the expensive work, or on every step of the run; a later step that writes somewhere must not assume the refresh happened.
-- **Only the cron expression decides what "newer" means.** The next tick is computed from `Cron` (and `Seconds`) in the schedule's zone; windows, `ScheduleWhen`, an `Active` period and a pause are not consulted. An hourly schedule limited to 09:00 to 17:00 whose 16:00 run is delayed past 17:00 skips its work, and no 17:00 run comes to do it. Use `Next` to compute the next tick that really fires when the schedule has windows, or leave `LatestOnly` off such schedules.
-- **A backfill is skipped too.** [`workflow.Backfill`](backfill.md) runs with a `ScheduleID` carry the schedule label and their past tick, so every backfilled run except possibly the newest finds its next tick due and does nothing. Backfill a workflow without `LatestOnly`, or start the backfill without `ScheduleID`.
+- **A tick the scheduler did not fire for another reason still counts.** A tick the misfire policy dropped while the scheduler was down, or one whose enqueue failed, is predicted like any other; on a driver without `CapScheduleHistory` nothing tells `LatestOnly` that no run came for it. A run delayed past such a tick skips its work. For a schedule with a rule `LatestOnly` cannot read (a custom calendar), give `Next`.
+- **Set `When` when the workflow has a `ScheduleWhen`.** Without it every due tick counts, so a run whose next tick the condition skipped finds that tick due and skips its work, with no newer run to do it.
 - **A missing `Schedules` and `Next` fails at run time, not at build time.** `LatestOnly(LatestOnlyConfig{})` builds, and every attempt then fails permanently with an error matching `workflow.ErrInvalid`.
 - **A lookup error fails the attempt.** An error from `Schedules.Schedules` or from parsing the expression (a custom dialect without `Parser`) is returned as `middleware: latest only: ...`, and the step's retry policy decides what happens next.
 - **The comparison uses the clock you pass.** Give it the driver's clock; with the default real clock a test on a fake clock decides on the wall time.
