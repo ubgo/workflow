@@ -1,4 +1,4 @@
-# docsync rules for an AI writer and reviewer
+# docsync rules for a writer and reviewer
 
 The tool knows which sentence depends on which block and whether the block changed. Read only what `check` lists; acks are recorded against the hash.
 
