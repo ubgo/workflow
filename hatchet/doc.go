@@ -358,7 +358,7 @@
 //     function judges every FAILED read (failed.go): it is final when the
 //     failure carries the driver's marker (every failure the driver makes
 //     non-retryable: Permanent, Discard, NoRetryOn, a wait timeout, an
-//     unreadable input), when the task used the Retries the engine
+//     unreadable input, the last attempt the policy allows), when the task used the Retries the engine
 //     registered for it, or when the task failed more than
 //     Config.FailedSettle ago (5s by default); otherwise the run reads
 //     Running or Queued, as between attempts. The marker is stripped from
@@ -366,6 +366,12 @@
 //     but Hatchet's dashboard shows it. The REST task event list, which
 //     would name a retry, returned no rows on hatchet-lite v0.110.5 and is
 //     not used.
+//   - The engine sometimes retries a failed task past the Retries it was
+//     registered with, a step declared with RetriesNone included (seen
+//     live: 2 to 4 attempts of such a step in about one run of twelve
+//     workflows in two). The driver therefore marks the error of the
+//     last attempt the policy allows non-retryable, so the attempt count
+//     is the policy's and does not rest on the engine's count alone.
 //   - Runs whose failures were stored before the marker existed have no
 //     marker: a Permanent failure of such a run with retries left reads
 //     Queued for Config.FailedSettle after it failed, then Failed, as

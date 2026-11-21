@@ -128,7 +128,13 @@ func (c *Client) taskFunc(s workflow.Step, wf workflow.Workflow, tasks map[strin
 		}
 		out, err := h(withStepInfo(hctx, wf.Name, s.Name, c.cfg.NodeID), in)
 		if err != nil {
-			if nonRetryable(err, policy) {
+			// The last attempt the policy allows is marked final too: the
+			// engine (hatchet-lite v0.110.5) sometimes retries a failed
+			// task past the retries it was registered with, including a
+			// step declared with none (seen live: 2 to 4 attempts of a
+			// RetriesNone step), so the driver does not leave the count
+			// to the engine alone.
+			if nonRetryable(err, policy) || int(hctx.RetryCount()) >= policy.Max {
 				return nil, finalErr(err)
 			}
 			return nil, err
