@@ -2,6 +2,11 @@ package middleware_test
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"reflect"
+	"regexp"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -101,5 +106,30 @@ func TestLatestOnlyRunsRequestedRuns(t *testing.T) {
 	// A cron fire with the same tick is stale.
 	if latestCase(t, middleware.LatestOnlyConfig{Schedules: lister, Clock: clk}, at(9, 0), nil) {
 		t.Error("a stale cron fire ran")
+	}
+}
+
+// TestLatestOnlyDocNamesRealAPI: every Workflow.X the LatestOnly doc
+// comment names is a field or method of workflow.Workflow (it once named
+// a Workflow.Use that never existed).
+func TestLatestOnlyDocNamesRealAPI(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "latestonly.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc string
+	for _, d := range f.Decls {
+		if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == "LatestOnly" {
+			doc = fn.Doc.Text()
+		}
+	}
+	wf := reflect.TypeOf(workflow.Workflow{})
+	for _, m := range regexp.MustCompile(`\bWorkflow\.([A-Z]\w*)`).FindAllStringSubmatch(doc, -1) {
+		_, field := wf.FieldByName(m[1])
+		_, method := wf.MethodByName(m[1])
+		_, ptrMethod := reflect.PointerTo(wf).MethodByName(m[1])
+		if !field && !method && !ptrMethod {
+			t.Errorf("the LatestOnly doc comment names Workflow.%s, which does not exist", m[1])
+		}
 	}
 }
