@@ -559,7 +559,10 @@ func (m *Manager) finishDispatch(ctx context.Context, id ID, owner string) error
 // abortJobs ends a dispatch that failed: it saves refs[k] for idxs[k]
 // where a ref is known (a group that partly started), records the other
 // jobs of idxs as cancelled, cancels the batch, marks it dispatched and
-// carries out the effects (which cancel the started jobs).
+// carries out the effects (which cancel the started jobs). A group that
+// failed with no refs at all (GroupRunner allows it) may have started
+// some of idxs without telling which, so those children are cancelled by
+// their LabelBatch label (cancelUnplaced).
 func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef) error {
 	var eff effects
 	var claimed []PendingCallback
@@ -585,7 +588,35 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 	if err != nil {
 		return fmt.Errorf("batch %s: abort dispatch: %w", id, err)
 	}
-	return m.apply(ctx, st, eff, claimed)
+	err = m.apply(ctx, st, eff, claimed)
+	if refs == nil && len(idxs) > 0 && st.Grouped {
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	}
+	return err
+}
+
+// cancelUnplaced cancels every unfinished run labelled with batch id, for
+// children a failed group started without returning their refs. It needs
+// a BulkCanceller with CapCancelAll; without one the children cannot be
+// found, and the UnsupportedError returned says that they run on unseen
+// by the batch. Retrying is asked for only with CapRunStates, the status
+// a driver without it does not have (a run in backoff reads queued or
+// running there).
+func (m *Manager) cancelUnplaced(ctx context.Context, id ID) error {
+	caps := m.client.Capabilities()
+	bc, ok := m.client.(workflow.BulkCanceller)
+	if !ok || !caps.Has(workflow.CapCancelAll) {
+		return &workflow.UnsupportedError{Field: "batch abort", Missing: workflow.CapCancelAll,
+			Reason: "the group failed part-way without refs, so the children it started cannot be found to cancel and run on unseen by batch " + string(id)}
+	}
+	statuses := []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting}
+	if caps.Has(workflow.CapRunStates) {
+		statuses = append(statuses, workflow.StatusRetrying)
+	}
+	if _, err := bc.CancelAll(owned(ctx), workflow.RunQuery{Labels: map[string]string{LabelBatch: string(id)}, Statuses: statuses}); err != nil {
+		return fmt.Errorf("batch %s: cancel the children a failed group started: %w", id, err)
+	}
+	return nil
 }
 
 // Attach connects the Manager's Sources (see the package doc for the
