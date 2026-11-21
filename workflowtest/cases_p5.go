@@ -113,11 +113,21 @@ var heartbeatCases = []testCase{
 	{"an attempt that keeps beating outlives its HeartbeatTimeout", func(e *env) {
 		e.need(workflow.CapHeartbeat)
 		hb := 3 * e.tm.unit
+		// On a fake clock the handler itself moves time, one unit after
+		// each beat, so no more than a unit ever passes since the last
+		// beat. Had the test's wait loop advanced the clock instead, a
+		// handler starved of the CPU for three polls would truly have
+		// missed its HeartbeatTimeout on that clock. The real-time pause
+		// after each step gives a watchdog that missed the beats the
+		// time to cancel the attempt.
 		wf := oneStep(e.name("w"), func(ctx context.Context, in []byte) ([]byte, error) {
 			start := e.now()
 			for e.now().Sub(start) < 3*hb {
 				if err := workflow.Heartbeat(ctx, nil); err != nil {
 					return nil, err
+				}
+				if e.clk != nil {
+					e.clk.Advance(e.tm.unit)
 				}
 				select {
 				case <-ctx.Done():
@@ -131,7 +141,7 @@ var heartbeatCases = []testCase{
 		wf.Retry = *workflow.RetriesNone()
 		e.up(wf)
 		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
-		e.waitStatus(ref, workflow.StatusSucceeded, e.tm.unit)
+		e.waitStatus(ref, workflow.StatusSucceeded, 0)
 	}},
 	{"Heartbeat outside a step is a no-op", func(e *env) {
 		if err := workflow.Heartbeat(context.Background(), nil); err != nil {
