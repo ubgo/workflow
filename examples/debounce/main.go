@@ -126,9 +126,13 @@ func inOneProcess(ctx context.Context) error {
 // acrossProcesses runs two sqlstore clients on one SQLite file, standing
 // in for two servers on one Postgres or MySQL database. Each has its own
 // Debounce middleware; they share the bursts through the debounce table.
+// Both clients and both middlewares read one fake clock, so the window
+// passes when the program says so, after the whole burst, however slowly
+// the host runs it.
 func acrossProcesses(ctx context.Context, path string) error {
 	fmt.Println("-- A store shared by every process")
 	ran := make(chan string, 3)
+	clk := clock.NewFake(time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC))
 
 	type process struct {
 		sql *sqlstore.Client
@@ -139,7 +143,8 @@ func acrossProcesses(ctx context.Context, path string) error {
 		if err != nil {
 			return process{}, nil, err
 		}
-		sc, err := sqlstore.New(db, sqlb.SQLiteDialect{}, sqlstore.WithPollInterval(pollInterval))
+		sc, err := sqlstore.New(db, sqlb.SQLiteDialect{},
+			sqlstore.WithClock(clk), sqlstore.WithPollInterval(pollInterval))
 		if err != nil {
 			return process{}, nil, err
 		}
@@ -150,7 +155,8 @@ func acrossProcesses(ctx context.Context, path string) error {
 			return process{}, nil, err
 		}
 		// snippet:sql-store
-		debounce, err := middleware.Debounce(sc, nil, byProduct, time.Second, 0,
+		// The window is measured on the clock the client schedules on.
+		debounce, err := middleware.Debounce(sc, clk, byProduct, time.Second, 0,
 			middleware.WithDebounceStore(sc.DebounceStore()))
 		if err != nil {
 			return process{}, nil, err
@@ -189,6 +195,7 @@ func acrossProcesses(ctx context.Context, path string) error {
 		}
 		refs = append(refs, ref)
 	}
+	clk.Advance(time.Second) // quiet for the window
 	fmt.Println("ran with", <-ran)
 	for i, ref := range refs {
 		st, err := waitTerminal(ctx, b.sql, ref)

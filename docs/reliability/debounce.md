@@ -59,11 +59,12 @@ With two web servers, a key enqueued from both is debounced in each one separate
 
 Like the unique store it needs no running SQL driver: `sqlstore.NewDebounceStore(db, dialect, opts...)` builds it over any `*sql.DB` and its `Migrate` creates only the debounce table; an app on the SQL driver takes `Client.DebounceStore()`, whose table `Client.Migrate` creates.
 
-The example runs two sqlstore clients on one SQLite file, standing in for two servers on one Postgres or MySQL database. Each has its own `Debounce` middleware over its own client, and both use the debounce table of the same database:
+The example runs two sqlstore clients on one SQLite file, standing in for two servers on one Postgres or MySQL database. Each has its own `Debounce` middleware over its own client, and both use the debounce table of the same database. Give `Debounce` the clock the client schedules on (`sqlstore.WithClock`; both default to the real clock): the middleware sets `RunAt` on its clock and the driver starts the run on its own. The example shares one fake clock between both clients and both middlewares and advances it by the window after the burst:
 
 <!-- snippet: examples/debounce/main.go#sql-store -->
 ```go
-debounce, err := middleware.Debounce(sc, nil, byProduct, time.Second, 0,
+// The window is measured on the clock the client schedules on.
+debounce, err := middleware.Debounce(sc, clk, byProduct, time.Second, 0,
 	middleware.WithDebounceStore(sc.DebounceStore()))
 if err != nil {
 	return process{}, nil, err

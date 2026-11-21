@@ -19,6 +19,6 @@ job 2 (from process B): cancelled
 job 3 (from process A): succeeded
 ```
 
-The cross-process part uses a real one-second window, so the program takes about a second. Against the shared local stack, point both clients at one Postgres database (`driverpgx.Open(dsn)`, `sqlb.PostgresDialect{}`).
+The cross-process part shares one fake clock between both clients and both middlewares, so its one-second window passes when the program advances the clock after the burst, however slowly a busy machine runs the enqueues. Against the shared local stack, point both clients at one Postgres database (`driverpgx.Open(dsn)`, `sqlb.PostgresDialect{}`).
 
 The guide [Debounce](../../docs/reliability/debounce.md) explains each step. `main_test.go` runs the same program and checks every line above.
