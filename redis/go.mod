@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/ubgo/workflow v0.2.0
+	github.com/ubgo/workflow v0.2.1
 )
 
 require (
