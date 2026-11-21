@@ -79,7 +79,7 @@ cb := workflow.Workflow{
 
 In the example's second batch, one job fails: `Catch` receives `failed=1 cancelledJobs=0` (decided at the failure), and `Finally` receives `failed=1 cancelledJobs=1` once the cancelled job has reported back.
 
-If an `Enqueue` fails during `Dispatch`, the jobs not yet enqueued are recorded as cancelled, the batch is cancelled (which cancels the jobs already enqueued and, once they finish, runs `Finally`) and the error is returned together with the ID, so the caller can still inspect the batch. A batch with no jobs is refused with `workflow.ErrInvalid`.
+If an `Enqueue` fails during `Dispatch`, the jobs not yet enqueued are recorded as cancelled, the batch is cancelled (which cancels the jobs already enqueued and, once they finish, runs `Finally`) and the error is returned together with the ID, so the caller can still inspect the batch. An `Enqueue` can fail and still have started its run (a timeout after the engine accepted the job); on a client with `workflow.CapCancelAll` `Dispatch` also cancels every unfinished run carrying the batch's `batch.LabelBatch`, so such a run is cancelled too. Without that capability it runs on unseen by the batch. A batch with no jobs is refused with `workflow.ErrInvalid`.
 
 ## Track progress
 

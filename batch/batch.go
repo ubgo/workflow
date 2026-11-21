@@ -504,7 +504,12 @@ func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflo
 	for k, i := range idxs {
 		ref, enqErr := m.client.Enqueue(owned(ctx), sub[k])
 		if enqErr != nil {
-			return errors.Join(fmt.Errorf("batch %s: enqueue job %d: %w", id, i, enqErr), m.abortJobs(ctx, id, owner, idxs[k:], nil))
+			// The failed Enqueue may have landed anyway (a timeout after
+			// the engine accepted the job), so its run is cancelled by
+			// the batch label where the client can (CapCancelAll); it is
+			// best effort, since a plain Enqueue error is no sign of a
+			// started run.
+			return errors.Join(fmt.Errorf("batch %s: enqueue job %d: %w", id, i, enqErr), m.abortJobs(ctx, id, owner, idxs[k:], nil, true))
 		}
 		saved, err := m.store.Update(ctx, id, func(s *State) error {
 			if err := m.renew(s, owner); err != nil {
@@ -524,7 +529,7 @@ func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflo
 		// stop enqueuing.
 		if saved.Cancelled {
 			cerr := m.cancelRun(ctx, saved.Jobs[i])
-			return errors.Join(cerr, m.abortJobs(ctx, id, owner, idxs[k+1:], nil))
+			return errors.Join(cerr, m.abortJobs(ctx, id, owner, idxs[k+1:], nil, false))
 		}
 	}
 	return m.finishDispatch(ctx, id, owner)
@@ -562,8 +567,11 @@ func (m *Manager) finishDispatch(ctx context.Context, id ID, owner string) error
 // carries out the effects (which cancel the started jobs). A group that
 // failed with no refs at all (GroupRunner allows it) may have started
 // some of idxs without telling which, so those children are cancelled by
-// their LabelBatch label (cancelUnplaced).
-func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef) error {
+// their LabelBatch label (cancelUnplaced). landed says the first job of
+// idxs may have started without a ref (a per-job Enqueue that errored);
+// it is cancelled by label too, but only where the client can
+// (CapCancelAll), since an Enqueue error is usually no start at all.
+func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef, landed bool) error {
 	var eff effects
 	var claimed []PendingCallback
 	st, err := m.store.Update(ctx, id, func(s *State) error {
@@ -589,14 +597,25 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 		return fmt.Errorf("batch %s: abort dispatch: %w", id, err)
 	}
 	err = m.apply(ctx, st, eff, claimed)
-	if refs == nil && len(idxs) > 0 && st.Grouped {
+	switch {
+	case refs == nil && len(idxs) > 0 && st.Grouped:
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	case landed && m.canCancelByLabel():
 		err = errors.Join(err, m.cancelUnplaced(ctx, id))
 	}
 	return err
 }
 
+// canCancelByLabel reports whether cancelUnplaced can reach the client's
+// runs: a BulkCanceller with CapCancelAll.
+func (m *Manager) canCancelByLabel() bool {
+	_, ok := m.client.(workflow.BulkCanceller)
+	return ok && m.client.Capabilities().Has(workflow.CapCancelAll)
+}
+
 // cancelUnplaced cancels every unfinished run labelled with batch id, for
-// children a failed group started without returning their refs. It needs
+// children a failed group started without returning their refs, and for
+// a per-job Enqueue that errored but may have landed. It needs
 // a BulkCanceller with CapCancelAll; without one the children cannot be
 // found, and the UnsupportedError returned says that they run on unseen
 // by the batch. Retrying is asked for only with CapRunStates, the status
@@ -605,7 +624,7 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 func (m *Manager) cancelUnplaced(ctx context.Context, id ID) error {
 	caps := m.client.Capabilities()
 	bc, ok := m.client.(workflow.BulkCanceller)
-	if !ok || !caps.Has(workflow.CapCancelAll) {
+	if !ok || !m.canCancelByLabel() {
 		return &workflow.UnsupportedError{Field: "batch abort", Missing: workflow.CapCancelAll,
 			Reason: "the group failed part-way without refs, so the children it started cannot be found to cancel and run on unseen by batch " + string(id)}
 	}

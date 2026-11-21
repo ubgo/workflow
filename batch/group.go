@@ -38,7 +38,10 @@ type GroupRunner interface {
 	// per job. Any other error means the group did not fully start: refs
 	// is then nil, or has len(jobs) entries with a zero RunRef for each job
 	// that did not start, and Dispatch cancels the batch (which cancels the
-	// children that did start).
+	// children that did start). With nil refs the started children are
+	// found by their LabelBatch label through CancelAll (CapCancelAll);
+	// without it Dispatch's error is an UnsupportedError saying they run on
+	// unseen by the batch.
 	RunGroup(ctx context.Context, group string, jobs []workflow.Job) ([]workflow.RunRef, error)
 }
 
@@ -79,7 +82,7 @@ func (m *Manager) dispatchGroup(ctx context.Context, gr GroupRunner, id ID, owne
 		if len(refs) != len(sub) {
 			refs = nil // a ref we cannot place on its job is cancelled below instead
 		}
-		return true, errors.Join(fmt.Errorf("batch %s: run group: %w", id, runErr), m.abortJobs(ctx, id, owner, idxs, refs))
+		return true, errors.Join(fmt.Errorf("batch %s: run group: %w", id, runErr), m.abortJobs(ctx, id, owner, idxs, refs, false))
 	}
 	saved, err := m.store.Update(ctx, id, func(s *State) error {
 		if err := m.renew(s, owner); err != nil {
@@ -189,7 +192,7 @@ func (m *Manager) dispatchSpawn(ctx context.Context, sp GroupSpawner, id ID, own
 			return true, errors.Join(spawnErr, err)
 		}
 		return true, errors.Join(fmt.Errorf("batch %s: spawn group: %w", id, spawnErr),
-			m.abortJobs(ctx, id, owner, allIndexes(len(jobs)), nil),
+			m.abortJobs(ctx, id, owner, allIndexes(len(jobs)), nil, false),
 			sp.CancelGroup(ctx, string(id), workflow.RunRef{}, st.CreatedAt))
 	}
 	return true, m.saveParent(ctx, sp, id, owner, parent)
