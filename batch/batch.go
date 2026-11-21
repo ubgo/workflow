@@ -8,8 +8,9 @@
 // # How a batch learns that a job ended
 //
 // Through Sources (see Source), connected by Manager.Attach. Unless
-// WithCompletionSource names them, Attach picks them by what the client can
-// do:
+// WithCompletionSource names them (replacing the defaults; an empty one
+// means none, for an app that calls Manager.RunFinished itself), Attach
+// picks them by what the client can do:
 //
 //   - a client declaring workflow.CapRunFinished (the memory driver): the
 //     run-finished hook alone (HookSource), because every run end is
@@ -255,7 +256,8 @@ type Manager struct {
 	pollEvery     time.Duration // interval of the default PollSource
 	callbackRetry time.Duration // claim length of a callback enqueue
 	manualRetry   bool          // no retry loop; the app calls RetryCallbacks
-	sources       []Source      // nil means defaultSources
+	sources       []Source      // the Sources WithCompletionSource named; used when sourcesSet
+	sourcesSet    bool          // WithCompletionSource was given; false means defaultSources
 	newID         func() (ID, error)
 	dispatchLease time.Duration // how long a dispatch may go without writing before a resumer takes over
 	resumable     bool          // keep job specs on the one-Enqueue-per-job path too
@@ -291,9 +293,16 @@ func WithStatusPoll(interval time.Duration) Option {
 
 // WithCompletionSource replaces the default Sources with srcs, for example
 // a native engine feed, or HookSource plus PollSource on a client whose
-// hook is guaranteed but which the app wants double-checked.
+// hook is guaranteed but which the app wants double-checked. Name every
+// Source in one call: a later WithCompletionSource replaces an earlier
+// one. With no srcs Attach connects no Source at all, for an app that
+// reports run ends itself through Manager.RunFinished; leave the option
+// out to keep the defaults.
 func WithCompletionSource(srcs ...Source) Option {
-	return func(m *Manager) { m.sources = append(m.sources, srcs...) }
+	return func(m *Manager) {
+		m.sources = slices.Clone(srcs)
+		m.sourcesSet = true
+	}
 }
 
 // WithIDFunc makes batch IDs with fn instead of 128 random bits as hex,
@@ -588,7 +597,7 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 // from any Source is returned and the Manager must not be used.
 func (m *Manager) Attach(ctx context.Context) error {
 	srcs := m.sources
-	if srcs == nil {
+	if !m.sourcesSet {
 		srcs = m.defaultSources()
 	}
 	polled := false
