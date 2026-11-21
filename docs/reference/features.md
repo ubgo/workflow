@@ -2,26 +2,26 @@
 
 Every feature of the library on one page, grouped by area, with the package that provides it, the guide section that explains it and the runnable example that shows it. Use it to answer "does it do X, and where is that written down?" without reading the guides in order.
 
-The list is built from the code: the exported types, functions and options of every package in every module (`workflow`, `clock`, `cron`, `memory`, `middleware`, `batch`, `failover`, `workflowtest`, `events`, `hybrid`, `regional`, `schedexport`, `cutover`, `httprun`, `push`, and the separate modules `admin`, `cli`, `hatchet`, `otel`, `recorder` with `recorder/recordertest`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore` with `sqlstore/outbox`).
+The list is built from the code: the exported types, functions and options of every package in every module (`workflow`, `clock`, `cron`, `memory`, `middleware`, `batch`, `failover`, `workflowtest`, `events`, `dsl`, `hybrid`, `regional`, `schedexport`, `cutover`, `httprun`, `push`, and the separate modules `admin`, `cli`, `hatchet`, `otel`, `recorder` with `recorder/recordertest`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore` with `sqlstore/outbox`).
 
 An **Example** link goes to a program under `examples/` (or a Go example test) that uses the feature's API and is run by `go test`; a dash means no example shows the feature yet, and the guide section is the place to start. A **Package** is a path inside `github.com/ubgo/workflow`, where `workflow` is the root package, unless it names another module.
 
 ## Contents
 
 - [Core contract](#core-contract) (19)
-- [Workflows and steps](#workflows-and-steps) (49)
-- [Events](#events) (12)
-- [Jobs](#jobs) (75)
+- [Workflows and steps](#workflows-and-steps) (60)
+- [Events](#events) (14)
+- [Jobs](#jobs) (78)
 - [Schedules](#schedules) (49)
-- [Drivers](#drivers) (32)
+- [Drivers](#drivers) (33)
 - [Middleware](#middleware) (16)
 - [Batches](#batches) (19)
-- [Reliability](#reliability) (33)
+- [Reliability](#reliability) (34)
 - [Observability](#observability) (26)
-- [Testing](#testing) (16)
-- [Operations](#operations) (31)
-- [Admin](#admin) (17)
-- [Extending](#extending) (3)
+- [Testing](#testing) (18)
+- [Operations](#operations) (32)
+- [Admin](#admin) (19)
+- [Extending](#extending) (4)
 
 ## Core contract
 
@@ -87,10 +87,20 @@ Multi-step workflows: steps in a graph, typed handlers, waits for events and dur
 | Promises resolved from outside a run (`PromiseStore`, `MemoryPromises`, `ResolvePromise`, `RejectPromise`, `AwaitPromise`, `WaitPromise`, `PromiseResult`, `NewPromiseID`, `PromiseEvent`, `ErrPromiseSettled`, `PromiseRejectedError`; `sqlstore.PromiseStore`, `redis.PromiseStore`) | `workflow` | [promises › Wait for a promise](../workflows/promises.md#wait-for-a-promise) | [flow-promises](../../examples/flow-promises/) |
 | A signal that returns the run's answer (`Update`, `UpdateHandler`, `ReplyUpdate`, `DecodeUpdate`, `UpdateRequest`) | `workflow` | [promises › Ask a run and get its answer](../workflows/promises.md#ask-a-run-and-get-its-answer) | [flow-promises](../../examples/flow-promises/) |
 | Start a run if needed, then signal it (`SignalWithStart`) | `workflow` | [promises › Start a run if it is not running, then signal it](../workflows/promises.md#start-a-run-if-it-is-not-running-then-signal-it) | [flow-promises](../../examples/flow-promises/) |
+| Signal one run by its ID (`RunKey`, `SignalRun`, `WaitSpec.OwnRun`, `WaitSpec.ResolveKeyFor`, `CapWaitOwnRun`, `RunSignaller`) | `workflow` | [escalation › Signal one run by its ID](../workflows/escalation.md#signal-one-run-by-its-id) | [escalation](../../examples/escalation/) |
+| Escalate from a child run to its parent (`SignalParent`, `ParentRun`) | `workflow` | [escalation › Escalate from a child to its parent](../workflows/escalation.md#escalate-from-a-child-to-its-parent) | [escalation](../../examples/escalation/) |
+| Handle a run's signals between its steps (`OnSignals`, `SignalHandlers`, `SignalHandler`, `DefaultSignalBatch`, `RunSignalReader`, `RunSignal`, `OpRunSignals`) | `workflow` | [escalation › Handle signals between steps](../workflows/escalation.md#handle-signals-between-steps) | [escalation](../../examples/escalation/) |
+| Approvals, races and updates by run ID (`ApprovalSpec.OwnRun`, `ApproveRun`, `RejectRun`, `RaceSpec.OwnRun`, `SignalChoiceRun`, `UpdateRun`) | `workflow` | [escalation › Approvals, races and updates by run ID](../workflows/escalation.md#approvals-races-and-updates-by-run-id) | — |
 | Continue as a new run (`ContinueAsNew`, `ContinuedFrom`, `LabelContinuedFrom`) | `workflow` | [promises › Loop for ever as a chain of runs](../workflows/promises.md#loop-for-ever-as-a-chain-of-runs) | [flow-promises](../../examples/flow-promises/) |
 | Withdraw several steps of a run (`CancelSteps`) | `workflow` | [promises › Withdraw several steps of a run](../workflows/promises.md#withdraw-several-steps-of-a-run) | — |
 | Deliver only to runs waiting now (`TransientSignaller`) | `workflow` | [signals › Deliver only to runs waiting now](../workflows/signals.md#deliver-only-to-runs-waiting-now) | — |
 | Keyed virtual objects (`DefineObject`, `ObjectSpec`, `ObjectMethod`, `CallObject`, `ObjectState`, `LabelObjectKey`) | `workflow` | [objects](../workflows/objects.md) | [virtual-objects](../../examples/virtual-objects/) |
+| Durable state machines (`DefineMachine`, `MachineSpec`, `MachineState`, `MachineTransition`, `MachineGuard`, `MachineAction`, `MachineCtx`, `StateTimer`, `HistoryMode`, `UnhandledPolicy`, `ErrUnhandledEvent`, `IsUnhandledEvent`, `DoneEvent`, `MachineStartEvent`, `MaxMachineMicrosteps`, `DefaultMachineLog`, `SendEvent`, `StartMachine`, `MachineStatus`, `ForgetMachine`, `MachineSnapshot`, `MachineResult`, `MachineStep`) | `workflow` | [state machines](../workflows/state-machines.md) | [state-machine](../../examples/state-machine/) |
+| Deterministic replay: one function with local variables that runs again from the top on every wake, recorded calls returning their results, waits suspending by snooze (`NewReplay`, `ReplayFunc`, `ReplayOptions`, `ReplayCtx`, `ReplayCtx.Context`, `ReplayCtx.Replaying`) | `workflow` | [replay › Write the code as one function](../workflows/replay.md#write-the-code-as-one-function) | [flow-replay](../../examples/flow-replay/) |
+| Recorded calls inside a replayed handler (`ReplayStep`, `ReplayChild`, `ReplayCtx.Now`, `ReplayCtx.Sleep`, `ReplayCtx.SleepUntil`, `ReplayCtx.AwaitPromise`) | `workflow` | [replay › The calls](../workflows/replay.md#the-calls) | [flow-replay](../../examples/flow-replay/) |
+| The determinism check: a replay that does not match its history fails the run, marked permanent (`NondeterminismError`, `ErrNondeterminism`) | `workflow` | [replay › Keep the code deterministic](../workflows/replay.md#keep-the-code-deterministic) | [flow-replay](../../examples/flow-replay/) |
+| Workflow definitions as data: JSON (YAML converted by the app) built at run time against registered handler names, strict parsing with JSON paths (`dsl.Definition`, `dsl.Parse`, `dsl.Build`, `dsl.Load`, `dsl.Marshal`, `dsl.Registry`, `dsl.FieldError`) | `dsl` | [definitions as data › Write the definition](../workflows/definitions-as-data.md#write-the-definition) | [workflow-json](../../examples/workflow-json/) |
+| State machines as data: guards and actions by registered name (`dsl.MachineDefinition`, `dsl.StateDef`, `dsl.TransitionDef`, `dsl.TimerDef`, `dsl.MachineRegistry`, `dsl.MachineEnv`, `dsl.ParseMachine`, `dsl.BuildMachine`, `dsl.LoadMachine`, `dsl.MarshalMachine`) | `dsl` | [definitions as data › State machines as data](../workflows/definitions-as-data.md#state-machines-as-data) | — |
 | One run per partition key with a status per partition and a retry of the failed ones (`EnqueuePartitions`, `PartitionSet`, `PartitionKey`, `PartitionStatus`, `PartitionRun`, `RetryFailedPartitions`, `PartitionOf`, `LabelPartitionSet`, `LabelPartitionKey`) | `workflow` | [partitions › Start one run per partition](../workflows/partitions.md#start-one-run-per-partition) | [partitioned-runs](../../examples/partitioned-runs/) |
 | Trigger rules, tolerated steps, error routing and exit handlers (`WithRules`, `RulesSpec`, `TriggerRule`, `CatchRoute`, `StepFailure`, `ParentFailures`, `ErrStepsFailed`) | `workflow` | [trigger rules › Tolerate a step, route its failure, always clean up](../workflows/trigger-rules.md#tolerate-a-step-route-its-failure-always-clean-up) | [flow-patterns](../../examples/flow-patterns/) |
 | A timer that does not stop the step (`Boundary`) | `workflow` | [trigger rules › A timer that does not stop the step](../workflows/trigger-rules.md#a-timer-that-does-not-stop-the-step) | — |
@@ -104,6 +114,7 @@ Multi-step workflows: steps in a graph, typed handlers, waits for events and dur
 | Human approval with signed links (`ApprovalStep`, `ApprovalSpec`, `Approve`, `Reject`, `Decision`, `DecisionOf`, `ApprovalEvent`, `NewApprovalToken`, `ApprovalSigner`, `ErrApprovalToken`) | `workflow` | [polling and approvals › Human approval](../workflows/polling-and-approval.md#human-approval) | [flow-patterns](../../examples/flow-patterns/) |
 | Step groups, early end, recursion limit, step-shape guard, typed enqueue and result (`Group`, `EndRun`, `EndRuns`, `RecursionLimit`, `LabelDepth`, `ErrDepth`, `ShapeGuard`, `Shape`, `LabelShape`, `ErrShapeChanged`, `EnqueueOf`, `AwaitResultOf`) | `workflow` | [groups and guards › Step groups](../workflows/groups-and-guards.md#step-groups) | [flow-patterns](../../examples/flow-patterns/) |
 | Start the next workflow when a run ends (`Then`, `ThenRule`, `ThenErrors`, `ThenError`, `LabelThenFrom`) | `workflow` | [then › Start a workflow when another finishes](../workflows/then.md#start-a-workflow-when-another-finishes) | [events-more](../../examples/events-more/) |
+| Skip redo runs in Then (`ThenAfterRedo`) | `workflow` | [then › Redo runs](../workflows/then.md#redo-runs) | [reset-fork](../../examples/reset-fork/) |
 
 ## Events
 
@@ -119,10 +130,12 @@ The `events` package: publish and subscribe on any client, and signed inbound we
 | Drop redelivered webhooks for as long as an inbox keeps their IDs (`WebhookConfig.Inbox`) | `events` | [webhooks › Drop redeliveries with an inbox](../events/webhooks.md#drop-redeliveries-with-an-inbox) | [consumer-inbox](../../examples/consumer-inbox/) |
 | Start workflows when datasets change, any of or all of, never twice for one version (`events.NewDatasets`, `Datasets.Trigger`, `Datasets.Updated`, `DatasetTrigger`, `TriggerRun`, `UpdateResult`, `EventDatasetUpdated`, `DatasetEventID`, `DatasetUpdate`, `LabelDatasetTrigger`, `WithDatasetClock`) | `events` | [datasets › Start a workflow when a dataset changes](../events/datasets.md#start-a-workflow-when-a-dataset-changes) | [datasets](../../examples/datasets/) |
 | Asset lineage: who produced a dataset version and what a run read (`LineageStore`, `Lineage`, `LineageQuery`, `LineageKind`, `MemoryLineage`, `WithLineage`, `Producers`, `Consumers`, `Outputs`, `Inputs`) | `events` | [datasets › Read the lineage](../events/datasets.md#read-the-lineage) | [datasets](../../examples/datasets/) |
+| Share lineage and dataset triggers across processes (`sqlstore.LineageStore`, `NewLineageStore`, `Client.LineageStore`, `LineageMigrationOwner`; `redis.LineageStore`, `redis.NewLineageStore`; `workflowtest.LineageStoreContract`, `workflowtest.DatasetsSharedLineage`) | `sqlstore`, `redis`, `workflowtest` | [datasets › Share the store between processes](../events/datasets.md#share-the-store-between-processes) | — |
 | CloudEvents 1.0 over HTTP, binary and structured, mapped to and from a Message (`CloudEvent`, `ReadHTTP`, `WriteHTTP`, `WriteHTTPStructured`, `ToMessage`, `FromMessage`) | `events` | [cloudevents › Send a CloudEvent over HTTP](../events/cloudevents.md#send-a-cloudevent-over-http) | [events-more](../../examples/events-more/) |
 | Payload versions upcast before subscribers see them (`WithUpcasters`, `Message.Version`) | `events` | [cloudevents › Version an event's payload](../events/cloudevents.md#version-an-events-payload) | [events-more](../../examples/events-more/) |
 | An event log and replay under a replay ID (`EventLog`, `MemoryLog`, `WithLog`, `WithClock`, `Bus.Replay`, `ReplayOptions`, `LabelReplay`) | `events` | [replay and cancel › Replay logged events](../events/replay-and-cancel.md#replay-logged-events) | [events-more](../../examples/events-more/) |
 | Cancel runs on an event, and divert to another workflow (`Bus.SubscribeCancel`, `CancelSubscription`, `Divert`, `Published.Cancellations`) | `events` | [replay and cancel › Cancel runs on an event](../events/replay-and-cancel.md#cancel-runs-on-an-event) | [events-more](../../examples/events-more/) |
+| Choreography: correlation and causation labels on every run a chain of events starts, and the chain's runs listed as one unit (`events.WithCorrelation`, `LabelCorrelation`, `LabelCausation`, `Message.Correlation`, `Message.Causation`, `events.Trail`) | `events` | [choreography › List a chain](../events/choreography.md#list-a-chain) | [saga-choreography](../../examples/saga-choreography/) |
 
 ## Jobs
 
@@ -144,6 +157,7 @@ Enqueueing work and controlling how it runs: delays, keys, retries, concurrency,
 | Read a run's status (`Client.Status`, `Status`, `IsTerminal`, `RunID`) | `workflow` | [cancel-and-status › Read a run's status](../jobs/cancel-and-status.md#read-a-runs-status) | [delayed-jobs](../../examples/delayed-jobs/) |
 | Limit concurrent runs per key (`Concurrency`, `KeyExpr`, `KeyFunc`, `MaxRuns`, `CapConcurrencyKey`) | `workflow` | [concurrency › Limit runs per key](../jobs/concurrency.md#limit-runs-per-key) | [concurrency](../../examples/concurrency/) |
 | What happens to the run over the limit (`ConcurrencyQueueNewest`, `ConcurrencyDropNewest`, `ConcurrencyCancelNewest`, `ConcurrencyCancelInProgress`, `ConcurrencyRoundRobin`) | `workflow` | [concurrency › Strategies](../jobs/concurrency.md#strategies) | [concurrency](../../examples/concurrency/) |
+| Share the workers fairly between keys: round robin and weights (`ConcurrencyRoundRobin`, `Concurrency.Weight`, `KeyWeights`, `FairTurn`, `CapRoundRobin`, `CapKeyWeights`) | `workflow` | [concurrency › Share the workers fairly between keys](../jobs/concurrency.md#share-the-workers-fairly-between-keys) | [fair-share](../../examples/fair-share/) |
 | Rate limits per key (`RateLimit`, `CapRateLimit`) | `workflow` | [concurrency › Rate limits](../jobs/concurrency.md#rate-limits) | [concurrency](../../examples/concurrency/) |
 | Named queues: a workflow's queue and a run sent elsewhere (`Workflow.Queue`, `Job.Queue`, `DefaultQueue`, `EffectiveQueue`, `CapQueue`, `CapQueueOverride`) | `workflow` | [queues › Give a workflow its queue](../jobs/queues.md#step-1-give-a-workflow-its-queue) | [named-queues](../../examples/named-queues/), [sql-queue-workers](../../examples/sql-queue-workers/), [hatchet-manage](../../examples/hatchet-manage/) |
 | Workers and priority per queue (`QueueConfig`, `memory.WithQueues`, `sqlstore.WithQueues`, `hatchet.Config.Queues`) | `workflow` | [queues › Decide how workers serve queues](../jobs/queues.md#step-2-decide-how-workers-serve-queues) | [named-queues](../../examples/named-queues/), [sql-queue-workers](../../examples/sql-queue-workers/), [hatchet-manage](../../examples/hatchet-manage/) |
@@ -193,6 +207,8 @@ Enqueueing work and controlling how it runs: delays, keys, retries, concurrency,
 | FIFO per key (`Concurrency.FIFO`, `CapKeyFIFO`) | `workflow` | [concurrency › Keep one key's runs in order](../jobs/concurrency.md#keep-one-keys-runs-in-order) | [queue-weights](../../examples/queue-weights/) |
 | Process a redelivered message once per consumer (`Inbox`, `InboxConsumer`, `InboxKey`, `MemoryInbox`, `ErrInboxBusy`, `ErrInboxLost`, `DefaultInboxLease`, `DefaultInboxKeep`, `workflowtest.InboxContract`; `sqlstore.Inbox` with `MarkTx`, `redis.Inbox`) | `workflow`, `sqlstore`, `redis` | [idempotency › Drop redelivered messages with an inbox](../jobs/idempotency.md#drop-redelivered-messages-with-an-inbox) | [consumer-inbox](../../examples/consumer-inbox/) |
 | Re-run a failed run from an earlier step (`RunResetter`, `StepsFrom`) | `workflow` | [manage-runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step) | — |
+| Reset a run that succeeded (`RunResetterWith`, `ResetOptions`, `LabelRedo`) | `workflow` | [manage-runs › Reset a run that succeeded](../jobs/manage-runs.md#reset-a-run-that-succeeded) | [reset-fork](../../examples/reset-fork/) |
+| Fork a run into a new run from a step (`RunForker`, `ForkOptions`, `ForkLabels`, `LabelForkOf`, `LabelForkStep`) | `workflow` | [manage-runs › Fork a run into a new run](../jobs/manage-runs.md#fork-a-run-into-a-new-run) | [reset-fork](../../examples/reset-fork/) |
 | Heavy steps hold several worker slots (`Step.Slots`, `CapSlotCost`, `SlotPool`, `StepSlots`, `CheckSlots`) | `workflow` | [slots](../jobs/slots.md) | — |
 | Edit a scheduled run (`RunEditor`, `JobEdit`, `CheckJobEdit`) | `workflow`, `memory`, `sqlstore`, `redis` | [edit a scheduled run](../jobs/edit-runs.md) | [edit-run](../../examples/edit-run/) |
 | Search runs by payload fields (`RunQuery.Payload`, `CapPayloadSearch`) | `workflow`, drivers | [manage runs › Search inside payloads](../jobs/manage-runs.md#search-inside-payloads) | [run-control](../../examples/run-control/) |
@@ -270,6 +286,7 @@ The backends behind `Client`: in-process memory, SQL databases and Hatchet.
 |---|---|---|---|
 | In-memory driver (`memory.New`, `Stop`) | `memory` | [memory › Create the client](../drivers/memory.md#create-the-client) | [quickstart](../../examples/quickstart/), [sqlite-worker](../../examples/sqlite-worker/) |
 | Memory driver options (`WithWorkers`, `WithClock`, `WithLogger`, `WithMiddleware`, `WithJitterSource`) | `memory` | [memory › Options](../drivers/memory.md#options) | [sqlite-worker](../../examples/sqlite-worker/) |
+| Run every schedule from one goroutine and one timer (`memory.WithScheduleHeap`) | `memory` | [memory › Options](../drivers/memory.md#options) | — |
 | What the memory driver can and cannot do (every capability but `CapDurable`) | `memory` | [memory › What it can do](../drivers/memory.md#what-it-can-do) | [sqlite-worker](../../examples/sqlite-worker/) |
 | SQL driver on `database/sql` for SQLite, Postgres and MySQL 8 (`sqlstore.New`) | `github.com/ubgo/workflow/sqlstore` | [sqlstore › Create the client](../drivers/sqlstore.md#create-the-client) | [sqlite-worker](../../examples/sqlite-worker/) |
 | Pick a database and a driver for it | `github.com/ubgo/workflow/sqlstore` | [sqlstore › Pick a database](../drivers/sqlstore.md#pick-a-database) | [sqlite-worker](../../examples/sqlite-worker/) |
@@ -386,7 +403,8 @@ Not losing work and not doing it twice: unique jobs, debounce, claim check, tran
 | Complete a running step inside your transaction, fenced by its lease (`sqlstore.Client.CompleteTx`) | `github.com/ubgo/workflow/sqlstore` | [complete in transaction › Complete the step in your transaction](../reliability/complete-in-transaction.md#complete-the-step-in-your-transaction) | [complete-in-transaction](../../examples/complete-in-transaction/) |
 | Row changes become jobs through generated triggers (`outbox.ChangeTrigger`, `TriggerSpec`, `TriggerSQL`, `ChangeOp`, `OnInsert`, `OnUpdate`, `OnDelete`) | `github.com/ubgo/workflow/sqlstore/outbox` | [change triggers › Database change triggers](../reliability/change-triggers.md#database-change-triggers) | [change-triggers](../../examples/change-triggers/) |
 | A pool of slots shared by every process, and a critical section inside a run (`middleware.Pool`, `PoolRetry`, `PoolRetryAfter`, `PoolSteps`, `CriticalSection`, `ErrPoolBusy`) | `middleware` | [pools › Share a pool of slots](../reliability/pools.md#share-a-pool-of-slots) | [job-guards](../../examples/job-guards/) |
-| Switch off a failing endpoint (`middleware.AutoDisable`, `DisableStore`, `MemoryDisable`, `DisableCountFinal`, `ErrEndpointDisabled`) | `middleware` | [pools › Switch off a failing endpoint](../reliability/pools.md#switch-off-a-failing-endpoint) | [job-guards](../../examples/job-guards/) |
+| Switch off a failing endpoint (`middleware.AutoDisable`, `DisableStore`, `MemoryDisable`, `DisableCountFinal`, `ErrEndpointDisabled`, `workflowtest.DisableStoreContract`; `sqlstore.DisableStore`, `redis.DisableStore`) | `middleware`, `sqlstore`, `redis` | [pools › Switch off a failing endpoint](../reliability/pools.md#switch-off-a-failing-endpoint) | [job-guards](../../examples/job-guards/) |
+| Switch an endpoint off for every worker (`sqlstore.DisableStore`, `NewDisableStore`, `Client.DisableStore`, `DisableMigrationOwner`; `redis.DisableStore`, `redis.NewDisableStore`) | `sqlstore`, `redis` | [pools › Switch it off for every worker](../reliability/pools.md#switch-it-off-for-every-worker) | [job-guards](../../examples/job-guards/) |
 | Aggregate the jobs of a group and window into one run (`middleware.Aggregate`, `AggregatePlugin`, `AggregatedItems`, `AggregateInput`, `AggregateStore`, `MemoryAggregate`, `ErrFlushNotEnqueued`, `workflowtest.AggregateStoreContract`; `sqlstore.AggregateStore`, `redis.AggregateStore`) | `middleware`, `sqlstore`, `redis` | [aggregate › Aggregate jobs into one run per window](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window) | [aggregate-digest](../../examples/aggregate-digest/) |
 | Resumable chunked fan-out (`batch.EnqueueChunked`, `ChunkedOptions`) | `batch` | [aggregate › Fan out to many recipients in chunks](../reliability/aggregate.md#fan-out-to-many-recipients-in-chunks) | [aggregate-digest](../../examples/aggregate-digest/) |
 
@@ -445,6 +463,8 @@ Testing the code that uses the library, and the drivers themselves.
 | Queue, retry, pause and delete assertions (`AssertEnqueuedOn`, `HasQueue`, `HasRetry`, `AssertRetried`, `AssertDeleted`, `AssertPaused`, `AssertNotPaused`) | `workflowtest` | [operations › Assert the queue and the retry budget](../testing/operations.md#step-1-assert-the-queue-and-the-retry-budget), [operations › Assert pauses, retries and deletes](../testing/operations.md#step-2-assert-pauses-retries-and-deletes) | [batch-tests](../../examples/batch-tests/) |
 | Test job chains and closures (`HasChain`, `StepChain`, `StepCaps`, `StepOutcome.Chain`, `ChainNames`, `Fake.AssertClosureEnqueued`, `Closures`, `RunClosures`) | `workflowtest` | [batches-and-chains › Assert a chain](../testing/batches-and-chains.md#step-2-assert-a-chain), [fake › Inspect what was recorded](../testing/fake.md#inspect-what-was-recorded) | [chain-edits](../../examples/chain-edits/), [closures](../../examples/closures/) |
 | Run everything now in tests: delays, backoffs, snoozes and sleeps end at once (`memory.Client.RunAll`, `RunAllReport`, `ErrRunAllStalled`) | `memory` | [run-all › Run everything now](../testing/run-all.md#run-everything-now) | [run-all](../../examples/run-all/) |
+| The run-addressed signal suite (`RunEscalationFlows`, `EscalationHarness`) | `workflowtest` | [escalation › Which drivers](../workflows/escalation.md#which-drivers) | — |
+| Run the conformance suite in shares (`workflowtest.Harness.Groups`, `GroupNames`) | `workflowtest` | [writing a driver](../extending/writing-a-driver.md) | — |
 
 ## Operations
 
@@ -482,6 +502,7 @@ Running the SQL driver in production: schema, retention, deployment and tuning.
 | Signals and schedules across regions (`WithSignalRouter`, `WithScheduleRegion`) | `regional` | [regional-routing › Signals](../operations/regional-routing.md#signals), [regional-routing › Schedules](../operations/regional-routing.md#schedules) | [regional-routing](../../examples/regional-routing/) |
 | Query, retry, cancel and pause runs across regions (`regional.Client`: `Runs`, `Retry`, `Delete`, `CancelAll`, `Pause`, the schedule family) | `regional` | [regional-routing › Manage runs across regions](../operations/regional-routing.md#manage-runs-across-regions) | [regional-routing](../../examples/regional-routing/) |
 | Reset, edit and transient signals across backends (`ResetRun`, `EditRun`, `SignalWaiting` through `failover`, `regional`, `cutover` and `hybrid`; `OpResetRun`, `OpSignalWaiting`) | `failover`, `regional`, `cutover`, `hybrid` | [failover › Query, retry, cancel and pause runs](../reliability/failover.md#query-retry-cancel-and-pause-runs), [regional-routing › Manage runs across regions](../operations/regional-routing.md#manage-runs-across-regions) | — |
+| Run-addressed signals across backends (`SignalRun`, `PendingSignals`, `TakeSignal` through `regional`, `failover`, `cutover` and `hybrid`) | `regional`, `failover`, `cutover`, `hybrid` | [escalation › Behind wrappers](../workflows/escalation.md#behind-wrappers) | — |
 | Move to a new backend while running (`cutover.New`, `SchedulesOn`, `Remaining`, `MoveSchedules`, `NewOnly`) | `cutover` | [cutover › Join the two backends](../operations/cutover.md#join-the-two-backends) | [backend-cutover](../../examples/backend-cutover/) |
 
 ## Admin
@@ -507,6 +528,8 @@ The operator's surface in the separate `admin` module (standard library and the 
 | Audit every write action (`WithAudit`, `AuditSink`, `AuditEntry`, `MemoryAudit`) | `github.com/ubgo/workflow/admin` | [audit and traces › Audit every write action](../admin/audit-and-traces.md#audit-every-write-action) | [admin-audit](../../examples/admin-audit/) |
 | Link each run to its trace (`WithTraceLink`, `otel.TraceIDOf`, `SpanContextOf`) | `github.com/ubgo/workflow/admin` | [audit and traces › Link each run to its trace](../admin/audit-and-traces.md#link-each-run-to-its-trace) | [admin-audit](../../examples/admin-audit/) |
 | Edit a scheduled run from the admin (`Admin.EditRun`, `POST /runs/{id}/edit`, `ActionEditRun`) | `github.com/ubgo/workflow/admin` | [edit runs › From the admin](../jobs/edit-runs.md#from-the-admin) | — |
+| Reset or fork a finished run from a step, and signal the runs waiting now, from the admin (`Admin.ResetRun`, `Admin.ForkRun`, `Admin.SignalWaiting`, `OpResetRun`, `OpResetSucceeded`, `OpForkRun`, `OpSignalWaiting`, `ActionResetRun`, `ActionForkRun`, `ActionSignalWaiting`, `Resource.Reset`, `Resource.Fork`, `Resource.Event`, `POST /runs/{id}/reset`, `POST /runs/{id}/fork`, `POST /signals/waiting`) | `github.com/ubgo/workflow/admin` | [operations › Act on runs](../admin/operations.md#step-3-act-on-runs) | — |
+| Reset, fork and signal-waiting from the command line (`workflow reset`, `workflow fork`, `workflow signal-waiting`) | `cli` | [cli › Re-run from a step or fork a run](../admin/cli.md#re-run-from-a-step-or-fork-a-run) | — |
 
 ## Extending
 
@@ -517,3 +540,4 @@ Your own drivers, stores, plugins and middleware.
 | Write a driver | `workflow` | [writing-a-driver › What a driver implements](../extending/writing-a-driver.md#what-a-driver-implements) | [custom-driver](../../examples/custom-driver/) |
 | Bring your own store for unique locks, debounce state, circuits, blobs or batches | `middleware`, `batch` | [custom-stores › Bring your own store](../extending/custom-stores.md#bring-your-own-store) | [custom-plugin](../../examples/custom-plugin/) |
 | Write a plugin | `workflow` | [writing-a-plugin › Write a plugin](../extending/writing-a-plugin.md#write-a-plugin) | [custom-plugin](../../examples/custom-plugin/) |
+| A plugin that binds the client it wraps (`ClientBinder`) | `workflow` | [escalation › Handle signals between steps](../workflows/escalation.md#handle-signals-between-steps) | — |
