@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -761,12 +762,14 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 		delete(h.live, s.Name)
 		h.mu.Unlock()
 	}()
-	beat := make(chan struct{}, 1)
+	// lastBeat is the clock's UnixNano at the latest heartbeat (the start
+	// counts as one). A beat stores it at once, in the handler's goroutine,
+	// and the watchdog below re-checks it when its timer fires, so a beat
+	// made in time never loses to a timer the watchdog has not seen yet.
+	var lastBeat atomic.Int64
+	lastBeat.Store(c.clk.Now().UnixNano())
 	actx = workflow.WithHeartbeater(actx, workflow.HeartbeatFunc(func(context.Context, []byte) error {
-		select {
-		case beat <- struct{}{}:
-		default:
-		}
+		lastBeat.Store(c.clk.Now().UnixNano())
 		return c.renew(h)
 	}))
 	if d > 0 {
@@ -782,19 +785,21 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 	}
 	if hb := s.HeartbeatTimeout; hb > 0 {
 		go func() {
-			tm := c.clk.NewTimer(hb)
+			wait := hb
 			for {
+				tm := c.clk.NewTimer(wait)
 				select {
-				case <-beat:
-					tm.Stop()
-					tm = c.clk.NewTimer(hb)
 				case <-tm.C():
-					cancel(errHeartbeatTimeout)
-					return
 				case <-actx.Done():
 					tm.Stop()
 					return
 				}
+				since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
+				if since >= hb {
+					cancel(errHeartbeatTimeout)
+					return
+				}
+				wait = hb - since
 			}
 		}()
 	}
