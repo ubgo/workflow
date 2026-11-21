@@ -320,6 +320,81 @@ func TestCancelChildren(t *testing.T) {
 	}
 }
 
+// noRunStates stands for a driver without CapRunStates (Hatchet): it
+// has no StatusRetrying, so its CancelAll refuses a query naming it, as
+// hatchet.checkRunStates does, instead of answering for runs it cannot
+// tell apart.
+type noRunStates struct{ workflow.Client }
+
+func (n noRunStates) Capabilities() workflow.Caps {
+	return n.Client.Capabilities().Without(workflow.CapRunStates)
+}
+
+func (n noRunStates) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	if slices.Contains(q.Statuses, workflow.StatusRetrying) {
+		return 0, &workflow.UnsupportedError{Field: "RunQuery.Statuses", Missing: workflow.CapRunStates, Reason: "no retrying status"}
+	}
+	return n.Client.(workflow.BulkCanceller).CancelAll(ctx, q)
+}
+
+// TestCancelChildrenWithoutRunStates: on a client without CapRunStates
+// CancelChildren asks only for statuses the client can filter (a run in
+// retry backoff reads queued or running there, so it is still matched),
+// and cancels the unfinished children instead of being refused.
+func TestCancelChildrenWithoutRunStates(t *testing.T) {
+	g := newGate()
+	var c workflow.Client
+	runID := make(chan workflow.RunID, 1)
+	parent := workflow.Workflow{Name: "parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		if _, err := workflow.Spawn(ctx, c, "kids", childJobs("hold", "hold")); err != nil {
+			return nil, err
+		}
+		info, _ := workflow.StepInfoFrom(ctx)
+		runID <- info.RunID
+		return nil, nil
+	}}}}
+	c = flowClient(t, workflow.NewMemoryJournal(), g.workflow(), parent)
+	waitRun(t, c, enqueue(t, c, workflow.Job{Workflow: "parent"}))
+	n, err := workflow.CancelChildren(context.Background(), noRunStates{c}, <-runID, "fan")
+	if err != nil || n != 2 {
+		t.Fatalf("cancelled %d, %v; want the 2 unfinished children", n, err)
+	}
+}
+
+// TestCancelChildrenDelayed: a child spawned with a later RunAt is
+// StatusScheduled, which is unfinished, so CancelChildren cancels it too.
+func TestCancelChildrenDelayed(t *testing.T) {
+	g := newGate()
+	var c workflow.Client
+	runID := make(chan workflow.RunID, 1)
+	refs := make(chan []workflow.RunRef, 1)
+	parent := workflow.Workflow{Name: "parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		jobs := childJobs("ok")
+		jobs[0].RunAt = time.Now().Add(time.Hour)
+		r, err := workflow.Spawn(ctx, c, "later", jobs)
+		if err != nil {
+			return nil, err
+		}
+		info, _ := workflow.StepInfoFrom(ctx)
+		runID <- info.RunID
+		refs <- r
+		return nil, nil
+	}}}}
+	c = flowClient(t, workflow.NewMemoryJournal(), g.workflow(), parent)
+	waitRun(t, c, enqueue(t, c, workflow.Job{Workflow: "parent"}))
+	id, child := <-runID, (<-refs)[0]
+	if st, err := c.Status(context.Background(), child); err != nil || st != workflow.StatusScheduled {
+		t.Fatalf("delayed child is %s, %v; want scheduled", st, err)
+	}
+	n, err := workflow.CancelChildren(context.Background(), c, id, "")
+	if err != nil || n != 1 {
+		t.Fatalf("cancelled %d, %v; want the scheduled child", n, err)
+	}
+	if st := waitRun(t, c, child); st != workflow.StatusCancelled {
+		t.Fatalf("delayed child is %s after CancelChildren, want cancelled", st)
+	}
+}
+
 // TestMapRuns is WP-05: pages of items, a bounded number in flight,
 // failures tolerated up to a limit.
 func TestMapRuns(t *testing.T) {

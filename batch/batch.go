@@ -8,8 +8,9 @@
 // # How a batch learns that a job ended
 //
 // Through Sources (see Source), connected by Manager.Attach. Unless
-// WithCompletionSource names them, Attach picks them by what the client can
-// do:
+// WithCompletionSource names them (replacing the defaults; an empty one
+// means none, for an app that calls Manager.RunFinished itself), Attach
+// picks them by what the client can do:
 //
 //   - a client declaring workflow.CapRunFinished (the memory driver): the
 //     run-finished hook alone (HookSource), because every run end is
@@ -255,7 +256,8 @@ type Manager struct {
 	pollEvery     time.Duration // interval of the default PollSource
 	callbackRetry time.Duration // claim length of a callback enqueue
 	manualRetry   bool          // no retry loop; the app calls RetryCallbacks
-	sources       []Source      // nil means defaultSources
+	sources       []Source      // the Sources WithCompletionSource named; used when sourcesSet
+	sourcesSet    bool          // WithCompletionSource was given; false means defaultSources
 	newID         func() (ID, error)
 	dispatchLease time.Duration // how long a dispatch may go without writing before a resumer takes over
 	resumable     bool          // keep job specs on the one-Enqueue-per-job path too
@@ -291,9 +293,16 @@ func WithStatusPoll(interval time.Duration) Option {
 
 // WithCompletionSource replaces the default Sources with srcs, for example
 // a native engine feed, or HookSource plus PollSource on a client whose
-// hook is guaranteed but which the app wants double-checked.
+// hook is guaranteed but which the app wants double-checked. Name every
+// Source in one call: a later WithCompletionSource replaces an earlier
+// one. With no srcs Attach connects no Source at all, for an app that
+// reports run ends itself through Manager.RunFinished; leave the option
+// out to keep the defaults.
 func WithCompletionSource(srcs ...Source) Option {
-	return func(m *Manager) { m.sources = append(m.sources, srcs...) }
+	return func(m *Manager) {
+		m.sources = slices.Clone(srcs)
+		m.sourcesSet = true
+	}
 }
 
 // WithIDFunc makes batch IDs with fn instead of 128 random bits as hex,
@@ -550,7 +559,10 @@ func (m *Manager) finishDispatch(ctx context.Context, id ID, owner string) error
 // abortJobs ends a dispatch that failed: it saves refs[k] for idxs[k]
 // where a ref is known (a group that partly started), records the other
 // jobs of idxs as cancelled, cancels the batch, marks it dispatched and
-// carries out the effects (which cancel the started jobs).
+// carries out the effects (which cancel the started jobs). A group that
+// failed with no refs at all (GroupRunner allows it) may have started
+// some of idxs without telling which, so those children are cancelled by
+// their LabelBatch label (cancelUnplaced).
 func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef) error {
 	var eff effects
 	var claimed []PendingCallback
@@ -576,7 +588,35 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 	if err != nil {
 		return fmt.Errorf("batch %s: abort dispatch: %w", id, err)
 	}
-	return m.apply(ctx, st, eff, claimed)
+	err = m.apply(ctx, st, eff, claimed)
+	if refs == nil && len(idxs) > 0 && st.Grouped {
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	}
+	return err
+}
+
+// cancelUnplaced cancels every unfinished run labelled with batch id, for
+// children a failed group started without returning their refs. It needs
+// a BulkCanceller with CapCancelAll; without one the children cannot be
+// found, and the UnsupportedError returned says that they run on unseen
+// by the batch. Retrying is asked for only with CapRunStates, the status
+// a driver without it does not have (a run in backoff reads queued or
+// running there).
+func (m *Manager) cancelUnplaced(ctx context.Context, id ID) error {
+	caps := m.client.Capabilities()
+	bc, ok := m.client.(workflow.BulkCanceller)
+	if !ok || !caps.Has(workflow.CapCancelAll) {
+		return &workflow.UnsupportedError{Field: "batch abort", Missing: workflow.CapCancelAll,
+			Reason: "the group failed part-way without refs, so the children it started cannot be found to cancel and run on unseen by batch " + string(id)}
+	}
+	statuses := []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting}
+	if caps.Has(workflow.CapRunStates) {
+		statuses = append(statuses, workflow.StatusRetrying)
+	}
+	if _, err := bc.CancelAll(owned(ctx), workflow.RunQuery{Labels: map[string]string{LabelBatch: string(id)}, Statuses: statuses}); err != nil {
+		return fmt.Errorf("batch %s: cancel the children a failed group started: %w", id, err)
+	}
+	return nil
 }
 
 // Attach connects the Manager's Sources (see the package doc for the
@@ -588,7 +628,7 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 // from any Source is returned and the Manager must not be used.
 func (m *Manager) Attach(ctx context.Context) error {
 	srcs := m.sources
-	if srcs == nil {
+	if !m.sourcesSet {
 		srcs = m.defaultSources()
 	}
 	polled := false

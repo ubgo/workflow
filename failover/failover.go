@@ -229,10 +229,13 @@ func (f *Client) backend(s side) workflow.Client {
 }
 
 // Capabilities is what both backends can do, except the schedule family
-// (CapCron, CapScheduleWhen, CapScheduleWindow, CapSchedulePause,
-// CapScheduleList, CapTickEvents), which is the primary's alone unless
-// WithSchedulesOnBoth puts schedules on both: only the backends holding
-// schedules fire, condition, report, list or pause them. Every other
+// (scheduleCaps: CapCron, CapCronSeconds, CapScheduleWhen,
+// CapScheduleWindow, CapScheduleActive, CapSchedulePause,
+// CapScheduleList, CapScheduleTrigger, CapScheduleHistory,
+// CapScheduleKeep, CapTickEvents, CapTickTime and CapOverlapSkip), which
+// is the primary's alone unless WithSchedulesOnBoth puts schedules on
+// both: only the backends holding schedules fire, condition, report,
+// list, trigger, keep or pause them. Every other
 // capability, the run query and pause families included, is the
 // intersection, because a run may sit on either backend. CapClosure and
 // CapWorkerScale are the primary's alone: a closure cannot be retried on
