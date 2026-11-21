@@ -764,7 +764,7 @@ cd examples
 go test -v -run 'Contract|Driver' ./recorder-custom-store
 ```
 
-Every case passes; `prune_two_stages` and `prune_archive_failure` skip, because `docStore` has no retention.
+Every case passes; `prune_two_stages`, `prune_archive_failure` and `prune_cancelled_archives_once` skip, because `docStore` has no retention.
 
 ## Pitfalls
 
