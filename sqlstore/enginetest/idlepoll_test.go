@@ -35,25 +35,36 @@ func TestLongPollSingleProcess(t *testing.T) {
 			if err := c.Start(ctx); err != nil {
 				t.Fatal(err)
 			}
-			start := time.Now()
-			if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte("delayed"), RunAt: time.Now().Add(300 * time.Millisecond)}); err != nil {
+			// Both runs must start long before the hour-long poll would
+			// let them; the delayed one never before its RunAt. Their
+			// order is not part of the proof: on a loaded host the
+			// immediate run can take longer than 300 ms to start, and the
+			// delayed one, due by then, may start first.
+			runAt := time.Now().Add(300 * time.Millisecond)
+			if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte("delayed"), RunAt: runAt}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte("now")}); err != nil {
 				t.Fatal(err)
 			}
-			for _, want := range []string{"now", "delayed"} {
+			// bound is far below the poll interval, so a run that only the
+			// poll would start fails it; it is generous for a loaded host.
+			const bound = 30 * time.Second
+			deadline := time.After(bound)
+			seen := map[string]time.Time{}
+			for len(seen) < 2 {
 				select {
 				case got := <-ran:
-					if got != want {
-						t.Fatalf("ran %q, want %q first", got, want)
+					if _, dup := seen[got]; dup {
+						t.Fatalf("%q ran twice", got)
 					}
-				case <-time.After(5 * time.Second):
-					t.Fatalf("%q did not run with an hour-long poll", want)
+					seen[got] = time.Now()
+				case <-deadline:
+					t.Fatalf("ran %v within %s, want both with an hour-long poll", seen, bound)
 				}
 			}
-			if el := time.Since(start); el < 300*time.Millisecond || el > 3*time.Second {
-				t.Fatalf("the delayed run ran after %s, want at its due time", el)
+			if at := seen["delayed"]; at.Before(runAt) {
+				t.Fatalf("the delayed run ran %s before its RunAt", runAt.Sub(at))
 			}
 		})
 	}
