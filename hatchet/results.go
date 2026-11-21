@@ -139,13 +139,20 @@ func shapeWorkflow(name string, d *rest.V1WorkflowRunDetails) workflow.Workflow 
 	return wf
 }
 
-// rescheduleGuard is how close to its due time a delayed start may no
-// longer be moved. The engine loads a scheduled run into its ticker
-// about five seconds before the run is due (polling every five seconds)
-// and then fires it at the time it loaded, whatever a later change says
-// (internal/services/ticker in hatchet v0.110.5), so a move inside that
-// window could leave the run firing at the old time.
-const rescheduleGuard = 15 * time.Second
+// dueGuard is how close to its due time a delayed start may already be
+// held by the engine. The engine's ticker polls every five seconds for
+// scheduled runs due within the next five seconds and arms a timer for
+// each; it notices a later delete only at its next poll, which comes at
+// or after the due time, so the armed timer fires first and the run
+// starts (internal/services/ticker in hatchet v0.110.5; the live probe
+// TestLateCancelLive measured it with a plain delete: 3s before due let 6
+// of 15 runs start, 1s before 12 of 15, 0.5s before 13 of 15, 5s and 10s
+// before none). 15s is
+// that lookahead plus room for clock skew between this host and the
+// engine's database and for a slow poll. Reschedule refuses a start due
+// within it; Cancel deletes such a start and then watches for the run it
+// may still fire (settleLate).
+const dueGuard = 15 * time.Second
 
 // Reschedule moves a delayed start that has not fired to at
 // (workflow.RunRescheduler); a zero or past at means now. The RunRef,
@@ -153,7 +160,7 @@ const rescheduleGuard = 15 * time.Second
 // scheduled run again at the new time with the same token and metadata,
 // plus the new due time (metaRunAt), then deletes the old one, so the
 // run's ScheduledID is unchanged. A run that has fired, or is due within
-// rescheduleGuard (15s), returns ErrWrongState; an unknown or cancelled
+// dueGuard (15s), returns ErrWrongState; an unknown or cancelled
 // one ErrNotFound.
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	sdk, err := c.ready()
@@ -185,8 +192,8 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %q was cancelled", workflow.ErrNotFound, ref.ScheduledID)
 	}
 	now := time.Now() // compared with the engine's due time: wall clock
-	if old.TriggerAt.Sub(now) < rescheduleGuard {
-		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %s is due within %s and may already be firing", workflow.ErrWrongState, ref.ScheduledID, rescheduleGuard)
+	if old.TriggerAt.Sub(now) < dueGuard {
+		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %s is due within %s and may already be firing", workflow.ErrWrongState, ref.ScheduledID, dueGuard)
 	}
 	if at.Before(now) {
 		at = now

@@ -344,16 +344,45 @@ func (s *spec) firstOnDay(day, after time.Time, loc *time.Location) (time.Time, 
 	if s.month&(1<<uint(day.Month())) == 0 || !s.dayMatches(day) {
 		return time.Time{}, false
 	}
-	periodic := s.hour == allHours
+	return firstFire(day, after, loc, s.hour, s.minute)
+}
+
+// firstFire returns the earliest fire instant strictly after `after` among
+// the wall times hour:minute (bitsets) of the civil day `day`; false when
+// none is after it.
+//
+// Each wall time is mapped to instants by resolve, which owns the DST
+// rules; firstFire only decides which wall times are worth resolving.
+// An instant of wall time w is w minus an offset in force near the day, so
+// it lies within [w-hi, w-lo], where lo and hi are the smallest and largest
+// offsets around the day (offsetBounds). Walking wall times in ascending
+// order, a wall time whose latest instant is not after `after` is skipped
+// unresolved, and the walk stops at the first wall time whose earliest
+// instant cannot beat the best found. An every-minute schedule so resolves
+// one or two wall times a day instead of 1,440.
+func firstFire(day, after time.Time, loc *time.Location, hour, minute uint64) (time.Time, bool) {
+	periodic := hour == allHours
+	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC).Unix()
+	lo, hi := offsetBounds(base, loc)
+	// Fire instants are whole seconds, so t > after exactly when t's
+	// seconds exceed after's (Unix floors, for negative instants too).
+	floor := after.Unix()
 	var best time.Time
 	found := false
 	for h := 0; h < 24; h++ {
-		if s.hour&(1<<uint(h)) == 0 {
+		if hour&(1<<uint(h)) == 0 {
 			continue
 		}
 		for m := 0; m < 60; m++ {
-			if s.minute&(1<<uint(m)) == 0 {
+			if minute&(1<<uint(m)) == 0 {
 				continue
+			}
+			w := base + int64(h*3600+m*60)
+			if found && w-int64(hi) >= best.Unix() {
+				return best, true // no later wall time can fire earlier
+			}
+			if w-int64(lo) <= floor {
+				continue // every instant of w is at or before `after`
 			}
 			for _, t := range resolve(day.Year(), day.Month(), day.Day(), h, m, loc, periodic) {
 				if t.After(after) && (!found || t.Before(best)) {
@@ -363,6 +392,30 @@ func (s *spec) firstOnDay(day, after time.Time, loc *time.Location) (time.Time, 
 		}
 	}
 	return best, found
+}
+
+// offsetBounds returns the smallest and largest UTC offsets (seconds) loc
+// is at from two days before the civil day starting at base (Unix seconds
+// of its midnight read as UTC) to three days after it. That window holds
+// every instant resolve reads an offset at for a wall time of the day (a
+// day either side of it), so every instant resolve returns for the day's
+// wall times lies within [wall-hi, wall-lo]. It walks loc's zone periods
+// with ZoneBounds: one or two for most days.
+func offsetBounds(base int64, loc *time.Location) (lo, hi int) {
+	end := base + 3*86400
+	t := time.Unix(base-2*86400, 0).In(loc)
+	_, lo = t.Zone()
+	hi = lo
+	for range 64 { // a zone changes a handful of times in five days at most
+		_, until := t.ZoneBounds()
+		if until.IsZero() || until.Unix() > end || !until.After(t) {
+			break
+		}
+		t = until
+		_, off := t.Zone()
+		lo, hi = min(lo, off), max(hi, off)
+	}
+	return lo, hi
 }
 
 // resolve maps a wall time in loc to the instants it fires at.

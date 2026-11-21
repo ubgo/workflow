@@ -227,12 +227,19 @@
 //     clock), DebounceStore (middleware.DebounceStore: Swap is one
 //     script), DataStore (workflow.DataStore, folder, workflow and
 //     global data: a hash per value with its version, a conditional Put
-//     is one script) and Inbox (workflow.Inbox, idempotent consumption:
+//     is one script), Inbox (workflow.Inbox, idempotent consumption:
 //     a hash per consumer and message, claim, complete and release each
-//     one script) keep state other processes share; each has a
-//     constructor (NewJournalStore, NewBucketStore, NewDebounceStore,
-//     NewDataStore, NewInbox) and a Client method over the client's
-//     prefix.
+//     one script) and DisableStore (middleware.DisableStore, the
+//     switches of middleware.AutoDisable: a hash per key, Fail one
+//     script, so exactly one of many concurrent Fails reports the
+//     crossing and an endpoint is switched off for every worker) and
+//     LineageStore (events.LineageStore, the dataset versions and trigger
+//     consumption of events.Datasets: a record is one script that keeps
+//     the first of equal facts, indexed by sorted sets read newest first)
+//     keep state other processes share; each has a constructor
+//     (NewJournalStore, NewBucketStore, NewDebounceStore, NewDataStore,
+//     NewInbox, NewDisableStore, NewLineageStore) and a Client method over
+//     the client's prefix.
 //   - WithEnqueueOnly makes a client for web nodes that enqueue and never
 //     run work; Register is optional there.
 package redis

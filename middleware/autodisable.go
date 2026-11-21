@@ -16,9 +16,11 @@ var ErrEndpointDisabled = errors.New("workflow/middleware: endpoint disabled")
 // DisableStore keeps AutoDisable's state per key: a count of consecutive
 // failures and whether the key is disabled. Its reach is AutoDisable's:
 // MemoryDisable counts within one process; a store shared by every
-// worker (a SQL table, Redis) counts across them. Fail must be atomic
-// (count and maybe disable in one step), so exactly one caller sees the
-// crossing and onDisable runs once.
+// worker counts across them and switches a key off for all of them
+// (sqlstore.DisableStore on SQLite, Postgres or MySQL, redis.DisableStore).
+// Fail must be atomic (count and maybe disable in one step), so exactly
+// one caller sees the crossing and onDisable runs once, fleet-wide.
+// workflowtest.DisableStoreContract checks an implementation.
 type DisableStore interface {
 	// Disabled reports whether key is disabled.
 	Disabled(ctx context.Context, key string) (bool, error)
@@ -112,7 +114,9 @@ func AutoDisable(store DisableStore, key func(workflow.StepInfo, []byte) string,
 }
 
 // MemoryDisable is a DisableStore inside one process, for tests and a
-// single worker. Use NewMemoryDisable.
+// single worker; workers in several processes each count apart with
+// their own, so give them a shared store instead (see DisableStore). Use
+// NewMemoryDisable.
 type MemoryDisable struct {
 	mu   sync.Mutex
 	keys map[string]disableState

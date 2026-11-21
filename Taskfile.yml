@@ -48,8 +48,10 @@ tasks:
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   # -race because the drivers and the fake clock are concurrent code.
-  # -timeout 30m as sqlstore:test:pg: the SQLite engine suite alone runs
-  # past Go's 10-minute default on a loaded machine without hanging.
+  # -timeout 30m: the SQLite engine suite ran past Go's 10-minute default
+  # on a loaded machine (13 to 23 minutes in one process); split into shard
+  # processes (sqlstore/enginetest/shards) its longest package takes about
+  # 5, and the timeout keeps the margin for a machine loaded further.
   test:run:
     cmds: ['go test -race -timeout 30m $(go list -m | sed "s|$|/...|")']
 
@@ -206,15 +208,19 @@ tasks:
 
   docs:words:
     desc: Fail when a forbidden word appears in the Markdown under docs/ and examples/, the top-level public Markdown files or any Go file git tracks or would track (ignored private overlays such as docsi are skipped); the list comes from FORBIDDEN_WORDS or the private docsi/forbidden-words.txt (one word per line), and the check is skipped when neither exists
-    vars:
-      # The list itself is private: writing the names here would publish
-      # the very words the check keeps out of the public tree.
-      WORDS:
-        sh: 'if [ -n "${FORBIDDEN_WORDS:-}" ]; then echo "$FORBIDDEN_WORDS"; elif [ -f docsi/forbidden-words.txt ]; then grep -v "^#" docsi/forbidden-words.txt | tr "\n" "," ; fi'
+    # The list itself is private: writing the names here would publish the
+    # very words the check keeps out of the public tree. It is read by the
+    # shell and handed to the checker in DOCCHECK_WORDS, never through a
+    # Task variable or an argument, because Task echoes each command with
+    # its variables expanded (and --verbose prints them again), which put
+    # the whole list into every log of `task check`.
     cmds:
       - |
-        if [ -z "{{.WORDS}}" ]; then echo "docs:words: no word list (FORBIDDEN_WORDS or docsi/forbidden-words.txt), skipped"; exit 0; fi
-        git ls-files --cached --others --exclude-standard -z -- '*.go' 'docs/*.md' 'examples/*.md' README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md | xargs -0 go run ./examples/internal/doccheck/words -words "{{.WORDS}}"
+        if [ -n "${FORBIDDEN_WORDS:-}" ]; then DOCCHECK_WORDS="$FORBIDDEN_WORDS"
+        elif [ -f docsi/forbidden-words.txt ]; then DOCCHECK_WORDS=$(grep -v "^#" docsi/forbidden-words.txt | tr "\n" ",")
+        else echo "docs:words: no word list (FORBIDDEN_WORDS or docsi/forbidden-words.txt), skipped"; exit 0; fi
+        export DOCCHECK_WORDS
+        git ls-files --cached --others --exclude-standard -z -- '*.go' 'docs/*.md' 'examples/*.md' README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md | xargs -0 go run ./examples/internal/doccheck/words -words-env DOCCHECK_WORDS
 
   docs:snippets:sync:
     desc: Rewrite every stale marked code block in README.md, docs/ and examples/ from its source region

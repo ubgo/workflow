@@ -41,6 +41,7 @@ Cancelling the context passed to `Start` shuts the client down too. Either way, 
 | `WithRecycle(r)` | Drain and stop at a `workflow.Recycle` limit; unfinished runs end cancelled, since nothing outlives the client ([Worker recycling](../operations/recycling.md)). | off |
 | `WithNodeID(id)` | The name this client gives itself in `StepInfo.Node`, `RunInfo.AttemptedBy` and `Nodes` ([Nodes and health](../operations/nodes.md)). | `workflow.DefaultNodeID()`, host name and process ID |
 | `WithPayloadLimit(n)` | A payload cap in bytes that `Enqueue` checks, refusing a bigger job with a `*workflow.PayloadTooLargeError` ([Typed payloads](../jobs/payloads.md#cap-the-payload-size)); `0` means no cap. | no cap |
+| `WithScheduleHeap()` | Run every schedule, declared and run-time, from one scheduler goroutine and one clock timer: a heap ordered by next tick, the timer armed for the earliest. Fires exactly what the default fires; for thousands of schedules in one process. On a fake clock all schedules then share one pending timer, and schedules due together are handled one after another. | off: a goroutine and a timer per schedule |
 
 Handlers still run on real goroutines with a fake clock; only the waiting is simulated. In tests, `Client.RunAll` runs every delay, backoff, snooze and sleep at once instead ([Run everything now in tests](../testing/run-all.md)). See [Time](../concepts/time.md) and [Drive time in tests](../testing/fake-clock.md#drive-time-in-tests).
 
@@ -99,6 +100,8 @@ The recorder's end-to-end suite runs its driver cases on this driver with `sqlre
 - A workflow with a `workflow.KeyExpr` concurrency key registers fine and is refused at `Start`, not at `Register`.
 - `Stop` (or cancelling the `Start` context) cancels every unfinished run; observers then see `StatusCancelled` with a cancelled ctx.
 - With a fake clock, nothing that waits on time moves until the test calls `Advance` or `Set`.
+- `BlockUntil` counts timers, and the default arms one per schedule, so a test with three schedules waits for three. With `WithScheduleHeap` the schedules share one timer: wait for one plus whatever else the test arms, or the wait never ends.
+- With `WithScheduleHeap`, a slow `ScheduleWhen` delays the other schedules due at the same moment, since one goroutine handles them in turn. Keep it fast, or leave the option off.
 
 ## Related
 

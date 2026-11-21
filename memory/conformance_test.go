@@ -21,3 +21,16 @@ func TestConformance(t *testing.T) {
 		return workflowtest.Instance{Client: memory.New(memory.WithClock(clk), memory.WithQueues(qs...)), Clock: clk}
 	}})
 }
+
+// TestConformanceScheduleHeap runs the same suite with WithScheduleHeap, so
+// every cron, schedule, misfire, pause, overlap and tick case also holds
+// when one scheduler goroutine and one timer serve every schedule.
+func TestConformanceScheduleHeap(t *testing.T) {
+	workflowtest.Run(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
+		clk := clock.NewFake(start)
+		return workflowtest.Instance{Client: memory.New(memory.WithClock(clk), memory.WithScheduleHeap()), Clock: clk}
+	}, NewWithQueues: func(t *testing.T, qs []workflow.QueueConfig) workflowtest.Instance {
+		clk := clock.NewFake(start)
+		return workflowtest.Instance{Client: memory.New(memory.WithClock(clk), memory.WithQueues(qs...), memory.WithScheduleHeap()), Clock: clk}
+	}})
+}

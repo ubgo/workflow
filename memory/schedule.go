@@ -41,6 +41,7 @@ type schedule struct {
 	keep    int                   // Schedule.KeepRuns; zero keeps every run
 	tenant  string                // Schedule.Tenant: Job.Tenant of every fired run
 	fired   []*run                // the runs it fired, oldest first, while KeepRuns is set
+	caught  time.Time             // when it last caught up: its next tick is the first after this
 }
 
 // activeSchedule limits a cron schedule to an Active period, so the loop,
@@ -139,25 +140,32 @@ func effectiveMisfire(m workflow.Misfire) workflow.Misfire {
 // with All.
 func (c *Client) schedPausedLocked(s *schedule) bool { return s.paused || c.schedPaused }
 
-// startSchedule runs s until it is halted or the client stops. Callers
-// hold Client.mu.
+// startSchedule runs s until it is halted or the client stops: on the
+// scheduler's heap with WithScheduleHeap, else on a goroutine of its own.
+// Callers hold Client.mu.
 //
-// The loop keeps two instants: last, when it last caught up, and seen,
-// the newest tick it has armed a timer for. On each wake it asks the
-// misfire policy (workflow.Misfire.Plan) which ticks in (last, now] to
+// A schedule keeps one instant, caught, when it last caught up; its next
+// tick is the first after it. On each wake wakeScheduleLocked asks the
+// misfire policy (workflow.Misfire.Plan) which ticks in (caught, now] to
 // fire; each fired tick then passes the schedule's windows and the
 // workflow's ScheduleWhen, or is reported skipped. While the schedule is
-// paused, each wake reports its tick skipped and moves last past it, so
+// paused, each wake reports its tick skipped and moves caught past it, so
 // a tick that fell due during a pause never fires, not even on resume:
 // a pause means "not now", not "later".
 func (c *Client) startSchedule(s *schedule) {
+	s.caught = c.clk.Now()
+	if c.schedHeap {
+		c.pushScheduleLocked(s, true)
+		return
+	}
 	c.wg.Add(1)
-	last := c.clk.Now()
-	seen := last
 	go func() {
 		defer c.wg.Done()
 		for {
-			next := s.s.Next(seen, s.loc)
+			c.mu.Lock()
+			caught := s.caught
+			c.mu.Unlock()
+			next := s.s.Next(caught, s.loc)
 			if next.IsZero() {
 				c.log.Warn("memory: cron schedule never fires again", "workflow", s.workflow, "cron", s.s.String())
 				return
@@ -177,36 +185,58 @@ func (c *Client) startSchedule(s *schedule) {
 				return
 			}
 			c.mu.Lock()
-			if s.halted {
-				c.mu.Unlock()
+			w, ok := c.wakeScheduleLocked(s)
+			c.mu.Unlock()
+			if !ok {
 				return
 			}
-			now := c.clk.Now()
-			if c.schedPausedLocked(s) {
-				// Every tick up to now is the pause's: report the newest
-				// and catch up past them all, so none fires on resume.
-				c.queueTickLocked(s.tick(workflow.LastTick(s.s, last, now, s.loc), workflow.TickSkipped, workflow.TickReasonPaused))
-				last, seen = now, now
-				c.mu.Unlock()
-				continue
+			if w.fire {
+				c.fire(s, w.reg, w.ticks, w.windows, w.labels, w.input)
 			}
-			fire, dropped := effectiveMisfire(s.misfire).Plan(s.s, last, now, s.loc)
-			if dropped > 0 {
-				newest := now
-				if len(fire) > 0 {
-					newest = fire[0].Add(-time.Nanosecond)
-				}
-				mt := s.tick(workflow.LastTick(s.s, last, newest, s.loc), workflow.TickMisfired, "")
-				mt.Missed = dropped
-				c.queueTickLocked(mt)
-			}
-			last, seen = now, now
-			windows, labels, input := s.windows, s.labels, s.input
-			reg := c.wfs[s.workflow]
-			c.mu.Unlock()
-			c.fire(s, reg, fire, windows, labels, input)
 		}
 	}()
+}
+
+// wake is what one wake of a schedule decided: the ticks to fire, with
+// the schedule's settings read under the lock for fire.
+type wake struct {
+	fire    bool
+	ticks   []time.Time
+	reg     *registered
+	windows workflow.Windows
+	labels  map[string]string
+	input   []byte
+}
+
+// wakeScheduleLocked catches s up to the clock: it reports a paused
+// schedule's tick skipped, or plans the missed ticks by the misfire
+// policy (reporting the dropped ones), and moves caught to now. ok is
+// false when s was halted. Callers hold Client.mu; fire runs after they
+// release it.
+func (c *Client) wakeScheduleLocked(s *schedule) (w wake, ok bool) {
+	if s.halted {
+		return wake{}, false
+	}
+	now := c.clk.Now()
+	if c.schedPausedLocked(s) {
+		// Every tick up to now is the pause's: report the newest and
+		// catch up past them all, so none fires on resume.
+		c.queueTickLocked(s.tick(workflow.LastTick(s.s, s.caught, now, s.loc), workflow.TickSkipped, workflow.TickReasonPaused))
+		s.caught = now
+		return wake{}, true
+	}
+	fire, dropped := effectiveMisfire(s.misfire).Plan(s.s, s.caught, now, s.loc)
+	if dropped > 0 {
+		newest := now
+		if len(fire) > 0 {
+			newest = fire[0].Add(-time.Nanosecond)
+		}
+		mt := s.tick(workflow.LastTick(s.s, s.caught, newest, s.loc), workflow.TickMisfired, "")
+		mt.Missed = dropped
+		c.queueTickLocked(mt)
+	}
+	s.caught = now
+	return wake{fire: true, ticks: fire, reg: c.wfs[s.workflow], windows: s.windows, labels: s.labels, input: s.input}, true
 }
 
 // tick builds a Tick of s. Callers hold Client.mu.
@@ -320,6 +350,7 @@ func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.Sc
 			if !old.declared && old.workflow == s.Workflow && old.name == s.Name {
 				id, paused, last = oid, old.paused && !old.halted, old.last
 				old.halt()
+				c.pokeSchedulerLocked()
 				break
 			}
 		}
@@ -371,6 +402,7 @@ func (c *Client) Unschedule(_ context.Context, id workflow.ScheduleID) error {
 		return fmt.Errorf("%w: schedule %q is declared by Workflow.Cron of %q; remove it there or PauseSchedule it", workflow.ErrInvalid, id, sc.workflow)
 	}
 	sc.halt() // the entry stays as a tombstone so a second call is a no-op
+	c.pokeSchedulerLocked()
 	return nil
 }
 

@@ -40,10 +40,41 @@ func Run(t *testing.T, h Harness) {
 		t.Fatal("workflowtest: Harness.New is nil")
 	}
 	nonce := newNonce()
-	groups := []struct {
-		name  string
-		cases []testCase
-	}{
+	for _, group := range allGroups() {
+		if h.Groups != nil && !h.Groups(group.name) {
+			continue
+		}
+		t.Run(group.name, func(t *testing.T) {
+			for _, tc := range group.cases {
+				t.Run(tc.name, func(t *testing.T) {
+					tc.run(newEnv(t, &h, nonce))
+				})
+			}
+		})
+	}
+}
+
+// GroupNames returns the name of every group Run executes, in Run order:
+// the first element of each group's subtest path under the suite. A
+// driver that shards the suite with Harness.Groups can check its shard
+// table against it.
+func GroupNames() []string {
+	var out []string
+	for _, g := range allGroups() {
+		out = append(out, g.name)
+	}
+	return out
+}
+
+// suiteGroup is one named group of cases.
+type suiteGroup struct {
+	name  string
+	cases []testCase
+}
+
+// allGroups returns every group in Run order.
+func allGroups() []suiteGroup {
+	groups := []suiteGroup{
 		{"lifecycle", lifecycleCases},
 		{"run", runCases},
 		{"idempotency", idempotencyCases},
@@ -89,15 +120,7 @@ func Run(t *testing.T, h Harness) {
 		{"discardexhaust", discardExhaustCases},
 		{"drainreport", drainReportCases},
 	}
-	for _, group := range append(append(groups, p5Groups...), p3Groups...) {
-		t.Run(group.name, func(t *testing.T) {
-			for _, tc := range group.cases {
-				t.Run(tc.name, func(t *testing.T) {
-					tc.run(newEnv(t, &h, nonce))
-				})
-			}
-		})
-	}
+	return append(append(groups, p5Groups...), p3Groups...)
 }
 
 // testCase is one named assertion.

@@ -416,6 +416,39 @@
 // message is processed exactly once; expired rows are deleted by the
 // dispatcher's housekeeping or PruneExpired; Client.Inbox or NewInbox,
 // owner ubgo/workflow/sqlstore/inbox.
+//
+// # Endpoint switches
+//
+// DisableStore is a durable middleware.DisableStore, the switches of
+// middleware.AutoDisable: one row per key in <prefix>disabled_endpoints
+// with its count of consecutive failures and whether it is disabled, so
+// the failures of every worker sharing the database count together and an
+// endpoint switched off by one is off for all of them until Enable. Fail
+// is atomic across processes (one upsert computes the new count, the
+// switch and whether this call flipped it from the old row, read back in
+// the same transaction), so of any number of concurrent Fails exactly
+// one reports the crossing and onDisable runs once. Take it from a Client
+// (Client.DisableStore) or build it with NewDisableStore over any *sql.DB;
+// its table has its own migration list (owner
+// ubgo/workflow/sqlstore/disable, 001_disable) in the shared ledger,
+// applied by DisableStore.Migrate and not by Client.Migrate, so an app
+// that never switches endpoints gets no table for it.
+//
+// # Dataset lineage
+//
+// LineageStore is a durable events.LineageStore, where events.Datasets
+// keeps every produced dataset version and every version a trigger
+// consumed: an append-only table <prefix>lineage, so every process
+// sharing the database decides triggers from the same records and the
+// lineage queries answer for the fleet. Record is an insert under a unique
+// hash of the record's identifying fields, so the same fact recorded
+// twice, by any process, keeps the first; Find orders by At (seconds and
+// nanoseconds) and then by recording, newest first, with indexes for a
+// dataset's records by kind, a run's records, and a trigger's records of a
+// dataset. Take it from a Client (Client.LineageStore) or build it with
+// NewLineageStore over any *sql.DB; its table has its own migration list
+// (owner ubgo/workflow/sqlstore/lineage, 001_lineage), applied by
+// LineageStore.Migrate and not by Client.Migrate.
 // Migration 009 adds schedule_tenant:
 // Schedule.Tenant, the Job.Tenant of every run the schedule fires or is
 // triggered to run, reported in ScheduleInfo.Tenant. Migration 010 adds
@@ -456,6 +489,28 @@
 // WithSchema puts the tables in a schema of their own; the migration ledger
 // then stays in the search_path with its rows owned as "<owner>@<schema>".
 // SQLite and MySQL refuse WithSchema.
+//
+// # Which tables Migrate creates
+//
+// Client.Migrate (and MigrationScripts) applies a fixed set of migration
+// lists: the queue's (MigrationOwner) and those of the stores that shipped
+// inside it by v0.2.0, UniqueStore, DebounceStore, OutputStore,
+// JournalStore (which PromiseStore shares), BucketStore, DataStore and
+// Inbox. Every other store has its own list under its own owner in the
+// same <prefix>migrations ledger and is created only by that store's
+// Migrate (or its MigrationScripts): the outbox (outbox.Outbox.Migrate),
+// AggregateStore, DisableStore and LineageStore. The rule that decides it:
+// upgrading the library never makes Client.Migrate create tables an app
+// did not ask for, so a store added from now on always migrates on its
+// own, and an app that uses one calls its Migrate next to Client.Migrate:
+//
+//	if err := c.Migrate(ctx); err != nil { ... }
+//	agg := c.AggregateStore()
+//	if err := agg.Migrate(ctx); err != nil { ... } // Client.Migrate does not create these tables
+//
+// A store's Migrate takes the same ledger lock as Client.Migrate, so both
+// may run from every process at start-up. TestClientMigrateOwnersAreFixed
+// in the engine tests pins the set.
 //
 // # Schema versions
 //

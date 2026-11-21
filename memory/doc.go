@@ -125,6 +125,12 @@
 // reports its ticks as skipped and never fires them, not even on resume;
 // it resumes at its next tick.
 //
+// By default each schedule runs its own goroutine and clock timer.
+// WithScheduleHeap runs them all from one scheduler goroutine and one
+// timer instead (a heap by next tick), for thousands of schedules: the
+// same ticks fire, a fake clock holds one pending timer for all of them,
+// and schedules due together are handled one after another.
+//
 // # Chains, scaling and closures
 //
 // Job.Chain is kept with the run: each step attempt gets a

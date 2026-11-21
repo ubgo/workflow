@@ -1,5 +1,10 @@
 package enginetest
 
+// The tests in this file are plain functions, not Test functions: the
+// package shards/childflows wraps each in a Test function of the same name, so
+// they run as a test binary of their own beside this package (see
+// conformance.go for why processes, not parallel subtests).
+
 import (
 	"context"
 	"testing"
@@ -9,9 +14,9 @@ import (
 	"github.com/ubgo/workflow/workflowtest"
 )
 
-// TestChildFlows proves the child-run helpers (joins, CancelChildren,
+// ChildFlows proves the child-run helpers (joins, CancelChildren,
 // MapRuns) on every engine, with the journal in the same database.
-func TestChildFlows(t *testing.T) {
+func ChildFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			workflowtest.RunChildFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
@@ -37,9 +42,9 @@ func TestChildFlows(t *testing.T) {
 	}
 }
 
-// TestSignalFlows proves the signal helpers on every engine, with
+// SignalFlows proves the signal helpers on every engine, with
 // sqlstore's PromiseStore carrying update replies and promises.
-func TestSignalFlows(t *testing.T) {
+func SignalFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			var sc *sqlstore.Client
@@ -69,9 +74,9 @@ func TestSignalFlows(t *testing.T) {
 	}
 }
 
-// TestPromiseStore is the PromiseStore contract on every engine, through
+// PromiseStore is the PromiseStore contract on every engine, through
 // a standalone store (NewPromiseStore plus its Migrate).
-func TestPromiseStore(t *testing.T) {
+func PromiseStore(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -87,9 +92,9 @@ func TestPromiseStore(t *testing.T) {
 	}
 }
 
-// TestObjectFlows proves virtual objects on every engine, their state in
+// ObjectFlows proves virtual objects on every engine, their state in
 // the journal table.
-func TestObjectFlows(t *testing.T) {
+func ObjectFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			db, prefix := e.open(t)
@@ -105,8 +110,8 @@ func TestObjectFlows(t *testing.T) {
 	}
 }
 
-// TestResetFlows proves ResetRun on every engine.
-func TestResetFlows(t *testing.T) {
+// ResetFlows proves ResetRun on every engine.
+func ResetFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: func(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
@@ -119,8 +124,8 @@ func TestResetFlows(t *testing.T) {
 	}
 }
 
-// TestSlotFlows proves Step.Slots on every engine.
-func TestSlotFlows(t *testing.T) {
+// SlotFlows proves Step.Slots on every engine.
+func SlotFlows(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
 			workflowtest.RunSlotFlows(t, workflowtest.SlotHarness{Start: func(t *testing.T, workers int, wfs ...workflow.Workflow) (workflow.Client, error) {
