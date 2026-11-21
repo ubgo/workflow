@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -103,12 +104,13 @@ func (f failingStore) EndStep(context.Context, recorder.StepEnd) error     { ret
 func (f failingStore) AddEvent(context.Context, recorder.EventWrite) error { return f.fail() }
 func (f failingStore) FinishRun(context.Context, recorder.Finish) error    { return f.fail() }
 func (f failingStore) SetOutcome(context.Context, recorder.OutcomeWrite) error {
-	return errStoreDown
+	return f.fail()
 }
 
 // TestStoreFailureNeverFailsARun: every write fails (or panics), the run
 // still succeeds, each failure reaches OnError, and SetOutcome's own error
-// goes back to the step.
+// (a store panic turned into one) goes back to the step and reaches
+// OnError too.
 func TestStoreFailureNeverFailsARun(t *testing.T) {
 	for _, panics := range []bool{false, true} {
 		t.Run(map[bool]string{false: "errors", true: "panics"}[panics], func(t *testing.T) {
@@ -139,14 +141,14 @@ func TestStoreFailureNeverFailsARun(t *testing.T) {
 			if err != nil || st != workflow.StatusSucceeded {
 				t.Fatalf("run = %q %v", st, err)
 			}
-			if !errors.Is(outcomeErr, errStoreDown) {
+			if !panics && !errors.Is(outcomeErr, errStoreDown) || panics && (outcomeErr == nil || !strings.Contains(outcomeErr.Error(), "store exploded")) {
 				t.Fatalf("SetOutcome = %v, want the store's error", outcomeErr)
 			}
 			waitFor(t, "every write to fail", func() bool {
 				mu.Lock()
 				defer mu.Unlock()
 				return ops[recorder.OpUpsertRun] == 1 && ops[recorder.OpStartStep] == 1 && ops[recorder.OpAddEvent] == 1 &&
-					ops[recorder.OpEndStep] == 1 && ops[recorder.OpFinishRun] == 1
+					ops[recorder.OpEndStep] == 1 && ops[recorder.OpFinishRun] == 1 && ops[recorder.OpSetOutcome] == 1
 			})
 		})
 	}
