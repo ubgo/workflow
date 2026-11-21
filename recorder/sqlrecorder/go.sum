@@ -1,4 +1,4 @@
-github.com/ubgo/workflow v0.2.0 h1:miMY0dGFwDLwyc84VIkZGFKheRqQyquffqTAjshughE=
-github.com/ubgo/workflow v0.2.0/go.mod h1:E7QXQG7/er73Vrx7dX767IhFEpokIxqV5u8rYQaH534=
-github.com/ubgo/workflow/recorder v0.2.0 h1:lGdQS5NTTWLRfyrgOtninxU/MxPgR5RbQmsvsA/b8yM=
-github.com/ubgo/workflow/recorder v0.2.0/go.mod h1:zEgLSBxCK/gm/YSGblmKFsf9gtrzuylJe3gLO1WjgnM=
+github.com/ubgo/workflow v0.2.1 h1:eXwTriqPRs7UmLD7cYdHsFb+S8Fx8lfjHxA4IPoofQc=
+github.com/ubgo/workflow v0.2.1/go.mod h1:E7QXQG7/er73Vrx7dX767IhFEpokIxqV5u8rYQaH534=
+github.com/ubgo/workflow/recorder v0.2.1 h1:dlKdiQA+kQFSY5L6GNludF75fDRNOSW6hK+OEjh0tMs=
+github.com/ubgo/workflow/recorder v0.2.1/go.mod h1:4PXRkYRpbgE8rI+wcWtYuba533TzNV9LxQhLT5fVlRg=
