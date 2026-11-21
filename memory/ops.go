@@ -150,6 +150,21 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 	return c.retryFrom(ctx, ref, "", workflow.ResetOptions{})
 }
 
+// resetRefusal ends the ErrWrongState message of a Retry (reset false)
+// or a ResetRun of a run whose status is not accepted: a refused reset of
+// a succeeded run names the opt-in that would take it.
+func resetRefusal(succeeded, reset bool, opts workflow.ResetOptions) string {
+	switch {
+	case !reset:
+		return "only a failed run can be retried"
+	case opts.Succeeded:
+		return "only a failed or succeeded run can be reset"
+	case succeeded:
+		return "only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)"
+	}
+	return "only a failed run can be reset"
+}
+
 // retryFrom is Retry, and ResetRun when from names a step: the outputs of
 // from and of every step downstream of it are dropped too, so they run
 // again. opts.Succeeded (ResetRunWith) also takes a succeeded run, which
@@ -168,11 +183,7 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 		return workflow.RunRef{}, err
 	}
 	if !workflow.ResetStatusOK(old.status, opts) {
-		what := "a failed run"
-		if opts.Succeeded {
-			what = "a failed or succeeded run"
-		}
-		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; only %s can be retried", workflow.ErrWrongState, old.id, old.status, what)
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; %s", workflow.ErrWrongState, old.id, old.status, resetRefusal(old.status == workflow.StatusSucceeded, from != "", opts))
 	}
 	if old.idem != nil {
 		if holder, held := c.idem[*old.idem]; held && holder != old {

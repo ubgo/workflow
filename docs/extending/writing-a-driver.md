@@ -613,7 +613,7 @@ without a reporter: workflow: ReportProgress unsupported by this driver: the dri
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 188 are skipped, each naming why:
+43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 194 are skipped, each naming why:
 
 ```text
     cases_basic.go:164: driver lacks IdempotencyKey
@@ -630,7 +630,7 @@ go run ./driver-conformance
 ```text
 share 1: lifecycle run retry timeout onfailure
 share 2: cron misfire schedule overlap trigger
-share 3: every other group (57 of 67)
+share 3: every other group (60 of 70)
 ```
 
 ```sh

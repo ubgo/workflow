@@ -306,8 +306,8 @@ func (c *Client) execute(a *attempt) {
 	if a.reclaims > int64(c.maxReclaims) {
 		// A poison step (one that kills its worker every time) would
 		// otherwise be passed from worker to worker forever.
-		herr = fmt.Errorf("sqlstore: step %q abandoned by %d workers (its lease expired %d times, over WithMaxReclaims %d): %w",
-			a.name, a.reclaims, a.reclaims, c.maxReclaims, ErrAbandoned)
+		herr = fmt.Errorf("sqlstore: step %q abandoned by %s (its lease expired %s, over WithMaxReclaims %d): %w",
+			a.name, plural(a.reclaims, "worker", "workers"), plural(a.reclaims, "time", "times"), c.maxReclaims, ErrAbandoned)
 	} else {
 		slots := workflow.StepSlots(step)
 		// Hold the attempt's worker slots (Step.Slots) while it runs. The
@@ -365,23 +365,30 @@ func (c *Client) call(ctx context.Context, reg *registered, step workflow.Step, 
 	ctx = workflow.WithProgressReporter(ctx, c.progressReporter(a))
 	a.edits = c.newChainEditor(a.runID)
 	ctx = workflow.WithChainEditor(ctx, a.edits)
+	// A tolerated step (WithRules) claims the attempt's timeout to keep its
+	// record; without a claim a timed-out attempt fails with the timeout.
+	ctx, claimed := workflow.WithTimeoutClaim(ctx)
 	if hb := step.HeartbeatTimeout; hb > 0 {
+		// The watch cancels the attempt with the error it fails with, so
+		// context.Cause in the handler matches ErrHeartbeatTimeout.
+		errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+			fmt.Sprintf("step %q attempt %d sent no heartbeat for %s", a.name, a.attempts, hb))
 		var stop func()
-		ctx, stop = c.watchHeartbeat(ctx, a, hb)
+		ctx, stop = c.watchHeartbeat(ctx, a, hb, errHeartbeat)
 		defer stop()
-		out, err := c.callTimed(ctx, h, reg, step, a)
-		if errors.Is(context.Cause(ctx), errHeartbeatTimeout) {
-			return nil, workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
-				fmt.Sprintf("step %q attempt %d sent no heartbeat for %s", a.name, a.attempts, hb))
+		out, err := c.callTimed(ctx, h, reg, step, a, claimed)
+		if context.Cause(ctx) == errHeartbeat && !claimed() {
+			return nil, errHeartbeat
 		}
 		return out, err
 	}
-	return c.callTimed(ctx, h, reg, step, a)
+	return c.callTimed(ctx, h, reg, step, a, claimed)
 }
 
 // callTimed runs h under the step's Timeout (or the workflow's), on the
-// scheduling clock.
-func (c *Client) callTimed(ctx context.Context, h workflow.Handler, reg *registered, step workflow.Step, a *attempt) ([]byte, error) {
+// scheduling clock. claimed reports whether the handler chain claimed the
+// attempt's timeout (workflow.ClaimTimeout).
+func (c *Client) callTimed(ctx context.Context, h workflow.Handler, reg *registered, step workflow.Step, a *attempt, claimed func() bool) ([]byte, error) {
 	d := step.Timeout
 	if d == 0 {
 		d = reg.wf.Timeout
@@ -391,19 +398,23 @@ func (c *Client) callTimed(ctx context.Context, h workflow.Handler, reg *registe
 	}
 	actx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
+	// The timer cancels the attempt with a timeout error, so context.Cause
+	// in the handler matches workflow.ErrStepTimeout; the driver tells it
+	// from any other cause by identity.
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout, fmt.Sprintf("sqlstore: step %q attempt %d after %s", a.name, a.attempts, d))
 	tm := c.clk.NewTimer(d)
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		select {
 		case <-tm.C():
-			cancel(errStepTimeout)
+			cancel(errStep)
 		case <-actx.Done():
 			tm.Stop()
 		}
 	}()
 	out, err := safeCall(h, actx, a.in)
-	if errors.Is(context.Cause(actx), errStepTimeout) {
+	if context.Cause(actx) == errStep && !claimed() {
 		// It matches workflow.ErrStepTimeout (and ErrTimeout, which picks
 		// OnTimeout) as well as context.DeadlineExceeded, as before.
 		return nil, fmt.Errorf("sqlstore: step %q attempt %d timed out after %s: %w: %w", a.name, a.attempts, d,
@@ -412,25 +423,27 @@ func (c *Client) callTimed(ctx context.Context, h workflow.Handler, reg *registe
 	return out, err
 }
 
+// plural is n and the noun's singular form for one, its plural form for
+// any other count.
+func plural(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
 // ErrAbandoned is wrapped by the error of an attempt that failed because
 // its lease expired more than WithMaxReclaims times: every worker that took
 // it died before finishing. The retry policy treats it like any failure.
 var ErrAbandoned = errors.New("sqlstore: step abandoned by its workers")
 
-// errStepTimeout is the context cause of an attempt that ran past its
-// timeout.
-var errStepTimeout = errors.New("sqlstore: step attempt timed out")
-
-// errHeartbeatTimeout is the context cause of an attempt that sent no
-// heartbeat for its step's HeartbeatTimeout.
-var errHeartbeatTimeout = errors.New("sqlstore: step heartbeat timed out")
-
 // watchHeartbeat gives a's handler a workflow.Heartbeater and cancels it
-// with errHeartbeatTimeout when no beat came for hb on the scheduling
-// clock (from the start, then from each beat). A beat also renews the
-// lease at once; a beat for a step that is no longer this attempt's returns
-// an error matching workflow.ErrCancelled. stop ends the watch.
-func (c *Client) watchHeartbeat(ctx context.Context, a *attempt, hb time.Duration) (context.Context, func()) {
+// with timedOut (the attempt's ErrHeartbeatTimeout error) when no beat
+// came for hb on the scheduling clock (from the start, then from each
+// beat). A beat also renews the lease at once; a beat for a step that is
+// no longer this attempt's returns an error matching
+// workflow.ErrCancelled. stop ends the watch.
+func (c *Client) watchHeartbeat(ctx context.Context, a *attempt, hb time.Duration, timedOut error) (context.Context, func()) {
 	actx, cancel := context.WithCancelCause(ctx)
 	// lastBeat is the scheduling clock's time of the latest beat (the start
 	// counts as one). The watch sleeps until a heartbeat timeout after it
@@ -452,7 +465,7 @@ func (c *Client) watchHeartbeat(ctx context.Context, a *attempt, hb time.Duratio
 			}
 			since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
 			if since >= hb {
-				cancel(errHeartbeatTimeout)
+				cancel(timedOut)
 				return
 			}
 			wait = hb - since

@@ -47,7 +47,7 @@ return workflow.WithRules(wf, workflow.RulesSpec{
 
 ## Send a missed deadline to a fallback
 
-A tolerated step that gives up at a deadline records the kind `FailureTimeout`, and a step with `RuleOneFailedOf(workflow.FailureTimeout)` takes over. Put the deadline in the step itself and return an error built with `workflow.TimeoutError`, so the tolerated step sees a timeout:
+A tolerated step that gives up at a deadline records the kind `FailureTimeout`, and a step with `RuleOneFailedOf(workflow.FailureTimeout)` takes over. The deadline can be the step's own `Step.Timeout` (on a driver with `CapRunTimeout`: memory, SQL, Redis), or one the step enforces itself by returning an error built with `workflow.TimeoutError`, as here:
 
 <!-- snippet: examples/flow-boundary/main.go#interrupt -->
 ```go
@@ -73,7 +73,7 @@ return workflow.WithRules(wf, workflow.RulesSpec{
 })
 ```
 
-`workflow.ParentFailures(ctx)` lists what the parents of a ruled step recorded, each a `StepFailure` with the step, its kind and its error message. Do not rely on `Step.Timeout` for this route: the drivers turn a step that ran past `Step.Timeout` into a timeout error after the step's middleware has returned, so the tolerated step never sees it and the run fails (see [Pitfalls](#pitfalls)).
+`workflow.ParentFailures(ctx)` lists what the parents of a ruled step recorded, each a `StepFailure` with the step, its kind and its error message. With `Step{Name: "price", Timeout: supplierDeadline, ...}` instead of the deadline inside the step, the route is the same: the attempt's `ctx` is cancelled with a cause matching `workflow.ErrStepTimeout`, and the tolerated step records the timeout as `FailureTimeout`, whatever the handler returns after it.
 
 ## Setup and teardown
 
@@ -181,7 +181,7 @@ The reminder lands while the slow review is still running, and the review still 
 ## Pitfalls
 
 - **A handled failure ends the run succeeded.** A run whose tolerated steps failed and that has no Finally step ends succeeded. Add a Finally step to keep it failed, or have the handling step return a `Permanent` error.
-- **`Step.Timeout` cannot be tolerated.** On the memory, SQL and Redis drivers the step's deadline is turned into `ErrStepTimeout` outside the step's middleware, after the tolerated step returned, so a step that ran past `Step.Timeout` fails the run even when it is listed in `Tolerate`. Enforce the deadline inside the step and return `workflow.TimeoutError(workflow.ErrStepTimeout, ...)`, as in [Send a missed deadline to a fallback](#send-a-missed-deadline-to-a-fallback).
+- **On Hatchet, `Step.Timeout` is the engine's.** Hatchet times a task out with its own error and the driver has no `CapRunTimeout`, so a tolerated step there does not record its `Step.Timeout` as `FailureTimeout`. Enforce the deadline inside the step and return `workflow.TimeoutError(workflow.ErrStepTimeout, ...)`, as in [Send a missed deadline to a fallback](#send-a-missed-deadline-to-a-fallback); that form works on every driver.
 - **The last attempt is judged from the step's or the workflow's policy.** A per-dispatch `Job.Retry` is not visible to the step, so a job that overrides the policy should not rely on tolerated steps.
 - **Only Run steps can be tolerated or ruled.** A Wait or Sleep step below a tolerated step is refused (`ErrInvalid`), since it could not skip.
 - **The error text crosses to the ruled step, not the error value.** Route on kinds, decided in the failing attempt by `Catch`; `StepFailure.Error` is only the message.

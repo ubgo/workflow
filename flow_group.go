@@ -179,9 +179,12 @@ func (endRunsPlugin) StepMiddleware() []Middleware {
 // (in its own goroutine, with the step's ctx and StepInfo) while the step
 // carries on: escalate, page someone, send a reminder. The interrupting
 // form is Step.Timeout, with WithRules to send the timeout to a branch
-// (RuleOneFailedOf(FailureTimeout)). steps limits it to those step names;
-// none means every step. The timer is the step's own: it starts per
-// attempt and stops when the attempt returns.
+// (RuleOneFailedOf(FailureTimeout)) on a driver with CapRunTimeout, which
+// cancels the attempt with ErrStepTimeout for the tolerated step to record
+// (ClaimTimeout); elsewhere return TimeoutError from a deadline inside the
+// step. steps limits it to those step names; none means every step. The
+// timer is the step's own: it starts per attempt and stops when the
+// attempt returns.
 func Boundary(d time.Duration, onTimer func(ctx context.Context, info StepInfo), steps ...string) Middleware {
 	return func(next Handler) Handler {
 		if d <= 0 || onTimer == nil {

@@ -36,4 +36,4 @@ The lines after the refusal come from `helpers.go`: the core helpers a driver ca
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass and 188 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on). The walkthrough is [docs/extending/writing-a-driver.md](../../docs/extending/writing-a-driver.md).
+43 cases pass and 194 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on). The walkthrough is [docs/extending/writing-a-driver.md](../../docs/extending/writing-a-driver.md).

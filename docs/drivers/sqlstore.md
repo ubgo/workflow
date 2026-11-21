@@ -238,10 +238,10 @@ b, err := sqlstore.New(db, sqlb.SQLiteDialect{},
 node-a stopped its attempt with ErrLeaseLost: true
 node-b took the step over and ran it: run succeeded
 WithMaxReclaims(0): run failed, abandoned: true
-error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 workers (its lease expired 1 times, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
+error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 worker (its lease expired 1 time, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
 ```
 
-The run's stored error is text, so read it as text (`RunInfo.Error`, `RunEvent.Err.Error()`); `errors.Is(err, sqlstore.ErrAbandoned)` holds for the attempt's error inside the process, which is what a retry policy's `NoRetryOn` sees.
+`errors.Is(err, sqlstore.ErrAbandoned)` holds for the attempt's error inside the process, which is what a retry policy's `NoRetryOn` sees, and for a `RunEvent`'s `Err` after the run ended: the driver stores the failure's class with its text and rebuilds the error from both. `RunInfo.Error` is the text, so read it as text there.
 
 ## Clocks, skew and one fire node
 
@@ -829,7 +829,7 @@ The recorder's end-to-end suite runs its driver cases on this driver on SQLite, 
 - With `WithLeaderElection`, a crashed leader's cron fires pause until its `LeaderLease` (15 seconds by default) has passed, plus `WithLeaseSkew`; a clean `Stop` resigns and hands over at once. Where a few seconds without fires matter less than a split brain, keep the default (every client fires, the tick row picks one).
 - An `Elector`'s `IsLeader` is called on every dispatcher pass: it must answer from memory, never by asking a server.
 - A takeover after `ErrLeaseLost` counts toward `WithMaxReclaims`, so a database that stalls often can fail healthy steps with `ErrAbandoned`. Choose a `WithLease` longer than the worst stall, and a reclaim count above the takeovers a stall may cause.
-- A run's stored error is text: `errors.Is(err, sqlstore.ErrAbandoned)` holds inside the attempt (and for `NoRetryOn`), not on the error a status read or a `RunEvent` returns later.
+- A run's stored error is text plus a class: a `RunEvent`'s `Err` after the run ended matches `sqlstore.ErrAbandoned` and the timeout sentinels again, never an app's own sentinel; `RunInfo.Error` is only the text. A run abandoned before this release has no stored class and matches by text only.
 
 ## Related
 

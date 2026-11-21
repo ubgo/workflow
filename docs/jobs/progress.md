@@ -166,7 +166,7 @@ progress:
 - **Progress is one value, not a log.** Each report replaces the last; keep a history in your own store if you need one.
 - **Lifecycle events are local.** On a fleet, a progress event fires only in the process running the step. An observer runs on a driver goroutine and must return quickly; a panic in it is recovered and never changes the run.
 - **A heartbeat is not progress.** It says "alive", not "how far". Call both when a page shows progress and a hang must be caught.
-- **Inside the handler, the timeout's cause is the driver's own.** When the watchdog fires, the step's `ctx` is cancelled with a driver-private cause (the memory, SQL and Redis drivers each have one), so `errors.Is(context.Cause(ctx), workflow.ErrHeartbeatTimeout)` is false in the handler. The error the attempt is recorded with is the one that matches: return `context.Cause(ctx)` and let the driver classify it.
+- **A return after the timeout does not save the attempt.** When the watchdog fires, the step's `ctx` is cancelled with a cause matching `workflow.ErrHeartbeatTimeout` (and `ErrTimeout`; a `Step.Timeout` cut-off matches `ErrStepTimeout`), so `errors.Is(context.Cause(ctx), workflow.ErrHeartbeatTimeout)` tells a hang from a cancel in the handler. Whatever the handler returns after that, even an output, the attempt fails with the timeout; only a step tolerated by [`WithRules`](../workflows/trigger-rules.md) turns it into a recorded `FailureTimeout`.
 - **A handler that ignores `ctx` keeps running after a heartbeat timeout.** Go cannot stop a goroutine: the attempt is failed and retried, and the old goroutine runs on until it returns. Pass `ctx` to every call that can block.
 
 ## Related

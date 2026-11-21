@@ -12,7 +12,7 @@ go run ./driver-conformance
 ```text
 share 1: lifecycle run retry timeout onfailure
 share 2: cron misfire schedule overlap trigger
-share 3: every other group (57 of 67)
+share 3: every other group (60 of 70)
 ```
 
 ```sh
