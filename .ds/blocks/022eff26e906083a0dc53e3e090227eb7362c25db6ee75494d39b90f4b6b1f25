@@ -1,0 +1,6 @@
+func CheckFireJitter(c workflow.Client) error {
+	if missing := c.Capabilities().Missing(FireJitterNeeds); !missing.IsZero() {
+		return &workflow.UnsupportedError{Field: "FireJitter", Missing: missing}
+	}
+	return nil
+}

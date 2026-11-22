@@ -1,0 +1,5 @@
+func (f *Fake) Pending() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.timers)
+}

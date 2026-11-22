@@ -1,0 +1,14 @@
+func checkDelayedKey(wf workflow.Workflow, registered bool, key string, runAt, now time.Time, maxHold time.Duration) error {
+	if key == "" || runAt.IsZero() {
+		return nil
+	}
+	switch {
+	case !registered:
+		return workflow.Unsupported("Job.IdempotencyKey", "with Job.RunAt on workflow "+wf.Name+", which this client did not register: a keyed delayed start runs on the workflow's delayed variant, and an enqueue-only client cannot tell whether the workers declared one; register the workflow on this client")
+	case wf.Concurrency != nil:
+		return workflow.Unsupported("Job.IdempotencyKey", "with Job.RunAt on workflow "+wf.Name+", which has a Concurrency: a keyed delayed start runs at once on a copy of the workflow that sleeps until RunAt, and Hatchet keeps concurrency slots per workflow and holds one for a whole run, so the copy could neither share the workflow's slots nor sleep without holding one")
+	case runAt.Sub(now) > maxHold:
+		return workflow.Unsupported("Job.IdempotencyKey", fmt.Sprintf("with Job.RunAt more than Config.IdempotencyMaxHold (%s) ahead: the engine holds a key at most that long from the enqueue, so it would lapse before the run starts", maxHold))
+	}
+	return nil
+}

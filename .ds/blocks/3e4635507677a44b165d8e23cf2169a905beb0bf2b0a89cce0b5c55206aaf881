@@ -1,0 +1,6 @@
+func (s *Store) MigrationScripts() []string {
+	if s.archiveTable {
+		return append(s.ddl(), s.archiveDDL()...)
+	}
+	return s.ddl()
+}

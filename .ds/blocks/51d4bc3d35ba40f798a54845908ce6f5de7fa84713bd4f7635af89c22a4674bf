@@ -1,0 +1,17 @@
+type ChoiceSpec struct {
+	// Name is the name of the step that carries the chosen branch's
+	// output; later steps put it in After.
+	Name string
+
+	// After lists the steps the choice waits for, as Step.After. Decide
+	// and the chosen branch receive their input (StepInput).
+	After []string
+
+	// Decide returns the Name of the branch to run. A name that is not a
+	// branch fails the run (Permanent, ErrInvalid); an error retries the
+	// decide step under the workflow's policy.
+	Decide func(ctx context.Context, in []byte) (string, error)
+
+	// Branches are the paths; at least one.
+	Branches []Branch
+}

@@ -1,0 +1,4 @@
+func TenantFrom(ctx context.Context) (string, bool) {
+	t, ok := ctx.Value(tenantKey{}).(string)
+	return t, ok
+}

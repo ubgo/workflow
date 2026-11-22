@@ -1,0 +1,5 @@
+var p3Groups = []suiteGroup{
+	{"fair", fairCases},
+	{"edit", editCases},
+	{"payloadsearch", payloadSearchCases},
+}

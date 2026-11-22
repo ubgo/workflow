@@ -1,0 +1,7 @@
+func WithLocalCronClock(c clock.Clock) LocalCronOption {
+	return func(l *LocalCron) {
+		if c != nil {
+			l.clk = c
+		}
+	}
+}

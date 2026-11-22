@@ -1,0 +1,43 @@
+type Message struct {
+	// ID identifies the event for deduplication; publish the same event
+	// again with the same ID. Empty means the Bus makes a new one, so
+	// that publish is never deduplicated.
+	ID string
+
+	// Name is what subscriptions match on, exactly ("order.paid").
+	Name string
+
+	// Key is passed to Signal under WithSignal (the WaitSpec key a waiting
+	// run matches), and is there for Filter.
+	Key string
+
+	// Payload becomes each subscriber's Job.Payload (unless the
+	// subscription's Job builds the job itself).
+	Payload []byte
+
+	// Labels are copied onto each subscriber's job, beside the bus's own.
+	// Keys under a reserved prefix are refused.
+	Labels map[string]string
+
+	// Version is the version of Payload's shape (MQ-10). For an event
+	// with upcasters (WithUpcasters), a lower version is upcast to the
+	// current one before any subscription sees the message, and a higher
+	// one is refused. Zero is the oldest version, the one a publisher
+	// that never set it wrote. Ignored for events without upcasters.
+	Version int
+
+	// Correlation names the choreography the message belongs to; it
+	// becomes LabelCorrelation on every run the message starts. Set it to
+	// start a chain under your own ID (an order number, a trace ID from
+	// another system) or to carry one in from outside; empty lets
+	// WithCorrelation fill it (inherited from the publishing step's run,
+	// else the message ID). Needs WithCorrelation: Publish refuses it on a
+	// bus without, with ErrInvalid.
+	Correlation string
+
+	// Causation is the ID of the event that led to this one; it becomes
+	// LabelCausation. Empty lets WithCorrelation fill it from the
+	// publishing step's run (its LabelEventID). Needs WithCorrelation,
+	// as Correlation does.
+	Causation string
+}

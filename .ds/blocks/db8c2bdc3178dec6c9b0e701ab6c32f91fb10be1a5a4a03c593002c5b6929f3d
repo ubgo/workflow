@@ -1,0 +1,58 @@
+func TestCompleteTxRollback(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name+"/returns output", func(t *testing.T) {
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				if err := chargeInTx(f, ctx, `"lost"`, func(tx *sql.Tx) error { return tx.Rollback() }); err != nil {
+					return nil, err
+				}
+				return []byte(`"returned"`), nil
+			})
+			ref, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := f.awaitEnd(t, ref); st != workflow.StatusSucceeded {
+				t.Fatalf("run %s, want succeeded", st)
+			}
+			f.mu.Lock()
+			got := string(f.receipt)
+			f.mu.Unlock()
+			if got != `"returned"` {
+				t.Fatalf("receipt input %q, want the handler's returned output", got)
+			}
+			if n := f.orderRows(t); n != 0 {
+				t.Fatalf("%d app rows after a rollback, want 0", n)
+			}
+		})
+		t.Run(e.name+"/returns an error", func(t *testing.T) {
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				if attempt == 1 {
+					if err := chargeInTx(f, ctx, `"lost"`, func(tx *sql.Tx) error { return tx.Rollback() }); err != nil {
+						return nil, err
+					}
+					return nil, errors.New("declined")
+				}
+				return nil, chargeInTx(f, ctx, `"second"`, func(tx *sql.Tx) error { return tx.Commit() })
+			})
+			ref, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := f.awaitEnd(t, ref); st != workflow.StatusSucceeded {
+				t.Fatalf("run %s, want succeeded", st)
+			}
+			if n := f.attempts.Load(); n != 2 {
+				t.Fatalf("charge ran %d times, want 2 (the rolled-back attempt's error is retried)", n)
+			}
+			f.mu.Lock()
+			got := string(f.receipt)
+			f.mu.Unlock()
+			if got != `"second"` {
+				t.Fatalf("receipt input %q, want the second attempt's output", got)
+			}
+			if n := f.orderRows(t); n != 1 {
+				t.Fatalf("%d app rows, want 1", n)
+			}
+		})
+	}
+}

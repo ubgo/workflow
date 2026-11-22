@@ -1,0 +1,28 @@
+func commands() []command {
+	return []command{
+		{"caps", "", "operations the server's driver supports", capsCmd},
+		{"runs", "", "list runs (filters below)", listCmd("runs", true)},
+		{"failures", "", "list failed runs", listCmd("failures", false)},
+		{"discarded", "", "list runs a step discarded", listCmd("discarded", false)},
+		{"inspect", "RUN", "show one run and its attempt errors", inspectCmd},
+		{"retry", "RUN | --all", "retry a failed run, or every failed run a filter matches", retryCmd},
+		{"cancel", "RUN | --all", "cancel a run, or every run a filter matches", cancelCmd},
+		{"delete", "RUN | --all", "forget a finished run, or every finished run a filter matches", deleteCmd},
+		{"reschedule", "RUN", "move a delayed run to --at", rescheduleCmd},
+		{"cancel-step", "RUN STEP", "withdraw one step of a run", cancelStepCmd},
+		{"reset", "RUN", "re-run a failed run in place from --step (--succeeded: a succeeded one too)", resetCmd},
+		{"fork", "RUN", "start a new run from a finished one at --step", forkCmd},
+		{"signal-waiting", "NAME", "deliver an event only to the runs waiting for it now", signalWaitingCmd},
+		{"pause", "", "pause a workflow, a queue or everything", pauseCmd("pause")},
+		{"resume", "", "resume a workflow, a queue or everything", pauseCmd("resume")},
+		{"pauses", "", "list the active pauses", pausesCmd},
+		{"queues", "", "queue depth and oldest wait", queuesCmd},
+		{"schedules", "", "list schedules with their next fire", schedulesCmd},
+		{"schedule", "ID", "show one schedule", scheduleCmd},
+		{"trigger", "ID", "run a schedule now", triggerCmd},
+		{"drain", "", "wait until queues are empty", drainCmd},
+		{"metrics", "", "run ends per step by status", metricsCmd},
+		{"health", "", "the server client's health; exit 1 when not ready", healthCmd},
+		{"nodes", "", "the nodes that are online", nodesCmd},
+	}
+}

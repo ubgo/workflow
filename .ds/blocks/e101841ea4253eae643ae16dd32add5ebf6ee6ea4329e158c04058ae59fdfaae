@@ -1,0 +1,28 @@
+func (r *inlineRun) run(ctx context.Context) error {
+	done := map[string]bool{}
+	for len(done) < len(r.wf.Steps) {
+		step, ok := r.nextReady(done)
+		if !ok { // unreachable for a validated DAG; kept so a bug cannot loop
+			return fmt.Errorf("workflow: RunInline: no step is ready in %q", r.wf.Name)
+		}
+		outs := make(map[string][]byte, len(step.After))
+		for _, p := range step.After {
+			outs[p] = r.res.Outputs[p]
+		}
+		input := StepInput(r.job.Payload, step.After, outs)
+		out, err := r.step(ctx, step, input)
+		if err != nil {
+			if IsDiscarded(err) {
+				return DiscardedError(step.Name, err)
+			}
+			if r.wf.OnFailure != nil {
+				fctx := WithStepInfo(ctx, StepInfo{Workflow: r.wf.Name, Step: step.Name, RunID: InlineRunID, Attempt: r.res.Attempts[step.Name], Labels: r.job.Labels})
+				_, _ = callInline(r.wrap(r.wf.OnFailure), fctx, input) // the step's error is the one returned
+			}
+			return fmt.Errorf("workflow: RunInline: step %q failed: %w", step.Name, err)
+		}
+		r.res.Outputs[step.Name] = out
+		done[step.Name] = true
+	}
+	return nil
+}

@@ -1,0 +1,1 @@
+func Hourly() Builder { return HourlyAt(0) }

@@ -1,0 +1,17 @@
+func (c *Client) countHeld(ctx context.Context, rule pruneRule, res *PruneResult) error {
+	var n int64
+	q := "SELECT COUNT(*) FROM {runs} WHERE " + rule.where + " AND idem_active IS NOT NULL"
+	if err := c.st.one(ctx, c.st.db, q, rule.args, &n); err != nil {
+		return fmt.Errorf("sqlstore: count runs holding a key: %w", err)
+	}
+	res.HeldIdempotency += int(n)
+	if c.retention.Undelivered {
+		return nil
+	}
+	q = "SELECT COUNT(*) FROM {runs} WHERE " + rule.where + " AND idem_active IS NULL AND notified = 0"
+	if err := c.st.one(ctx, c.st.db, q, rule.args, &n); err != nil {
+		return fmt.Errorf("sqlstore: count undelivered runs: %w", err)
+	}
+	res.HeldUndelivered += int(n)
+	return nil
+}

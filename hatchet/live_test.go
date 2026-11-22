@@ -69,6 +69,9 @@ func TestConformance(t *testing.T) {
 		// handler starting (about 1s seen live on rate-limited starts).
 		Quiet:    3 * time.Second,
 		RealCron: os.Getenv("WFTEST_REAL_CRON") != "",
-		Prefix:   "wftest_hatchet",
+		// No CapRunTimeout (no run deadline on the engine), but the
+		// worker enforces Step.Timeout with the timeout handshake.
+		StepTimeoutHandshake: true,
+		Prefix:               "wftest_hatchet",
 	})
 }

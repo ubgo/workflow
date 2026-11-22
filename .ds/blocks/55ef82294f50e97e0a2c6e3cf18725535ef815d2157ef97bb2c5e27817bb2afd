@@ -1,0 +1,18 @@
+func settleRest(ctx context.Context, client Client, name string, rest JoinRest, refs []RunRef, running []int) error {
+	for _, i := range running {
+		var err error
+		switch rest {
+		case JoinCancelRest:
+			err = client.Cancel(ctx, refs[i])
+		case JoinCompleteRest:
+			err = client.(RunForcer).ForceComplete(ctx, refs[i])
+			if errors.Is(err, ErrWrongState) {
+				err = nil // it ended on its own since the look
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("workflow: join %q: settle child %d: %w", name, i, err)
+		}
+	}
+	return nil
+}

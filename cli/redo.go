@@ -10,6 +10,8 @@ import (
 
 // resetCmd re-runs a finished run in place from --step: a failed run, or
 // with --succeeded one that succeeded (POST /runs/{id}/reset).
+//
+//ds:def id=cli-resetcmd-q6esujd6 owner=@khanakia stability=stable
 func resetCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	step := fs.String("step", "", "the step to run again from; it and every step after it run again (required)")
 	succeeded := fs.Bool("succeeded", false, "also reset a run that succeeded (redo work that already succeeded)")
@@ -61,6 +63,8 @@ func resetCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 
 // forkCmd starts a new run from a finished one at --step (POST
 // /runs/{id}/fork).
+//
+//ds:def id=cli-forkcmd-85emeetp owner=@khanakia stability=stable
 func forkCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	step := fs.String("step", "", "the step the new run starts from; the steps before it keep the original's outputs (required)")
 	key := fs.String("key", "", "the new run's idempotency key (the original's is never copied)")
@@ -127,6 +131,8 @@ func forkCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 
 // signalWaitingCmd delivers an event only to the runs waiting for it now
 // (POST /signals/waiting).
+//
+//ds:def id=cli-signalwaitingcmd-t3jdendr owner=@khanakia stability=stable
 func signalWaitingCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	key := fs.String("key", "", "the event key the waiting runs match")
 	payload := fs.String("payload", "", "the event payload, as JSON")

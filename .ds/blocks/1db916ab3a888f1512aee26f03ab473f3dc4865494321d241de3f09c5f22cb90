@@ -1,0 +1,17 @@
+func (c *Client) armRunTimeoutLocked(r *run) {
+	d := r.reg.wf.RunTimeout
+	if d <= 0 {
+		return
+	}
+	tm := c.clk.NewTimer(d)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		select {
+		case <-tm.C():
+			c.send(r, runEvent{kind: evRunTimeout})
+		case <-r.ctx.Done():
+			tm.Stop()
+		}
+	}()
+}

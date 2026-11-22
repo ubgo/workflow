@@ -1,0 +1,3 @@
+func PruneGrace(d time.Duration) PruneOption {
+	return func(o *pruneOptions) { o.grace = max(d, 0) }
+}

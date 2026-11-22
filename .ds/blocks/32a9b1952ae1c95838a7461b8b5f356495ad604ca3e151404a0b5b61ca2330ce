@@ -1,0 +1,9 @@
+func (f *Fake) assertPromiseSignalled(t testing.TB, id string) {
+	t.Helper()
+	for _, ev := range f.Signals() {
+		if ev.Name == workflow.PromiseEvent && ev.Key == id {
+			return
+		}
+	}
+	t.Errorf("promise %q is settled but its signal (%s) did not go through the Fake: was the settlement given another client?", id, workflow.PromiseEvent)
+}

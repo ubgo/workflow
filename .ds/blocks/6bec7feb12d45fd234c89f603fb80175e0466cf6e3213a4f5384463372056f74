@@ -1,0 +1,1 @@
+func AllowWithoutKey() Option { return func(f *Client) { f.allowNoKey = true } }

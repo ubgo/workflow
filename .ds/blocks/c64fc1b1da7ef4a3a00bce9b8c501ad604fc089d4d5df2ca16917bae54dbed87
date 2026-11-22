@@ -1,0 +1,14 @@
+func (c *Client) batchOpen(ctx context.Context, labels map[string]string) (bool, error) {
+	id := labels[batch.LabelBatch]
+	if id == "" {
+		return false, nil
+	}
+	st, err := c.BatchStore().Get(ctx, batch.ID(id))
+	if err != nil {
+		if errors.Is(err, workflow.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return !st.Finished, nil
+}

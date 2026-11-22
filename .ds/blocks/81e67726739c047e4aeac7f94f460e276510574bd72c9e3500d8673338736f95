@@ -1,0 +1,11 @@
+type EnqueueOutcome struct {
+	// Reported is true when something below the caller reported the
+	// outcome. False means the client cannot tell (a driver without the
+	// report), so Duplicate false is "unknown", not "new".
+	Reported bool
+
+	// Duplicate is true when no new run was started: the RunRef is an
+	// existing run's (an idempotency key or a unique lock held by an
+	// unfinished run).
+	Duplicate bool
+}

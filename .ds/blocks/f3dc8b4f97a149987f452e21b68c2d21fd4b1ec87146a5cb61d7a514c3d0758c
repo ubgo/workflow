@@ -1,0 +1,21 @@
+func (c *Client) registerWait(ctx context.Context, name string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.RegisterTimeout)
+	defer cancel()
+	tick := time.NewTicker(registerPoll)
+	defer tick.Stop()
+	for {
+		list, err := c.sdk.Workers().List(ctx)
+		if err == nil && list.Rows != nil {
+			for _, w := range *list.Rows {
+				if w.Name == name {
+					return w.Metadata.Id, nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("hatchet driver: worker %q did not register: %w", name, ctx.Err())
+		case <-tick.C:
+		}
+	}
+}

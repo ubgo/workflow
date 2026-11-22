@@ -1,0 +1,26 @@
+func FireJitter(window time.Duration, opts ...FireJitterOption) workflow.Middleware {
+	j := &fireJitter{window: window, pick: RunIDJitter, clk: clock.Real{}}
+	for _, o := range opts {
+		o(j)
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		if j.window <= 0 {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := workflow.StepInfoFrom(ctx)
+			if !ok {
+				return next(ctx, in)
+			}
+			tick, ok := workflow.TickTime(info.Labels)
+			if _, triggered := info.Labels[workflow.LabelTrigger]; !ok || triggered {
+				return next(ctx, in)
+			}
+			jitter := min(max(j.pick(info, j.window), 0), j.window)
+			if wait := tick.Add(jitter).Sub(j.clk.Now()); wait > 0 {
+				return nil, workflow.Snooze(wait)
+			}
+			return next(ctx, in)
+		}
+	}
+}

@@ -1,0 +1,3 @@
+func coordinatorIdempotencyExpression() string {
+	return strconv.Quote(coordinatorWorkflow+idemKeySep) + " + string(additional_metadata[" + strconv.Quote(batch.LabelBatch) + "])"
+}

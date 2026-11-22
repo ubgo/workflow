@@ -1,0 +1,10 @@
+func AppendAttemptError(hist []AttemptError, e AttemptError, max int) []AttemptError {
+	if max <= 0 {
+		return nil
+	}
+	hist = append(hist, e)
+	if n := len(hist) - max; n > 0 {
+		hist = append(hist[:0:0], hist[n:]...)
+	}
+	return hist
+}

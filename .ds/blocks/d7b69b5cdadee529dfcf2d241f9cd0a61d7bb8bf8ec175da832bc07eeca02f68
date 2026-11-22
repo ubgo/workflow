@@ -1,0 +1,12 @@
+func ValidateMetricsQuery(q MetricsQuery) error {
+	if q.From.IsZero() || q.To.IsZero() || !q.From.Before(q.To) {
+		return fmt.Errorf("%w: admin: metrics: From must be set and before To", workflow.ErrInvalid)
+	}
+	if q.Step <= 0 {
+		return fmt.Errorf("%w: admin: metrics: Step %s is not positive", workflow.ErrInvalid, q.Step)
+	}
+	if n := (q.To.Sub(q.From) + q.Step - 1) / q.Step; n > MaxMetricsPoints {
+		return fmt.Errorf("%w: admin: metrics: %d points asked, at most %d; widen Step", workflow.ErrInvalid, n, MaxMetricsPoints)
+	}
+	return nil
+}

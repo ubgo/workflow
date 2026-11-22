@@ -17,6 +17,8 @@ import (
 // which shrinks big payloads first, so only what would really travel is
 // measured. A limit of zero or less refuses every enqueue with ErrInvalid
 // rather than meaning "no limit" by accident.
+//
+//ds:def id=mw-maxpayload-fpdv2a97 owner=@khanakia stability=stable
 func MaxPayload(limit int) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -38,6 +40,8 @@ func MaxPayload(limit int) workflow.EnqueueMiddleware {
 // forwarded from elsewhere) keeps it; one carrying a version newer than
 // current is refused with ErrInvalid, since this code could not read it.
 // The labels map is copied, never changed in place.
+//
+//ds:def id=mw-payloadversion-gexkrcmw owner=@khanakia stability=stable
 func PayloadVersion(current int) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {

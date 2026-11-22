@@ -1,10 +1,10 @@
 # Record a real client
 
-The [Fake](fake.md) runs nothing, which is what most app tests want. Some tests need the jobs to really run (an integration test, code that relies on the run-finished hook) and still want to check what was enqueued. `workflowtest.NewRecorder(inner)` wraps a real client: every call goes to `inner`, and each enqueue `inner` accepted is recorded on the way back.
+The [Fake](fake.md) runs nothing, which is what most app tests want. Some tests need the jobs to really run (an integration test, code that relies on the run-finished hook) and still want to check what was enqueued. [`workflowtest.NewRecorder(inner)`](ds:block?id=workflowtest-newrecorder-r3wxkycy) wraps a real client: every call goes to `inner`, and each enqueue `inner` accepted is recorded on the way back ([`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh)).
 
 ## Before you start
 
-- A real client to wrap, usually the memory driver in tests. The Recorder forwards `Register`, `Start`, `Status`, `Cancel`, `Signal`, `Schedule`, `Unschedule` and `Capabilities` to it, and forwards `OnRunFinished` when `inner` implements `workflow.RunNotifier`.
+- A real client to wrap, usually the memory driver in tests. The [`Recorder`](ds:block?id=workflowtest-recorder-6gecgrkx) forwards `Register`, `Start`, `Status`, `Cancel`, `Signal`, `Schedule`, `Unschedule` and [`Capabilities`](ds:block?id=workflowtest-recorder-capabilities-jq39gvkm) to it, and forwards [`OnRunFinished`](ds:block?id=workflowtest-recorder-onrunfinished-2jedux7k) when `inner` implements `workflow.RunNotifier`.
 - The runnable program for this page is [examples/app-tests](../../examples/app-tests/).
 
 ## Record a real client
@@ -36,22 +36,22 @@ The Recorder has its own assertions, simpler than the Fake's:
 
 | Method | Fails unless |
 |---|---|
-| `AssertEnqueued(t, wf, n)` | Workflow `wf` was enqueued exactly `n` times |
-| `AssertEnqueuedWith(t, wf, match)` | At least one job of `wf` satisfies `match`, a `func(workflow.Job) bool` |
-| `AssertNotEnqueued(t, wf)` | `wf` was not enqueued at all |
-| `AssertNothingEnqueued(t)` | Nothing was enqueued |
+| [`AssertEnqueued(t, wf, n)`](ds:block?id=workflowtest-recorder-assertenqueued-6ndrcsz7) | Workflow `wf` was enqueued exactly `n` times |
+| [`AssertEnqueuedWith(t, wf, match)`](ds:block?id=workflowtest-recorder-assertenqueuedwith-suuf8zhc) | At least one job of `wf` satisfies `match`, a `func(workflow.Job) bool` |
+| [`AssertNotEnqueued(t, wf)`](ds:block?id=workflowtest-recorder-assertnotenqueued-bc27xvdn) | `wf` was not enqueued at all |
+| [`AssertNothingEnqueued(t)`](ds:block?id=workflowtest-recorder-assertnothingenqueued-nq2qf6ag) | Nothing was enqueued |
 
-`Jobs()` returns a copy of every recorded job, in enqueue order. Jobs are copied when recorded, so a caller reusing its `Job` or `Labels` map cannot change what was recorded.
+`Jobs()` returns a copy of every recorded job, in enqueue order. Jobs are [`copied when recorded`](ds:block?id=workflowtest-recorder-recordlocked-qe4ah9xd), so a caller reusing its `Job` or `Labels` map cannot change what was recorded.
 
-The Recorder has the Fake's batch and chain assertions too (`Batches`, `AssertBatched`, `AssertBatchCount`, `AssertNothingBatched`, `AssertChained`), described on [Test batches, chains and a subset of workflows](batches-and-chains.md), and `Workflow(name)` returns a registered definition. Its `Retry` and `Delete` record each call the real client accepted, for `AssertRetried` and `AssertDeleted`, and `AssertPaused` reads the real client's pauses ([Test queues, retries and pauses](operations.md)).
+The Recorder has the Fake's batch and chain assertions too ([`Batches`](ds:block?id=workflowtest-recorder-batches-3m3dkbbs), `AssertBatched`, `AssertBatchCount`, `AssertNothingBatched`, `AssertChained`), described on [Test batches, chains and a subset of workflows](batches-and-chains.md), and `Workflow(name)` returns a registered definition. Its [`Retry`](ds:block?id=workflowtest-recorder-retry-axyjxfka) and [`Delete`](ds:block?id=workflowtest-recorder-delete-h378zgef) record each call the real client accepted, for `AssertRetried` and `AssertDeleted`, [`AssertEnqueuedOn`](ds:block?id=workflowtest-recorder-assertenqueuedon-dstrrvqy) checks the queue a job lands on, and [`AssertPaused`](ds:block?id=workflowtest-recorder-assertpaused-upbe9ctg) reads the real client's pauses ([Test queues, retries and pauses](operations.md)).
 
 ## Fake or Recorder
 
 | | `NewFake` | `NewRecorder(inner)` |
 |---|---|---|
 | Runs the jobs | no | yes, on `inner` |
-| Refuses what production refuses | yes, with `FakeLike(prod)` | yes, because `inner` is a real driver |
-| Assertions | the full set: matchers, schedules, signals, cancels | the four above, plus `Jobs()` |
+| Refuses what production refuses | yes, with [`FakeLike(prod)`](ds:block?id=workflowtest-fakelike-my3v73nf) | yes, because `inner` is a real driver ([`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh) records only what `inner` accepted) |
+| Assertions | the full set: matchers, schedules, signals, cancels, operator actions, forks, promises, objects | the four above, `Jobs()`, and the batch, chain, queue, retry, delete and pause assertions |
 | Speed | instant | as fast as `inner`; pair the memory driver with a [fake clock](fake-clock.md) to skip delays and backoffs |
 | Use it for | unit tests of code that enqueues | integration tests where a step's effect, a run end or a batch callback must really happen |
 
@@ -59,12 +59,12 @@ If a test only asks "did my handler enqueue the right job?", the Fake is simpler
 
 ## Where it sits in a middleware stack
 
-The Recorder records the job exactly as it was passed to its own `Enqueue`. Where you put it decides what you see:
+The Recorder records the job exactly as it was passed to its own [`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh). Where you put it decides what you see:
 
-- `workflowtest.NewRecorder(middleware.WrapClient(mem, mws...))` records the job as the app sent it, before any enqueue middleware changed it. Use this to test the app's own calls.
+- `workflowtest.NewRecorder(middleware.WrapClient(mem, mws...))` records the job as the app sent it, before any enqueue middleware that [`middleware.WrapClient`](ds:block?id=mw-wrapclient-nqppp3fu) applies changed it. Use this to test the app's own calls.
 - `middleware.WrapClient(workflowtest.NewRecorder(mem), mws...)` records the job after the middleware ran (a `Route` rule's new workflow name and labels, a codec's encoded payload). Use this to test the middleware.
 
-In both shapes a job that the middleware or the driver refused is not recorded.
+In both shapes a job that the middleware or the driver refused is not recorded ([`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh) records only on success).
 
 ## Try it
 
@@ -81,9 +81,9 @@ PASS
 
 ## Pitfalls
 
-- A job the inner client refused is not recorded: it was not enqueued. A job deduplicated onto an existing run by its key is recorded, because the inner client accepted the call.
-- `OnRunFinished` on a Recorder over a client without `workflow.RunNotifier` returns an `UnsupportedError` rather than registering an observer that would never be called.
-- `NewRecorder(nil)` is the older standalone fake. It claims every capability and refuses nothing, so it tests the double rather than the app; it is kept only for compatibility. Use [`NewFake`](fake.md) for a client that runs nothing.
+- A job the inner client refused is not recorded: it was not enqueued ([`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh)). A job deduplicated onto an existing run by its key is recorded, because the inner client accepted the call.
+- [`OnRunFinished`](ds:block?id=workflowtest-recorder-onrunfinished-2jedux7k) on a Recorder over a client without `workflow.RunNotifier` returns an `UnsupportedError` rather than registering an observer that would never be called.
+- [`NewRecorder(nil)`](ds:block?id=workflowtest-newrecorder-r3wxkycy) is the older standalone fake. It claims [the core's original capabilities](ds:block?id=workflowtest-allcaps-mpwq2a5e) (durable through cron zone, without `CapRunFinished`; none added since) and refuses nothing, so it tests the double rather than the app; it is kept only for compatibility. Use [`NewFake`](fake.md) for a client that runs nothing.
 
 ## Related
 

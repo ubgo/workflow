@@ -1,0 +1,21 @@
+func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
+	r, err := c.lookup(ctx, ref)
+	if err != nil {
+		return err
+	}
+	var out txOut
+	err = c.st.tx(ctx, func(tx *sql.Tx) error {
+		out = txOut{}
+		row, err := c.touch(ctx, tx, r.id)
+		if err != nil {
+			return err
+		}
+		_, err = c.finishRun(ctx, tx, row, runCancelled, workflow.ErrCancelled.Error(), &out)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	c.afterTx(ctx, out)
+	return nil
+}

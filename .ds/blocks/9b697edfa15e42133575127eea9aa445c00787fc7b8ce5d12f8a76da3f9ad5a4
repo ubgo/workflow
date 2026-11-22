@@ -1,0 +1,59 @@
+func (e CloudEvent) MarshalJSON() ([]byte, error) {
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	first := true
+	member := func(name string, value []byte) {
+		if !first {
+			buf.WriteByte(',')
+		}
+		first = false
+		k, _ := json.Marshal(name)
+		buf.Write(k)
+		buf.WriteByte(':')
+		buf.Write(value)
+	}
+	str := func(name, v string) {
+		if v == "" {
+			return
+		}
+		b, _ := json.Marshal(v)
+		member(name, b)
+	}
+	str("specversion", e.SpecVersion)
+	str("id", e.ID)
+	str("source", e.Source)
+	str("type", e.Type)
+	str("subject", e.Subject)
+	if !e.Time.IsZero() {
+		str("time", e.Time.Format(time.RFC3339Nano))
+	}
+	str("datacontenttype", e.DataContentType)
+	str("dataschema", e.DataSchema)
+	for _, name := range slices.Sorted(maps.Keys(e.Extensions)) {
+		b, _ := json.Marshal(e.Extensions[name])
+		member(name, b)
+	}
+	if e.Data != nil {
+		switch {
+		case isJSONType(e.DataContentType) && json.Valid(e.Data):
+			var c bytes.Buffer
+			if err := json.Compact(&c, e.Data); err != nil {
+				return nil, fmt.Errorf("%w: cloudevent: data: %v", workflow.ErrInvalid, err)
+			}
+			member("data", c.Bytes())
+		case e.DataContentType != "" && isJSONType(e.DataContentType):
+			return nil, fmt.Errorf("%w: cloudevent: datacontenttype %q says JSON but data is not valid JSON", workflow.ErrInvalid, e.DataContentType)
+		case isTextType(e.DataContentType) && utf8.Valid(e.Data):
+			b, _ := json.Marshal(string(e.Data))
+			member("data", b)
+		default:
+			b, _ := json.Marshal(base64.StdEncoding.EncodeToString(e.Data))
+			member("data_base64", b)
+		}
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}

@@ -1,0 +1,7 @@
+func QueueLimits(limits map[string]int) func(workflow.Job) int {
+	table := make(map[string]int, len(limits))
+	for k, v := range limits {
+		table[k] = v
+	}
+	return func(job workflow.Job) int { return table[jobQueue(job)] }
+}

@@ -1,0 +1,7 @@
+func StartMachine[D any](ctx context.Context, client Client, machine, key string, data D, job Job) (RunRef, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return RunRef{}, fmt.Errorf("workflow: start machine %q: data: %w", machine, err)
+	}
+	return sendMachine(ctx, client, machine, key, machineCall{Start: true, Data: raw}, job)
+}

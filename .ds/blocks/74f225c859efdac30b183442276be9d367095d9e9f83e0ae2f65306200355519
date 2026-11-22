@@ -1,0 +1,17 @@
+func (c *Client) SetWorkers(_ context.Context, queue string, n int) error {
+	if err := c.usable(); err != nil {
+		return err
+	}
+	if n < 1 {
+		return fmt.Errorf("%w: redis: SetWorkers(%q, %d): a queue needs at least one worker", workflow.ErrInvalid, queue, n)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	q, ok := c.queueCfg[queue]
+	if !ok {
+		return fmt.Errorf("%w: redis: queue %q is not one this client serves (WithQueues)", workflow.ErrNotFound, queue)
+	}
+	q.Workers = n
+	c.queueCfg[queue] = q
+	return nil
+}

@@ -1,0 +1,7 @@
+func WithErrorClassifier(f ErrorClassifier) Option {
+	return func(cl *Client) {
+		if f != nil {
+			cl.classify = f
+		}
+	}
+}

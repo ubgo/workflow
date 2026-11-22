@@ -1,0 +1,16 @@
+func (k *DatabaseClock) Sync(ctx context.Context) error {
+	t0 := k.local.Now()
+	var micros int64
+	if err := k.db.QueryRowContext(ctx, dbNowQuery(k.engine)).Scan(&micros); err != nil {
+		return fmt.Errorf("sqlstore: read the database clock: %w", err)
+	}
+	t1 := k.local.Now()
+	half := t1.Sub(t0) / 2
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.base = time.UnixMicro(micros)
+	k.at = t0.Add(half)
+	k.half = half
+	k.synced = true
+	return nil
+}

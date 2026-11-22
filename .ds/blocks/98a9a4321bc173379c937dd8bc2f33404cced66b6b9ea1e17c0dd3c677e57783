@@ -1,0 +1,3 @@
+func (e *RunFailedError) Is(target error) bool {
+	return target == ErrCancelled && (e.Status == StatusCancelled || e.Status == StatusDiscarded)
+}

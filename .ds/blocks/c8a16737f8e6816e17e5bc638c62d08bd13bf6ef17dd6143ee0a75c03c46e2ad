@@ -1,0 +1,13 @@
+func (c *Client) startRunLocked(r *run) workflow.RunRef {
+	now := c.clk.Now()
+	r.runAt = r.job.RunAt
+	if at := r.job.RunAt; !at.IsZero() && at.After(now) {
+		r.sid = workflow.ScheduledID(c.nextID("delayed"))
+		r.status = workflow.StatusScheduled
+		c.delayed[r.sid] = r
+		c.armDelayLocked(r, at.Sub(now))
+		return r.ref()
+	}
+	c.readyLocked(r)
+	return r.ref()
+}

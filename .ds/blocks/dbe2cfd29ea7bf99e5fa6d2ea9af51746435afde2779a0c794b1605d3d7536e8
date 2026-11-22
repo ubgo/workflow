@@ -1,0 +1,15 @@
+type PruneResult struct {
+	// Deleted is how many runs were deleted (with their steps).
+	Deleted int
+	// HeldUndelivered counts runs whose end was never delivered to an
+	// OnRunFinished observer. When it keeps growing, no client of the
+	// cluster registers an observer: register one, or set
+	// Retention.Undelivered.
+	HeldUndelivered int
+	// HeldIdempotency counts runs still holding an idempotency key. A run
+	// that both an age rule and KeepLast select is counted once per rule.
+	HeldIdempotency int
+	// HeldBatch counts runs of a batch in BatchStore that is still open
+	// (State.Open).
+	HeldBatch int
+}

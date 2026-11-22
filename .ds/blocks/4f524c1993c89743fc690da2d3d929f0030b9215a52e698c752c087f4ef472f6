@@ -1,0 +1,6 @@
+func CheckRef(op string, ref workflow.RunRef) error {
+	if ref.IsZero() {
+		return fmt.Errorf("%w: recorder %s: empty RunRef", workflow.ErrInvalid, op)
+	}
+	return nil
+}

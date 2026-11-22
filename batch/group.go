@@ -27,6 +27,8 @@ import (
 // workflow.Use) embeds workflow.Client and so hides GroupRunner: Dispatch
 // then enqueues through the wrapper, and its middleware (a codec sealing
 // payloads, say) is never bypassed.
+//
+//ds:def id=batch-grouprunner-v7nf5w8m owner=@khanakia stability=stable
 type GroupRunner interface {
 	// RunGroup starts jobs, which all have an empty RunAt and
 	// IdempotencyKey, and returns one RunRef per job in the same order.
@@ -38,12 +40,17 @@ type GroupRunner interface {
 	// per job. Any other error means the group did not fully start: refs
 	// is then nil, or has len(jobs) entries with a zero RunRef for each job
 	// that did not start, and Dispatch cancels the batch (which cancels the
-	// children that did start).
+	// children that did start). With nil refs the started children are
+	// found by their LabelBatch label through CancelAll (CapCancelAll);
+	// without it Dispatch's error is an UnsupportedError saying they run on
+	// unseen by the batch.
 	RunGroup(ctx context.Context, group string, jobs []workflow.Job) ([]workflow.RunRef, error)
 }
 
 // groupEligible reports whether every job can go through a GroupRunner: a
 // delayed start or an idempotency key needs Enqueue's own handling.
+//
+//ds:def id=batch-groupeligible-nq5pd453 owner=@khanakia stability=stable
 func groupEligible(jobs []workflow.Job) bool {
 	for _, j := range jobs {
 		if !j.RunAt.IsZero() || j.IdempotencyKey != "" {
@@ -58,6 +65,8 @@ func groupEligible(jobs []workflow.Job) bool {
 // enqueue them one by one instead. Grouped is saved before the call, so a
 // resumer after a crash inside it knows any of these jobs may have
 // started.
+//
+//ds:def id=batch-manager-dispatchgroup-b5w49829 owner=@khanakia stability=stable
 func (m *Manager) dispatchGroup(ctx context.Context, gr GroupRunner, id ID, owner string, idxs []int, sub []workflow.Job) (handled bool, err error) {
 	if _, err := m.store.Update(ctx, id, func(s *State) error {
 		if err := m.renew(s, owner); err != nil {
@@ -79,7 +88,7 @@ func (m *Manager) dispatchGroup(ctx context.Context, gr GroupRunner, id ID, owne
 		if len(refs) != len(sub) {
 			refs = nil // a ref we cannot place on its job is cancelled below instead
 		}
-		return true, errors.Join(fmt.Errorf("batch %s: run group: %w", id, runErr), m.abortJobs(ctx, id, owner, idxs, refs))
+		return true, errors.Join(fmt.Errorf("batch %s: run group: %w", id, runErr), m.abortJobs(ctx, id, owner, idxs, refs, false))
 	}
 	saved, err := m.store.Update(ctx, id, func(s *State) error {
 		if err := m.renew(s, owner); err != nil {
@@ -120,6 +129,8 @@ func (m *Manager) dispatchGroup(ctx context.Context, gr GroupRunner, id ID, owne
 // is why Dispatch refuses a coordinated batch unless a LabelSource is
 // attached), and cancels with CancelGroup. The engine must not let a
 // retried coordinator start a child twice.
+//
+//ds:def id=batch-groupspawner-wdpwa8xv owner=@khanakia stability=stable
 type GroupSpawner interface {
 	// SpawnsGroups reports whether Dispatch should use SpawnGroup for a
 	// new batch. A client that implements the interface but has it
@@ -148,6 +159,8 @@ type GroupSpawner interface {
 // the engine's runs, without the jobs' refs, and records the jobs a
 // coordinator never started once it has ended. A coordinated batch
 // (GroupSpawner) needs one; Attach records whether one is attached.
+//
+//ds:def id=batch-labelsource-rq5svjm2 owner=@khanakia stability=stable
 type LabelSource interface {
 	Source
 	FindsJobsByLabel()
@@ -157,6 +170,8 @@ type LabelSource interface {
 // declined (ErrUnsupported), and Dispatch must start the jobs another
 // way. Coordinated is saved before the call, so a resumer after a crash
 // inside it calls SpawnGroup again, which returns the same coordinator.
+//
+//ds:def id=batch-manager-dispatchspawn-5eerqxk9 owner=@khanakia stability=stable
 func (m *Manager) dispatchSpawn(ctx context.Context, sp GroupSpawner, id ID, owner string, jobs []workflow.Job) (handled bool, err error) {
 	if _, err := m.store.Update(ctx, id, func(s *State) error {
 		if err := m.renew(s, owner); err != nil {
@@ -189,7 +204,7 @@ func (m *Manager) dispatchSpawn(ctx context.Context, sp GroupSpawner, id ID, own
 			return true, errors.Join(spawnErr, err)
 		}
 		return true, errors.Join(fmt.Errorf("batch %s: spawn group: %w", id, spawnErr),
-			m.abortJobs(ctx, id, owner, allIndexes(len(jobs)), nil),
+			m.abortJobs(ctx, id, owner, allIndexes(len(jobs)), nil, false),
 			sp.CancelGroup(ctx, string(id), workflow.RunRef{}, st.CreatedAt))
 	}
 	return true, m.saveParent(ctx, sp, id, owner, parent)

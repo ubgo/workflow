@@ -1,0 +1,24 @@
+type PendingCallback struct {
+	Kind     CallbackKind
+	Workflow string
+
+	// Job is the index of the job whose end decided a Progress callback;
+	// zero for the other kinds.
+	Job int `json:",omitempty"`
+
+	// Round is State.Round when the callback was decided; it keeps the
+	// idempotency keys of callbacks from different RetryFailed rounds
+	// apart.
+	Round int `json:",omitempty"`
+
+	// Attempts counts the enqueues started, including one in flight.
+	Attempts int
+
+	// RetryAt is when the current attempt's claim ends: until then no
+	// other caller starts an attempt, so two never overlap. An attempt
+	// that fails leaves it, so the next try comes after the claim.
+	RetryAt time.Time
+
+	// LastError is the latest failed attempt's error, for operators.
+	LastError string `json:",omitempty"`
+}

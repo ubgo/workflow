@@ -1,0 +1,40 @@
+var storedTimeoutCases = []testCase{
+	{"a step-timed-out run's error matches ErrStepTimeout after the run ended", func(e *env) {
+		e.need(workflow.CapsOf(workflow.CapRunTimeout, workflow.CapRunFinished))
+		col := observeWith(e, notifierOf(e))
+		var p causeProbe
+		wf := oneStep(e.name("w"), p.handler())
+		wf.Steps[0].Timeout = e.tm.unit
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		expectEnd(e, col, ref, wf.Name, workflow.StatusFailed, nil, timeoutErrCheck(workflow.ErrStepTimeout))
+	}},
+	{"a heartbeat-timed-out run's error matches ErrHeartbeatTimeout after the run ended", func(e *env) {
+		e.need(workflow.CapsOf(workflow.CapHeartbeat, workflow.CapRunFinished))
+		col := observeWith(e, notifierOf(e))
+		var p causeProbe
+		wf := oneStep(e.name("w"), p.handler())
+		wf.Steps[0].HeartbeatTimeout = 2 * e.tm.unit
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		expectEnd(e, col, ref, wf.Name, workflow.StatusFailed, nil, timeoutErrCheck(workflow.ErrHeartbeatTimeout))
+	}},
+	{"a wait-timed-out run's error matches ErrWaitTimeout after the run ended", func(e *env) {
+		e.need(workflow.CapsOf(workflow.CapWaitForEvent, workflow.CapRunFinished))
+		col := observeWith(e, notifierOf(e))
+		var after counter
+		wf := waitWorkflow(e.name("w"), e.name("event"), "k", e.tm.unit, &after)
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		expectEnd(e, col, ref, wf.Name, workflow.StatusFailed, nil, timeoutErrCheck(workflow.ErrWaitTimeout))
+		if n := after.count(); n != 0 {
+			e.t.Errorf("the step after a timed-out wait ran %d times, want 0", n)
+		}
+	}},
+}

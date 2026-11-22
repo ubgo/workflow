@@ -1,0 +1,8 @@
+func (c *Client) onRef(ref workflow.RunRef, fn func(string, workflow.Client, workflow.RunRef) error) error {
+	name, inner, ok := decodeRef(ref)
+	rc, known := c.regions[name]
+	if !ok || !known {
+		return fmt.Errorf("%w: regional: run ref %+v names no region of this client", workflow.ErrNotFound, ref)
+	}
+	return fn(name, rc, inner)
+}

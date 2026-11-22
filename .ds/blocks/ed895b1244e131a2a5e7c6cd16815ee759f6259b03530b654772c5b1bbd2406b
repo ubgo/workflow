@@ -1,0 +1,3 @@
+func WithPingLogger(l *slog.Logger) PingerOption {
+	return func(p *Pinger) { p.logger = l }
+}

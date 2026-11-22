@@ -133,6 +133,8 @@ func waitCount(t *testing.T, what string, n func() int32, want int32) {
 // again (not the step before), ends with the new result, carries
 // LabelRedo, and does not hand its chain on a second time. A driver
 // without the operation (workflow.Supports) skips.
+//
+//ds:def id=workflowtest-runredoflows-su2chss2 owner=@khanakia stability=stable
 func RunRedoFlows(t *testing.T, h FlowHarness) {
 	e := &redoETL{name: "redo-etl", next: "redo-next"}
 	c := h.Start(t, e.workflows()...)
@@ -245,6 +247,8 @@ func redoWait(t *testing.T, h FlowHarness) {
 // label or a chain; an unfinished run, an unknown step, an empty step and
 // a reserved label in ForkOptions are refused. A driver without the
 // operation skips.
+//
+//ds:def id=workflowtest-runforkflows-jm77mfu2 owner=@khanakia stability=stable
 func RunForkFlows(t *testing.T, h FlowHarness) {
 	e := &redoETL{name: "fork-etl", next: "fork-next", failLoadUnfixed: true, hold: make(chan struct{})}
 	c := h.Start(t, e.workflows()...)

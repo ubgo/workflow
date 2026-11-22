@@ -1,0 +1,19 @@
+func (c *Client) usable() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.enqueueOnly {
+		if c.stopped {
+			return fmt.Errorf("%w: the client was stopped", workflow.ErrNotStarted)
+		}
+		return nil
+	}
+	switch {
+	case !c.started:
+		return workflow.ErrNotStarted
+	case c.stopped:
+		return fmt.Errorf("%w: the client was stopped", workflow.ErrNotStarted)
+	case c.ctx == nil:
+		return workflow.ErrNotStarted
+	}
+	return nil
+}

@@ -1,0 +1,30 @@
+func Then(rules []ThenRule, opts ...ThenOption) (Plugin, error) {
+	if len(rules) == 0 {
+		return nil, invalidf("then: no rules")
+	}
+	names := map[string]bool{}
+	for i, r := range rules {
+		if r.When == "" || r.Start == nil {
+			return nil, invalidf("then: rule %d needs When and Start", i)
+		}
+		for _, s := range r.On {
+			if !s.IsTerminal() {
+				return nil, invalidf("then: rule %d: status %q is not terminal", i, s)
+			}
+		}
+		if r.Name != "" {
+			if names[r.Name] {
+				return nil, invalidf("then: two rules are named %q", r.Name)
+			}
+			names[r.Name] = true
+		}
+	}
+	p := &thenPlugin{rules: slices.Clone(rules)}
+	for _, o := range opts {
+		o(p)
+	}
+	if p.errs == nil {
+		p.errs = func(err error) { slog.Default().Error("workflow: then: next job not started", "error", err) }
+	}
+	return p, nil
+}

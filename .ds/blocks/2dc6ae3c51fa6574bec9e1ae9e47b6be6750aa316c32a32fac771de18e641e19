@@ -1,0 +1,22 @@
+func RunStep(h workflow.Handler, in []byte, opts ...StepOption) StepOutcome {
+	s := stepRun{ctx: context.Background(), info: workflow.StepInfo{Workflow: "test", Step: "step", RunID: "runstep", Attempt: 1},
+		caps: fakeDefaultCaps}
+	for _, o := range opts {
+		o(&s)
+	}
+	for i := len(s.mw) - 1; i >= 0; i-- {
+		h = s.mw[i](h)
+	}
+	ctx := s.ctx
+	var edits *workflow.ChainEdits
+	if s.caps.Has(workflow.CapChain) {
+		edits = workflow.NewChainEdits(s.caps, s.chain)
+		ctx = workflow.WithChainEditor(ctx, edits)
+	}
+	out, err := h(workflow.WithStepInfo(ctx, s.info), in)
+	o := StepOutcome{Output: out, Err: err, Chain: s.chain}
+	if err == nil && edits != nil {
+		o.Chain = edits.Apply(s.chain)
+	}
+	return o
+}

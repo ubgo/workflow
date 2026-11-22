@@ -1,0 +1,22 @@
+func (rc *ReplayCtx) sleep(kind, name string, wake func() time.Time) error {
+	e, ok, err := rc.next(kind, name)
+	if err != nil {
+		return err
+	}
+	var at time.Time
+	if ok {
+		if err := json.Unmarshal(e.Value, &at); err != nil {
+			return rc.fail(Permanent(fmt.Errorf("workflow: replay: sleep %q: recorded wake time does not decode: %w", name, err)))
+		}
+	} else {
+		at = wake().UTC()
+		raw, _ := json.Marshal(at)
+		if err := rc.record(replayEntry{Kind: kind, Name: name, Value: raw}); err != nil {
+			return err
+		}
+	}
+	if d := at.Sub(rc.opts.Clock.Now()); d > 0 {
+		return rc.suspendFor(d)
+	}
+	return nil
+}

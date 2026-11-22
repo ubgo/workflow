@@ -1,0 +1,9 @@
+type MemoryMetrics struct {
+	cfg     MemoryMetricsConfig
+	mu      sync.Mutex
+	buckets map[int64]map[string]*counts // bucket start (unix ns) -> workflow -> counts
+	since   time.Time
+	seen    map[dedupeKey]struct{}
+	ring    []dedupeKey // insertion order of seen, oldest at head
+	head    int
+}

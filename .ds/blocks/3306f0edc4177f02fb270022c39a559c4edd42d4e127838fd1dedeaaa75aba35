@@ -1,0 +1,55 @@
+func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	runID, state, err := c.resolve(ctx, sdk, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if state != stateRun {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %v has not run, so it has not failed", workflow.ErrWrongState, ref)
+	}
+	d, err := runDetailsLagged(ctx, sdk, runID, c.cfg.VisibilityLag)
+	if isNotFound(err) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %q", workflow.ErrNotFound, runID)
+	}
+	if err != nil {
+		return workflow.RunRef{}, engineErr(err, "read run")
+	}
+	// endStatus, not the raw status: a run read FAILED a moment before its
+	// own retry must not be replayed on top of that retry.
+	if st, _ := c.endStatus(d); st != workflow.StatusFailed {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %q is %s, not failed", workflow.ErrWrongState, runID, st)
+	}
+	md := metadataStrings(d.Run.AdditionalMetadata)
+	if err := c.checkKeyFree(ctx, sdk, md[metaIdempotencyKey], runID); err != nil {
+		return workflow.RunRef{}, err
+	}
+	tasks := replayTasks(d)
+	if len(tasks) == 0 {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %q has no failed step to retry", workflow.ErrWrongState, runID)
+	}
+	if _, err := sdk.Runs().Replay(ctx, rest.V1ReplayTaskRequest{ExternalIds: &tasks}); err != nil {
+		return workflow.RunRef{}, engineErr(err, "replay run")
+	}
+	// The replay is applied asynchronously: wait until the engine no
+	// longer reports the run failed, so a Status right after Retry sees it
+	// queued or running.
+	deadline := time.Now().Add(2 * c.cfg.VisibilityLag)
+	for {
+		d, err := sdk.Runs().Get(ctx, runID)
+		if err == nil && d != nil && d.Run.Status != rest.V1TaskStatusFAILED {
+			break
+		}
+		if time.Now().After(deadline) {
+			return workflow.RunRef{}, fmt.Errorf("hatchet driver: replay of run %q not applied within %s", runID, 2*c.cfg.VisibilityLag)
+		}
+		select {
+		case <-ctx.Done():
+			return workflow.RunRef{}, ctx.Err()
+		case <-time.After(registerPoll):
+		}
+	}
+	return workflow.RunRef{RunID: workflow.RunID(runID), ScheduledID: scheduledIDFromMetadata(md)}, nil
+}

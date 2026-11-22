@@ -1,0 +1,12 @@
+func Memo[T any](ctx context.Context, name string, fn func(ctx context.Context) (T, error)) (T, error) {
+	var zero T
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return zero, err
+	}
+	key, err := j.claim(name)
+	if err != nil {
+		return zero, err
+	}
+	return memoKey(ctx, j, key, name, fn)
+}

@@ -1,0 +1,7 @@
+func WithLogger(l *slog.Logger) Option {
+	return func(m *Client) {
+		if l != nil {
+			m.log = l
+		}
+	}
+}

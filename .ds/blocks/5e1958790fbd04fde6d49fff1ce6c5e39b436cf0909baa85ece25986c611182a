@@ -1,0 +1,3 @@
+func NewAttemptError(step string, attempt int, err error, at time.Time) AttemptError {
+	return AttemptError{Step: step, Attempt: attempt, Error: err.Error(), At: at, Stack: StackOf(err)}
+}

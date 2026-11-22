@@ -1,0 +1,1 @@
+	Schedule(ctx context.Context, s Schedule) (ScheduleID, error)

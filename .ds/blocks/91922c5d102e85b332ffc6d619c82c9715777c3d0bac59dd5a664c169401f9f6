@@ -1,0 +1,33 @@
+func cancelStepCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	scheduled := fs.Bool("scheduled", false, "RUN is a ScheduledID")
+	dry := fs.Bool("dry-run", false, "check the run is unfinished and change nothing")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) != 2 {
+			return usagef("cancel-step takes a run ID and a step name")
+		}
+		if *dry {
+			var r runJSON
+			raw, err := e.api.get(ctx, runPath(args[0], *scheduled, ""), &r)
+			if err != nil {
+				return err
+			}
+			if terminal[r.Status] {
+				return fmt.Errorf("dry run: cancel-step would be refused: run %s is %s", r.Ref, r.Status)
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would cancel step %s of run %s (%s); nothing changed\n", args[1], r.Ref, r.Status)
+			return nil
+		}
+		raw, err := e.api.do(ctx, "POST", runPath(args[0], *scheduled, "/steps/"+url.PathEscape(args[1])+"/cancel"), nil, nil)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		fprintf(e.out, "cancelled step %s of %s\n", args[1], args[0])
+		return nil
+	}
+}

@@ -19,6 +19,8 @@ var _ workflow.RunSignalReader = (*Client)(nil)
 // oldest first (workflow.RunSignalReader). The ID is the signal row's id.
 // It reads the (name, ev_key) index, so no migration was needed. A
 // finished or unknown run has none.
+//
+//ds:def id=sql-client-pendingsignals-5mm5s92m owner=@khanakia stability=stable
 func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -68,6 +70,8 @@ func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names [
 // record a wait step taking it writes (workflow.RunSignalReader). The
 // run's row is locked first (touch), so a take and a wait step's
 // delivery of the same signal never both win.
+//
+//ds:def id=sql-client-takesignal-v4extys7 owner=@khanakia stability=stable
 func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err

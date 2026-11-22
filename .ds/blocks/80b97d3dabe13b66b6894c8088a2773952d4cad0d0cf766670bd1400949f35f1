@@ -1,0 +1,9 @@
+func (m *MemoryStore) Create(_ context.Context, st State) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.batches[st.ID]; ok {
+		return fmt.Errorf("batch: id %q already exists", st.ID)
+	}
+	m.batches[st.ID] = st.clone()
+	return nil
+}

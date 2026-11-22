@@ -25,6 +25,8 @@ import (
 // one INSERT decided by the primary key; Put with AnyVersion updates, or
 // inserts when no row is there, in one transaction (a concurrent first
 // insert of the same key is tried again and then updates).
+//
+//ds:def id=sql-datastore-y337tc24 owner=@khanakia stability=stable
 type DataStore struct {
 	st *store
 }
@@ -34,10 +36,14 @@ var _ workflow.DataStore = (*DataStore)(nil)
 // DataMigrationOwner is the ledger owner of DataStore's migrations: a list
 // of its own, so NewDataStore(...).Migrate creates only the data table,
 // while Client.Migrate applies it too.
+//
+//ds:def id=sql-datamigrationowner-awxy22fn owner=@khanakia stability=stable
 const DataMigrationOwner = "ubgo/workflow/sqlstore/data"
 
 // dataMigrations is every DataStore schema change, in order, under the
 // same rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-datamigrations-hmesyyuv owner=@khanakia stability=stable
 func (s *store) dataMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(DataMigrationOwner), Name: "001_data", Script: s.script(s.render(dataDefs(typesFor(s.engine))))},
@@ -70,6 +76,8 @@ func dataDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Put.
+//
+//ds:def id=sql-newdatastore-nhsan4b5 owner=@khanakia stability=stable
 func NewDataStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DataStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {

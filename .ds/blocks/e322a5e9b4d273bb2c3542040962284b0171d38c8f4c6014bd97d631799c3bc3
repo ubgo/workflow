@@ -1,0 +1,7 @@
+var sqliteExprs = engineExprs{
+	id:      "'obx_' || lower(hex(randomblob(16)))",
+	now:     "CAST((julianday('now') - 2440587.5) * 86400000000000 AS INTEGER)",
+	object:  "json_object",
+	key:     func(col string) string { return "CAST(" + col + " AS TEXT)" },
+	wrapped: true,
+}

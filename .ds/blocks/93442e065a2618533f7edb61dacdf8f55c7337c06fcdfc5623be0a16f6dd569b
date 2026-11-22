@@ -1,0 +1,10 @@
+type AlertLimits struct {
+	// Dedup holds back an alert for a key that alerted less than Dedup
+	// ago. Zero turns dedup off.
+	Dedup time.Duration
+
+	// Max and Per cap alerts across all keys at Max per sliding Per
+	// window. Either zero turns the cap off.
+	Max int
+	Per time.Duration
+}

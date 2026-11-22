@@ -1,0 +1,4 @@
+type ConcurrencyKey struct {
+	Func func(Job) string
+	Expr string
+}

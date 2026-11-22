@@ -1,0 +1,19 @@
+func ValidateCancelQuery(q RunQuery) error {
+	if err := ValidateRunQuery(q); err != nil {
+		return err
+	}
+	for _, s := range q.Statuses {
+		if s.IsTerminal() {
+			return invalidf("cancel query: status %q is terminal; a finished run cannot be cancelled", s)
+		}
+	}
+	if q.Limit != 0 || q.Cursor != "" {
+		return invalidf("cancel query: Limit and Cursor are not used by CancelAll")
+	}
+	if len(q.Payload) > 0 {
+		// CancelAll runs in the driver's store; a payload filter there is
+		// not portable, and ignoring it would cancel too much.
+		return invalidf("cancel query: Payload is not used by CancelAll; list the runs and cancel each")
+	}
+	return nil
+}

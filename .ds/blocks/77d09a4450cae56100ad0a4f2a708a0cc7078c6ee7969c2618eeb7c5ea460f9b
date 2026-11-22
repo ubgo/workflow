@@ -1,0 +1,4 @@
+func (m MachineCtx[D]) IdempotencyKey(name string) string {
+	sum := sha256.Sum256([]byte(m.Machine + "\x00" + m.Key + "\x00" + strconv.FormatUint(m.Seq, 10) + "\x00" + m.State + "\x00" + name))
+	return "machine/" + hex.EncodeToString(sum[:16])
+}

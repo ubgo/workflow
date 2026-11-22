@@ -1,0 +1,1 @@
+func (c *Client) PromiseStore() *PromiseStore { return &PromiseStore{rdb: c.rdb, base: c.base} }

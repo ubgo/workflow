@@ -1,0 +1,25 @@
+func (b *Bus) SubscribeCancel(s CancelSubscription) error {
+	if s.Name == "" || s.Event == "" || s.Label == "" {
+		return fmt.Errorf("%w: events: cancel subscription needs a Name, an Event and a Label", workflow.ErrInvalid)
+	}
+	if _, ok := b.client.(workflow.BulkCanceller); !ok || !b.client.Capabilities().Has(workflow.CapCancelAll) {
+		return &workflow.UnsupportedError{Field: "events.CancelSubscription", Missing: workflow.CapCancelAll,
+			Reason: "cancelling runs on an event needs CancelAll"}
+	}
+	if s.Divert != "" || s.DivertJob != nil {
+		if _, ok := b.client.(workflow.RunQuerier); !ok || !b.client.Capabilities().Has(workflow.CapRunQuery) {
+			return &workflow.UnsupportedError{Field: "events.CancelSubscription.Divert", Missing: workflow.CapRunQuery,
+				Reason: "a divert looks up its earlier run so a republish does not cancel it"}
+		}
+	}
+	if err := workflow.ValidateCancelQuery(cancelQuery(s, "x")); err != nil {
+		return fmt.Errorf("events: cancel subscription %q: %w", s.Name, err)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.nameTakenLocked(s.Name) {
+		return fmt.Errorf("%w: events: subscription %q already exists", workflow.ErrInvalid, s.Name)
+	}
+	b.cancels = append(b.cancels, s)
+	return nil
+}

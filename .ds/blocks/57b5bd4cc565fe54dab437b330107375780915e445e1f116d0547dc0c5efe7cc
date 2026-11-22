@@ -1,0 +1,7 @@
+func (r DrainReport) CutRuns() int {
+	seen := make(map[RunID]struct{}, len(r.Cut))
+	for _, c := range r.Cut {
+		seen[c.RunID] = struct{}{}
+	}
+	return len(seen)
+}

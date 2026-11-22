@@ -1,0 +1,5 @@
+func (c *Client) defaultID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return fmt.Sprintf("%013x", c.clk.Now().UnixMilli()) + hex.EncodeToString(b[:])
+}

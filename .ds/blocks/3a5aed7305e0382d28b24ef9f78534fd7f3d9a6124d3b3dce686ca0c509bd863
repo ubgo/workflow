@@ -1,0 +1,12 @@
+func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	if fn == nil {
+		return fmt.Errorf("%w: OnRunFinished with a nil func", workflow.ErrInvalid)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	c.observers = append(c.observers, fn)
+	return nil
+}

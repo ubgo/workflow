@@ -1,0 +1,44 @@
+func (a *aggregator) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+		if !a.wfs[job.Workflow] {
+			return next(ctx, job)
+		}
+		g := a.group(job)
+		if g == "" {
+			return next(ctx, job)
+		}
+		item, err := a.check(job)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		now := a.cfg.Clock.Now()
+		count, first, err := a.store.Append(ctx, g, item, now)
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("workflow/middleware: aggregate store append: %w", err)
+		}
+		runAt, trigger := a.trigger(count, first)
+		a.mu.Lock()
+		if a.failed[g] {
+			runAt, trigger = time.Time{}, true
+		}
+		a.mu.Unlock()
+		if !trigger {
+			return workflow.RunRef{}, nil
+		}
+		if !runAt.After(now) {
+			runAt = time.Time{}
+		}
+		ref, err := next(workflow.AllowReservedLabels(ctx, AggregateGroupLabel, AggregateMaxLabel), a.flushJob(job, g, runAt))
+		a.mu.Lock()
+		if err != nil {
+			a.failed[g] = true
+		} else {
+			delete(a.failed, g)
+		}
+		a.mu.Unlock()
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("%w (group %q): %w", ErrFlushNotEnqueued, g, err)
+		}
+		return ref, nil
+	}
+}

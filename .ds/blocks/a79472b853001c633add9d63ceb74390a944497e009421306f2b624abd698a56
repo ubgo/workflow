@@ -1,0 +1,7 @@
+func WithLabels(keys ...string) Option {
+	return func(r *Reporter) {
+		for _, k := range keys {
+			r.labels[k] = true
+		}
+	}
+}

@@ -1,0 +1,9 @@
+func encodeRef(region string, ref workflow.RunRef) workflow.RunRef {
+	if !ref.RunID.IsZero() {
+		ref.RunID = workflow.RunID(prefix(region) + string(ref.RunID))
+	}
+	if !ref.ScheduledID.IsZero() {
+		ref.ScheduledID = workflow.ScheduledID(prefix(region) + string(ref.ScheduledID))
+	}
+	return ref
+}

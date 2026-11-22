@@ -1,0 +1,5 @@
+func BatchHasJob(wf string, m ...JobMatcher) BatchMatcher {
+	return BatchWhere("a job of "+strconv.Quote(wf)+describe(m), func(b FakeBatch) bool {
+		return slices.ContainsFunc(b.Jobs, func(j workflow.Job) bool { return j.Workflow == wf && matchAll(j, m) })
+	})
+}

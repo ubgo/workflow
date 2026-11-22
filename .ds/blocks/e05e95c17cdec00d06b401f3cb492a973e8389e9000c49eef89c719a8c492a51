@@ -1,0 +1,5 @@
+type DatasetUpdate struct {
+	Dataset string            `json:"dataset"`
+	Version string            `json:"version"`
+	Meta    map[string]string `json:"meta,omitempty"`
+}

@@ -1,0 +1,16 @@
+func NewDatasets(bus *Bus, opts ...DatasetOption) (*Datasets, error) {
+	if bus == nil {
+		return nil, fmt.Errorf("%w: events: datasets: bus is nil", workflow.ErrInvalid)
+	}
+	d := &Datasets{bus: bus}
+	for _, o := range opts {
+		o(d)
+	}
+	if d.store == nil {
+		d.store = NewMemoryLineage()
+	}
+	if d.clock == nil {
+		d.clock = clock.Real{}
+	}
+	return d, nil
+}

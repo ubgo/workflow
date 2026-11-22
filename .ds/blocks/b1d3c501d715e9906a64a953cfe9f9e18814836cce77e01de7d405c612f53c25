@@ -1,0 +1,21 @@
+func (u *UniqueStore) acquireOnce(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
+	now := u.clk.Now()
+	h, expires := keyHash(key), now.Add(ttl).UnixNano()
+	if u.st.engine == engineMySQL {
+		if _, err := u.st.exec(ctx, u.st.db, "DELETE FROM {unique_locks} WHERE key_hash = ? AND expires <= ?", h, now.UnixNano()); err != nil {
+			return false, err
+		}
+		_, err := u.st.exec(ctx, u.st.db, "INSERT INTO {unique_locks} (key_hash, ukey, owner, expires) VALUES (?, ?, ?, ?)", h, key, owner, expires)
+		if u.st.isUnique(err) {
+			return false, nil
+		}
+		return err == nil, err
+	}
+	n, err := u.st.execN(ctx, u.st.db, `INSERT INTO {unique_locks} (key_hash, ukey, owner, expires) VALUES (?, ?, ?, ?)
+		ON CONFLICT (key_hash) DO UPDATE SET ukey = excluded.ukey, owner = excluded.owner, expires = excluded.expires
+		WHERE {unique_locks}.expires <= ?`, h, key, owner, expires, now.UnixNano())
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}

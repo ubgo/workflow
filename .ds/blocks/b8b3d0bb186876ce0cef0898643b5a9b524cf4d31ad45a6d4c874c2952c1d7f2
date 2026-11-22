@@ -1,0 +1,42 @@
+var attemptCauseCases = []testCase{
+	{"a step-timed-out handler sees ErrStepTimeout as its context's cause", func(e *env) {
+		e.needStepTimeout()
+		var p causeProbe
+		wf := oneStep(e.name("w"), p.handler())
+		wf.Steps[0].Timeout = e.tm.unit
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		got := p.seen()
+		if len(got) != 1 {
+			e.t.Fatalf("the handler ended %d times, want 1", len(got))
+		}
+		if !errors.Is(got[0], workflow.ErrStepTimeout) || !workflow.IsTimeout(got[0]) {
+			e.t.Errorf("context.Cause in the handler = %v, want it to match workflow.ErrStepTimeout and ErrTimeout", got[0])
+		}
+		if errors.Is(got[0], workflow.ErrHeartbeatTimeout) || errors.Is(got[0], workflow.ErrRunTimeout) {
+			e.t.Errorf("context.Cause in the handler = %v matches another deadline's sentinel", got[0])
+		}
+	}},
+	{"a heartbeat-timed-out handler sees ErrHeartbeatTimeout as its context's cause", func(e *env) {
+		e.need(workflow.CapHeartbeat)
+		var p causeProbe
+		wf := oneStep(e.name("w"), p.handler())
+		wf.Steps[0].HeartbeatTimeout = 2 * e.tm.unit
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		got := p.seen()
+		if len(got) != 1 {
+			e.t.Fatalf("the handler ended %d times, want 1", len(got))
+		}
+		if !errors.Is(got[0], workflow.ErrHeartbeatTimeout) || !workflow.IsTimeout(got[0]) {
+			e.t.Errorf("context.Cause in the handler = %v, want it to match workflow.ErrHeartbeatTimeout and ErrTimeout", got[0])
+		}
+		if errors.Is(got[0], workflow.ErrStepTimeout) {
+			e.t.Errorf("context.Cause in the handler = %v matches ErrStepTimeout for a missed heartbeat", got[0])
+		}
+	}},
+}

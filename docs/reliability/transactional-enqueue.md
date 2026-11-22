@@ -1,6 +1,6 @@
 # Transactional enqueue
 
-An order is saved and a "ship it" job is enqueued. If the two are separate calls, one can happen without the other: the insert commits and the process dies before the enqueue, or the enqueue succeeds and the transaction rolls back, and a worker ships an order that does not exist. When the queue lives in the same SQL database as the app's data, `sqlstore.Client.EnqueueTx` writes the run inside the app's own transaction, so the run commits or rolls back with the app's writes.
+An order is saved and a "ship it" job is enqueued. If the two are separate calls, one can happen without the other: the insert commits and the process dies before the enqueue, or the enqueue succeeds and the transaction rolls back, and a worker ships an order that does not exist. When the queue lives in the same SQL database as the app's data, [`sqlstore.Client.EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq) writes the run inside the app's own transaction, so the run commits or rolls back with the app's writes.
 
 When the queue is somewhere else (Hatchet, another database, the memory driver), or the enqueue must go through middleware, use the [outbox](outbox.md) instead.
 
@@ -12,7 +12,7 @@ When the queue is somewhere else (Hatchet, another database, the memory driver),
 
 ## Enqueue inside your transaction
 
-Begin a transaction on the app's pool, do the app's writes, call `EnqueueTx(ctx, tx, job)` and commit. A committed run is picked up by the workers of every client registering the workflow. The run is written but not admitted inside the transaction (admission may take a lock row, which would then be held for as long as the app's transaction runs), so the dispatcher finds it at its next poll, within `WithPollInterval` (a second by default). `Wake()` after the commit makes this client look at once:
+Begin a transaction on the app's pool, do the app's writes, call [`EnqueueTx(ctx, tx, job)`](ds:block?id=sql-client-enqueuetx-8tdebvcq) and commit. A committed run is picked up by the workers of every client registering the workflow ([`TestEnqueueTxCommitRuns`](ds:block?id=enginetest-testenqueuetxcommitruns-2qydpvau)). The run is written but not admitted inside the transaction (admission may take a lock row, which would then be held for as long as the app's transaction runs), so the dispatcher finds it at its next poll, within [`WithPollInterval`](ds:block?id=sql-withpollinterval-4mg6xgyu) ([a second](ds:block?id=sql-defaultpoll-nn9t9vqu) by default). [`Wake()`](ds:block?id=sql-client-wake-vdfsstn6) after the commit makes this client look at once:
 
 <!-- snippet: examples/transactional-enqueue/main.go#commit -->
 ```go
@@ -44,7 +44,7 @@ c.Wake() // admit it now instead of at the next poll
 
 The example sets the poll interval to an hour, so the order ships quickly only because of `Wake`.
 
-When the app decides not to commit, nothing is left behind: not the order, and not the run. `Status` on the ref the rolled-back call returned answers `workflow.ErrNotFound`:
+When the app decides not to commit, nothing is left behind: not the order, and not the run. `Status` on the ref the rolled-back call returned answers `workflow.ErrNotFound` ([`TestEnqueueTxRollbackLeavesNoRun`](ds:block?id=enginetest-testenqueuetxrollbackleavesnorun-tnwd4etr)):
 
 <!-- snippet: examples/transactional-enqueue/main.go#rollback -->
 ```go
@@ -66,7 +66,7 @@ _, err = c.Status(ctx, ref)
 fmt.Println("run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
 ```
 
-Idempotency keys follow the workflow's policy, as for `Enqueue`. A key held by an unfinished run, committed or written earlier in the same transaction, returns that run's `RunRef` and writes nothing. The keyed insert runs under a savepoint, so a duplicate key never aborts the caller's transaction, which stays usable for the app's next write:
+Idempotency keys follow the workflow's policy, as for `Enqueue`. A key held by an unfinished run, committed or written earlier in the same transaction, returns that run's `RunRef` and writes nothing. The keyed insert runs under a savepoint ([`insertKeyed`](ds:block?id=sql-client-insertkeyed-rgpk37df)), so a duplicate key never aborts the caller's transaction, which stays usable for the app's next write ([`TestEnqueueTxIdempotency`](ds:block?id=enginetest-testenqueuetxidempotency-4bwneyt2)):
 
 <!-- snippet: examples/transactional-enqueue/main.go#same-key -->
 ```go
@@ -103,17 +103,17 @@ shipped {"order":3}
 
 ## Inside a pgx transaction
 
-If your transactions are pgx transactions rather than `database/sql` ones, wrap the enqueue in `pgxtx.Run` from `github.com/ubgo/workflow/sqlstore/pgxtx` (its own module, so only an app that uses it downloads pgx): `err := pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { _, err := client.EnqueueTx(ctx, stx, job); return err })`. The `*sql.Tx` it hands you is a view over your `pgx.Tx`, so its statements, savepoints and error classification run on the pgx connection; its `Commit` and `Rollback` do nothing, and committing stays your call on the pgx transaction (then `client.Wake()`). It is Postgres only and valid only inside the function. `outbox.Write` takes the same view.
+If your transactions are pgx transactions rather than `database/sql` ones, wrap the enqueue in [`pgxtx.Run`](ds:block?id=pgxtx-run-e5kbumn5) from `github.com/ubgo/workflow/sqlstore/pgxtx` (its own module, so only an app that uses it downloads pgx): `err := pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { _, err := client.EnqueueTx(ctx, stx, job); return err })`. The `*sql.Tx` it hands you is a [view](ds:block?id=pgxtx-view-nzqtvwgb) over your `pgx.Tx`, so its statements, savepoints and error classification run on the pgx connection; its [`Commit`](ds:block?id=pgxtx-view-commit-qz87sha9) and [`Rollback`](ds:block?id=pgxtx-view-rollback-2sxupacc) do nothing, and committing stays your call on the pgx transaction (then `client.Wake()`). It is Postgres only and valid only inside the function. `outbox.Write` takes the same view.
 
 ## Pitfalls
 
-- The transaction must be open on the `*sql.DB` the client was built with: the run is written through it, into this client's tables.
-- The client must be started and the workflow registered on it, as for `Enqueue`: before `Start`, or after `Stop`, the call returns `workflow.ErrNotStarted`; an unregistered workflow is `workflow.ErrNotFound` and a nil `tx` is `workflow.ErrInvalid`.
-- Nothing can wake a worker before the commit. Without `Wake`, a committed run waits for the next poll; `Wake` only nudges this client, and other clients of the cluster find the run at their next poll. It never blocks and is a no-op on a client that is not running.
-- Enqueue middleware does not run: it wraps `Client.Enqueue`, and what it does (a lock in another store, a debounce timer, a trace export) would not roll back with the transaction. Unique jobs, debouncing or tracing on a transactional enqueue need the [outbox](outbox.md), whose relay enqueues through any client after the commit.
-- A key written by another transaction that has not committed yet makes this insert wait for it.
-- On Postgres use `READ COMMITTED` (the default): a `REPEATABLE READ` transaction cannot see a key holder that committed after its snapshot, and fails instead. On MySQL the holder is read with `FOR SHARE`, which sees rows committed after the transaction began.
-- An error leaves the transaction open; rolling it back or carrying on is the caller's decision.
+- The transaction must be open on the `*sql.DB` the client was built with: the run is written through it, into this client's tables ([`EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq)).
+- The client must be started and the workflow registered on it, as for `Enqueue`: before `Start`, or after `Stop`, the call returns `workflow.ErrNotStarted` ([`usable`](ds:block?id=sql-client-usable-pj2kayv2)); an unregistered workflow is `workflow.ErrNotFound` ([`enqueueReg`](ds:block?id=sql-client-enqueuereg-pzaxh9eg)) and a nil `tx` is `workflow.ErrInvalid` ([`TestEnqueueTxRefusals`](ds:block?id=enginetest-testenqueuetxrefusals-wxb4ncd9)).
+- Nothing can wake a worker before the commit. Without `Wake`, a committed run waits for the next poll; [`Wake`](ds:block?id=sql-client-wake-vdfsstn6) only nudges this client, and other clients of the cluster find the run at their next poll. It never blocks and is a no-op on a client that is not running.
+- Enqueue middleware does not run ([`EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq)): it wraps `Client.Enqueue`, and what it does (a lock in another store, a debounce timer, a trace export) would not roll back with the transaction. Unique jobs, debouncing or tracing on a transactional enqueue need the [outbox](outbox.md), whose relay enqueues through any client after the commit.
+- A key written by another transaction that has not committed yet makes this insert wait for it ([`TestEnqueueTxConcurrentKey`](ds:block?id=enginetest-testenqueuetxconcurrentkey-mdazsx8n)).
+- On Postgres use `READ COMMITTED` (the default): a `REPEATABLE READ` transaction cannot see a key holder that committed after its snapshot, and fails instead. On MySQL the holder is read with `FOR SHARE` ([`lockingRead`](ds:block?id=sql-store-lockingread-cpack28m)), which sees rows committed after the transaction began.
+- An error leaves the transaction open; rolling it back or carrying on is the caller's decision ([`EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq)).
 
 ## Related
 

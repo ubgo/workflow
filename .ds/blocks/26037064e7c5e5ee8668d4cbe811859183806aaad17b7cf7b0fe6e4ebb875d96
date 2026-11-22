@@ -1,0 +1,3 @@
+func isReservedLabel(k string) bool {
+	return strings.HasPrefix(k, metadataPrefix) || strings.HasPrefix(k, hatchetMetadataPrefix) || k == traceparentKey
+}

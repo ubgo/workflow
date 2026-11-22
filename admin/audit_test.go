@@ -15,6 +15,8 @@ import (
 // TestAudit_EveryWriteRoute walks every route: each write action records
 // exactly one entry with who, the action, the resource, the status and
 // the Admin clock's time; each read records none.
+//
+//ds:def id=admin-testaudit-everywriteroute-srkcs2a4 owner=@khanakia stability=stable
 func TestAudit_EveryWriteRoute(t *testing.T) {
 	clk := clock.NewFake(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC))
 	for _, r := range routes {
@@ -44,6 +46,8 @@ func TestAudit_EveryWriteRoute(t *testing.T) {
 // TestAudit_ResourceAndOutcome: the entry carries the resource the
 // action was about, a refusal, the operation's own error (in full, while
 // the response says only "internal error"), and a dry run.
+//
+//ds:def id=admin-testaudit-resourceandoutcome-nfb42tq6 owner=@khanakia stability=stable
 func TestAudit_ResourceAndOutcome(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -128,6 +132,8 @@ func TestAudit_ResourceAndOutcome(t *testing.T) {
 
 // TestAudit_SinkFailureNeverChangesTheResponse: a sink that errors or
 // panics is logged; the operation's response stands.
+//
+//ds:def id=admin-testaudit-sinkfailureneverchangestheresponse-k96rsu8g owner=@khanakia stability=stable
 func TestAudit_SinkFailureNeverChangesTheResponse(t *testing.T) {
 	for name, sink := range map[string]AuditSink{
 		"error": AuditFunc(func(context.Context, AuditEntry) error { return errors.New("audit table gone") }),
@@ -143,6 +149,8 @@ func TestAudit_SinkFailureNeverChangesTheResponse(t *testing.T) {
 // TestAudit_NotBeforeAuthorize: a request refused before Authorize (no
 // identity, no JSON content type) asked for no action and records none;
 // without WithAudit nothing wraps the writer.
+//
+//ds:def id=admin-testaudit-notbeforeauthorize-m6tfbmqp owner=@khanakia stability=stable
 func TestAudit_NotBeforeAuthorize(t *testing.T) {
 	audit := &MemoryAudit{}
 	h := NewHandler(New(seeded()), bearerAuth(), WithAudit(audit))

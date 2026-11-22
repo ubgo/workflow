@@ -1,0 +1,5 @@
+type Func[In any] struct {
+	name string
+	fn   func(ctx context.Context, in In) error
+	cfg  FuncConfig
+}

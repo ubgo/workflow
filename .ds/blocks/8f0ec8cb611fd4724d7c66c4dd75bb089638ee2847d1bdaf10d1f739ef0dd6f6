@@ -1,0 +1,37 @@
+func (f *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if job.IdempotencyKey == "" && !f.allowNoKey {
+		return workflow.RunRef{}, fmt.Errorf("%w (%w)", ErrKeyRequired, workflow.ErrInvalid)
+	}
+	if missing := f.Capabilities().Missing(workflow.RequiresJob(job)); !missing.IsZero() {
+		return workflow.RunRef{}, &workflow.UnsupportedError{Field: "Job", Missing: missing, Reason: "one of the failover backends cannot honour it"}
+	}
+	var perr error
+	if f.tryPrimary() {
+		ref, err := f.primary.Enqueue(ctx, job)
+		if err == nil {
+			if f.primaryOK() {
+				f.emit(ctx, Event{Kind: EventCoolOffEnded, Workflow: job.Workflow})
+			}
+			return encodeRef(primarySide, ref), nil
+		}
+		if ctx.Err() != nil || !f.classify(err) {
+			return workflow.RunRef{}, err
+		}
+		until := f.primaryFailed()
+		perr = err
+		f.emit(ctx, Event{Kind: EventFailedOver, Workflow: job.Workflow, Err: err})
+		if !until.IsZero() {
+			f.emit(ctx, Event{Kind: EventCoolOffStarted, Workflow: job.Workflow, Until: until})
+		}
+	} else {
+		f.emit(ctx, Event{Kind: EventPrimarySkipped, Workflow: job.Workflow})
+	}
+	ref, err := f.secondary.Enqueue(ctx, job)
+	if err != nil {
+		if perr == nil {
+			return workflow.RunRef{}, fmt.Errorf("failover: secondary (primary cooling off): %w", err)
+		}
+		return workflow.RunRef{}, fmt.Errorf("failover: primary: %w; secondary: %w", perr, err)
+	}
+	return encodeRef(secondarySide, ref), nil
+}

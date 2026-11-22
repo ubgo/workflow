@@ -1,0 +1,11 @@
+func TestAudit_SinkFailureNeverChangesTheResponse(t *testing.T) {
+	for name, sink := range map[string]AuditSink{
+		"error": AuditFunc(func(context.Context, AuditEntry) error { return errors.New("audit table gone") }),
+		"panic": AuditFunc(func(context.Context, AuditEntry) error { panic("boom") }),
+	} {
+		h := NewHandler(New(seeded()), bearerAuth(), WithAudit(sink))
+		if rec := do(t, h, "POST", "/runs/r2/retry", ""); rec.Code != http.StatusOK {
+			t.Errorf("%s: %d %s", name, rec.Code, rec.Body)
+		}
+	}
+}

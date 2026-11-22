@@ -1,0 +1,7 @@
+func newID() (ID, error) {
+	b := make([]byte, idBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("batch: generate id: %w", err)
+	}
+	return ID(hex.EncodeToString(b)), nil
+}

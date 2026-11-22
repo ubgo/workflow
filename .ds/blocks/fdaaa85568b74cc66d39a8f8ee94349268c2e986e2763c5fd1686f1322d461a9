@@ -1,0 +1,39 @@
+func TestTenantScope_ListsPinned(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
+
+	if got := runIDs(t, as(t, h, "a", "GET", "/runs", "")); !slices.Equal(got, ids(ts.aWait, ts.aFail)) {
+		t.Fatalf("a's /runs = %v, want %v", got, ids(ts.aWait, ts.aFail))
+	}
+	if got := runIDs(t, as(t, h, "a", "GET", "/runs?tenant=a", "")); !slices.Equal(got, ids(ts.aWait, ts.aFail)) {
+		t.Fatalf("a's /runs?tenant=a = %v", got)
+	}
+	if got := runIDs(t, as(t, h, "b", "GET", "/failures", "")); !slices.Equal(got, ids(ts.bFail)) {
+		t.Fatalf("b's /failures = %v", got)
+	}
+	rec := as(t, h, "a", "GET", "/runs?count=1", "")
+	var counted struct {
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &counted); err != nil || counted.Total != 2 {
+		t.Fatalf("a's count = %d, %v (%s)", counted.Total, err, rec.Body)
+	}
+	for _, path := range []string{"/runs?tenant=b", "/failures?tenant=a&tenant=b", "/discarded?tenant=b"} {
+		if rec := as(t, h, "a", "GET", path, ""); rec.Code != http.StatusForbidden {
+			t.Errorf("a GET %s = %d, want 403", path, rec.Code)
+		}
+	}
+
+	// The Authorizer sees the pinned filter and the tenant.
+	var seen []string
+	auth := scopedAuth()
+	auth.Authorize = func(_ context.Context, req Request[user]) error {
+		tenant, _ := TenantFrom(req.HTTP.Context())
+		seen = append(seen, req.Resource.Query.Tenant+"/"+tenant)
+		return nil
+	}
+	as(t, NewHandler(New(ts.c), auth, WithTenantScope(byName)), "b", "GET", "/runs", "")
+	if !slices.Equal(seen, []string{"b/b"}) {
+		t.Fatalf("Authorize saw %v, want [b/b]", seen)
+	}
+}

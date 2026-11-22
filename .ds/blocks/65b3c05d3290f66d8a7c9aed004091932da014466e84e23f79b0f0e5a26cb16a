@@ -1,0 +1,27 @@
+func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	if err := c.need("Schedules", workflow.CapScheduleList); err != nil {
+		return nil, err
+	}
+	var out []workflow.ScheduleInfo
+	for _, s := range []Side{SideOld, SideNew} {
+		l, ok := c.backend(s).(workflow.ScheduleLister)
+		if !ok {
+			continue
+		}
+		infos, err := l.Schedules(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("cutover: %s: %w", s, err)
+		}
+		for _, info := range infos {
+			info.ID = encodeScheduleID(s, info.ID)
+			if !info.Last.Run.IsZero() {
+				info.Last.Run = encodeRef(s, info.Last.Run)
+			}
+			out = append(out, info)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b workflow.ScheduleInfo) int {
+		return cmp.Or(cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Name, b.Name))
+	})
+	return out, nil
+}

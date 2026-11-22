@@ -1,0 +1,20 @@
+func multiDecide(choice string, decide func(context.Context, []byte) ([]string, error), branches []string) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		picked, err := decide(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		if len(picked) == 0 {
+			return nil, Permanent(invalidf("multi-choice %q: Decide picked no branch", choice))
+		}
+		for i, p := range picked {
+			if !slices.Contains(branches, p) {
+				return nil, Permanent(invalidf("multi-choice %q: Decide returned %q, which is not a branch", choice, p))
+			}
+			if slices.Contains(picked[:i], p) {
+				return nil, Permanent(invalidf("multi-choice %q: Decide returned %q twice", choice, p))
+			}
+		}
+		return encodeJSON("multi-choice "+choice, multiRoute{Branches: picked, Input: in})
+	}
+}

@@ -1,0 +1,3 @@
+func PartitionKey(workflow, set, key string) string {
+	return "partition/" + url.PathEscape(workflow) + "/" + url.PathEscape(set) + "/" + url.PathEscape(key)
+}

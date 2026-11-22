@@ -1,0 +1,3 @@
+func ArgsLabels(keys ...string) ArgsOption {
+	return func(k *argsKey) { k.labels = append([]string(nil), keys...) }
+}

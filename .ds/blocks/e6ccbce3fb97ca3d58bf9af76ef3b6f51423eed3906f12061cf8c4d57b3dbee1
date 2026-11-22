@@ -1,0 +1,14 @@
+func (b *BucketStore) run(ctx context.Context, key string, spec workflow.BucketSpec, v float64, now time.Time, mode string) (int64, error) {
+	if !(spec.Capacity > 0) || !(spec.LeakPerSecond > 0) || math.IsInf(spec.Capacity, 0) || math.IsInf(spec.LeakPerSecond, 0) {
+		return 0, fmt.Errorf("%w: redis: bucket needs a positive, finite Capacity and LeakPerSecond", workflow.ErrInvalid)
+	}
+	drain := time.Duration((spec.Capacity + math.Max(v, 0)) / spec.LeakPerSecond * float64(time.Second))
+	expiry := (drain + time.Minute).Milliseconds()
+	f := func(x float64) string { return strconv.FormatFloat(x, 'g', -1, 64) }
+	ns, err := takeScript.Run(ctx, b.rdb, []string{b.base + ":bucket:" + key},
+		f(spec.Capacity), f(spec.LeakPerSecond), f(v), now.UnixMicro(), expiry, mode).Int64()
+	if err != nil {
+		return 0, fmt.Errorf("redis: bucket: %w", classify(err))
+	}
+	return ns, nil
+}

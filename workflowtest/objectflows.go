@@ -13,6 +13,8 @@ import (
 // ObjectHarness builds what the virtual-object cases run on: Start as
 // for FlowHarness, and Store, the JournalStore the object keeps its state
 // in (the driver's durable one where it has one).
+//
+//ds:def id=workflowtest-objectharness-hkns6ws6 owner=@khanakia stability=stable
 type ObjectHarness struct {
 	Start func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
 	Store func(t *testing.T) workflow.JournalStore
@@ -22,6 +24,8 @@ type ObjectHarness struct {
 // one key run one at a time and every call is applied exactly once to the
 // key's state, keys are independent, and an unknown method fails its call
 // without touching the state. The driver needs CapConcurrencyKey.
+//
+//ds:def id=workflowtest-runobjectflows-86ussnuu owner=@khanakia stability=stable
 func RunObjectFlows(t *testing.T, h ObjectHarness) {
 	type counter struct {
 		N int `json:"n"`

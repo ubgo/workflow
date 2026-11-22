@@ -1,0 +1,5 @@
+type MemoryInbox struct {
+	mu      sync.Mutex
+	entries map[string]memoryInboxEntry
+	seq     uint64
+}

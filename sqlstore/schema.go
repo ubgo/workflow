@@ -23,6 +23,7 @@ type sqlTypes struct {
 	inlineIndex bool
 }
 
+//ds:def id=sql-typesfor-6wkwbx9y owner=@khanakia stability=stable
 func typesFor(engine string) sqlTypes {
 	switch engine {
 	case enginePostgres:
@@ -60,6 +61,8 @@ type tableDef struct {
 // can shift a due time. Every unique constraint here is a correctness
 // guard, not business validation; the comment on each says what it
 // guarantees.
+//
+//ds:def id=sql-tabledefs-cgz8s9k6 owner=@khanakia stability=stable
 func tableDefs(t sqlTypes) []tableDef {
 	return []tableDef{
 		{stem: tblRuns, lines: []string{
@@ -331,6 +334,8 @@ const discardedStatus = "UPDATE {runs} SET status = '" + runDiscarded + "' WHERE
 // characters (labels.go). RunQuery.Labels filters through its (lkey, lval)
 // index; runs.labels stays the exact copy RunInfo.Labels is read from. Its
 // rendered text is frozen once released, like ddl.
+//
+//ds:def id=sql-labeldefs-yz6wwuqp owner=@khanakia stability=stable
 func labelDefs(t sqlTypes) []tableDef {
 	return []tableDef{{stem: tblRunLabels, lines: []string{
 		"run_id " + t.id + " NOT NULL",
@@ -415,6 +420,8 @@ func (s *store) render(defs []tableDef) []string {
 // error at Start rather than at the first enqueue. It reads the tables, not
 // the ledger, so a schema applied from MigrationScripts by another tool
 // passes.
+//
+//ds:def id=sql-client-checkschema-5y2gj6z7 owner=@khanakia stability=stable
 func (c *Client) checkSchema(ctx context.Context) error {
 	for _, stem := range allTables {
 		var n int64

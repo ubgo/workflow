@@ -1,0 +1,4 @@
+func WithTimeoutClaim(ctx context.Context) (context.Context, func() bool) {
+	var claimed atomic.Bool
+	return context.WithValue(ctx, timeoutClaimKey{}, &claimed), claimed.Load
+}

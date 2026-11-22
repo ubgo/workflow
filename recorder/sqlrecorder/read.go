@@ -189,7 +189,7 @@ func (s *Store) Run(ctx context.Context, ref workflow.RunRef) (recorder.RunRecor
 	if rec.Ref.RunID.IsZero() {
 		return rec, nil
 	}
-	steps, err := s.steps(ctx, rec.Ref.RunID)
+	steps, err := s.steps(ctx, s.db, rec.Ref.RunID)
 	if err != nil {
 		return recorder.RunRecord{}, err
 	}
@@ -197,11 +197,19 @@ func (s *Store) Run(ctx context.Context, ref workflow.RunRef) (recorder.RunRecor
 	return rec, nil
 }
 
-// steps reads a run's step rows and their events, in RunRecord order.
-func (s *Store) steps(ctx context.Context, runID workflow.RunID) ([]recorder.StepRecord, error) {
+// querier is a *sql.DB or a *sql.Tx, so a read can run inside the
+// transaction that moves a run to the archive table.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// steps reads a run's step rows and their events, in RunRecord order,
+// through db (the store's pool or a transaction).
+func (s *Store) steps(ctx context.Context, db querier, runID workflow.RunID) ([]recorder.StepRecord, error) {
 	q := s.d.quote
 	a := &args{d: s.d}
-	rows, err := s.db.QueryContext(ctx, s.selectSteps()+" WHERE "+q("run_id")+" = "+a.add(string(runID)), a.vals...)
+	rows, err := db.QueryContext(ctx, s.selectSteps()+" WHERE "+q("run_id")+" = "+a.add(string(runID)), a.vals...)
 	if err != nil {
 		return nil, fmt.Errorf("sqlrecorder: read steps: %w", err)
 	}
@@ -227,7 +235,7 @@ func (s *Store) steps(ctx context.Context, runID workflow.RunID) ([]recorder.Ste
 	stmt := "SELECT " + q("step") + ", " + q("attempt") + ", " + q("seq") + ", " + q("message") + ", " + q("level") + ", " + q("attrs") + ", " + q("at") +
 		" FROM " + s.table(tableEvents) + " WHERE " + q("run_id") + " = " + b.add(string(runID)) +
 		" ORDER BY " + q("step") + ", " + q("attempt") + ", " + q("seq")
-	erows, err := s.db.QueryContext(ctx, stmt, b.vals...)
+	erows, err := db.QueryContext(ctx, stmt, b.vals...)
 	if err != nil {
 		return nil, fmt.Errorf("sqlrecorder: read events: %w", err)
 	}

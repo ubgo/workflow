@@ -1,0 +1,6 @@
+func (s *store) uniqueMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(UniqueMigrationOwner), Name: "001_unique", Script: s.script(s.render(uniqueDefs(typesFor(s.engine))))},
+		{Owner: s.owner(UniqueMigrationOwner), Name: "002_unique_holder", Script: s.script(s.render(uniqueHolderDefs(typesFor(s.engine))))},
+	}
+}

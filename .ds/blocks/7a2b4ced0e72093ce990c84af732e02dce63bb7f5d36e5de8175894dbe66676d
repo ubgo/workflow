@@ -1,0 +1,19 @@
+type RetryDef struct {
+	// Max is RetryPolicy.Max: retries after the first attempt.
+	Max int `json:"max"`
+
+	// Backoff is RetryPolicy.Backoff. Absent means retry at once.
+	Backoff *BackoffDef `json:"backoff,omitempty"`
+
+	// Until is RetryPolicy.Until, as a duration string. Needs
+	// CapRetryUntil when set.
+	Until string `json:"until,omitempty"`
+
+	// MaxErrors is RetryPolicy.MaxErrors. Needs CapRetryMaxErrors when
+	// set.
+	MaxErrors int `json:"max_errors,omitempty"`
+
+	// DiscardOnExhaust is RetryPolicy.DiscardOnExhaust. Needs
+	// CapDiscardExhausted when set.
+	DiscardOnExhaust bool `json:"discard_on_exhaust,omitempty"`
+}

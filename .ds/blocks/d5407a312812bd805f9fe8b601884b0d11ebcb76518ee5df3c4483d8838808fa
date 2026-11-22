@@ -1,0 +1,1 @@
+	LabelPartitionKey = LabelPrefixInternal + "partition-key"

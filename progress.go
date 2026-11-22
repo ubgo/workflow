@@ -8,11 +8,15 @@ import (
 
 // MaxProgressData bounds Progress.Data, so a step reporting progress in a
 // loop cannot grow a run's stored record without limit.
+//
+//ds:def id=maxprogressdata-3mzac5hg owner=@khanakia stability=stable
 const MaxProgressData = 64 << 10
 
 // Progress is how far a run has got, as a step reported it from inside
 // (ReportProgress): a percentage, a message for a person, and optional
 // app data (rows exported so far, a cursor). The latest report wins.
+//
+//ds:def id=progress-rtebxj4k owner=@khanakia stability=stable
 type Progress struct {
 	// Percent is from 0 to 100.
 	Percent float64
@@ -42,6 +46,8 @@ func (p Progress) Clone() Progress {
 
 // ValidateProgress checks p: Percent within [0, 100] and Data within
 // MaxProgressData. Errors wrap ErrInvalid.
+//
+//ds:def id=validateprogress-gcftj58m owner=@khanakia stability=stable
 func ValidateProgress(p Progress) error {
 	if math.IsNaN(p.Percent) || p.Percent < 0 || p.Percent > 100 {
 		return invalidf("progress: Percent %v is outside [0, 100]", p.Percent)
@@ -56,11 +62,15 @@ func ValidateProgress(p Progress) error {
 // that keeps progress sets one on the step's ctx (WithProgressReporter);
 // it fills Step and At, keeps the latest report as RunInfo.Progress, and
 // (with a LifecycleNotifier) emits LifecycleProgress.
+//
+//ds:def id=progressreporter-n64hhjpe owner=@khanakia stability=stable
 type ProgressReporter interface {
 	ReportProgress(ctx context.Context, p Progress) error
 }
 
 // ProgressFunc adapts a function to ProgressReporter.
+//
+//ds:def id=progressfunc-mgqzzz6x owner=@khanakia stability=stable
 type ProgressFunc func(ctx context.Context, p Progress) error
 
 // ReportProgress calls f.
@@ -69,6 +79,8 @@ func (f ProgressFunc) ReportProgress(ctx context.Context, p Progress) error { re
 type progressKey struct{}
 
 // WithProgressReporter returns a ctx carrying r. Drivers call it.
+//
+//ds:def id=withprogressreporter-7zw9jr7b owner=@khanakia stability=stable
 func WithProgressReporter(ctx context.Context, r ProgressReporter) context.Context {
 	return context.WithValue(ctx, progressKey{}, r)
 }
@@ -80,6 +92,8 @@ func WithProgressReporter(ctx context.Context, r ProgressReporter) context.Conte
 // keeps no progress, it returns an UnsupportedError: unlike Heartbeat, the
 // caller asked for data to be kept, so silently dropping it would be a
 // lie. A handler that does not care can ignore the error.
+//
+//ds:def id=reportprogress-qtz35tuj owner=@khanakia stability=stable
 func ReportProgress(ctx context.Context, p Progress) error {
 	if err := ValidateProgress(p); err != nil {
 		return err

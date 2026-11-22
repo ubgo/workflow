@@ -1,0 +1,12 @@
+func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := onRegion(c, "EditRun", workflow.Caps{}, ref, func(name string, e workflow.RunEditor, inner workflow.RunRef) error {
+		got, err := e.EditRun(ctx, inner, edit)
+		out = encodeRef(name, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}

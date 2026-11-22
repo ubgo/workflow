@@ -1,0 +1,12 @@
+func (r *Relay) Start(ctx context.Context) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.started {
+		return workflow.ErrAlreadyStarted
+	}
+	r.started = true
+	ctx, r.cancel = context.WithCancel(ctx)
+	r.done = make(chan struct{})
+	go r.loop(ctx)
+	return nil
+}

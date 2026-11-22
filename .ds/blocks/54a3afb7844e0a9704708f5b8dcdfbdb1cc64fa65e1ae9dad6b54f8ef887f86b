@@ -1,0 +1,59 @@
+type ScheduleInfo struct {
+	// ID is the schedule. A declared cron has the driver's stable id for
+	// that declaration.
+	ID ScheduleID
+
+	// Name is the Schedule.Name; for a declared cron, the expression.
+	Name string
+
+	// Workflow is the workflow the schedule runs.
+	Workflow string
+
+	// Cron is the expression.
+	Cron string
+
+	// Location is the zone it is evaluated in.
+	Location *time.Location
+
+	// Declared is true for a Workflow.Cron entry.
+	Declared bool
+
+	// Paused is true while SchedulePauser holds it.
+	Paused bool
+
+	// Next is the next fire time in Location; zero when the expression
+	// never fires again. It ignores windows and ScheduleWhen, which are
+	// decided at tick time.
+	Next time.Time
+
+	// Misfire is the schedule's misfire policy.
+	Misfire Misfire
+
+	// Windows are the schedule's time-of-day windows.
+	Windows Windows
+
+	// Labels are the schedule's labels. Callers must not modify them.
+	Labels map[string]string
+
+	// Overlap is the schedule's overlap policy (for a declared cron,
+	// Workflow.CronOverlap); empty means OverlapAllow.
+	Overlap OverlapPolicy
+
+	// Last is the schedule's most recent fire, filled by drivers with
+	// CapScheduleHistory; zero otherwise.
+	Last ScheduleLast
+
+	// Seconds is Schedule.Seconds (Workflow.CronSeconds for a declared
+	// cron).
+	Seconds bool
+
+	// Active is the schedule's period (Workflow.CronActive for a declared
+	// cron). Next already respects it.
+	Active Active
+
+	// KeepRuns is Schedule.KeepRuns (Workflow.CronKeepRuns).
+	KeepRuns int
+
+	// Tenant is Schedule.Tenant; empty for a declared cron.
+	Tenant string
+}

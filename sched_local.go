@@ -13,10 +13,14 @@ import (
 
 // ErrLocalCronStarted is returned by LocalCron.Add after Start and by a
 // second Start: entries are fixed once the cron runs.
+//
+//ds:def id=errlocalcronstarted-6yxzcj5p owner=@khanakia stability=stable
 var ErrLocalCronStarted = errors.New("workflow: local cron already started")
 
 // LocalCronFunc is the code a LocalCron entry runs. at is the tick it
 // runs for (the logical time), not the wall time it started.
+//
+//ds:def id=localcronfunc-pt52qxp8 owner=@khanakia stability=stable
 type LocalCronFunc func(ctx context.Context, at time.Time) error
 
 // LocalCron runs functions on a cron schedule inside this process, on
@@ -34,6 +38,8 @@ type LocalCronFunc func(ctx context.Context, at time.Time) error
 //
 // Time comes from the injected clock (WithLocalCronClock, clock.Real by
 // default), so a test drives it with clock.Fake.
+//
+//ds:def id=localcron-vcntvcyq owner=@khanakia stability=stable
 type LocalCron struct {
 	clk     clock.Clock
 	parser  cron.Parser
@@ -55,9 +61,13 @@ type localEntry struct {
 }
 
 // LocalCronOption configures a LocalCron.
+//
+//ds:def id=localcronoption-y46rxcak owner=@khanakia stability=stable
 type LocalCronOption func(*LocalCron)
 
 // WithLocalCronClock sets the clock; nil keeps clock.Real.
+//
+//ds:def id=withlocalcronclock-utszah2h owner=@khanakia stability=stable
 func WithLocalCronClock(c clock.Clock) LocalCronOption {
 	return func(l *LocalCron) {
 		if c != nil {
@@ -68,6 +78,8 @@ func WithLocalCronClock(c clock.Clock) LocalCronOption {
 
 // WithLocalCronParser sets the cron dialect (cron.ParseSeconds for a
 // seconds field); nil keeps cron.Parse.
+//
+//ds:def id=withlocalcronparser-p2p7xdgr owner=@khanakia stability=stable
 func WithLocalCronParser(p cron.Parser) LocalCronOption {
 	return func(l *LocalCron) {
 		if p != nil {
@@ -79,11 +91,15 @@ func WithLocalCronParser(p cron.Parser) LocalCronOption {
 // WithLocalCronErrors receives every error and recovered panic of an
 // entry's run, with the entry's name and tick. Nil (the default) drops
 // them; the handler runs on the entry's goroutine and must not block.
+//
+//ds:def id=withlocalcronerrors-xvucry86 owner=@khanakia stability=stable
 func WithLocalCronErrors(f func(name string, at time.Time, err error)) LocalCronOption {
 	return func(l *LocalCron) { l.onError = f }
 }
 
 // NewLocalCron returns a LocalCron with no entries.
+//
+//ds:def id=newlocalcron-yf6kspx6 owner=@khanakia stability=stable
 func NewLocalCron(opts ...LocalCronOption) *LocalCron {
 	l := &LocalCron{clk: clock.Real{}, parser: cron.Parse, names: map[string]bool{}, done: make(chan struct{})}
 	for _, o := range opts {
@@ -96,6 +112,8 @@ func NewLocalCron(opts ...LocalCronOption) *LocalCron {
 // UTC) and time.Local is refused, for the same reason as on Schedule.
 // Names are unique. Every validation error wraps ErrInvalid; Add after
 // Start returns ErrLocalCronStarted.
+//
+//ds:def id=localcron-add-nxm3w52c owner=@khanakia stability=stable
 func (l *LocalCron) Add(name, expr string, loc *time.Location, fn LocalCronFunc) error {
 	switch {
 	case name == "":
@@ -126,6 +144,8 @@ func (l *LocalCron) Add(name, expr string, loc *time.Location, fn LocalCronFunc)
 
 // Start runs every entry until ctx ends, without blocking. Done closes once
 // every entry's goroutine, including a run in progress, has returned.
+//
+//ds:def id=localcron-start-u6drtdsb owner=@khanakia stability=stable
 func (l *LocalCron) Start(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -150,6 +170,8 @@ func (l *LocalCron) Done() <-chan struct{} { return l.done }
 // loop waits for each tick of e and runs it. The next tick is computed
 // from the clock after a run returns, which is what skips the ticks that
 // fell due during a long run.
+//
+//ds:def id=localcron-loop-w2mts36z owner=@khanakia stability=stable
 func (l *LocalCron) loop(ctx context.Context, e localEntry) {
 	defer l.wg.Done()
 	for {
@@ -172,6 +194,8 @@ func (l *LocalCron) loop(ctx context.Context, e localEntry) {
 }
 
 // run calls the entry's func, turning a panic into an error.
+//
+//ds:def id=localcron-run-rpwg75c5 owner=@khanakia stability=stable
 func (l *LocalCron) run(ctx context.Context, e localEntry, at time.Time) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

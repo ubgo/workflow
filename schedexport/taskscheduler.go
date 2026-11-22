@@ -13,6 +13,8 @@ import (
 
 // TaskSchedulerOptions are the parts of a Windows task a Schedule does not
 // carry.
+//
+//ds:def id=schedexport-taskscheduleroptions-dzg46fkr owner=@khanakia stability=stable
 type TaskSchedulerOptions struct {
 	// Zone is the time zone of the Windows machine the task is
 	// registered on. Required by TaskScheduler: a CalendarTrigger runs on
@@ -22,6 +24,8 @@ type TaskSchedulerOptions struct {
 }
 
 // maxTriggers is the most triggers Task Scheduler takes in one task.
+//
+//ds:def id=schedexport-maxtriggers-chw2bwff owner=@khanakia stability=stable
 const maxTriggers = 48
 
 // taskBase is the StartBoundary date of a recurring trigger with no
@@ -56,6 +60,8 @@ var taskName = regexp.MustCompile(`^[A-Za-z0-9._\-][A-Za-z0-9 ._\-]{0,199}$`)
 //
 // The action runs Target.Command[0] with the rest of Command and Args as
 // its arguments, quoted the way Windows programs split a command line.
+//
+//ds:def id=schedexport-taskscheduler-xtvrpdcn owner=@khanakia stability=stable
 func TaskScheduler(s workflow.Schedule, t Target, o TaskSchedulerOptions) (File, error) {
 	const f = FormatTaskScheduler
 	j, err := taskPrepare(s, t)
@@ -109,6 +115,8 @@ func TaskScheduler(s workflow.Schedule, t Target, o TaskSchedulerOptions) (File,
 // registers it before it quits and writes a new one each time it runs.
 // The overlap and misfire policies map as for TaskScheduler. It returns
 // ErrNoNextFire when the schedule never fires again.
+//
+//ds:def id=schedexport-taskschedulernextfire-9kprgebd owner=@khanakia stability=stable
 func TaskSchedulerNextFire(s workflow.Schedule, t Target, clk clock.Clock) (File, error) {
 	j, err := taskPrepare(s, t)
 	if err != nil {
@@ -179,6 +187,8 @@ type taskTime struct{ at, every, span int }
 // Duration is set half an interval past the last time, so the last time
 // fires and the one after it does not whether Task Scheduler counts the
 // end inclusively or not.
+//
+//ds:def id=schedexport-tasktimes-fvefju5j owner=@khanakia stability=stable
 func taskTimes(fl cron.Fields) ([]taskTime, error) {
 	var secs []int
 	for _, h := range fl.Hour {
@@ -205,6 +215,8 @@ func taskTimes(fl cron.Fields) ([]taskTime, error) {
 }
 
 // taskDays writes the ScheduleBy element for the day and month fields.
+//
+//ds:def id=schedexport-taskdays-6jx7h8xt owner=@khanakia stability=stable
 func taskDays(fl cron.Fields) (string, error) {
 	const f = FormatTaskScheduler
 	domFull, dowFull, monthFull := full(fl.DayOfMonth, 1, 31), full(fl.DayOfWeek, 0, 6), full(fl.Month, 1, 12)
@@ -264,6 +276,8 @@ func months(ms []int) string {
 
 // taskBounds is the period the triggers are live: Active narrowed by a
 // contiguous year field. Zero ends mean no bound.
+//
+//ds:def id=schedexport-taskbounds-up2zj8uf owner=@khanakia stability=stable
 func taskBounds(s workflow.Schedule, fl cron.Fields, zone *time.Location) (from, until time.Time, err error) {
 	from, until = s.Active.From, s.Active.Until
 	if fl.Year != nil {

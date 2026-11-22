@@ -1,0 +1,58 @@
+func (f *Fake) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if f.passes(job.Workflow) {
+		return f.inner.Enqueue(ctx, job)
+	}
+	if err := workflow.ValidateJob(job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJobLabels(ctx, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJob(f.caps, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.started {
+		return workflow.RunRef{}, workflow.ErrNotStarted
+	}
+	wf, ok := f.wfs[job.Workflow]
+	if !ok {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, job.Workflow)
+	}
+	if err := workflow.CheckJobQueue(f.caps, wf, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	key := job.IdempotencyKey
+	switch wf.Idempotency {
+	case workflow.IdempotencyOff:
+		key = ""
+	case workflow.IdempotencyRequired:
+		if key == "" {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %q requires an IdempotencyKey", workflow.ErrInvalid, wf.Name)
+		}
+	}
+	r := &fakeRun{job: copyJob(job), status: workflow.StatusQueued}
+	if key != "" {
+		r.key = [2]string{wf.Name, key}
+		if holder, ok := f.idem[r.key]; ok {
+			workflow.MarkDuplicate(ctx)
+			return holder.ref, nil
+		}
+		f.idem[r.key] = r
+	}
+	workflow.MarkInserted(ctx)
+	n := strconv.Itoa(len(f.runs) + 1)
+	if job.RunAt.IsZero() {
+		r.ref.RunID = workflow.RunID("fake-run-" + n)
+	} else {
+		r.ref.ScheduledID = workflow.ScheduledID("fake-delayed-" + n)
+		r.status = workflow.StatusScheduled
+	}
+	f.runs = append(f.runs, r)
+	f.byRef[r.ref] = r
+	return r.ref, nil
+}

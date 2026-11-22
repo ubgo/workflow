@@ -1,0 +1,201 @@
+type Config struct {
+	// Client is an SDK client the app already built. When nil, Start
+	// builds one with ClientOptions.
+	Client *hatchetsdk.Client
+
+	// ClientOptions are passed to hatchet.NewClient when Client is nil
+	// (token, host and port, namespace, TLS).
+	ClientOptions []hatchetsdk.ClientOpt
+
+	// Namespace must equal the namespace the SDK client uses (option or
+	// HATCHET_CLIENT_NAMESPACE), so idempotency keys are scoped by the
+	// name the engine knows each workflow by.
+	Namespace string
+
+	// WorkerName is the worker's name in Hatchet's dashboard.
+	WorkerName string
+
+	// Slots caps how many steps this worker runs at once. Zero keeps the
+	// SDK default. With Queues it is the slots of a queue whose Workers is
+	// zero.
+	Slots int
+
+	// Queues are the named queues this client's workers serve
+	// (workflow.QueueConfig). Empty means one worker serving every
+	// registered workflow, whatever its queue. Otherwise Start starts one
+	// Hatchet worker per listed queue that has registered workflows, each
+	// with Workers slots, and a workflow whose queue is not listed gets no
+	// worker here: its runs wait for a process that serves that queue. A
+	// queue is bound to a workflow on Hatchet (Workflow.Queue), because a
+	// run goes to whichever worker registered its workflow, so a Job.Queue
+	// other than the workflow's is refused (no CapQueueOverride), and a
+	// non-zero Priority is refused at Start (Hatchet cannot order one
+	// worker's queues against another's).
+	Queues []workflow.QueueConfig
+
+	// API is the engine's REST API (NewAPI), for workflow pause and cron
+	// enable, which SDK v0.107.1 cannot reach. Set, the client also
+	// declares CapPauseWorkflow and CapSchedulePause and implements
+	// workflow.Pauser and workflow.SchedulePauser; nil refuses both.
+	API *API
+
+	// StepTimeout is the execution timeout of a step whose Workflow and
+	// Step leave Timeout zero.
+	StepTimeout time.Duration
+
+	// ScheduleTimeout is how long a step may wait to be scheduled,
+	// counted from its creation. The engine fails a waiting step past it,
+	// with no error message and no attempt made; a step a rate limit
+	// holds is checked each time its bucket's window lets it back into
+	// the queue. The engine's own default is five minutes, which failed
+	// runs a rate limit held for about six (TestScheduleTimeoutLive, the
+	// ratelimit conformance group), against the core contract that a held
+	// run is delayed, never dropped; so every step declares this instead.
+	// Zero means DefaultScheduleTimeout. A run held longer than it still
+	// fails, so set it above the longest wait you expect.
+	ScheduleTimeout time.Duration
+
+	// IdempotencyMaxHold caps how long an idempotency key stays held.
+	// A delayed start with a key is refused when its RunAt is further
+	// ahead than this, since the key would lapse before the run starts.
+	IdempotencyMaxHold time.Duration
+
+	// Middleware wraps every step handler, outermost first.
+	Middleware []workflow.Middleware
+
+	// RunFinishedPoll is how often OnRunFinished observers' notifier polls
+	// the engine. Zero means DefaultRunFinishedPoll.
+	RunFinishedPoll time.Duration
+
+	// RunFinishedWindow is the oldest an unfinished run may be and still
+	// be watched for its end. Zero means DefaultRunFinishedWindow.
+	RunFinishedWindow time.Duration
+
+	// RunFinishedCatchUp makes Start replay the ends of runs created this
+	// long before it, so a restarted process delivers ends it missed while
+	// down (again, if an earlier process delivered them). Zero replays
+	// nothing older than Start.
+	RunFinishedCatchUp time.Duration
+
+	// BatchCoordinator makes batch.Manager.Dispatch start an eligible
+	// batch (no RunAt, no IdempotencyKey, at most about 2 MiB of input) as
+	// one coordinator run whose task starts every job as a child run,
+	// instead of bulk triggers from the dispatching process (see
+	// SpawnGroup). Start then registers the coordinator workflow on this
+	// worker. The batch's Manager needs this client's BatchSource, which
+	// finds the children by label; every process sharing the batch store
+	// should set it alike, so a resumed dispatch finds the coordinator.
+	BatchCoordinator bool
+
+	// BatchCoordinatorTimeout bounds one attempt of the coordinator's
+	// task. It is also how long a coordinator whose worker died waits
+	// before the engine retries it elsewhere, so keep it near the time
+	// starting the largest batch takes. Zero means
+	// DefaultBatchCoordinatorTimeout.
+	BatchCoordinatorTimeout time.Duration
+
+	// BatchCoordinatorRetry is the coordinator task's retry policy. Nil
+	// means DefaultBatchCoordinatorRetry (10 retries, 2^n seconds capped
+	// at two minutes: about ten minutes of engine outage). Its Backoff
+	// must fit Hatchet's factor^n-seconds formula (see Retry.Backoff in
+	// doc.go) and NoRetryOn must be nil, or Start refuses it.
+	BatchCoordinatorRetry *workflow.RetryPolicy
+
+	// BatchCoordinatorMaxInput caps the JSON input and metadata one
+	// coordinator trigger carries; a larger batch is started as bulk
+	// triggers instead. Zero means DefaultBatchCoordinatorMaxInput, which
+	// fits the engine's default 4 MiB gRPC message; raise it only when
+	// the engine's message limit was raised.
+	BatchCoordinatorMaxInput int
+
+	// GroupChunkRuns caps the runs of one bulk trigger (RunGroup and the
+	// coordinator). Zero means DefaultGroupChunkRuns; Start refuses more
+	// than that, because the SDK splits a larger call itself and then
+	// cannot say which runs of it failed.
+	GroupChunkRuns int
+
+	// GroupChunkBytes caps the JSON input and metadata of one bulk
+	// trigger. Zero means DefaultGroupChunkBytes; lower it for an engine
+	// whose gRPC message limit is below the default 4 MiB. Start refuses
+	// more than the default, for the same reason as GroupChunkRuns (the
+	// SDK splits at 3 MiB of protobuf whatever the engine accepts).
+	GroupChunkBytes int
+
+	// RegisterTimeout is how long Start waits for the engine to list the
+	// worker. Zero means DefaultRegisterTimeout.
+	RegisterTimeout time.Duration
+
+	// VisibilityLag is how long the engine's read side may trail a write
+	// (see DefaultVisibilityLag). Zero means DefaultVisibilityLag.
+	VisibilityLag time.Duration
+
+	// FailedSettle is how long after a task failed a FAILED read is still
+	// taken as the moment before its retry when the failure carries no
+	// driver marker and the task has retries left (see failed.go: the
+	// engine shows FAILED for a moment between a failed attempt and its
+	// retry). The run reads Queued or Running meanwhile. Zero means
+	// DefaultFailedSettle.
+	FailedSettle time.Duration
+
+	// Recycle stops this client's workers once a limit is reached (a
+	// number of finished handler attempts, a time since Start, a heap
+	// size), so a supervisor can start a fresh process: the workers are
+	// drained as Drain does with no deadline (paused, the handlers running
+	// here finish, then stopped), Done closes and StopCause returns the
+	// *workflow.RecycleError; workflow.Serve wraps that into one call. On-
+	// failure handlers count as attempts; durable wait and sleep steps do
+	// not, since they hold no worker. Runs left on the engine go to any
+	// other worker serving their workflow. The zero value never recycles.
+	Recycle workflow.Recycle
+
+	// Logger receives the errors of the driver's background work (the
+	// run-finished notifier's polls, observer panics, worker stop) and of
+	// BatchSource when it is given no logger. Nil discards them.
+	Logger *slog.Logger
+
+	// Clock is the time source of everything the driver decides locally:
+	// the run-finished notifier's poll ticker and its delivered-run
+	// window, BatchSource's ticker, and FinishedAt of a delayed start
+	// cancelled before it fired. Nil means clock.Real. Times compared
+	// with the engine's own timestamps (run creation and finish times,
+	// event look-back, the read-side lag deadlines, the worker
+	// registration wait) stay on the wall clock the engine shares,
+	// because a fake clock there would make the driver ask the engine
+	// about a time the engine has never seen.
+	Clock clock.Clock
+
+	// EnqueueOnly makes a client that starts runs but never runs them
+	// (workflow.CapEnqueueOnly), for web nodes beside separate worker
+	// processes: Enqueue, Status, Cancel, Signal, Schedule and the run
+	// and schedule listings work without Start, connecting on first use;
+	// Start starts no worker and no run-finished poller and returns nil,
+	// and when its ctx ends calls return ErrNotStarted as after any stop.
+	// Register is optional: a registered workflow's job gets that
+	// workflow's checks (idempotency policy, queue), an unregistered one
+	// only workflow.CheckJob, and the engine refuses a workflow that no
+	// worker has ever registered. OnRunFinished is refused, since the
+	// poller does not run. The engine version check of Start is skipped:
+	// the worker processes make it.
+	EnqueueOnly bool
+
+	// ScheduleHistoryWindow is how far back Schedules looks for each
+	// trigger's last fire (ScheduleInfo.Last). Zero means
+	// DefaultScheduleHistoryWindow.
+	ScheduleHistoryWindow time.Duration
+
+	// NodeID names this process in StepInfo.Node and Nodes. It travels
+	// to the engine as a label on every worker this client registers, so
+	// the engine's worker list maps back to it. RunInfo.AttemptedBy stays
+	// empty and workflow.CapNodeIdentity is not claimed: the engine keeps
+	// no per-attempt worker history the driver can read (see doc.go).
+	// Empty means workflow.DefaultNodeID() (hostname:pid).
+	NodeID string
+
+	// PayloadLimit is the largest Job.Payload, in bytes, Enqueue and
+	// RunGroup accept; a larger one is refused with a
+	// *workflow.PayloadTooLargeError before anything reaches the engine
+	// (workflow.PayloadLimiter). Zero means DefaultPayloadLimit, which
+	// fits the engine's default gRPC message size; raise it only for an
+	// engine and SDK configured with a larger one.
+	PayloadLimit int
+}

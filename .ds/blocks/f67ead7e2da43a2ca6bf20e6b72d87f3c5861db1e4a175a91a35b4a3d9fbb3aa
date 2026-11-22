@@ -1,0 +1,9 @@
+type Threshold struct {
+	// Queue is the queue it applies to. Empty is the default for every
+	// queue that has no Threshold of its own.
+	Queue string
+	// MaxDepth alerts when Depth is above it.
+	MaxDepth int
+	// MaxWait alerts when OldestWait is above it.
+	MaxWait time.Duration
+}

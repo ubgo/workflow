@@ -1,0 +1,6 @@
+type ParseError struct {
+	Expr   string // the full expression as given
+	Field  string // "minute", "hour", "day-of-month", "month", "day-of-week", "macro" or "expression"
+	Value  string // the offending text within the field
+	Reason string // what is wrong with it
+}

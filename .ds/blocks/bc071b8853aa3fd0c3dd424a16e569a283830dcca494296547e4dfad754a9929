@@ -1,0 +1,44 @@
+func gate(name string, full error, count DepthFunc, limit func(workflow.Job) int, opts []BoundedOption) workflow.EnqueueMiddleware {
+	var cfg boundedConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if count == nil || limit == nil {
+				return workflow.RunRef{}, fmt.Errorf("%w: %s needs a count and a limit function", workflow.ErrInvalid, name)
+			}
+			bound := limit(job)
+			if bound <= 0 {
+				return next(ctx, job)
+			}
+			for {
+				n, err := count(ctx, job)
+				if err != nil {
+					return workflow.RunRef{}, fmt.Errorf("workflow/middleware: %s count: %w", name, err)
+				}
+				if n < bound {
+					return next(ctx, job)
+				}
+				switch cfg.mode {
+				case boundedDelay:
+					at := cfg.clk.Now().Add(cfg.delay)
+					if job.RunAt.Before(at) {
+						job.RunAt = at
+					}
+					return next(ctx, job)
+				case boundedWait:
+					t := cfg.clk.NewTimer(cfg.poll)
+					select {
+					case <-ctx.Done():
+						t.Stop()
+						return workflow.RunRef{}, fmt.Errorf("%w: %d of %d for workflow %q, gave up waiting: %w", full, n, bound, job.Workflow, ctx.Err())
+					case <-t.C():
+					}
+				default:
+					return workflow.RunRef{}, fmt.Errorf("%w: %d of %d for workflow %q", full, n, bound, job.Workflow)
+				}
+			}
+		}
+	}
+}

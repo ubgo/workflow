@@ -1,0 +1,29 @@
+func (c *Client) Health(ctx context.Context) workflow.HealthReport {
+	c.mu.Lock()
+	started, stopped, draining := c.started, c.stopped, c.draining
+	c.mu.Unlock()
+	rep := workflow.HealthReport{Live: !stopped}
+	run := workflow.HealthCheck{Name: "client", OK: (started || c.enqueueOnly) && !stopped && !draining}
+	switch {
+	case stopped:
+		run.Detail = "stopped"
+	case draining:
+		run.Detail = "draining"
+	case !started && !c.enqueueOnly:
+		run.Detail = "not started"
+	default:
+		run.Detail = string(c.nodeMode())
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, releaseTimeout)
+		defer cancel()
+	}
+	db := workflow.HealthCheck{Name: "redis", OK: true, Detail: "PING ok"}
+	if err := c.rdb.Ping(ctx).Err(); err != nil {
+		db.OK, db.Detail = false, classify(err).Error()
+	}
+	rep.Checks = []workflow.HealthCheck{run, db}
+	rep.Ready = run.OK && db.OK
+	return rep
+}

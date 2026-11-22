@@ -1,0 +1,5 @@
+func FiredLabelsAt(labels map[string]string, id ScheduleID, name string, at time.Time) map[string]string {
+	out := FiredLabels(labels, id, name)
+	out[LabelTickAt] = at.UTC().Format(time.RFC3339Nano)
+	return out
+}

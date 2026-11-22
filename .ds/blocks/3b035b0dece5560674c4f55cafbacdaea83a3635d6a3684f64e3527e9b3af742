@@ -1,0 +1,22 @@
+func (h *handler[P]) traceURL(info workflow.RunInfo) string {
+	if h.cfg.traceLink == nil {
+		return ""
+	}
+	raw := func() (s string) {
+		defer func() {
+			if p := recover(); p != nil {
+				h.cfg.logger.Error("admin: trace link panicked", "run", refString(info.Ref), "panic", fmt.Sprint(p))
+				s = ""
+			}
+		}()
+		return h.cfg.traceLink(info)
+	}()
+	if raw == "" {
+		return ""
+	}
+	if !safeLink(raw) {
+		h.cfg.logger.Warn("admin: trace link dropped: not an absolute http or https URL", "run", refString(info.Ref))
+		return ""
+	}
+	return raw
+}

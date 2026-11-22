@@ -1,0 +1,26 @@
+type MachineDefinition struct {
+	// Name is the machine's (and its workflow's) name.
+	Name string `json:"name"`
+
+	// Initial is the top-level state an instance starts in.
+	Initial string `json:"initial"`
+
+	// States lists every state, in document order.
+	States []StateDef `json:"states"`
+
+	// Transitions lists every transition; earlier ones are tried first.
+	Transitions []TransitionDef `json:"transitions,omitempty"`
+
+	// Ordered handles a key's events in the order they were sent.
+	Ordered bool `json:"ordered,omitempty"`
+
+	// KeepLog is how many handled events an instance's log keeps (zero:
+	// the default, negative: none).
+	KeepLog int `json:"keep_log,omitempty"`
+
+	// Unhandled is "ignore" (the default) or "reject".
+	Unhandled string `json:"unhandled,omitempty"`
+
+	// Retry is the event runs' retry policy.
+	Retry *RetryDef `json:"retry,omitempty"`
+}

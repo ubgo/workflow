@@ -1,0 +1,6 @@
+func QuarterlyOn(day int, hhmm string) Builder {
+	if day < 1 || day > 31 {
+		return failed("QuarterlyOn(%d): day must be 1-31", day)
+	}
+	return builderFields("0", "0", strconv.Itoa(day), quarterDays, wild, true).At(hhmm)
+}

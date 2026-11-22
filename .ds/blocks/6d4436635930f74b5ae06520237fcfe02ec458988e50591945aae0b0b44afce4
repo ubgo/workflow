@@ -1,0 +1,3 @@
+func WithEvent(fn func(*sentrygo.Event, workflow.Failure) *sentrygo.Event) Option {
+	return func(r *Reporter) { r.event = fn }
+}

@@ -1,0 +1,7 @@
+func journalFrom(ctx context.Context) (*journalScope, error) {
+	j, ok := ctx.Value(journalKey{}).(*journalScope)
+	if !ok {
+		return nil, Permanent(ErrNoJournal)
+	}
+	return j, nil
+}

@@ -1,0 +1,5 @@
+var attemptErrorGroups = []suiteGroup{
+	{"attemptcause", attemptCauseCases},
+	{"toleratedtimeout", toleratedTimeoutCases},
+	{"storedtimeout", storedTimeoutCases},
+}

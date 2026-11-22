@@ -1,0 +1,27 @@
+func EnqueuePartitions(ctx context.Context, client Client, set PartitionSet, keys []string) ([]RunRef, error) {
+	if err := checkPartitionSet(client, set); err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		if k == "" {
+			return nil, invalidf("partition set %q: empty key", set.Name)
+		}
+		if seen[k] {
+			return nil, invalidf("partition set %q: key %q appears twice", set.Name, k)
+		}
+		seen[k] = true
+	}
+	allow := AllowReservedLabels(ctx, LabelPartitionSet, LabelPartitionKey)
+	refs := make([]RunRef, len(keys))
+	var errs []error
+	for i, k := range keys {
+		ref, err := enqueuePartition(allow, client, set, k)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("workflow: partition set %q: key %q: %w", set.Name, k, err))
+			continue
+		}
+		refs[i] = ref
+	}
+	return refs, errors.Join(errs...)
+}

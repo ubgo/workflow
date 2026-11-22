@@ -16,6 +16,8 @@ const capWords = 4
 
 // capBits is the number of capability numbers a Caps can hold: 0 to
 // capBits-1.
+//
+//ds:def id=capbits-tqwzzyzd owner=@khanakia stability=stable
 const capBits = capWords * 64
 
 // Caps is a set of capabilities a driver really has. Drivers declare it
@@ -34,6 +36,8 @@ const capBits = capWords * 64
 // "|", such as "Durable|Cron", and "none" for the empty set; JSON uses the
 // same form as a string, and also reads the numeric form of releases where
 // Caps was a uint64 (see UnmarshalJSON).
+//
+//ds:def id=caps-ssth52ga owner=@khanakia stability=api
 type Caps struct {
 	w [capWords]uint64
 }
@@ -70,12 +74,16 @@ func capBit(n int) Caps {
 
 // CapsOf returns the set holding every capability in cs (their union).
 // CapsOf() is the empty set.
+//
+//ds:def id=capsof-mmp8bkmj owner=@khanakia stability=stable
 func CapsOf(cs ...Caps) Caps {
 	var c Caps
 	return c.With(cs...)
 }
 
 // With returns c plus every capability in more.
+//
+//ds:def id=caps-with-jwfj42qg owner=@khanakia stability=stable
 func (c Caps) With(more ...Caps) Caps {
 	for _, m := range more {
 		for i := range c.w {
@@ -86,6 +94,8 @@ func (c Caps) With(more ...Caps) Caps {
 }
 
 // Without returns c minus every capability in drop.
+//
+//ds:def id=caps-without-bkp9zq5y owner=@khanakia stability=stable
 func (c Caps) Without(drop ...Caps) Caps {
 	for _, d := range drop {
 		for i := range c.w {
@@ -96,6 +106,8 @@ func (c Caps) Without(drop ...Caps) Caps {
 }
 
 // Intersect returns the capabilities in both c and o.
+//
+//ds:def id=caps-intersect-5vawyy93 owner=@khanakia stability=stable
 func (c Caps) Intersect(o Caps) Caps {
 	for i := range c.w {
 		c.w[i] &= o.w[i]
@@ -106,6 +118,8 @@ func (c Caps) Intersect(o Caps) Caps {
 // AllCaps returns every capability this release declares, such as a
 // test double that should claim everything (FakeCaps(AllCaps())). It is
 // the set of the Cap variables, so it grows when a release adds one.
+//
+//ds:def id=allcaps-umeq9egq owner=@khanakia stability=stable
 func AllCaps() Caps {
 	var c Caps
 	for n, name := range capNames {
@@ -118,6 +132,8 @@ func AllCaps() Caps {
 
 // Has reports whether c holds every capability in want. Every set has
 // the empty set.
+//
+//ds:def id=caps-has-z5rv5wur owner=@khanakia stability=stable
 func (c Caps) Has(want Caps) bool {
 	for i := range c.w {
 		if c.w[i]&want.w[i] != want.w[i] {
@@ -128,6 +144,8 @@ func (c Caps) Has(want Caps) bool {
 }
 
 // HasAny reports whether c holds at least one capability in o.
+//
+//ds:def id=caps-hasany-n3gjxxvw owner=@khanakia stability=stable
 func (c Caps) HasAny(o Caps) bool {
 	for i := range c.w {
 		if c.w[i]&o.w[i] != 0 {
@@ -138,10 +156,14 @@ func (c Caps) HasAny(o Caps) bool {
 }
 
 // IsZero reports whether c is the empty set.
+//
+//ds:def id=caps-iszero-pmummwj2 owner=@khanakia stability=stable
 func (c Caps) IsZero() bool { return c == Caps{} }
 
 // Missing returns the capabilities in required that c lacks; the empty
 // set means c covers them all.
+//
+//ds:def id=caps-missing-yt996zkr owner=@khanakia stability=stable
 func (c Caps) Missing(required Caps) Caps { return required.Without(c) }
 
 // each calls f with every capability number in c, lowest first.
@@ -160,6 +182,8 @@ func (c Caps) each(f func(n int)) {
 // this release declares (read from a newer release's numeric JSON) prints
 // as "#" and its number, such as "#200", so the form still round-trips
 // through ParseCaps.
+//
+//ds:def id=caps-string-rrz2ge6p owner=@khanakia stability=stable
 func (c Caps) String() string {
 	if c.IsZero() {
 		return "none"
@@ -183,6 +207,8 @@ func (c Caps) String() string {
 // around a name are ignored), "#" and a number for a capability by number,
 // and "none" or "" for the empty set. An unknown name or an out-of-range
 // number is an error matching ErrInvalid.
+//
+//ds:def id=parsecaps-vryjfj24 owner=@khanakia stability=stable
 func ParseCaps(s string) (Caps, error) {
 	var c Caps
 	s = strings.TrimSpace(s)
@@ -238,6 +264,8 @@ func (c *Caps) UnmarshalText(text []byte) error {
 // the bits of the uint64 Caps of v0.1.x, whose capability numbers are the
 // numbers kept here, so a stored or sent old value reads as the same set.
 // null leaves c unchanged.
+//
+//ds:def id=caps-unmarshaljson-dngyx9tw owner=@khanakia stability=stable
 func (c *Caps) UnmarshalJSON(data []byte) error {
 	data = bytes.TrimSpace(data)
 	switch {

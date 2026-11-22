@@ -1,0 +1,6 @@
+func (f *Fake) AssertPromisePending(t testing.TB, id string) {
+	t.Helper()
+	if _, settled, _ := workflow.PromiseResult(context.Background(), f.Promises(), id); settled {
+		t.Errorf("promise %q is settled, want it pending", id)
+	}
+}

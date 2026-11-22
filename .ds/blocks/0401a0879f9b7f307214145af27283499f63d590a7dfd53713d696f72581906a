@@ -1,0 +1,43 @@
+func rescheduleCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	at := fs.String("at", "", "the new due time, RFC 3339 (e.g. 2026-10-15T09:00:00Z)")
+	scheduled := fs.Bool("scheduled", false, "RUN is a ScheduledID")
+	dry := fs.Bool("dry-run", false, "check the run can be moved and change nothing")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) != 1 {
+			return usagef("reschedule takes one run ID")
+		}
+		t, err := time.Parse(time.RFC3339, *at)
+		if err != nil {
+			return usagef("--at %q: want an RFC 3339 time such as 2026-10-15T09:00:00Z", *at)
+		}
+		if *dry {
+			var r runJSON
+			raw, err := e.api.get(ctx, runPath(args[0], *scheduled, ""), &r)
+			if err != nil {
+				return err
+			}
+			if r.Status != "scheduled" {
+				return fmt.Errorf("dry run: reschedule would be refused: run %s is %s; only a delayed run that has not started can be moved", r.Ref, r.Status)
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would move run %s to %s; nothing changed\n", r.Ref, fmtTime(t))
+			return nil
+		}
+		var out struct {
+			Ref refJSON `json:"ref"`
+		}
+		raw, err := e.api.do(ctx, "POST", runPath(args[0], *scheduled, "/reschedule"), struct {
+			At time.Time `json:"at"`
+		}{t}, &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		fprintf(e.out, "rescheduled %s to %s\n", out.Ref, fmtTime(t))
+		return nil
+	}
+}

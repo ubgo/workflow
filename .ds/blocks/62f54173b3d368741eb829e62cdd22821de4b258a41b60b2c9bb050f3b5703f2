@@ -1,0 +1,12 @@
+func (f *Client) force(field string, ref workflow.RunRef, fn func(workflow.RunForcer, workflow.RunRef) error) error {
+	if err := f.need(field, workflow.CapForceRun); err != nil {
+		return err
+	}
+	return f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.RunForcer)
+		if !ok {
+			return &workflow.UnsupportedError{Field: field, Missing: workflow.CapForceRun, Reason: "the " + sd.String() + " backend does not implement it"}
+		}
+		return fn(r, inner)
+	})
+}

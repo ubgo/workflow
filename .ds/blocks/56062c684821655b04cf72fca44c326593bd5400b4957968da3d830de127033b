@@ -1,0 +1,3 @@
+func StepChain(jobs ...workflow.Job) StepOption {
+	return func(s *stepRun) { s.chain = append(s.chain, jobs...) }
+}

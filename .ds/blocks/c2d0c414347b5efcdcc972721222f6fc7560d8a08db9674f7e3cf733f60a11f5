@@ -1,0 +1,16 @@
+func checkRetry(p workflow.RetryPolicy) error {
+	if p.DelayFor != nil {
+		return unsupported("Retry.DelayFor", workflow.CapRetryDelay, "Hatchet sets a retry's delay from the backoff only, never from the error (RetryAfter)")
+	}
+	if p.Until > 0 {
+		return unsupported("Retry.Until", workflow.CapRetryUntil, "Hatchet fixes a task's retry count when the task is declared and has no retry deadline")
+	}
+	if p.MaxErrors > 0 {
+		return unsupported("Retry.MaxErrors", workflow.CapRetryMaxErrors, "Hatchet counts every failed attempt alike and cannot tell a release from an error")
+	}
+	if p.DiscardOnExhaust {
+		return unsupported("Retry.DiscardOnExhaust", workflow.CapDiscardExhausted, "Hatchet has no discarded status: a run out of retries is failed, so a policy that asks for it to be discarded is refused rather than failing the run silently")
+	}
+	_, _, err := retryBackoff(p.Backoff)
+	return err
+}

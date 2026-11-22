@@ -1,0 +1,16 @@
+func (c *Client) Health(ctx context.Context) workflow.HealthReport {
+	c.mu.Lock()
+	started, stopped := c.started || c.enqueueOnly, c.stopped
+	c.mu.Unlock()
+	r := workflow.HealthReport{Live: !stopped}
+	r.Checks = append(r.Checks, workflow.HealthCheck{Name: "started", OK: started && !stopped, Detail: string(c.mode())})
+	db := workflow.HealthCheck{Name: "database", OK: true, Detail: "ping ok"}
+	pctx, cancel := context.WithTimeout(ctx, healthPingTimeout)
+	defer cancel()
+	if err := c.st.db.PingContext(pctx); err != nil {
+		db.OK, db.Detail = false, err.Error()
+	}
+	r.Checks = append(r.Checks, db)
+	r.Ready = r.Live && started && db.OK
+	return r
+}

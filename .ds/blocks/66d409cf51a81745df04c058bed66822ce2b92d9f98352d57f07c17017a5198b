@@ -1,0 +1,31 @@
+func (c *Client) Start(ctx context.Context) error {
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return workflow.ErrAlreadyStarted
+	}
+	caps := c.Capabilities()
+	for _, wf := range c.wfs {
+		if err := workflow.CheckCaps(caps, wf); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	c.started = true
+	c.mu.Unlock()
+
+	// The regions run on a ctx of their own whose parent is the caller's,
+	// so cancelling the caller's stops them all, and a failed Start stops
+	// the ones already running.
+	ctx, cancel := context.WithCancel(ctx)
+	for _, name := range c.names {
+		if err := c.regions[name].Start(ctx); err != nil {
+			cancel()
+			return fmt.Errorf("regional: %s: %w", name, err)
+		}
+	}
+	c.mu.Lock()
+	c.stopRegions = cancel
+	c.mu.Unlock()
+	return nil
+}

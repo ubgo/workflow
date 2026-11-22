@@ -8,6 +8,8 @@ import (
 )
 
 // FuncStep is the name of the one step of a Func's workflow.
+//
+//ds:def id=funcstep-nfvnnmmt owner=@khanakia stability=stable
 const FuncStep = "func"
 
 // Func is a durable closure: a Go function registered under a name when
@@ -23,6 +25,8 @@ const FuncStep = "func"
 // client.Register(f.Workflow())) in every process that runs workers, and
 // enqueue with f.Enqueue or f.Job. The argument is encoded as JSON; input
 // that does not decode is a Permanent error.
+//
+//ds:def id=func-ruxw5ptf owner=@khanakia stability=stable
 type Func[In any] struct {
 	name string
 	fn   func(ctx context.Context, in In) error
@@ -33,6 +37,8 @@ type Func[In any] struct {
 // that belong to the definition rather than to one enqueue. RunAt, Labels,
 // Priority, IdempotencyKey and a per-run Queue are set on the Job (see
 // Func.Job).
+//
+//ds:def id=funcconfig-r89dgthy owner=@khanakia stability=stable
 type FuncConfig struct {
 	// Queue is the default queue of its runs; empty means DefaultQueue.
 	Queue string
@@ -64,6 +70,8 @@ func FuncTimeout(d time.Duration) FuncOption { return func(c *FuncConfig) { c.Ti
 // FuncCatch runs fn once when a run fails for good, with the argument the
 // run was enqueued with, decoded. An argument that does not decode is
 // passed as the zero In.
+//
+//ds:def id=funccatch-ezp6ekzh owner=@khanakia stability=stable
 func FuncCatch[In any](fn func(ctx context.Context, in In) error) FuncOption {
 	return func(c *FuncConfig) {
 		if fn == nil {
@@ -83,6 +91,8 @@ func FuncCatch[In any](fn func(ctx context.Context, in In) error) FuncOption {
 // NewFunc names fn. The name is the workflow name runs carry in RunInfo,
 // RunEvent and StepInfo; Validate checks it at Register. Two Funcs with
 // one name replace each other, as two workflows do.
+//
+//ds:def id=newfunc-r3c7u2fq owner=@khanakia stability=stable
 func NewFunc[In any](name string, fn func(ctx context.Context, in In) error, opts ...FuncOption) Func[In] {
 	f := Func[In]{name: name, fn: fn}
 	for _, o := range opts {
@@ -97,6 +107,8 @@ func (f Func[In]) Name() string { return f.name }
 // Workflow returns the one-step workflow that runs the Func, for
 // client.Register. Its step (FuncStep) decodes the argument and calls the
 // function; OnFailure runs the Catch.
+//
+//ds:def id=func-in-workflow-9262esnn owner=@khanakia stability=stable
 func (f Func[In]) Workflow() Workflow {
 	wf := Workflow{Name: f.name, Queue: f.cfg.Queue}
 	if f.fn != nil {
@@ -120,6 +132,8 @@ func (f Func[In]) Workflow() Workflow {
 
 // Job returns the Job that runs the Func with in, for a caller that sets
 // RunAt, Labels, Priority, IdempotencyKey or Queue before Enqueue.
+//
+//ds:def id=func-in-job-yhtpfxvk owner=@khanakia stability=stable
 func (f Func[In]) Job(in In) (Job, error) {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -129,6 +143,8 @@ func (f Func[In]) Job(in In) (Job, error) {
 }
 
 // Enqueue starts a run of the Func with in on client.
+//
+//ds:def id=func-in-enqueue-rxwtt73r owner=@khanakia stability=stable
 func (f Func[In]) Enqueue(ctx context.Context, client Client, in In) (RunRef, error) {
 	job, err := f.Job(in)
 	if err != nil {
@@ -145,6 +161,8 @@ type FuncDefinition interface {
 
 // RegisterFunc registers f on client. A Func whose function is nil fails
 // Validate (no steps) with ErrInvalid.
+//
+//ds:def id=registerfunc-a599kuce owner=@khanakia stability=stable
 func RegisterFunc(client Client, f FuncDefinition) error {
 	if err := client.Register(f.Workflow()); err != nil {
 		return fmt.Errorf("func %q: %w", f.Name(), err)
@@ -156,6 +174,8 @@ func RegisterFunc(client Client, f FuncDefinition) error {
 // arg encoded as JSON, for a caller that knows only the name (another
 // service, an admin action). The driver refuses a name no process
 // registered the way it refuses any unknown workflow.
+//
+//ds:def id=funcjob-ttzc9kdz owner=@khanakia stability=stable
 func FuncJob(name string, arg any) (Job, error) {
 	if name == "" {
 		return Job{}, invalidf("func has no name")

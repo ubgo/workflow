@@ -1,0 +1,15 @@
+func (c *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
+	if id.IsZero() {
+		return nil
+	}
+	var active int64
+	err := c.st.one(ctx, c.st.db, "SELECT active FROM {schedules} WHERE id = ? AND declared = 0", []any{string(id)}, &active)
+	if errors.Is(err, sqlb.ErrNoRows) {
+		return fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	}
+	if err != nil {
+		return fmt.Errorf("sqlstore: read schedule: %w", err)
+	}
+	_, err = c.st.exec(ctx, c.st.db, "UPDATE {schedules} SET active = 0 WHERE id = ?", string(id))
+	return err
+}

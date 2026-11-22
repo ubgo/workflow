@@ -1,0 +1,5 @@
+func (f *Fake) Cancels() []workflow.RunRef {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]workflow.RunRef(nil), f.cancels...)
+}

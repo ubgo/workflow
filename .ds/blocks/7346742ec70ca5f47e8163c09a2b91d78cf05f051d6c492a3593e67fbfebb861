@@ -1,0 +1,11 @@
+func (c *Client) Stop() {
+	c.mu.Lock()
+	cancel := c.cancel
+	c.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	c.shutdown()
+	c.wg.Wait()
+}

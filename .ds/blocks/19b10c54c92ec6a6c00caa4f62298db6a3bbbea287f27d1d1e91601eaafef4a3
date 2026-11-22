@@ -1,0 +1,27 @@
+func (h *handler[P]) runJSON(r workflow.RunInfo) runJSON {
+	out := runJSON{
+		Ref: toRefJSON(r.Ref), Workflow: r.Workflow, Queue: r.Queue, Status: r.Status,
+		Error: r.Error, FailedStep: r.FailedStep, Labels: r.Labels, Priority: r.Priority,
+		EnqueuedAt: r.EnqueuedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt, Attempts: r.Attempts,
+		NextAttempt: r.NextAttempt, NextAttemptAt: r.NextAttemptAt,
+		Tenant: r.Tenant, RunAt: r.RunAt, AttemptedBy: r.AttemptedBy, HasOutput: r.Output != nil,
+	}
+	if h.cfg.payloads {
+		out.Payload = r.Payload
+		out.Output = r.Output
+	}
+	if p := r.Progress; p != nil {
+		out.Progress = &progressJSON{Percent: p.Percent, Message: p.Message, Step: p.Step, At: p.At}
+		if h.cfg.payloads {
+			out.Progress.Data = p.Data
+		}
+	}
+	for _, e := range r.Errors {
+		row := attemptErrorJSON{Step: e.Step, Attempt: e.Attempt, Error: e.Error, At: e.At, Node: e.Node}
+		if h.cfg.stacks {
+			row.Stack = e.Stack
+		}
+		out.Errors = append(out.Errors, row)
+	}
+	return out
+}

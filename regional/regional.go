@@ -16,6 +16,8 @@ import (
 // whose region is unknown is a mistake in the job or the router, and
 // sending it to some default region would move its data where it must
 // not go.
+//
+//ds:def id=regional-errunknownregion-g9ph2em5 owner=@khanakia stability=stable
 var ErrUnknownRegion = errors.New("regional: unknown region")
 
 // Router picks the region a job runs in. It is asked once per Enqueue,
@@ -24,6 +26,8 @@ var ErrUnknownRegion = errors.New("regional: unknown region")
 // was built with; any other name is refused with ErrUnknownRegion. An
 // error from Region is returned to the caller as it is, wrapped with the
 // client's name: a router that cannot decide refuses the job.
+//
+//ds:def id=regional-router-mu3bz7f7 owner=@khanakia stability=stable
 type Router interface {
 	Region(ctx context.Context, job workflow.Job) (string, error)
 }
@@ -34,6 +38,8 @@ type Router interface {
 //	regional.RouterFunc(func(ctx context.Context, job workflow.Job) (string, error) {
 //		return customers.Region(ctx, job.Tenant)
 //	})
+//
+//ds:def id=regional-routerfunc-u4bss5dg owner=@khanakia stability=stable
 type RouterFunc func(ctx context.Context, job workflow.Job) (string, error)
 
 // Region calls f.
@@ -45,6 +51,8 @@ func (f RouterFunc) Region(ctx context.Context, job workflow.Job) (string, error
 // job is refused with an error matching workflow.ErrInvalid, so a job
 // that forgot its region is never placed by accident. A value naming no
 // region of the client is refused by the client (ErrUnknownRegion).
+//
+//ds:def id=regional-bylabel-8wqynpjc owner=@khanakia stability=stable
 func ByLabel(key, fallback string) Router {
 	return RouterFunc(func(_ context.Context, job workflow.Job) (string, error) {
 		if v := job.Labels[key]; v != "" {
@@ -75,6 +83,8 @@ type config struct {
 // once. With a single region it defaults to that region; with more,
 // Register refuses a workflow with Cron until this is set. Client.Schedule
 // is not affected: it asks the Router.
+//
+//ds:def id=regional-withscheduleregion-hkwwqse4 owner=@khanakia stability=stable
 func WithScheduleRegion(name string) Option {
 	return func(c *config) { c.schedRegion = name }
 }
@@ -83,6 +93,8 @@ func WithScheduleRegion(name string) Option {
 // of every region, for an app whose event payloads must stay in one
 // region. A nil fn keeps the default. A run waiting in a region fn leaves
 // out never sees the event.
+//
+//ds:def id=regional-withsignalrouter-jjp6ts9d owner=@khanakia stability=stable
 func WithSignalRouter(fn SignalRouter) Option {
 	return func(c *config) {
 		if fn != nil {
@@ -118,11 +130,15 @@ var (
 
 // maxRegion bounds a region name, which is put in front of every ID the
 // client hands out.
+//
+//ds:def id=regional-maxregion-7sgdnvh5 owner=@khanakia stability=stable
 const maxRegion = 64
 
 // validRegion checks a region name: 1 to 64 letters, digits, ".", "_"
 // or "-". The colon is left out because it ends the region in a prefixed
 // ID. Errors wrap ErrInvalid.
+//
+//ds:def id=regional-validregion-d3esvnjt owner=@khanakia stability=stable
 func validRegion(name string) error {
 	if name == "" || len(name) > maxRegion {
 		return fmt.Errorf("%w: regional: region name %q must be 1 to %d characters", workflow.ErrInvalid, name, maxRegion)
@@ -142,6 +158,8 @@ func validRegion(name string) error {
 // workflow.ErrInvalid, an empty regions map, a nil client, a nil router,
 // a region name that is not 1 to 64 letters, digits, ".", "_" or "-", and
 // a WithScheduleRegion naming no region.
+//
+//ds:def id=regional-new-wmsu8tng owner=@khanakia stability=stable
 func New(regions map[string]workflow.Client, router Router, opts ...Option) (*Client, error) {
 	if len(regions) == 0 {
 		return nil, fmt.Errorf("%w: regional: no regions", workflow.ErrInvalid)
@@ -185,6 +203,8 @@ func New(regions map[string]workflow.Client, router Router, opts ...Option) (*Cl
 }
 
 // unknownRegion is the refusal of a region name the client lacks.
+//
+//ds:def id=regional-unknownregion-44yn4cvb owner=@khanakia stability=stable
 func unknownRegion(name, from string) error {
 	return fmt.Errorf("%w: %q from %s (%w)", ErrUnknownRegion, name, from, workflow.ErrInvalid)
 }
@@ -195,12 +215,16 @@ func (c *Client) Regions() []string { return slices.Clone(c.names) }
 // Region returns the client of one region, for what this client does not
 // forward (scaling a region's workers, an in-process closure). Calls made
 // on it directly hand out the driver's own, unprefixed IDs.
+//
+//ds:def id=regional-client-region-mg74payv owner=@khanakia stability=stable
 func (c *Client) Region(name string) (workflow.Client, bool) {
 	rc, ok := c.regions[name]
 	return rc, ok
 }
 
 // route asks the Router for job's region and checks the answer.
+//
+//ds:def id=regional-client-route-633srt25 owner=@khanakia stability=stable
 func (c *Client) route(ctx context.Context, job workflow.Job) (string, workflow.Client, error) {
 	name, err := c.router.Region(ctx, job)
 	if err != nil {
@@ -214,6 +238,8 @@ func (c *Client) route(ctx context.Context, job workflow.Job) (string, workflow.
 }
 
 // excludedCaps are never declared: see Capabilities.
+//
+//ds:def id=regional-excludedcaps-vuc7vjgy owner=@khanakia stability=stable
 var excludedCaps = workflow.CapsOf(workflow.CapClosure, workflow.CapWorkerScale)
 
 // Capabilities is what every region can do, since the router may send a
@@ -222,6 +248,8 @@ var excludedCaps = workflow.CapsOf(workflow.CapClosure, workflow.CapWorkerScale)
 // are never declared: a closure carries no job for the router to read,
 // and worker counts belong to one region (use Region to reach its
 // client).
+//
+//ds:def id=regional-client-capabilities-858xwx63 owner=@khanakia stability=stable
 func (c *Client) Capabilities() workflow.Caps {
 	caps := workflow.AllCaps()
 	for _, name := range c.names {
@@ -236,6 +264,8 @@ func (c *Client) Capabilities() workflow.Caps {
 
 // notifiers returns every region as a RunNotifier, and false unless each
 // implements it.
+//
+//ds:def id=regional-client-notifiers-w6jmmddr owner=@khanakia stability=stable
 func (c *Client) notifiers() (map[string]workflow.RunNotifier, bool) {
 	out := make(map[string]workflow.RunNotifier, len(c.names))
 	for _, name := range c.names {
@@ -252,6 +282,8 @@ func (c *Client) notifiers() (map[string]workflow.RunNotifier, bool) {
 // that report the prefixed RunID in StepInfo. Only the schedule region's
 // copy keeps the declared Cron and its schedule fields; a workflow with
 // Cron is refused (ErrInvalid) when no schedule region is set.
+//
+//ds:def id=regional-client-register-yvtwfkbc owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -307,6 +339,7 @@ func withRegion(wf workflow.Workflow, region string) workflow.Workflow {
 	return wf
 }
 
+//ds:def id=regional-regionhandler-69nrv2cx owner=@khanakia stability=stable
 func regionHandler(h workflow.Handler, region string) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		if info, ok := workflow.StepInfoFrom(ctx); ok {
@@ -324,6 +357,8 @@ func regionHandler(h workflow.Handler, region string) workflow.Handler {
 // workflow some region cannot run is refused before anything starts,
 // then starts every region in name order. When one fails to start, the
 // regions already started are stopped again.
+//
+//ds:def id=regional-client-start-gxzm46ny owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.started {
@@ -359,6 +394,8 @@ func (c *Client) Start(ctx context.Context) error {
 // Enqueue sends job to the region the Router picks and returns a RunRef
 // prefixed with that region. It never sends the job to another region
 // when that one fails.
+//
+//ds:def id=regional-client-enqueue-k8y9ghbw owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	name, rc, err := c.route(ctx, job)
 	if err != nil {
@@ -394,6 +431,8 @@ func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 // own ref. A ref without a region prefix, naming a region this client
 // lacks, or whose two IDs name different regions was not made by this
 // client: ErrNotFound.
+//
+//ds:def id=regional-client-onref-hufg6h4j owner=@khanakia stability=stable
 func (c *Client) onRef(ref workflow.RunRef, fn func(string, workflow.Client, workflow.RunRef) error) error {
 	name, inner, ok := decodeRef(ref)
 	rc, known := c.regions[name]
@@ -408,6 +447,8 @@ func (c *Client) onRef(ref workflow.RunRef, fn func(string, workflow.Client, wor
 // is tried; when one fails, the others have already taken the event and
 // the error names the failing region, so a retried Signal may reach a
 // region twice.
+//
+//ds:def id=regional-client-signal-sf3v6ed5 owner=@khanakia stability=stable
 func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 	targets, err := c.signalTargets(ctx, ev)
 	if err != nil {
@@ -424,6 +465,8 @@ func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 
 // signalTargets returns the regions an event goes to: every region, or
 // the ones WithSignalRouter picks (each one a region of this client).
+//
+//ds:def id=regional-client-signaltargets-d2cczf3v owner=@khanakia stability=stable
 func (c *Client) signalTargets(ctx context.Context, ev workflow.Event) ([]string, error) {
 	if c.signal == nil {
 		return c.names, nil
@@ -447,6 +490,8 @@ func (c *Client) signalTargets(ctx context.Context, ev workflow.Event) ([]string
 // s's Workflow, Input, Labels and Tenant, so the schedule lives where its
 // runs would be sent, and returns the ScheduleID prefixed with that
 // region.
+//
+//ds:def id=regional-client-schedule-c23ubc39 owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	name, rc, err := c.route(ctx, workflow.Job{Workflow: s.Workflow, Payload: s.Input, Labels: s.Labels, Tenant: s.Tenant})
 	if err != nil {

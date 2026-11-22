@@ -1,0 +1,9 @@
+func ValidateProgress(p Progress) error {
+	if math.IsNaN(p.Percent) || p.Percent < 0 || p.Percent > 100 {
+		return invalidf("progress: Percent %v is outside [0, 100]", p.Percent)
+	}
+	if len(p.Data) > MaxProgressData {
+		return invalidf("progress: Data is %d bytes, more than %d", len(p.Data), MaxProgressData)
+	}
+	return nil
+}

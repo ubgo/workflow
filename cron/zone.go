@@ -8,6 +8,8 @@ import (
 )
 
 // ErrZone is wrapped by every error LoadZone returns.
+//
+//ds:def id=cron-errzone-jkqrdnz6 owner=@khanakia stability=stable
 var ErrZone = errors.New("cron: invalid time zone")
 
 // LoadZone loads an IANA zone by name for a schedule, so an unknown or
@@ -20,6 +22,8 @@ var ErrZone = errors.New("cron: invalid time zone")
 //
 // A container image without a zoneinfo database finds no zone but UTC;
 // import the cron/tzdata package (or time/tzdata) to embed one.
+//
+//ds:def id=cron-loadzone-9j72sr29 owner=@khanakia stability=stable
 func LoadZone(name string) (*time.Location, error) {
 	trimmed := strings.TrimSpace(name)
 	switch trimmed {

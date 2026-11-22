@@ -1,0 +1,3 @@
+func StartupOncePer(p Period, loc *time.Location) StartupOption {
+	return func(o *startupOptions) { o.once, o.period, o.loc = true, p, loc }
+}

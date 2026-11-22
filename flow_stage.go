@@ -16,6 +16,8 @@ import "slices"
 // ErrInvalid for an empty stage or a step without a name; Validate checks
 // the rest (duplicate names, unknown After entries) at Register, as for
 // steps written by hand.
+//
+//ds:def id=stages-55szbv67 owner=@khanakia stability=stable
 func Stages(stages ...[]Step) ([]Step, error) {
 	var out []Step
 	var prev []string

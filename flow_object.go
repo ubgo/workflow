@@ -14,17 +14,23 @@ import (
 // under the reserved internal prefix, set by CallObject through
 // AllowReservedLabels, so a job cannot claim another object's key by
 // accident.
+//
+//ds:def id=labelobjectkey-cn6pa8c2 owner=@khanakia stability=stable
 const LabelObjectKey = LabelPrefixInternal + "object-key"
 
 // ObjectMethod is one operation of a virtual object: it receives the
 // object's current state (the zero S for a new key) and the call's
 // arguments, and returns the new state and the call's result. It runs
 // alone for its key: no other call of the same key runs at the same time.
+//
+//ds:def id=objectmethod-4fjnrbyb owner=@khanakia stability=stable
 type ObjectMethod[S any] func(ctx context.Context, state S, args []byte) (next S, result []byte, err error)
 
 // ObjectSpec defines a keyed virtual object (DE-15, XM-07): a named
 // entity per key (a cart, an account, a device) whose calls run one at a
 // time per key and share durable state, without a table of the app's own.
+//
+//ds:def id=objectspec-3me8q3hk owner=@khanakia stability=stable
 type ObjectSpec[S any] struct {
 	// Name is the object type; it is also the name of the workflow
 	// DefineObject returns.
@@ -69,6 +75,8 @@ const objectStateKey = "state"
 // reserved internal prefix, which no driver's run id starts with, and a
 // hash of the object and the key, so it has a fixed width (61 bytes) that
 // fits every JournalStore's run column whatever the key's length.
+//
+//ds:def id=objectrun-5ayyvf97 owner=@khanakia stability=stable
 func objectRun(name, key string) RunID {
 	sum := sha256.Sum256([]byte(name + "\x00" + key))
 	return RunID(LabelPrefixInternal + "object/" + hex.EncodeToString(sum[:20]))
@@ -86,6 +94,8 @@ func objectRun(name, key string) RunID {
 // the method again. A method error leaves the state unchanged and goes to
 // the retry policy. The driver needs CapConcurrencyKey (and CapKeyFIFO
 // with Ordered); Register and Start check them as for any workflow.
+//
+//ds:def id=defineobject-2tt5zh4c owner=@khanakia stability=stable
 func DefineObject[S any](spec ObjectSpec[S]) (Workflow, error) {
 	if spec.Name == "" || len(spec.Methods) == 0 || spec.Store == nil {
 		return Workflow{}, invalidf("object needs a Name, Methods and a Store")
@@ -108,6 +118,8 @@ func DefineObject[S any](spec ObjectSpec[S]) (Workflow, error) {
 }
 
 // objectStep is the body of an object's one step.
+//
+//ds:def id=objectstep-u2x9g4k3 owner=@khanakia stability=stable
 func objectStep[S any](spec ObjectSpec[S]) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		info, ok := StepInfoFrom(ctx)
@@ -184,6 +196,8 @@ func methodNames[S any](m map[string]ObjectMethod[S]) []string {
 // key, and returns the call's run; AwaitResult gives the method's result.
 // job may carry the other fields of the run (IdempotencyKey, RunAt,
 // Labels, Tenant); its Workflow and Payload are set here.
+//
+//ds:def id=callobject-2zxmsz9k owner=@khanakia stability=stable
 func CallObject(ctx context.Context, client Client, object, key, method string, args []byte, job Job) (RunRef, error) {
 	if client == nil || object == "" || key == "" || method == "" {
 		return RunRef{}, invalidf("CallObject needs a client, an object, a key and a method")
@@ -205,6 +219,8 @@ func CallObject(ctx context.Context, client Client, object, key, method string, 
 // ObjectState reads the state of object key from store, outside any call
 // (a query endpoint, a test), and false for a key never called. It reads
 // the last saved state; a call running now may replace it a moment later.
+//
+//ds:def id=objectstate-rwhd8g9m owner=@khanakia stability=stable
 func ObjectState[S any](ctx context.Context, store JournalStore, object, key string) (S, bool, error) {
 	var state S
 	if store == nil || object == "" || key == "" {

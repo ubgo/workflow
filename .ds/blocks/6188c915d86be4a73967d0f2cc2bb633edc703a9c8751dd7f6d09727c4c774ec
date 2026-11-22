@@ -1,0 +1,28 @@
+func (c *Client) MoveSchedules(ctx context.Context, input func(workflow.ScheduleInfo) ([]byte, error)) ([]Moved, error) {
+	if c.sched != SideNew {
+		return nil, fmt.Errorf("%w: cutover: MoveSchedules moves schedules to the new backend, and this client keeps them on the old one", workflow.ErrInvalid)
+	}
+	if input == nil {
+		return nil, fmt.Errorf("%w: cutover: MoveSchedules needs the input func (a ScheduleInfo carries no Input)", workflow.ErrInvalid)
+	}
+	l, ok := c.old.(workflow.ScheduleLister)
+	if !ok || !c.old.Capabilities().Has(workflow.CapScheduleList) {
+		return nil, &workflow.UnsupportedError{Field: "MoveSchedules", Missing: workflow.CapScheduleList, Reason: "the old backend lists no schedules"}
+	}
+	infos, err := l.Schedules(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("cutover: MoveSchedules: list the old backend: %w", err)
+	}
+	var moved []Moved
+	for _, info := range infos {
+		if info.Declared {
+			continue
+		}
+		m, err := c.moveOne(ctx, info, input)
+		if err != nil {
+			return moved, fmt.Errorf("cutover: MoveSchedules: schedule %s (%q of %q): %w", info.ID, info.Name, info.Workflow, err)
+		}
+		moved = append(moved, m)
+	}
+	return moved, nil
+}

@@ -1,0 +1,1 @@
+var ErrPoolBusy = errors.New("workflow/middleware: no free slot in the pool")

@@ -1,0 +1,3 @@
+func WithHeader(key, value string) Option {
+	return func(d *deliverConfig) { d.header.Add(key, value) }
+}

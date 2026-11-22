@@ -1,0 +1,36 @@
+func (m *Manager) await(ctx context.Context, cfg awaitConfig, build func(context.Context, []byte) (Batch, error), in []byte) ([]byte, error) {
+	info, ok := workflow.StepInfoFrom(ctx)
+	if !ok || info.RunID.IsZero() {
+		return nil, workflow.Permanent(errors.New("batch: AwaitStep needs workflow.StepInfo with a RunID on its ctx"))
+	}
+	id := AwaitID(info.RunID, info.Step)
+	st, err := m.store.Get(ctx, id)
+	if errors.Is(err, workflow.ErrNotFound) {
+		b, err := build(ctx, in)
+		if err != nil {
+			return nil, fmt.Errorf("batch: AwaitStep %q: build: %w", info.Step, err)
+		}
+		if err := checkBatch(b); err != nil {
+			return nil, workflow.Permanent(err)
+		}
+		if _, err := m.dispatch(ctx, b, id); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("batch %s: %w", id, ErrBatchPending)
+	}
+	if err != nil {
+		return nil, err
+	}
+	p := progressOf(st)
+	if !st.Finished {
+		return nil, fmt.Errorf("batch %s: %d of %d processed: %w", id, p.Processed(), p.Total, ErrBatchPending)
+	}
+	out, err := json.Marshal(p)
+	if err != nil {
+		return nil, err
+	}
+	if !cfg.allowFailures && (p.Failed > 0 || p.CancelledJobs > 0 || p.Cancelled) {
+		return nil, workflow.Permanent(fmt.Errorf("batch %s: %d failed, %d cancelled: %w", id, p.Failed, p.CancelledJobs, ErrBatchFailed))
+	}
+	return out, nil
+}

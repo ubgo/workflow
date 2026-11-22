@@ -1,0 +1,16 @@
+func (m *Manager) cancelUnplaced(ctx context.Context, id ID) error {
+	caps := m.client.Capabilities()
+	bc, ok := m.client.(workflow.BulkCanceller)
+	if !ok || !m.canCancelByLabel() {
+		return &workflow.UnsupportedError{Field: "batch abort", Missing: workflow.CapCancelAll,
+			Reason: "the group failed part-way without refs, so the children it started cannot be found to cancel and run on unseen by batch " + string(id)}
+	}
+	statuses := []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting}
+	if caps.Has(workflow.CapRunStates) {
+		statuses = append(statuses, workflow.StatusRetrying)
+	}
+	if _, err := bc.CancelAll(owned(ctx), workflow.RunQuery{Labels: map[string]string{LabelBatch: string(id)}, Statuses: statuses}); err != nil {
+		return fmt.Errorf("batch %s: cancel the children a failed group started: %w", id, err)
+	}
+	return nil
+}

@@ -1,0 +1,8 @@
+func ReportFailures(r workflow.Reporter, cfg ReportConfig) workflow.RunFinishedFunc {
+	clk := reportClock(cfg)
+	return func(ctx context.Context, ev workflow.RunEvent) {
+		if f, ok := workflow.FailureOf(ev, cfg.Discarded, clk.Now()); ok {
+			r.Report(ctx, f)
+		}
+	}
+}

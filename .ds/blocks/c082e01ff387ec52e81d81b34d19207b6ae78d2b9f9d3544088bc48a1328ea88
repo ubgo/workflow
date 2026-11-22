@@ -1,0 +1,7 @@
+func WithLogLevel(fn func(ctx context.Context, ev StepLogEvent) slog.Level) LoggingOption {
+	return func(c *loggingConfig) {
+		if fn != nil {
+			c.level = fn
+		}
+	}
+}

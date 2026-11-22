@@ -1,0 +1,6 @@
+type pluginClient struct {
+	Client
+	Forward // the optional interfaces, so Use never hides one
+	steps   []Middleware
+	enqueue EnqueueFunc
+}

@@ -1,0 +1,19 @@
+var releaseScript = goredis.NewScript(luaPrelude + `
+local b, id, tok, due = ARGV[1], ARGV[2], ARGV[3], tonumber(ARGV[6])
+readyNow = tonumber(ARGV[10])
+local key = rk(b, id)
+local h = redis.call('HMGET', key, 'owner', 'status', 'sigpend')
+if h[1] ~= tok or terminal(h[2]) then return 0 end
+local status = ARGV[7]
+if h[3] == '1' then due, status = 0, 'queued' end
+redis.call('HSET', key, 'owner', '', 'status', status, 'steps', ARGV[4], 'attempts', ARGV[5], 'errs', ARGV[8], 'chain', ARGV[9])
+redis.call('HDEL', key, 'sigpend')
+redis.call('ZREM', b .. ':leases', id)
+if due > 0 then
+  redis.call('ZADD', b .. ':due', due, id)
+elseif due == 0 then
+  enready(b, id)
+  redis.call('PUBLISH', b .. ':wake', 'e')
+end
+return 1
+`)

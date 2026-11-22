@@ -1,0 +1,3 @@
+func FakeExcept(inner workflow.Client, workflows ...string) FakeOption {
+	return fakePass(inner, workflows, true)
+}

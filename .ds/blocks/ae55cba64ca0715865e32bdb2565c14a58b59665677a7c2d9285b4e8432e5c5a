@@ -1,0 +1,9 @@
+func (c *Client) PauseSchedule(ctx context.Context, t workflow.ScheduleTarget) error {
+	if err := c.checkSchedulePause(t); err != nil {
+		return err
+	}
+	if t.All {
+		return unsupported("ScheduleTarget.All", workflow.Caps{}, errPauseAll)
+	}
+	return c.setCronEnabled(ctx, t.ID, false)
+}

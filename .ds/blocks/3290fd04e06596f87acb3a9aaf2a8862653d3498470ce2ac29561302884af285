@@ -1,0 +1,6 @@
+func (f *Fake) AssertNothingEnqueued(t testing.TB) {
+	t.Helper()
+	if len(f.Jobs()) != 0 {
+		t.Errorf("jobs were enqueued, want none; %s", f.recorded())
+	}
+}

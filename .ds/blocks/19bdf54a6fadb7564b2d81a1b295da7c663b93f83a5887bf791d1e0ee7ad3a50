@@ -1,0 +1,23 @@
+func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.auth.Identify == nil || h.auth.Authorize == nil {
+		writeError(w, http.StatusForbidden, CodeForbidden, "admin API is closed: no Auth.Identify and Auth.Authorize configured")
+		return
+	}
+	who, err := h.identify(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, CodeUnauthorized, "authentication required")
+		return
+	}
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || mt != mediaTypeJSON {
+			writeError(w, http.StatusUnsupportedMediaType, CodeMediaType, "writes need Content-Type: application/json")
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, h.cfg.maxBody)
+	}
+	ctx := context.WithValue(r.Context(), principalKey[P]{}, who)
+	w, ctx, aw := h.startAudit(w, ctx)
+	h.route(w, r.WithContext(ctx), who)
+	h.finishAudit(ctx, who, aw)
+}

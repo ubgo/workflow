@@ -1,0 +1,9 @@
+func Quota(count CountFunc, maxRuns int, opts ...BoundedOption) workflow.EnqueueMiddleware {
+	limit := func(job workflow.Job) int {
+		if job.Tenant == "" {
+			return 0
+		}
+		return maxRuns
+	}
+	return gate("Quota", ErrQuotaExceeded, count, limit, opts)
+}

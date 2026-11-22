@@ -1,0 +1,3 @@
+func ContextWithData(ctx context.Context, store DataStore) context.Context {
+	return context.WithValue(ctx, dataStoreKey{}, store)
+}

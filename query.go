@@ -10,15 +10,19 @@ import (
 // Page sizes of a run query.
 const (
 	// DefaultRunsLimit is the page size of a RunQuery whose Limit is zero.
+	//ds:def id=defaultrunslimit-cemvqzky owner=@khanakia stability=stable
 	DefaultRunsLimit = 100
 
 	// MaxRunsLimit is the largest Limit a RunQuery may ask for, so one
 	// call cannot load an unbounded table into memory.
+	//ds:def id=maxrunslimit-ycr4zjnb owner=@khanakia stability=stable
 	MaxRunsLimit = 1000
 )
 
 // RunQuery filters runs for RunQuerier.Runs and BulkCanceller.CancelAll.
 // Every field that is set must match; the zero value matches every run.
+//
+//ds:def id=runquery-wv73z4g9 owner=@khanakia stability=stable
 type RunQuery struct {
 	// Ref picks one run: every field of Ref that is set must equal the
 	// run's, so a RunRef that Enqueue returned for a delayed run (only its
@@ -94,6 +98,8 @@ func (q RunQuery) PageLimit() int {
 // Match reports whether a run with these fields passes q's filters
 // (everything but paging). In-process drivers use it so every driver
 // reads a filter the same way.
+//
+//ds:def id=runquery-match-rbndsdhq owner=@khanakia stability=stable
 func (q RunQuery) Match(info RunInfo) bool {
 	if !q.Ref.RunID.IsZero() && info.Ref.RunID != q.Ref.RunID {
 		return false
@@ -158,6 +164,8 @@ func (q RunQuery) Match(info RunInfo) bool {
 // ValidateRunQuery checks q: known statuses, a valid queue name when one
 // is set, From before To when both are set, and 0 <= Limit <=
 // MaxRunsLimit. Errors wrap ErrInvalid.
+//
+//ds:def id=validaterunquery-bxy4ha24 owner=@khanakia stability=stable
 func ValidateRunQuery(q RunQuery) error {
 	for _, s := range q.Statuses {
 		if !s.valid() {
@@ -196,6 +204,8 @@ func ValidateRunQuery(q RunQuery) error {
 // without CapDueQuery, as an *UnsupportedError (matches ErrUnsupported)
 // naming the field. Every RunQuerier and BulkCanceller calls it after
 // ValidateRunQuery, so no driver silently drops a filter.
+//
+//ds:def id=checkrunquery-ah3qd2ar owner=@khanakia stability=stable
 func CheckRunQuery(have Caps, q RunQuery) error {
 	if len(q.LabelPrefixes) > 0 && !have.Has(CapLabelPrefix) {
 		return &UnsupportedError{Field: "RunQuery.LabelPrefixes", Missing: CapLabelPrefix}
@@ -215,6 +225,8 @@ func CheckRunQuery(have Caps, q RunQuery) error {
 // ValidateCancelQuery checks q for CancelAll: ValidateRunQuery, no
 // terminal status, and no Limit or Cursor (a bulk cancel covers every
 // match, so paging it would be ambiguous). Errors wrap ErrInvalid.
+//
+//ds:def id=validatecancelquery-ewgpn2hh owner=@khanakia stability=stable
 func ValidateCancelQuery(q RunQuery) error {
 	if err := ValidateRunQuery(q); err != nil {
 		return err
@@ -238,6 +250,8 @@ func ValidateCancelQuery(q RunQuery) error {
 // CancelStatuses is the statuses CancelAll cancels: q.Statuses, or, when
 // empty, the runs not yet started (StatusScheduled and StatusQueued):
 // clearing a backlog must not cut short work that has already begun.
+//
+//ds:def id=cancelstatuses-8fnq9hyv owner=@khanakia stability=stable
 func CancelStatuses(q RunQuery) []Status {
 	if len(q.Statuses) > 0 {
 		return q.Statuses
@@ -246,6 +260,8 @@ func CancelStatuses(q RunQuery) []Status {
 }
 
 // RunInfo is one run as a RunQuerier returns it.
+//
+//ds:def id=runinfo-f6rpt8qe owner=@khanakia stability=api
 type RunInfo struct {
 	// Ref is the run.
 	Ref RunRef
@@ -354,6 +370,8 @@ func (info RunInfo) Clone() RunInfo {
 
 // RunPage is one page of a run listing, newest enqueue first (ties broken
 // by RunID, descending). Next is empty on the last page.
+//
+//ds:def id=runpage-e988tsva owner=@khanakia stability=stable
 type RunPage struct {
 	Runs []RunInfo
 	Next string
@@ -363,6 +381,8 @@ type RunPage struct {
 // A client implements it when it declares CapRunQuery. Errors: an invalid
 // query wraps ErrInvalid; a cursor the driver did not issue wraps
 // ErrInvalid too.
+//
+//ds:def id=runquerier-xkdf425r owner=@khanakia stability=stable
 type RunQuerier interface {
 	Runs(ctx context.Context, q RunQuery) (RunPage, error)
 }
@@ -379,6 +399,8 @@ type RunQuerier interface {
 // again; when another unfinished run holds it, Retry returns ErrDuplicate.
 // A run that is not StatusFailed returns ErrWrongState; an unknown ref
 // returns ErrNotFound.
+//
+//ds:def id=runretrier-esdpff54 owner=@khanakia stability=stable
 type RunRetrier interface {
 	Retry(ctx context.Context, ref RunRef) (RunRef, error)
 }
@@ -388,6 +410,8 @@ type RunRetrier interface {
 // implements it when it declares CapDeleteRun. A run that is not terminal
 // returns ErrWrongState; an unknown ref returns ErrNotFound. Forgetting
 // many runs is Runs plus Delete, or a driver's retention.
+//
+//ds:def id=rundeleter-n6nnj22w owner=@khanakia stability=stable
 type RunDeleter interface {
 	Delete(ctx context.Context, ref RunRef) error
 }
@@ -401,6 +425,8 @@ type RunDeleter interface {
 // cancelled exactly as Cancel would cancel it (its key released, its
 // run-finished event delivered). q must pass ValidateCancelQuery. It
 // returns how many runs it cancelled.
+//
+//ds:def id=bulkcanceller-rfecxx2j owner=@khanakia stability=stable
 type BulkCanceller interface {
 	CancelAll(ctx context.Context, q RunQuery) (int, error)
 }

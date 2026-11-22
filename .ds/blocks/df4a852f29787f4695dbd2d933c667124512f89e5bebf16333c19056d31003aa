@@ -1,0 +1,63 @@
+func (c *Client) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckFork(step, opts); err != nil {
+		return workflow.RunRef{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	old, err := c.lookupLocked(ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !workflow.ForkStatusOK(old.status) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; only a finished run can be forked", workflow.ErrWrongState, old.id, old.status)
+	}
+	rerun := workflow.StepsFrom(old.reg.wf, step)
+	if rerun == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, old.reg.wf.Name, step)
+	}
+	job := old.job
+	job.Labels = workflow.ForkLabels(old.job.Labels, opts.Labels, old.id, step, workflow.ForkRedo(old.status, old.job.Labels))
+	job.IdempotencyKey = opts.IdempotencyKey
+	job.Chain = nil
+	job.RunAt = time.Time{}
+	if q := workflow.EffectiveQueue(old.reg.wf, job); !c.servesLocked(q) {
+		return workflow.RunRef{}, fmt.Errorf("%w: queue %q is not served by this client (WithQueues); the fork would never start", workflow.ErrInvalid, q)
+	}
+	c.pruneLocked()
+	key := job.IdempotencyKey
+	switch old.reg.wf.Idempotency {
+	case workflow.IdempotencyOff:
+		key = ""
+	case workflow.IdempotencyRequired:
+		if key == "" {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %q requires an IdempotencyKey (ForkOptions.IdempotencyKey)", workflow.ErrInvalid, old.reg.wf.Name)
+		}
+	}
+	ik := idemKey{workflow: old.reg.wf.Name, key: key}
+	if key != "" {
+		if holder, ok := c.idem[ik]; ok {
+			workflow.MarkDuplicate(ctx)
+			return holder.ref(), nil
+		}
+	}
+	r := c.newRunLocked(old.reg, job)
+	for name, out := range old.outputs {
+		if !slices.Contains(rerun, name) {
+			r.outputs[name] = slices.Clone(out)
+		}
+	}
+	if key != "" {
+		r.idem = &ik
+		c.idem[ik] = r
+	}
+	out := c.startRunLocked(r)
+	workflow.MarkInserted(ctx)
+	c.emitLocked(r, workflow.LifecycleInserted, "", 0, nil)
+	return out, nil
+}

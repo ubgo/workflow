@@ -155,6 +155,7 @@ func (r *recorder) take() []Alert {
 	return out
 }
 
+//ds:def id=admin-testmonitor-validation-29tzcddx owner=@khanakia stability=stable
 func TestMonitor_Validation(t *testing.T) {
 	a := New(seeded())
 	rec := &recorder{}
@@ -178,6 +179,7 @@ func TestMonitor_Validation(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testmonitor-crossresolverepeat-njhkkxsd owner=@khanakia stability=stable
 func TestMonitor_CrossResolveRepeat(t *testing.T) {
 	t0 := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clk := clock.NewFake(t0)
@@ -229,6 +231,7 @@ func TestMonitor_CrossResolveRepeat(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testmonitor-runonclockandsurvivespanicsanderrors-k8hn73av owner=@khanakia stability=stable
 func TestMonitor_RunOnClockAndSurvivesPanicsAndErrors(t *testing.T) {
 	t0 := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clk := clock.NewFake(t0)

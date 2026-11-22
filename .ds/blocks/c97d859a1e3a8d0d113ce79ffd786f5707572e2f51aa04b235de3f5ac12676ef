@@ -1,0 +1,8 @@
+func (s *Schedule) UnmarshalJSON(data []byte) error {
+	got, err := UnmarshalSchedule(data, nil)
+	if err != nil {
+		return err
+	}
+	*s = got
+	return nil
+}

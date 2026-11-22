@@ -1,0 +1,16 @@
+func DefineMachine[D any](spec MachineSpec[D]) (Workflow, error) {
+	m, err := compileMachine(spec)
+	if err != nil {
+		return Workflow{}, err
+	}
+	return Workflow{
+		Name:  spec.Name,
+		Retry: spec.Retry,
+		Concurrency: &Concurrency{
+			Key:     KeyFunc(func(j Job) string { return j.Labels[LabelObjectKey] }),
+			MaxRuns: 1,
+			FIFO:    spec.Ordered,
+		},
+		Steps: []Step{{Name: "event", Run: m.step}},
+	}, nil
+}

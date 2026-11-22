@@ -1,0 +1,3 @@
+func WithChainEditor(ctx context.Context, ed ChainEditor) context.Context {
+	return context.WithValue(ctx, chainEditorKey{}, ed)
+}

@@ -1,0 +1,14 @@
+func TestLabelsOffByDefault(t *testing.T) {
+	h := newHarness(t)
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
+		{Name: "a", Run: func(ctx context.Context, in []byte) ([]byte, error) { return nil, nil }},
+	}}
+	h.run(t, wf, workflow.Job{Workflow: "w", Labels: map[string]string{"tenant": "t1"}})
+	for _, s := range h.spans.GetSpans() {
+		for _, a := range s.Attributes {
+			if strings.HasPrefix(string(a.Key), wfotel.LabelAttributePrefix) {
+				t.Fatalf("span %q records label %s without an opt-in", s.Name, a.Key)
+			}
+		}
+	}
+}

@@ -8,6 +8,8 @@ import (
 )
 
 // ChunkOptions configures ProcessChunks.
+//
+//ds:def id=chunkoptions-27ehc5s7 owner=@khanakia stability=stable
 type ChunkOptions struct {
 	// Total is the number of items in all, when known; it turns progress
 	// into a percentage. Zero means unknown: Percent stays 0 until the
@@ -25,6 +27,8 @@ type ChunkOptions struct {
 
 // ChunkProgress is the Data ProcessChunks puts in each Progress report,
 // as JSON, for a page that wants the numbers rather than the message.
+//
+//ds:def id=chunkprogress-9chg53fk owner=@khanakia stability=stable
 type ChunkProgress struct {
 	Done  int64 `json:"done"`
 	Total int64 `json:"total,omitempty"`
@@ -45,6 +49,8 @@ type ChunkProgress struct {
 // The caller asked for progress, so a driver that keeps none is not
 // silently ignored: the first report's UnsupportedError fails the step
 // (Permanent). Reaching MaxChunks is a Permanent ErrLoopLimit.
+//
+//ds:def id=processchunks-74wtfdfs owner=@khanakia stability=stable
 func ProcessChunks(ctx context.Context, name string, opts ChunkOptions, fn func(ctx context.Context, offset, size int64) (handled int64, err error)) (int64, error) {
 	if opts.Size < 1 || opts.Total < 0 || opts.MaxChunks < 0 {
 		return 0, Permanent(invalidf("chunks %q: Size must be at least 1, Total and MaxChunks not negative", name))
@@ -74,6 +80,8 @@ func ProcessChunks(ctx context.Context, name string, opts ChunkOptions, fn func(
 }
 
 // reportChunk reports done of total; an UnsupportedError is Permanent.
+//
+//ds:def id=reportchunk-h77e9a53 owner=@khanakia stability=stable
 func reportChunk(ctx context.Context, total, done int64, last bool) error {
 	p := Progress{Message: fmt.Sprintf("%d items", done)}
 	switch {

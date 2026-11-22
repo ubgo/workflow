@@ -1,0 +1,50 @@
+var toleratedTimeoutCases = []testCase{
+	{"a tolerated step's Step.Timeout reaches RuleOneFailedOf(FailureTimeout)", func(e *env) {
+		e.needStepTimeout()
+		var slow causeProbe
+		var routed, other failureProbe
+		wf, err := workflow.WithRules(workflow.Workflow{Name: e.name("w"), Retry: *workflow.RetriesNone(), Steps: []workflow.Step{
+			{Name: "slow", Timeout: e.tm.unit, Run: slow.handler()},
+			{Name: "on-timeout", After: []string{"slow"}, Run: routed.handler()},
+			{Name: "on-error", After: []string{"slow"}, Run: other.handler()},
+		}}, workflow.RulesSpec{
+			Tolerate: []string{"slow"},
+			Rules: map[string]workflow.TriggerRule{
+				"on-timeout": workflow.RuleOneFailedOf(workflow.FailureTimeout),
+				"on-error":   workflow.RuleOneFailedOf(workflow.FailureError),
+			},
+		})
+		if err != nil {
+			e.t.Fatal(err)
+		}
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusSucceeded, e.tm.unit)
+		runs, got := routed.state()
+		if runs != 1 || len(got) != 1 || got[0].Step != "slow" || got[0].Kind != workflow.FailureTimeout {
+			e.t.Errorf("on-timeout ran %d times with ParentFailures %+v, want once with slow's %q failure", runs, got, workflow.FailureTimeout)
+		}
+		if n, _ := other.state(); n != 0 {
+			e.t.Errorf("on-error ran %d times for a timeout, want 0", n)
+		}
+	}},
+	{"a handler that returns success after its Step.Timeout still fails with ErrStepTimeout", func(e *env) {
+		e.needStepTimeout()
+		col := (*collector)(nil)
+		if e.c.Capabilities().Has(workflow.CapRunFinished) {
+			col = observeWith(e, notifierOf(e))
+		}
+		wf := oneStep(e.name("w"), func(ctx context.Context, in []byte) ([]byte, error) {
+			<-ctx.Done()
+			return []byte(`"late"`), nil // ignores the cancellation
+		})
+		wf.Steps[0].Timeout = e.tm.unit
+		wf.Retry = *workflow.RetriesNone()
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		if col != nil {
+			expectEnd(e, col, ref, wf.Name, workflow.StatusFailed, nil, timeoutErrCheck(workflow.ErrStepTimeout))
+		}
+	}},
+}

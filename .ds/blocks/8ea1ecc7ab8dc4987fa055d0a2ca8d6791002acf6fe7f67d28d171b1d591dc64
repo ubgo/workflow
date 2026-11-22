@@ -1,0 +1,3 @@
+func WithPayloadLimit(n int) Option {
+	return func(cl *Client) { cl.payloadLimit = max(n, 0) }
+}

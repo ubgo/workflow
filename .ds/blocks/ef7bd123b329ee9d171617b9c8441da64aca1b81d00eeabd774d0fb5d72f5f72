@@ -1,0 +1,14 @@
+func every[I any](c *Client, field string, caps workflow.Caps) (map[string]I, error) {
+	if err := c.need(field, caps); err != nil {
+		return nil, err
+	}
+	out := make(map[string]I, len(c.names))
+	for _, name := range c.names {
+		i, ok := c.regions[name].(I)
+		if !ok {
+			return nil, &workflow.UnsupportedError{Field: field, Missing: caps, Reason: "region " + name + " does not implement it"}
+		}
+		out[name] = i
+	}
+	return out, nil
+}

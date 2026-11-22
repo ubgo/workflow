@@ -1,0 +1,1 @@
+	DefaultStreamMaxRunBytes = 1 << 20

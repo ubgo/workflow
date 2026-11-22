@@ -1,0 +1,7 @@
+type RunAllReport struct {
+	Succeeded, Failed, Cancelled, Discarded int
+
+	// Waiting counts runs left suspended on a wait step: an event they
+	// need has not been signalled, which RunAll cannot do for them.
+	Waiting int
+}

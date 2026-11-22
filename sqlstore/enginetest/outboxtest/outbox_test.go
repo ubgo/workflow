@@ -359,6 +359,7 @@ func TestRelaysShareTheTable(t *testing.T) {
 	}
 }
 
+//ds:def id=outboxtest-testrefusals-q659n4ht owner=@khanakia stability=stable
 func TestRefusals(t *testing.T) {
 	e := engines(t)[0]
 	f := newFixture(t, e)

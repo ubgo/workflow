@@ -10,6 +10,8 @@ import (
 )
 
 // SoftTimeoutConfig configures SoftTimeout.
+//
+//ds:def id=mw-softtimeoutconfig-dyuryky7 owner=@khanakia stability=stable
 type SoftTimeoutConfig struct {
 	// For returns how long an attempt of a step runs before its soft
 	// deadline; zero or less means none for that step. Nil means After
@@ -45,6 +47,8 @@ type softKey struct{}
 // It wraps the step in the process running it, so it works on every
 // driver. A config with neither For nor a positive After fails every step
 // with a Permanent error wrapping ErrInvalid rather than watching nothing.
+//
+//ds:def id=mw-softtimeout-637qt26k owner=@khanakia stability=stable
 func SoftTimeout(cfg SoftTimeoutConfig) workflow.Middleware {
 	clk := cfg.Clock
 	if clk == nil {
@@ -94,6 +98,8 @@ func SoftTimeout(cfg SoftTimeoutConfig) workflow.Middleware {
 // its soft deadline. Outside SoftTimeout (or for an attempt that got no
 // soft deadline) it returns nil, which blocks for ever in a select, so a
 // handler can select on it unconditionally.
+//
+//ds:def id=mw-softdone-2jx34jfy owner=@khanakia stability=stable
 func SoftDone(ctx context.Context) <-chan struct{} {
 	ch, _ := ctx.Value(softKey{}).(<-chan struct{})
 	return ch
@@ -101,6 +107,8 @@ func SoftDone(ctx context.Context) <-chan struct{} {
 
 // SoftExpired reports whether the attempt has passed its soft deadline,
 // for a handler that checks between units of work rather than selecting.
+//
+//ds:def id=mw-softexpired-aew5dkmh owner=@khanakia stability=stable
 func SoftExpired(ctx context.Context) bool {
 	ch := SoftDone(ctx)
 	if ch == nil {

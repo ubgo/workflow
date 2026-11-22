@@ -1,0 +1,11 @@
+type LineageStore interface {
+	// Record saves l. A record equal to one already saved in Kind,
+	// Dataset, Version, Run, Workflow, Step and Trigger is ignored
+	// (the first one's Meta and At are kept), so recording is
+	// idempotent and a retried step never moves a version forward.
+	Record(ctx context.Context, l Lineage) error
+
+	// Find returns the records matching q, newest first: by At, latest
+	// first, ties in reverse order of recording.
+	Find(ctx context.Context, q LineageQuery) ([]Lineage, error)
+}

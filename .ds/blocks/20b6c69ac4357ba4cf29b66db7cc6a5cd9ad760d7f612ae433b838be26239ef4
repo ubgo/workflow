@@ -1,0 +1,49 @@
+func (m *Manager) RetryFailed(ctx context.Context, id ID) (int, error) {
+	ownerID, err := newID()
+	if err != nil {
+		return 0, err
+	}
+	owner := string(ownerID)
+	var spec []workflow.Job
+	var idxs []int
+	errNothing := errors.New("nothing to retry")
+	_, err = m.store.Update(ctx, id, func(s *State) error {
+		if !s.Finished {
+			return fmt.Errorf("%w: batch %s: RetryFailed needs a finished batch; it still has running jobs", workflow.ErrInvalid, s.ID)
+		}
+		if s.Cancelled && !s.FailCancelled {
+			return fmt.Errorf("%w: batch %s: RetryFailed does not revive a batch cancelled by Cancel or by a failed dispatch", workflow.ErrInvalid, s.ID)
+		}
+		if len(s.Spec) != len(s.Jobs) {
+			return &workflow.UnsupportedError{Field: "batch.RetryFailed", Reason: "batch " + string(s.ID) + " kept no job specs; build the Manager with batch.WithRetryableJobs"}
+		}
+		idxs = retryable(*s)
+		if len(idxs) == 0 {
+			return errNothing
+		}
+		if err := m.claimChange(s, owner, "RetryFailed"); err != nil {
+			return err
+		}
+		s.Round++
+		s.Finished, s.Cancelled, s.FailCancelled, s.CatchFired = false, false, false, false
+		s.FinishedAt, s.CancelledAt = time.Time{}, time.Time{}
+		for _, i := range idxs {
+			j := &s.Jobs[i]
+			j.Attempt++
+			j.Status, j.Ref = "", workflow.RunRef{}
+			job := s.Spec[i]
+			job.Labels = maps.Clone(job.Labels)
+			job.Labels[LabelAttempt] = strconv.Itoa(j.Attempt)
+			s.Spec[i] = job
+		}
+		spec = append([]workflow.Job(nil), s.Spec...)
+		return nil
+	})
+	if errors.Is(err, errNothing) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return len(idxs), m.start(ctx, id, owner, spec, idxs)
+}

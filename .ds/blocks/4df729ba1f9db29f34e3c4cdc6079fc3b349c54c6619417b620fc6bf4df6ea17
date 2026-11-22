@@ -1,0 +1,27 @@
+func MultiChoice(c MultiChoiceSpec) ([]Step, error) {
+	if c.Name == "" || c.Decide == nil || len(c.Branches) == 0 {
+		return nil, invalidf("multi-choice %q needs a Name, a Decide and branches", c.Name)
+	}
+	names := make([]string, 0, len(c.Branches))
+	for _, b := range c.Branches {
+		if b.Name == "" || b.Run == nil {
+			return nil, invalidf("multi-choice %q: every branch needs a Name and a Run", c.Name)
+		}
+		if slices.Contains(names, b.Name) {
+			return nil, invalidf("multi-choice %q: branch %q is listed twice", c.Name, b.Name)
+		}
+		names = append(names, b.Name)
+	}
+	decideName := c.Name + ChoiceDecideSuffix
+	steps := []Step{{Name: decideName, After: slices.Clone(c.After), Run: multiDecide(c.Name, c.Decide, names)}}
+	branchSteps := make([]string, 0, len(c.Branches))
+	for _, b := range c.Branches {
+		name := c.Name + "." + b.Name
+		branchSteps = append(branchSteps, name)
+		steps = append(steps, Step{
+			Name: name, After: []string{decideName}, Retry: b.Retry, Timeout: b.Timeout,
+			Run: multiBranch(c.Name, b.Name, b.Run),
+		})
+	}
+	return append(steps, Step{Name: c.Name, After: branchSteps, Run: multiJoin(c.Name, names, branchSteps)}), nil
+}

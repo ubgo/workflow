@@ -1,0 +1,3 @@
+func HasPriority(p int) JobMatcher {
+	return Where("priority "+strconv.Itoa(p), func(j workflow.Job) bool { return j.Priority == p })
+}

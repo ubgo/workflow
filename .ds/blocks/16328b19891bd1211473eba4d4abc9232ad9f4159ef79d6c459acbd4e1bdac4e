@@ -1,0 +1,41 @@
+func (f *follower[P]) follow(ctx context.Context, st workflow.Status) {
+	defer f.detach()
+	f.attach(ctx)
+	f.catchUp(ctx)
+	f.status(eventJSON{Status: st})
+	if st.IsTerminal() {
+		f.end(ctx, st)
+		return
+	}
+	clk := f.h.cfg.Clock
+	poll, beat := clk.NewTimer(f.h.cfg.Poll), clk.NewTimer(f.h.cfg.Heartbeat)
+	defer func() { poll.Stop(); beat.Stop() }()
+	for !f.gone {
+		select {
+		case <-ctx.Done():
+			return
+		case ev := <-f.lc:
+			f.catchUp(ctx) // chunks written before this event go first
+			f.status(f.lifecycleJSON(ev))
+			if ev.Status.IsTerminal() {
+				f.end(ctx, ev.Status)
+				return
+			}
+		case c, ok := <-f.chunks:
+			if !ok { // closed or fell behind: catch up, re-subscribe on the next poll
+				f.chunks, f.stopChunks = nil, nil
+				f.catchUp(ctx)
+				continue
+			}
+			f.chunk(c)
+		case <-poll.C():
+			poll = clk.NewTimer(f.h.cfg.Poll)
+			if !f.poll(ctx) {
+				return
+			}
+		case <-beat.C():
+			beat = clk.NewTimer(f.h.cfg.Heartbeat)
+			f.write(": keepalive\n\n")
+		}
+	}
+}

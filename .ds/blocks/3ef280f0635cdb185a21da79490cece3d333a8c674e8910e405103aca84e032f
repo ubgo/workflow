@@ -1,0 +1,7 @@
+func TimeoutError(kind error, detail string) error {
+	msg := kind.Error()
+	if detail != "" {
+		msg = fmt.Sprintf("%s: %s", msg, detail)
+	}
+	return &timeoutError{kind: kind, msg: msg}
+}

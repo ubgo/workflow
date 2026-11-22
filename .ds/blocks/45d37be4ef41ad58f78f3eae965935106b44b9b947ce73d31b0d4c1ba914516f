@@ -1,0 +1,14 @@
+type Attempts struct {
+	// N is the number of attempts made, including the one that just
+	// failed: 1 after the first.
+	N int
+
+	// Errors is how many of those attempts failed with an error that was
+	// not a release (IsRelease false), including the one that just failed
+	// when it is such an error.
+	Errors int
+
+	// First is when the step's first attempt started, on the driver's
+	// clock. Zero disables Until.
+	First time.Time
+}

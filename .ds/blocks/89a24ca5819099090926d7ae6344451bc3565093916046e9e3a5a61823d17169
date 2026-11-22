@@ -1,0 +1,6 @@
+func (r *Recorder) Capabilities() workflow.Caps {
+	if r.inner != nil {
+		return r.inner.Capabilities()
+	}
+	return allCaps
+}

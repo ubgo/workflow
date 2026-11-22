@@ -1,0 +1,37 @@
+var requirements = map[Operation]workflow.Caps{
+	OpRuns:      workflow.CapRunQuery,
+	OpRun:       workflow.CapRunQuery,
+	OpFailures:  workflow.CapRunQuery,
+	OpDiscarded: workflow.CapsOf(workflow.CapRunQuery, workflow.CapRunStates),
+	OpQueues:    workflow.CapRunQuery,
+	OpRetry:     workflow.CapRetryRun,
+	OpDelete:    workflow.CapDeleteRun,
+	OpCancel:    workflow.CapCancel,
+	OpCancelAll: workflow.CapCancelAll,
+	OpPause:     workflow.CapsOf(workflow.CapPauseWorkflow, workflow.CapPauseQueue),
+	OpSchedules: workflow.CapScheduleList,
+	// Pausing one schedule from a list needs the list too, since the ID
+	// a screen sends comes from it.
+	OpSchedulePause: workflow.CapsOf(workflow.CapScheduleList, workflow.CapSchedulePause),
+	// Triggering one schedule from a list needs the list for the same
+	// reason.
+	OpScheduleTrigger: workflow.CapsOf(workflow.CapScheduleList, workflow.CapScheduleTrigger),
+	OpForce:           workflow.CapForceRun,
+	// The bulk operations list the matches first, so they need the query
+	// as well as the per-run action.
+	OpRetryAll:  workflow.CapsOf(workflow.CapRunQuery, workflow.CapRetryRun),
+	OpDeleteAll: workflow.CapsOf(workflow.CapRunQuery, workflow.CapDeleteRun),
+	// OpNodes, OpHealth, OpReschedule, OpEditRun, OpCancelStep and the
+	// reset, fork and signal-waiting operations have no capability: their
+	// interfaces answer for themselves and refuse at the call (a wrapper
+	// returns an UnsupportedError), so only the interface is checked.
+	OpNodes:          workflow.Caps{},
+	OpHealth:         workflow.Caps{},
+	OpReschedule:     workflow.Caps{},
+	OpEditRun:        workflow.Caps{},
+	OpCancelStep:     workflow.Caps{},
+	OpResetRun:       workflow.Caps{},
+	OpResetSucceeded: workflow.Caps{},
+	OpForkRun:        workflow.Caps{},
+	OpSignalWaiting:  workflow.Caps{},
+}

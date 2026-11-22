@@ -1,0 +1,16 @@
+func (f *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		e, ok := c.(workflow.RunEditor)
+		if !ok {
+			return workflow.Unsupported("EditRun", "the "+sd.String()+" backend does not implement it")
+		}
+		got, err := e.EditRun(ctx, inner, edit)
+		out = encodeRef(sd, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}

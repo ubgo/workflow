@@ -1,0 +1,1 @@
+var ErrEndpointDisabled = errors.New("workflow/middleware: endpoint disabled")

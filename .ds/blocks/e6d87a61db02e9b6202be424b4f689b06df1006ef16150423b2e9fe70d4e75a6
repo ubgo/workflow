@@ -1,0 +1,6 @@
+func ClockAfter(clk clock.Clock, floor time.Time) ReadyFunc {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(context.Context) (bool, error) { return !clk.Now().Before(floor), nil }
+}

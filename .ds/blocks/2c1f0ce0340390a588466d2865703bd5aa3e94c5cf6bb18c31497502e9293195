@@ -1,0 +1,48 @@
+func (m *Manager) dispatchGroup(ctx context.Context, gr GroupRunner, id ID, owner string, idxs []int, sub []workflow.Job) (handled bool, err error) {
+	if _, err := m.store.Update(ctx, id, func(s *State) error {
+		if err := m.renew(s, owner); err != nil {
+			return err
+		}
+		s.Grouped = true
+		return nil
+	}); err != nil {
+		return true, fmt.Errorf("batch %s: mark grouped: %w", id, err)
+	}
+	refs, runErr := gr.RunGroup(owned(ctx), string(id), sub)
+	if errors.Is(runErr, workflow.ErrUnsupported) {
+		return false, nil
+	}
+	if runErr == nil && len(refs) != len(sub) {
+		runErr = fmt.Errorf("GroupRunner returned %d refs for %d jobs", len(refs), len(sub))
+	}
+	if runErr != nil {
+		if len(refs) != len(sub) {
+			refs = nil // a ref we cannot place on its job is cancelled below instead
+		}
+		return true, errors.Join(fmt.Errorf("batch %s: run group: %w", id, runErr), m.abortJobs(ctx, id, owner, idxs, refs, false))
+	}
+	saved, err := m.store.Update(ctx, id, func(s *State) error {
+		if err := m.renew(s, owner); err != nil {
+			return err
+		}
+		for k, i := range idxs {
+			s.Jobs[i].Ref = refs[k]
+		}
+		s.Dispatched = true
+		m.dropSpec(s)
+		return nil
+	})
+	if err != nil {
+		return true, fmt.Errorf("batch %s: save group refs: %w", id, err)
+	}
+	// A child may have failed and cancelled the batch before its refs were
+	// saved, when the cancel could not reach the children; reach them now.
+	if saved.Cancelled {
+		var errs []error
+		for _, j := range saved.Jobs {
+			errs = append(errs, m.cancelRun(ctx, j))
+		}
+		return true, errors.Join(errs...)
+	}
+	return true, nil
+}

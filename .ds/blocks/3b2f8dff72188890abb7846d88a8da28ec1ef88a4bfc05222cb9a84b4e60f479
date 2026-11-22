@@ -1,0 +1,29 @@
+func StartWhen(ctx context.Context, c Client, ready ReadyFunc, opts StartWhenOptions) error {
+	if c == nil || ready == nil {
+		return invalidf("StartWhen needs a client and a ReadyFunc")
+	}
+	clk := opts.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	poll := opts.Poll
+	if poll <= 0 {
+		poll = DefaultStartWhenPoll
+	}
+	for {
+		ok, err := ready(ctx)
+		if err != nil {
+			return fmt.Errorf("workflow: start when: %w", err)
+		}
+		if ok {
+			return c.Start(ctx)
+		}
+		t := clk.NewTimer(poll)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C():
+		}
+	}
+}

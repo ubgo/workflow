@@ -1,0 +1,25 @@
+func (w Windows) Allows(t time.Time, loc *time.Location) bool {
+	if loc == nil {
+		loc = time.UTC
+	}
+	local := t.In(loc)
+	m := local.Hour()*60 + local.Minute()
+	if len(w.Between) > 0 {
+		in := false
+		for _, win := range w.Between {
+			if win.contains(m) {
+				in = true
+				break
+			}
+		}
+		if !in {
+			return false
+		}
+	}
+	for _, win := range w.Unless {
+		if win.contains(m) {
+			return false
+		}
+	}
+	return true
+}

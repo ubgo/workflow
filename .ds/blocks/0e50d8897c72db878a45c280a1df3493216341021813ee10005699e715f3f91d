@@ -1,0 +1,23 @@
+func TestMemoryAlertLimiterRateCap(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	lim := middleware.NewMemoryAlertLimiter(clk, middleware.AlertLimits{Max: 2, Per: time.Minute})
+	ctx := context.Background()
+	allow := func(key string) bool {
+		ok, _, err := lim.Allow(ctx, key, clk.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if !allow("a") || !allow("b") {
+		t.Fatal("the first two alerts were held back")
+	}
+	if allow("c") {
+		t.Error("a third alert within Per passed a cap of 2")
+	}
+	clk.Advance(time.Minute)
+	ok, suppressed, _ := lim.Allow(ctx, "c", clk.Now())
+	if !ok || suppressed != 1 {
+		t.Errorf("after Per: ok %v suppressed %d, want true and 1", ok, suppressed)
+	}
+}

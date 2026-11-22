@@ -1,0 +1,6 @@
+func overlapCaps(p OverlapPolicy) Caps {
+	if p == OverlapSkip {
+		return CapOverlapSkip
+	}
+	return Caps{}
+}

@@ -1,0 +1,11 @@
+type Builder struct {
+	minute, hour, dom, month, dow string
+	// every is the "@every" interval; when set, the fields are unused and
+	// no constraint applies.
+	every string
+	// fixedTime marks a frequency that fires at one time of day (daily or
+	// coarser), the only ones At may change: on an hourly or minute
+	// frequency At would silently drop the repetition.
+	fixedTime bool
+	err       error
+}

@@ -1,0 +1,6 @@
+func FailureHandler(wf Workflow, err error) Handler {
+	if wf.OnTimeout != nil && IsTimeout(err) {
+		return wf.OnTimeout
+	}
+	return wf.OnFailure
+}

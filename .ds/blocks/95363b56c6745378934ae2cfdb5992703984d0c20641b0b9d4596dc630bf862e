@@ -1,0 +1,3 @@
+func (c *Client) LineageStore() *LineageStore {
+	return &LineageStore{st: c.st, names: strings.NewReplacer("{"+tblLineage+"}", c.st.table(tblLineage))}
+}

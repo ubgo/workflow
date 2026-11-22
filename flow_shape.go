@@ -13,10 +13,14 @@ import (
 
 // LabelShape is the fingerprint of a workflow's steps that ShapeGuard
 // writes on a run at enqueue.
+//
+//ds:def id=labelshape-4ce874tz owner=@khanakia stability=stable
 const LabelShape = LabelPrefixInternal + "shape"
 
 // ErrShapeChanged matches the failure ShapeGuard gives a step of a run
 // enqueued under a different set of steps than the one now registered.
+//
+//ds:def id=errshapechanged-nukshgy3 owner=@khanakia stability=stable
 var ErrShapeChanged = errors.New("workflow: the workflow's steps changed under a running run")
 
 // Shape returns the fingerprint of wf's step graph: a hash of every
@@ -24,6 +28,8 @@ var ErrShapeChanged = errors.New("workflow: the workflow's steps changed under a
 // definitions with the same fingerprint run a stored run the same way;
 // renaming, adding or removing a step, or changing an edge changes it.
 // Handler code, retries and timeouts are not part of it.
+//
+//ds:def id=shape-qzfts778 owner=@khanakia stability=stable
 func Shape(wf Workflow) string {
 	lines := make([]string, len(wf.Steps))
 	for i, s := range wf.Steps {
@@ -53,6 +59,8 @@ type shapePlugin struct{ shapes map[string]string }
 // workflow name (or a version, where the driver supports one) and
 // draining the old; the guard is what tells you a deploy forgot to. It
 // runs on every driver.
+//
+//ds:def id=shapeguard-ddbqbabb owner=@khanakia stability=stable
 func ShapeGuard(wfs ...Workflow) Plugin {
 	p := shapePlugin{shapes: map[string]string{}}
 	for _, wf := range wfs {
@@ -63,6 +71,7 @@ func ShapeGuard(wfs ...Workflow) Plugin {
 
 func (p shapePlugin) Name() string { return "shape-guard" }
 
+//ds:def id=shapeplugin-enqueuemiddleware-u7nhh223 owner=@khanakia stability=stable
 func (p shapePlugin) EnqueueMiddleware() []EnqueueMiddleware {
 	return []EnqueueMiddleware{func(next EnqueueFunc) EnqueueFunc {
 		return func(ctx context.Context, job Job) (RunRef, error) {
@@ -80,6 +89,7 @@ func (p shapePlugin) EnqueueMiddleware() []EnqueueMiddleware {
 	}}
 }
 
+//ds:def id=shapeplugin-stepmiddleware-37a566mw owner=@khanakia stability=stable
 func (p shapePlugin) StepMiddleware() []Middleware {
 	return []Middleware{func(next Handler) Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {

@@ -1,0 +1,1 @@
+func WorkflowScope(name string) DataScope { return DataScope{Kind: ScopeWorkflow, Name: name} }

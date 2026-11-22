@@ -1,0 +1,7 @@
+func NewOutputStore(db *sql.DB, d sqlb.Dialect, lim OutputLimits, opts ...Option) (*OutputStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.OutputStore(lim), nil
+}

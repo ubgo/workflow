@@ -1,0 +1,1 @@
+var ErrSchemaTooNew = errors.New("sqlstore: the database schema is newer than this code")

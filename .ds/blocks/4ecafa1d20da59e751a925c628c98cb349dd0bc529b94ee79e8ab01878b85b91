@@ -1,0 +1,7 @@
+func WithElector(e Elector) Option {
+	return func(cl *Client) {
+		if e != nil {
+			cl.elector = e
+		}
+	}
+}

@@ -23,6 +23,8 @@ import (
 // Done is closed once the client has fully stopped: after Drain, after
 // the Start ctx was cancelled, or after a driver's stop-when-idle option
 // fired. It is the one way a process waits for its client to finish.
+//
+//ds:def id=drainer-tjjjbazt owner=@khanakia stability=stable
 type Drainer interface {
 	Drain(ctx context.Context) error
 	Done() <-chan struct{}
@@ -30,6 +32,8 @@ type Drainer interface {
 
 // DrainDisposition says what became of an attempt a drain cut off. It is
 // a closed set, so a caller can switch on it.
+//
+//ds:def id=draindisposition-xjkm645x owner=@khanakia stability=stable
 type DrainDisposition string
 
 const (
@@ -66,6 +70,8 @@ type DrainCut struct {
 // a cut-off attempt (a driver that cannot see runs end leaves it 0, see
 // its doc); Cut lists the attempts still running at the deadline. A drain
 // that waited for everything has an empty Cut.
+//
+//ds:def id=drainreport-6gp3974h owner=@khanakia stability=stable
 type DrainReport struct {
 	FinishedRuns  int
 	FinishedSteps int
@@ -73,10 +79,14 @@ type DrainReport struct {
 }
 
 // Clean reports whether the drain cut nothing off.
+//
+//ds:def id=drainreport-clean-ax7h22gu owner=@khanakia stability=stable
 func (r DrainReport) Clean() bool { return len(r.Cut) == 0 }
 
 // CutRuns is the number of distinct runs with a cut-off attempt (one run
 // can have several attempts running at once).
+//
+//ds:def id=drainreport-cutruns-mzxd4et9 owner=@khanakia stability=stable
 func (r DrainReport) CutRuns() int {
 	seen := make(map[RunID]struct{}, len(r.Cut))
 	for _, c := range r.Cut {
@@ -90,6 +100,8 @@ func (r DrainReport) CutRuns() int {
 // exactly as Drain (same shutdown, same errors) and additionally returns
 // the report. Called again, or after the client stopped, it returns the
 // same report as the first call: the report describes one drain.
+//
+//ds:def id=reportingdrainer-najup2m2 owner=@khanakia stability=stable
 type ReportingDrainer interface {
 	Drainer
 	DrainWithReport(ctx context.Context) (DrainReport, error)
@@ -100,6 +112,8 @@ type ReportingDrainer interface {
 // the drain succeed? It is nil when nothing was cut off, even if ctx also
 // ended (the work finished in the same instant), and ctxErr otherwise.
 // Every driver's Drain returns this, so they cannot disagree.
+//
+//ds:def id=drainoutcome-vausxe9q owner=@khanakia stability=stable
 func DrainOutcome(report DrainReport, ctxErr error) error {
 	if report.Clean() {
 		return nil
@@ -113,6 +127,8 @@ func DrainOutcome(report DrainReport, ctxErr error) error {
 // already ended), never "wait forever": a shutdown that can hang is the
 // bug a grace period exists to prevent. A tighter deadline already on ctx
 // wins. The caller must call the returned cancel.
+//
+//ds:def id=draincontext-b6n9r79e owner=@khanakia stability=stable
 func DrainContext(ctx context.Context, grace time.Duration) (context.Context, context.CancelFunc) {
 	if grace <= 0 {
 		c, cancel := context.WithCancel(ctx)
@@ -125,6 +141,8 @@ func DrainContext(ctx context.Context, grace time.Duration) (context.Context, co
 // DrainTimeout drains d, giving running attempts at most grace to finish
 // (see DrainContext), so a caller does not hand-roll context.WithTimeout.
 // It returns what d.Drain returns.
+//
+//ds:def id=draintimeout-esadwb5f owner=@khanakia stability=stable
 func DrainTimeout(ctx context.Context, d Drainer, grace time.Duration) error {
 	dctx, cancel := DrainContext(ctx, grace)
 	defer cancel()
@@ -135,6 +153,8 @@ func DrainTimeout(ctx context.Context, d Drainer, grace time.Duration) error {
 // does not implement ReportingDrainer it still drains and returns an empty
 // report with detailed false: the caller learns the report is unknown, not
 // that nothing was cut off.
+//
+//ds:def id=draintimeoutreport-febd5nuj owner=@khanakia stability=stable
 func DrainTimeoutReport(ctx context.Context, d Drainer, grace time.Duration) (report DrainReport, detailed bool, err error) {
 	dctx, cancel := DrainContext(ctx, grace)
 	defer cancel()
@@ -153,6 +173,8 @@ func DrainTimeoutReport(ctx context.Context, d Drainer, grace time.Duration) (re
 // stoppers, signal.NotifyContext loops) can call it; this package imports
 // none of them. Register it in the phase that runs before the database and
 // the HTTP listener close, since running attempts still use both.
+//
+//ds:def id=shutdownhook-nwhvw4d6 owner=@khanakia stability=stable
 func ShutdownHook(d Drainer, grace time.Duration) func(context.Context) error {
 	return func(ctx context.Context) error { return DrainTimeout(ctx, d, grace) }
 }
@@ -161,6 +183,8 @@ func ShutdownHook(d Drainer, grace time.Duration) func(context.Context) error {
 // (when non-nil) before returning, so the phase can log what was cut off.
 // onReport also runs when the report is not detailed (see
 // DrainTimeoutReport), with a zero report and detailed false.
+//
+//ds:def id=shutdownhookreport-7as6cre3 owner=@khanakia stability=stable
 func ShutdownHookReport(d Drainer, grace time.Duration, onReport func(report DrainReport, detailed bool)) func(context.Context) error {
 	return func(ctx context.Context) error {
 		report, detailed, err := DrainTimeoutReport(ctx, d, grace)
@@ -187,6 +211,8 @@ func ShutdownHookReport(d Drainer, grace time.Duration, onReport func(report Dra
 // their first results are the ones every later call returns; nothing is
 // counted as a finished step after Freeze, so attempts the shutdown
 // itself ends never look like finished work.
+//
+//ds:def id=draintracker-368xeckq owner=@khanakia stability=stable
 type DrainTracker struct {
 	mu       sync.Mutex
 	next     uint64

@@ -1,0 +1,19 @@
+func TestLifecycle(t *testing.T) {
+	fx := newFixture(t)
+	if _, err := fx.c.Enqueue(fx.ctx, workflow.Job{Workflow: "wait", IdempotencyKey: "k"}); !errors.Is(err, workflow.ErrNotStarted) {
+		t.Errorf("Enqueue before Start: %v, want ErrNotStarted", err)
+	}
+	if fx.s.calls.Load() != 0 {
+		t.Errorf("ErrNotStarted failed over")
+	}
+	fx.up(waitWF)
+	if err := fx.c.Register(waitWF); !errors.Is(err, workflow.ErrAlreadyStarted) {
+		t.Errorf("Register after Start: %v", err)
+	}
+	if err := fx.c.Start(fx.ctx); !errors.Is(err, workflow.ErrAlreadyStarted) {
+		t.Errorf("second Start: %v", err)
+	}
+	if err := fx.c.Register(workflow.Workflow{}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Errorf("invalid workflow: %v", err)
+	}
+}

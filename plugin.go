@@ -8,6 +8,8 @@ import (
 
 // ErrDuplicatePlugin means two plugins handed to one Use call share a
 // name.
+//
+//ds:def id=errduplicateplugin-ce74ermg owner=@khanakia stability=stable
 var ErrDuplicatePlugin = errors.New("workflow: duplicate plugin name")
 
 // Plugin is the only interface a plugin must satisfy: a feature (unique
@@ -23,6 +25,8 @@ var ErrDuplicatePlugin = errors.New("workflow: duplicate plugin name")
 // Invariant: Name is non-empty and unique among the plugins of one Use
 // call. It names the plugin in every refusal, so an operator knows which
 // one to remove or reconfigure.
+//
+//ds:def id=plugin-nzzsb5eg owner=@khanakia stability=api
 type Plugin interface {
 	Name() string
 }
@@ -32,6 +36,8 @@ type Plugin interface {
 // through the client Use returns, inside any middleware the driver itself
 // was built with (so a driver-level codec has already opened the input).
 // The first entry is the outermost.
+//
+//ds:def id=stepmiddlewareprovider-s6nzes9g owner=@khanakia stability=api
 type StepMiddlewareProvider interface {
 	StepMiddleware() []Middleware
 }
@@ -39,6 +45,8 @@ type StepMiddlewareProvider interface {
 // EnqueueMiddlewareProvider contributes enqueue middleware, run on every
 // Enqueue through the client Use returns. The first entry sees the job
 // first.
+//
+//ds:def id=enqueuemiddlewareprovider-6akzkpv4 owner=@khanakia stability=api
 type EnqueueMiddlewareProvider interface {
 	EnqueueMiddleware() []EnqueueMiddleware
 }
@@ -47,6 +55,8 @@ type EnqueueMiddlewareProvider interface {
 // them on the client's RunNotifier, so it must run before Start, and it
 // refuses a client without RunNotifier rather than dropping them. The
 // delivery contract, best-effort included, is RunNotifier's.
+//
+//ds:def id=runfinishedprovider-ck623ev8 owner=@khanakia stability=api
 type RunFinishedProvider interface {
 	RunFinishedObservers() []RunFinishedFunc
 }
@@ -78,6 +88,8 @@ type RunFinishedProvider interface {
 // every interface Forward covers to c, so wrappers stacked on it never
 // hide the run-finished hook, run queries, pauses or drain. With no
 // plugins Use returns c unchanged.
+//
+//ds:def id=use-yq9nazws owner=@khanakia stability=stable
 func Use(c Client, plugins ...Plugin) (Client, error) {
 	if len(plugins) == 0 {
 		return c, nil
@@ -138,6 +150,8 @@ func Use(c Client, plugins ...Plugin) (Client, error) {
 
 // pluginClient is the client Use returns. Every method not overridden
 // here, Capabilities included, is the inner client's own.
+//
+//ds:def id=pluginclient-6pzv2fwv owner=@khanakia stability=stable
 type pluginClient struct {
 	Client
 	Forward // the optional interfaces, so Use never hides one
@@ -149,6 +163,8 @@ var _ RunNotifier = (*pluginClient)(nil)
 
 // Register wraps wf's handlers with the plugins' step middleware. It
 // copies Steps, so the caller's Workflow is never modified.
+//
+//ds:def id=pluginclient-register-cdnscbg6 owner=@khanakia stability=stable
 func (pc *pluginClient) Register(wf Workflow) error {
 	if len(pc.steps) > 0 {
 		steps := make([]Step, len(wf.Steps))

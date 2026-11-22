@@ -14,6 +14,8 @@ var _ workflow.TransientSignaller = (*Client)(nil)
 // and key now, and keeps ev for no one else (workflow.TransientSignaller):
 // it is signalScript without the writes that keep the event, in one
 // script, so a run that begins its wait a moment later never sees ev.
+//
+//ds:def id=redis-client-signalwaiting-c8a88w75 owner=@khanakia stability=stable
 func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err

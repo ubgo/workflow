@@ -1,0 +1,7 @@
+func NewDataStore(rdb goredis.UniversalClient, prefix string) (*DataStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &DataStore{rdb: rdb, base: base}, nil
+}

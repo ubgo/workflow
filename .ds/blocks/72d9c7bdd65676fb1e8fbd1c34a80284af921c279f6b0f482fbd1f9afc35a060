@@ -1,0 +1,3 @@
+func (a *Admin) PauseSchedule(ctx context.Context, id workflow.ScheduleID) error {
+	return a.schedulePause(ctx, id, workflow.SchedulePauser.PauseSchedule)
+}

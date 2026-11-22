@@ -1,0 +1,12 @@
+type JournalStore interface {
+	// Load returns the value saved under key for run, and false when
+	// there is none.
+	Load(ctx context.Context, run RunID, key string) (val []byte, ok bool, err error)
+
+	// Save stores val under key for run.
+	Save(ctx context.Context, run RunID, key string, val []byte) error
+
+	// Forget removes every entry of run. Forgetting a run with no
+	// entries is not an error.
+	Forget(ctx context.Context, run RunID) error
+}

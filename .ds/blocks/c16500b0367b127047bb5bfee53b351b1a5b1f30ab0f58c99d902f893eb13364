@@ -1,0 +1,1 @@
+func NewMachineRegistry[D any]() *MachineRegistry[D] { return &MachineRegistry[D]{} }

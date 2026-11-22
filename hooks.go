@@ -11,6 +11,8 @@ import "context"
 // with that contract: at least once, so a hook must be idempotent, and
 // best-effort unless the driver declares CapRunFinished and
 // CapTickEvents.
+//
+//ds:def id=schedulehooks-br4xchwz owner=@khanakia stability=stable
 type ScheduleHooks struct {
 	// Workflow is the schedule's workflow; required.
 	Workflow string
@@ -36,6 +38,8 @@ type ScheduleHooks struct {
 }
 
 // matchesTick reports whether t belongs to the hooked schedule.
+//
+//ds:def id=schedulehooks-matchestick-pa7gyx24 owner=@khanakia stability=stable
 func (h ScheduleHooks) matchesTick(t Tick) bool {
 	return t.Workflow == h.Workflow && (h.Name == "" || t.Name == h.Name)
 }
@@ -60,6 +64,8 @@ func (h ScheduleHooks) wantsRuns() bool {
 // Workflow (ErrInvalid) and a client lacking the notifier a hook needs
 // (an UnsupportedError naming CapTickEvents or CapRunFinished). After
 // Start the registrations return ErrAlreadyStarted.
+//
+//ds:def id=attachschedulehooks-nhr7k5rg owner=@khanakia stability=stable
 func AttachScheduleHooks(c Client, hooks ...ScheduleHooks) error {
 	var ticks, runs bool
 	for i, h := range hooks {
@@ -91,6 +97,7 @@ func AttachScheduleHooks(c Client, hooks ...ScheduleHooks) error {
 	return nil
 }
 
+//ds:def id=dispatchtick-amcdg36g owner=@khanakia stability=stable
 func dispatchTick(ctx context.Context, hs []ScheduleHooks, t Tick) {
 	for _, h := range hs {
 		if !h.matchesTick(t) {
@@ -105,6 +112,7 @@ func dispatchTick(ctx context.Context, hs []ScheduleHooks, t Tick) {
 	}
 }
 
+//ds:def id=dispatchrun-mxzm3jnk owner=@khanakia stability=stable
 func dispatchRun(ctx context.Context, hs []ScheduleHooks, ev RunEvent) {
 	for _, h := range hs {
 		if !h.matchesRun(ev) {

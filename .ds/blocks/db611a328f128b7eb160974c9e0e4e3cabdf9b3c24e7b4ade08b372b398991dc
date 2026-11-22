@@ -1,0 +1,1 @@
+func NewSaga(name string) *Saga { return &Saga{name: name} }

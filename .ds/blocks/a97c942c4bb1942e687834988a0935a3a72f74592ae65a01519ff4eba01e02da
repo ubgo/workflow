@@ -1,0 +1,9 @@
+func SleepUntil(clk clock.Clock, t time.Time) error {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	if d := t.Sub(clk.Now()); d > 0 {
+		return Snooze(d)
+	}
+	return nil
+}

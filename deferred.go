@@ -12,6 +12,8 @@ import (
 // ErrDeferredClosed is returned by an enqueue made through a Deferred
 // that was already flushed or discarded, such as a goroutine of a request
 // handler enqueueing after the response was written. Nothing is sent.
+//
+//ds:def id=errdeferredclosed-mcycghsh owner=@khanakia stability=stable
 var ErrDeferredClosed = errors.New("workflow: deferred enqueues already flushed or discarded")
 
 // Deferred holds enqueues until the work that made them is known to have
@@ -28,6 +30,8 @@ var ErrDeferredClosed = errors.New("workflow: deferred enqueues already flushed 
 //
 // A Deferred is safe for concurrent use. Use NewDeferred; it is single
 // use: after Flush or Discard every Add returns ErrDeferredClosed.
+//
+//ds:def id=deferred-d9t494vm owner=@khanakia stability=stable
 type Deferred struct {
 	mu     sync.Mutex
 	held   []heldJob
@@ -45,6 +49,8 @@ func NewDeferred() *Deferred { return &Deferred{} }
 // Add holds job, to be sent with enqueue by Flush. It returns
 // ErrDeferredClosed once the Deferred was flushed or discarded. The job is
 // copied, so the caller may reuse it.
+//
+//ds:def id=deferred-add-jy58gna5 owner=@khanakia stability=stable
 func (d *Deferred) Add(enqueue EnqueueFunc, job Job) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -76,6 +82,8 @@ func (d *Deferred) take() []heldJob {
 // (the zero RunRef for a failure, so refs[i] is the i-th held job) with
 // every failure joined. A second Flush, or a Flush after Discard, sends
 // nothing.
+//
+//ds:def id=deferred-flush-22p939zy owner=@khanakia stability=stable
 func (d *Deferred) Flush(ctx context.Context) ([]RunRef, error) {
 	held := d.take()
 	refs := make([]RunRef, len(held))
@@ -92,6 +100,8 @@ func (d *Deferred) Flush(ctx context.Context) ([]RunRef, error) {
 }
 
 // Discard drops every held job, closes d and returns how many it dropped.
+//
+//ds:def id=deferred-discard-u886nc2u owner=@khanakia stability=stable
 func (d *Deferred) Discard() int { return len(d.take()) }
 
 // deferredKey is the unexported context key for a Deferred.
@@ -104,6 +114,8 @@ func WithDeferred(ctx context.Context, d *Deferred) context.Context {
 }
 
 // DeferredFrom returns the Deferred on ctx, and false when there is none.
+//
+//ds:def id=deferredfrom-vw9bzra7 owner=@khanakia stability=stable
 func DeferredFrom(ctx context.Context) (*Deferred, bool) {
 	d, ok := ctx.Value(deferredKey{}).(*Deferred)
 	return d, ok
@@ -117,6 +129,8 @@ func DeferredFrom(ctx context.Context) (*Deferred, bool) {
 // is flushed, by the client underneath; a caller that needs them up
 // front, or needs the RunRef, enqueues without a Deferred on its ctx.
 // Middleware listed after it in the chain runs at flush time.
+//
+//ds:def id=deferenqueue-n94f3gz2 owner=@khanakia stability=stable
 func DeferEnqueue() EnqueueMiddleware {
 	return func(next EnqueueFunc) EnqueueFunc {
 		return func(ctx context.Context, job Job) (RunRef, error) {
@@ -130,6 +144,8 @@ func DeferEnqueue() EnqueueMiddleware {
 }
 
 // DeferOptions tunes DeferHTTP. The zero value is the default.
+//
+//ds:def id=deferoptions-6fvx7vmb owner=@khanakia stability=stable
 type DeferOptions struct {
 	// Succeeded decides from the response status whether the request
 	// succeeded, so its held jobs are flushed rather than discarded. Nil
@@ -148,6 +164,8 @@ type DeferOptions struct {
 
 // DeferSucceeded is DeferOptions.Succeeded's default: a status below
 // 400.
+//
+//ds:def id=defersucceeded-ca6zpqq6 owner=@khanakia stability=stable
 func DeferSucceeded(status int) bool { return status < http.StatusBadRequest }
 
 // DeferHTTP wraps next so every request gets its own Deferred on its
@@ -157,6 +175,8 @@ func DeferSucceeded(status int) bool { return status < http.StatusBadRequest }
 // goes on up after the drop). The flush runs on the request's context
 // without its cancellation, so a client that hung up after a successful
 // response does not cancel the jobs.
+//
+//ds:def id=deferhttp-46csut5g owner=@khanakia stability=stable
 func DeferHTTP(next http.Handler, opts DeferOptions) http.Handler {
 	succeeded := opts.Succeeded
 	if succeeded == nil {
@@ -215,6 +235,8 @@ func (s *statusWriter) Write(b []byte) (int, error) {
 
 // Flush passes a streaming handler's flush through, so wrapping a
 // handler in DeferHTTP does not stop it streaming.
+//
+//ds:def id=statuswriter-flush-ab4p85x2 owner=@khanakia stability=stable
 func (s *statusWriter) Flush() {
 	if s.status == 0 {
 		s.status = http.StatusOK
@@ -223,6 +245,8 @@ func (s *statusWriter) Flush() {
 }
 
 // Status is the status written, 200 when none was.
+//
+//ds:def id=statuswriter-status-gmeu2u8v owner=@khanakia stability=stable
 func (s *statusWriter) Status() int {
 	if s.status == 0 {
 		return http.StatusOK
@@ -232,4 +256,6 @@ func (s *statusWriter) Status() int {
 
 // Unwrap lets http.ResponseController reach the underlying writer's
 // Flush, Hijack and deadlines.
+//
+//ds:def id=statuswriter-unwrap-d5epth5q owner=@khanakia stability=stable
 func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }

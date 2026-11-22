@@ -1,0 +1,1 @@
+func WithSchedulesOnBoth() Option { return func(f *Client) { f.schedBoth = true } }

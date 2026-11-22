@@ -40,6 +40,8 @@ import (
 //
 // This package imports middleware only for the DebounceBurst type the
 // interface names; middleware imports nothing of sqlstore.
+//
+//ds:def id=sql-debouncestore-jsm48sbx owner=@khanakia stability=stable
 type DebounceStore struct {
 	st  *store
 	clk clock.Clock
@@ -51,10 +53,14 @@ var _ middleware.DebounceStore = (*DebounceStore)(nil)
 // a list of its own, so NewDebounceStore(...).Migrate on a database with no
 // sqlstore queue creates only the debounce table, while Client.Migrate
 // applies it too.
+//
+//ds:def id=sql-debouncemigrationowner-v2wud9py owner=@khanakia stability=stable
 const DebounceMigrationOwner = "ubgo/workflow/sqlstore/debounce"
 
 // debounceMigrations is every DebounceStore schema change, in order, under
 // the same rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-debouncemigrations-gfww36g2 owner=@khanakia stability=stable
 func (s *store) debounceMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(DebounceMigrationOwner), Name: "001_debounce", Script: s.script(s.render(debounceDefs(typesFor(s.engine))))},
@@ -89,6 +95,8 @@ func debounceDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithClock (pruning), WithTxAttempts
 // and WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Swap.
+//
+//ds:def id=sql-newdebouncestore-4ymc7ecv owner=@khanakia stability=stable
 func NewDebounceStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DebounceStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -99,10 +107,14 @@ func NewDebounceStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DebounceStor
 
 // DebounceStore returns the debounce store in this client's database,
 // prefix and scheduling clock. Client.Migrate creates its table.
+//
+//ds:def id=sql-client-debouncestore-hxs5szus owner=@khanakia stability=stable
 func (c *Client) DebounceStore() *DebounceStore { return &DebounceStore{st: c.st, clk: c.clk} }
 
 // Migrate creates the debounce table (its own migration list, under the
 // same ledger and lock as Client.Migrate), and nothing else.
+//
+//ds:def id=sql-debouncestore-migrate-b4je72m3 owner=@khanakia stability=stable
 func (s *DebounceStore) Migrate(ctx context.Context) error {
 	return s.st.migrate(ctx, s.st.debounceMigrations())
 }
@@ -142,6 +154,8 @@ func (s *DebounceStore) Get(ctx context.Context, key string) (middleware.Debounc
 // Swap implements middleware.DebounceStore, atomically across processes
 // (see DebounceStore). A transaction that loses the first-insert race or a
 // lock conflict is tried again, up to WithTxAttempts.
+//
+//ds:def id=sql-debouncestore-swap-xd9g7ped owner=@khanakia stability=stable
 func (s *DebounceStore) Swap(ctx context.Context, key string, b middleware.DebounceBurst) (middleware.DebounceBurst, bool, error) {
 	var prev burstRow
 	var found bool
@@ -184,6 +198,8 @@ func (s *DebounceStore) Swap(ctx context.Context, key string, b middleware.Debou
 // PruneExpired deletes every burst whose run has started and returns how
 // many. Such rows never change what Debounce does, so this only bounds the
 // table's size; a running Client does it on its dispatcher's housekeeping.
+//
+//ds:def id=sql-debouncestore-pruneexpired-hbamxymb owner=@khanakia stability=stable
 func (s *DebounceStore) PruneExpired(ctx context.Context) (int64, error) {
 	return s.st.execN(ctx, s.st.db, "DELETE FROM {debounce} WHERE run_at <= ?", s.clk.Now().UnixNano())
 }

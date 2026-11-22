@@ -1,0 +1,4 @@
+func WithCodec(c workflow.Client, codec Codec, mws ...workflow.EnqueueMiddleware) workflow.Client {
+	inner := WrapClient(c, append([]workflow.EnqueueMiddleware{EncodeEnqueue(codec)}, mws...)...)
+	return &codecClient{Client: inner, Forward: workflow.Forward{Inner: inner}, codec: codec}
+}

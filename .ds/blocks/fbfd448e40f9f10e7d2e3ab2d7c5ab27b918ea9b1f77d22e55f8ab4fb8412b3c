@@ -1,0 +1,13 @@
+type FinishedRun struct {
+	Ref        workflow.RunRef
+	Workflow   string
+	Status     workflow.Status
+	Labels     map[string]string
+	Payload    []byte
+	Err        string // the stored error text; empty when it succeeded
+	CreatedAt  time.Time
+	FinishedAt time.Time
+	// Outputs holds each step's stored output by step name; a step that
+	// never succeeded is absent.
+	Outputs map[string][]byte
+}

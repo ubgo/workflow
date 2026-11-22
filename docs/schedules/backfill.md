@@ -4,16 +4,16 @@ The nightly report did not run for three days while the database was being migra
 
 ## Before you start
 
-- `Backfill` needs `workflow.CapIdempotencyKey` (memory, SQL, Redis, Hatchet) and refuses without it unless `BackfillAllowDuplicates()`. With `workflow.CapRunQuery` it also finds runs that already finished.
-- `LimitRuns` and `OneShot` set `Schedule.Active`, which needs `workflow.CapScheduleActive` (memory, SQL, Redis). `PruneEndedSchedules` needs `workflow.CapScheduleList` and a client implementing `workflow.ScheduleLister` (memory, SQL, Redis, Hatchet).
-- `FireAtStartup` runs on every driver; `StartupOncePer` needs `workflow.CapIdempotencyKey`.
-- `SkipExcluded` is a `Workflow.ScheduleWhen`, which needs `workflow.CapScheduleWhen` (memory, SQL, Redis). See [schedule conditions](conditions.md).
-- `middleware.FireJitter` needs `workflow.CapSnooze` and `workflow.CapTickTime` (memory, SQL, Redis); `middleware.CheckFireJitter(c)` checks a client.
+- [`Backfill`](ds:block?id=backfill-rfae9nah) needs [`workflow.CapIdempotencyKey`](ds:block?id=capidempotencykey-5wcqqwy8) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)) and refuses without it unless [`BackfillAllowDuplicates()`](ds:block?id=backfillallowduplicates-r4vast3j), a [`BackfillOption`](ds:block?id=backfilloption-5gtkbm2n). With [`workflow.CapRunQuery`](ds:block?id=caprunquery-7pyv7hv3) it also [finds runs that already finished](ds:block?id=enqueueunlesskeyed-ucrm4vaf).
+- [`LimitRuns`](ds:block?id=limitruns-qv525z3e) and [`OneShot`](ds:block?id=oneshot-v3ttks9x) set `Schedule.Active`, which needs [`workflow.CapScheduleActive`](ds:block?id=capscheduleactive-7jnzkwny) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-p5caps-wggh6esn), [Redis](ds:block?id=redis-caps-bfgdst9t)). [`PruneEndedSchedules`](ds:block?id=pruneendedschedules-9j5875xj) needs [`workflow.CapScheduleList`](ds:block?id=capschedulelist-3hbmmd6n) and a client implementing [`workflow.ScheduleLister`](ds:block?id=schedulelister-2vgjk9bh) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-paritycaps-e5y5vqhk), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)).
+- [`FireAtStartup`](ds:block?id=fireatstartup-a9bhyc6k) runs on every driver; [`StartupOncePer`](ds:block?id=startuponceper-xz6qzbfc) needs `workflow.CapIdempotencyKey`.
+- [`SkipExcluded`](ds:block?id=skipexcluded-rsnzrkzv) is a `Workflow.ScheduleWhen`, which needs [`workflow.CapScheduleWhen`](ds:block?id=capschedulewhen-z3ehkydm) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-paritycaps-e5y5vqhk), [Redis](ds:block?id=redis-caps-bfgdst9t)). See [schedule conditions](conditions.md).
+- [`middleware.FireJitter`](ds:block?id=mw-firejitter-w7z8zc39) needs [`workflow.CapSnooze` and `workflow.CapTickTime`](ds:block?id=mw-firejitterneeds-j76ggebk) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-p5caps-wggh6esn), [Redis](ds:block?id=redis-caps-bfgdst9t)); [`middleware.CheckFireJitter(c)`](ds:block?id=mw-checkfirejitter-nacz2uut) checks a client.
 - The example is [`examples/schedule-tools`](../../examples/schedule-tools). It runs on the memory driver with a fake clock. Run it with `go run ./schedule-tools` from `examples/`.
 
 ## Backfill missed ticks
 
-`workflow.BackfillPlan(spec)` lists the ticks of a schedule in `[From, To)`, in the schedule's zone with the usual [DST rules](time-zones.md#daylight-saving-time), minus those outside its `Active` period or `Windows`. `workflow.Backfill(ctx, c, spec)` starts one run per tick, oldest first, and returns their refs:
+[`workflow.BackfillPlan(spec)`](ds:block?id=backfillplan-erqmz364) lists the ticks of a schedule in [`[From, To)`](ds:block?id=planticks-9fusuf53), in the schedule's zone with the usual [DST rules](time-zones.md#daylight-saving-time), minus those outside its `Active` period or `Windows`. [`workflow.Backfill(ctx, c, spec)`](ds:block?id=backfill-rfae9nah) starts one run per tick, oldest first, and returns their refs:
 
 <!-- snippet: examples/schedule-tools/main.go#backfill -->
 ```go
@@ -32,9 +32,9 @@ if err != nil {
 }
 ```
 
-Set `BackfillSpec.Schedule` to the schedule as declared, or `Workflow`, `Cron`, `Location` (and `Seconds`, `Input`, `Labels`) for a declared `Workflow.Cron` entry or a schedule that is gone. `ScheduleID`, when the schedule is live, goes into each run's `LabelSchedule`. `Parser` reads a [custom dialect](expressions.md). A range holding more than `Max` ticks (default `DefaultBackfillMax`, 1000) is refused whole with `ErrInvalid`, never cut short.
+Set [`BackfillSpec.Schedule`](ds:block?id=backfillspec-dsnrt6wf) to the schedule as declared, or `Workflow`, `Cron`, `Location` (and `Seconds`, `Input`, `Labels`) for a declared `Workflow.Cron` entry or a schedule that is gone. `ScheduleID`, when the schedule is live, goes into each run's `LabelSchedule`. `Parser` reads a [custom dialect](expressions.md). A range holding more than `Max` ticks (default [`DefaultBackfillMax`](ds:block?id=defaultbackfillmax-qn938fhf), 1000) is [refused whole](ds:block?id=planticks-9fusuf53) with `ErrInvalid`, never cut short.
 
-Each run starts now, with the schedule's input, tenant and labels, plus the labels of its tick: `LabelScheduleName`, `LabelTickAt`, `LabelTrigger` set to `LabelTriggerBackfill`, and `LabelRunKey`. The step reads the tick, and so the interval it covers, with `StepInfo.TickAt()`:
+Each run starts now, with the schedule's input, tenant and labels, plus the labels of its tick: `LabelScheduleName`, `LabelTickAt`, `LabelTrigger` set to [`LabelTriggerBackfill`](ds:block?id=labeltriggerbackfill-6hkhj42d), and [`LabelRunKey`](ds:block?id=labelrunkey-7hb64aje). The step reads the tick, and so the interval it covers, with `StepInfo.TickAt()`:
 
 <!-- snippet: examples/schedule-tools/main.go#tickat -->
 ```go
@@ -46,11 +46,11 @@ func (r *recorder) step(ctx context.Context, _ []byte) ([]byte, error) {
 	r.ticks = append(r.ticks, day)
 ```
 
-A repeated or overlapping backfill starts nothing twice. Each run's idempotency key is derived from the schedule (its ID, else its workflow and name, else its workflow, expression, zone and seconds flag) and the tick. The key folds a second enqueue into a run that is still unfinished; once runs have finished, `Backfill` finds them by `LabelRunKey` on a client with `CapRunQuery`, among the runs the driver still keeps. On an enqueue error it stops and returns the refs so far, so the same call again resumes where it stopped.
+A repeated or overlapping backfill starts nothing twice. Each run's idempotency key is [derived from the schedule](ds:block?id=backfillspec-target-67adhzws) (its ID, else its workflow and name, else its workflow, expression, zone and seconds flag) and the tick. The key folds a second enqueue into a run that is still unfinished; once runs have finished, `Backfill` finds them by `LabelRunKey` on a client with `CapRunQuery`, among the runs the driver still keeps. On an enqueue error it [stops and returns the refs so far](ds:block?id=backfill-rfae9nah), so the same call again resumes where it stopped.
 
 ## Run a schedule n times, or once
 
-`workflow.LimitRuns(s, n, from, parser)` returns the schedule with an `Active` period holding exactly its first n ticks after `from`: `Active.From` is the first and `Active.Until` lands just after the n-th. `workflow.OneShot(s, at)` returns a schedule that fires once, at `at`; with an empty `Cron` it writes one from `at` on the schedule's wall clock.
+[`workflow.LimitRuns(s, n, from, parser)`](ds:block?id=limitruns-qv525z3e) returns the schedule with an `Active` period [holding exactly its first n ticks](ds:block?id=limitticks-rhkx6cmt) after `from`: `Active.From` is the first and `Active.Until` lands just after the n-th. [`workflow.OneShot(s, at)`](ds:block?id=oneshot-v3ttks9x) returns a schedule that fires once, at `at`; with an empty `Cron` it writes one from `at` on the schedule's wall clock.
 
 <!-- snippet: examples/schedule-tools/main.go#limit -->
 ```go
@@ -72,9 +72,9 @@ if _, err := c.Schedule(ctx, reminder); err != nil {
 }
 ```
 
-The limit is data on the schedule, stored with it, so it is the same on every node after a restart, with no counter. It counts ticks, not runs: a tick skipped by `ScheduleWhen`, a window, a pause, the overlap policy or a misfire still uses one of the n. `OneShot` refuses an `at` its expression does not fire at, including a wall time that DST skips or repeats.
+The limit is data on the schedule, stored with it, so it is the same on every node after a restart, with no counter. It counts ticks, not runs: a tick skipped by `ScheduleWhen`, a window, a pause, the overlap policy or a misfire still uses one of the n. [`OneShot` refuses an `at`](ds:block?id=oneshot-v3ttks9x) its expression does not fire at, including a wall time that DST skips or repeats.
 
-An ended schedule stays listed until it is unscheduled. `workflow.PruneEndedSchedules(ctx, c, now)` unschedules every schedule whose `Active.Until` plus a grace (`MisfireGrace` by default, `PruneGrace(d)` to change it) is at or before `now`, and returns their IDs; declared crons and schedules without an end are left alone. Call it from a daily job or at boot:
+An ended schedule stays listed until it is unscheduled. [`workflow.PruneEndedSchedules(ctx, c, now)`](ds:block?id=pruneendedschedules-9j5875xj) unschedules every schedule whose `Active.Until` plus a grace ([`MisfireGrace` by default](ds:block?id=pruneendedschedules-9j5875xj), [`PruneGrace(d)`](ds:block?id=prunegrace-xppj9335) to change it) is at or before `now`, and returns their IDs; declared crons and schedules without an end are left alone. Call it from a daily job or at boot:
 
 <!-- snippet: examples/schedule-tools/main.go#prune -->
 ```go
@@ -86,7 +86,7 @@ if err != nil {
 
 ## Run at startup, once per day across nodes
 
-`workflow.FireAtStartup(ctx, c, s, opts...)` enqueues one run of the schedule's workflow now, with its input, tenant and labels, `LabelTickAt` set to now and `LabelTrigger` set to `LabelTriggerStartup`. By default every node that calls it starts a run. `StartupOncePer(period, loc)` keys the run by the schedule and `PeriodKey`, so a rollout of ten replicas starts one run per period:
+[`workflow.FireAtStartup(ctx, c, s, opts...)`](ds:block?id=fireatstartup-a9bhyc6k) enqueues one run of the schedule's workflow now, with its input, tenant and labels, `LabelTickAt` set to now and `LabelTrigger` set to [`LabelTriggerStartup`](ds:block?id=labeltriggerstartup-z4j5xzvs). By default every node that calls it starts a run. [`StartupOncePer(period, loc)`](ds:block?id=startuponceper-xz6qzbfc) keys the run by the schedule and `PeriodKey`, so a rollout of ten replicas starts one run per period:
 
 <!-- snippet: examples/schedule-tools/main.go#startup -->
 ```go
@@ -100,7 +100,7 @@ if err != nil {
 
 ## Skip holidays and weekends
 
-An `ExclusionCalendar` answers one question, `Excluded(t)`. `ExcludeDates(loc, "2026-12-25", ...)` excludes whole days on a zone's wall clock, `ExcludeWeekdays(loc, days...)` excludes weekdays, `ExcludeFunc` adapts a function (a holiday API you cache, a table you keep), and `AnyExcluded` combines them. `SkipExcluded(cal)` turns a calendar into a `Workflow.ScheduleWhen` that skips every tick whose time (`Tick.At`) is excluded:
+An [`ExclusionCalendar`](ds:block?id=exclusioncalendar-suamhx2m) answers one question, `Excluded(t)`. [`ExcludeDates(loc, "2026-12-25", ...)`](ds:block?id=excludedates-es3upkf3) excludes whole days on a zone's wall clock, [`ExcludeWeekdays(loc, days...)`](ds:block?id=excludeweekdays-5ypgwzrh) excludes weekdays, [`ExcludeFunc`](ds:block?id=excludefunc-hb33v5a7) adapts a function (a holiday API you cache, a table you keep), and [`AnyExcluded`](ds:block?id=anyexcluded-fzuhe3ty) combines them. [`SkipExcluded(cal)`](ds:block?id=skipexcluded-rsnzrkzv) turns a calendar into a `Workflow.ScheduleWhen` that skips every tick whose time (`Tick.At`) is excluded:
 
 <!-- snippet: examples/schedule-tools/main.go#calendar -->
 ```go
@@ -125,7 +125,7 @@ A skipped tick is reported to [tick observers](hooks.md) as `TickSkipped` with `
 
 ## Spread fires with jitter
 
-`middleware.FireJitter(window)` holds each run a cron tick fired until tick + a jitter in `[0, window)`, drawn from the run ID (`RunIDJitter`), so a thousand tenants' `0 9 * * *` schedules start across the window instead of in one second:
+[`middleware.FireJitter(window)`](ds:block?id=mw-firejitter-w7z8zc39) holds each run a cron tick fired until tick + a jitter in `[0, window)`, drawn from the run ID ([`RunIDJitter`](ds:block?id=mw-runidjitter-2d56ttaz)), so a thousand tenants' `0 9 * * *` schedules start across the window instead of in one second:
 
 <!-- snippet: examples/schedule-tools/main.go#jitter -->
 ```go
@@ -137,7 +137,7 @@ if err := middleware.CheckFireJitter(c); err != nil { // needs CapSnooze and Cap
 }
 ```
 
-It keeps no state: a step of a fired run returns `workflow.Snooze` for the time left while the clock is before its deadline. A retry, another node and every step of the run reach the same deadline, later steps pass straight through, and a run that already starts late is not delayed further. Plain enqueues and runs started by hand (`TriggerSchedule`, `Backfill`, `FireAtStartup`) are never held. `WithJitterFunc` replaces the draw; it must be deterministic. `WithFireJitterClock` sets the clock.
+It keeps no state: a step of a fired run returns `workflow.Snooze` for the time left while the clock is before its deadline. A retry, another node and every step of the run reach the same deadline, later steps pass straight through, and a run that already starts late is not delayed further. Plain enqueues and runs started by hand (`TriggerSchedule`, `Backfill`, `FireAtStartup`) are [never held](ds:block?id=mw-firejitter-w7z8zc39). [`WithJitterFunc`](ds:block?id=mw-withjitterfunc-crjuxjmv) replaces the draw; it must be deterministic. [`WithFireJitterClock`](ds:block?id=mw-withfirejitterclock-n4hs9pyj) sets the clock.
 
 ## Try it
 
@@ -176,14 +176,14 @@ jitter:
 
 ## Pitfalls
 
-- **A repeat finds finished runs only while the driver keeps them.** The idempotency key covers unfinished runs; the `LabelRunKey` lookup covers finished ones until retention removes them (the memory driver keeps finished runs 24 hours by default, the SQL driver until `Prune`). A backfill repeated after that starts the ticks again.
-- **Backfill does not see the scheduler's own fires.** A tick the scheduler fired carries no run key; pass a range the scheduler missed.
-- **Backfill ignores `ScheduleWhen`.** It honours the schedule's `Active` period and `Windows`, which are data; a condition in code runs only at tick time. Filter `BackfillPlan`'s ticks yourself when it matters.
+- **A repeat finds finished runs only while the driver keeps them.** The idempotency key covers unfinished runs; the `LabelRunKey` lookup covers finished ones until retention removes them (the memory driver keeps finished runs [24 hours by default](ds:block?id=memory-defaultrunretention-72hekrav), the SQL driver until `Prune`). A backfill repeated after that starts the ticks again.
+- **Backfill does not see the scheduler's own fires.** A tick the scheduler fired carries no run key ([only `Backfill` sets one](ds:block?id=backfill-rfae9nah)); pass a range the scheduler missed.
+- **Backfill ignores `ScheduleWhen`.** It [honours the schedule's `Active` period and `Windows`](ds:block?id=planticks-9fusuf53), which are data; a condition in code runs only at tick time. Filter `BackfillPlan`'s ticks yourself when it matters.
 - **`LimitRuns` counts skipped ticks.** Three ticks of which one fell on an excluded day are three, and two runs.
-- **A tick exactly at `from` is not counted.** A driver fires only ticks after a schedule exists, so `LimitRuns(s, n, now, nil)` starts at the next tick.
-- **Prune after the grace.** Pruning at `Active.Until` itself could remove a schedule before a late scheduler fired its last tick; the default grace is `MisfireGrace`.
-- **Once per period is per key, not per success.** With `StartupOncePer`, a node booting the same day after the run finished and was pruned starts it again.
-- **FireJitter on a driver without `CapSnooze`** turns each wait into a failed attempt; check with `CheckFireJitter`.
+- **A tick exactly at `from` is [not counted](ds:block?id=limitticks-rhkx6cmt).** A driver fires only ticks after a schedule exists, so `LimitRuns(s, n, now, nil)` starts at the next tick.
+- **Prune after the grace.** Pruning at `Active.Until` itself could remove a schedule before a late scheduler fired its last tick; the [default grace](ds:block?id=pruneendedschedules-9j5875xj) is `MisfireGrace`.
+- **Once per period is per key, not per success.** With [`StartupOncePer`](ds:block?id=startuponceper-xz6qzbfc), a node booting the same day after the run finished and was pruned starts it again.
+- **FireJitter on a driver without `CapSnooze`** turns each wait into a failed attempt; check with [`CheckFireJitter`](ds:block?id=mw-checkfirejitter-nacz2uut).
 
 ## Related
 

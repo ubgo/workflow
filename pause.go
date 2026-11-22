@@ -5,6 +5,8 @@ import "context"
 // PauseTarget names what Pauser holds: one workflow, one queue, or
 // everything. Exactly one field is set; build it with PauseWorkflow,
 // PauseQueue or PauseAll.
+//
+//ds:def id=pausetarget-2g5zg3um owner=@khanakia stability=stable
 type PauseTarget struct {
 	// Workflow holds the runs of one workflow. Needs CapPauseWorkflow.
 	Workflow string
@@ -21,9 +23,13 @@ type PauseTarget struct {
 func PauseWorkflow(name string) PauseTarget { return PauseTarget{Workflow: name} }
 
 // PauseQueue targets the runs on one queue.
+//
+//ds:def id=pausequeue-xg7ky8xh owner=@khanakia stability=stable
 func PauseQueue(name string) PauseTarget { return PauseTarget{Queue: name} }
 
 // PauseAll targets every run. Resume(PauseAll()) clears every pause.
+//
+//ds:def id=pauseall-ntt6srtz owner=@khanakia stability=stable
 func PauseAll() PauseTarget { return PauseTarget{All: true} }
 
 // ValidatePauseTarget refuses a target that sets none or more than one
@@ -50,6 +56,8 @@ func ValidatePauseTarget(t PauseTarget) error {
 
 // RequiresPause is the capability a target needs: CapPauseQueue for a
 // queue, CapPauseWorkflow otherwise.
+//
+//ds:def id=requirespause-bpxg35v9 owner=@khanakia stability=stable
 func RequiresPause(t PauseTarget) Caps {
 	if t.Queue != "" {
 		return CapPauseQueue
@@ -59,6 +67,8 @@ func RequiresPause(t PauseTarget) Caps {
 
 // CheckPause validates t and refuses it with an UnsupportedError when have
 // lacks what it needs. Drivers call it first in Pause and Resume.
+//
+//ds:def id=checkpause-9fyvd7wv owner=@khanakia stability=stable
 func CheckPause(have Caps, t PauseTarget) error {
 	if err := ValidatePauseTarget(t); err != nil {
 		return err
@@ -95,6 +105,8 @@ func (t PauseTarget) Holds(wf, q string) bool {
 // Resume(PauseAll()), which removes every pause; resuming a target that is
 // not paused is a no-op. Paused lists the targets in force, All first,
 // then workflows, then queues, each by name.
+//
+//ds:def id=pauser-5p4t8yg6 owner=@khanakia stability=stable
 type Pauser interface {
 	Pause(ctx context.Context, t PauseTarget) error
 	Resume(ctx context.Context, t PauseTarget) error

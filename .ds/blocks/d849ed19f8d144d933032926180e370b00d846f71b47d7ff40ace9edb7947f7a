@@ -1,0 +1,1 @@
+	Signal(ctx context.Context, ev Event) error

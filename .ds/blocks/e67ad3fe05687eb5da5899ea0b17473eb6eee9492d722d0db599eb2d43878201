@@ -1,0 +1,9 @@
+type FakeSchedule struct {
+	ID          workflow.ScheduleID
+	Schedule    workflow.Schedule
+	Unscheduled bool
+
+	// LastRun is the run the last TriggerSchedule of it enqueued; the
+	// Fake fires no cron ticks, so only triggers set it.
+	LastRun workflow.RunRef
+}

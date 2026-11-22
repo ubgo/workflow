@@ -1,0 +1,18 @@
+var reservedLabelCases = []testCase{
+	{"a plain Enqueue cannot set a reserved label", func(e *env) {
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		for _, key := range []string{workflow.LabelParentRun, workflow.LabelSchedule, workflow.LabelPrefixBatch + "id", workflow.LabelPrefixOTel + "traceparent"} {
+			if _, err := e.c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, Labels: map[string]string{key: "forged"}}); !errors.Is(err, workflow.ErrInvalid) {
+				e.t.Errorf("Enqueue with label %q = %v, want ErrInvalid (workflow.CheckJobLabels)", key, err)
+			}
+		}
+		if _, err := e.c.Enqueue(workflow.AllowReservedLabels(ctx, workflow.LabelParentRun), workflow.Job{Workflow: wf.Name,
+			Labels: map[string]string{workflow.LabelParentRun: "r"}}); err != nil {
+			e.t.Errorf("Enqueue with the key allowed by its owner = %v, want it accepted", err)
+		}
+	}},
+}

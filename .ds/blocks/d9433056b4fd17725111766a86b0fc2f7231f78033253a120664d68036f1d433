@@ -1,0 +1,1 @@
+var ErrSnoozed = errors.New("workflow: step snoozed")

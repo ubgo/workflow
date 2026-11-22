@@ -1,0 +1,89 @@
+func (c *Client) Start(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	if err := workflow.ValidateQueues(c.queueCfg); err != nil {
+		return err
+	}
+	if err := workflow.CheckQueueLimits(caps, c.queueCfg); err != nil {
+		return err
+	}
+	if err := workflow.ValidateRecycle(c.recycle); err != nil {
+		return err
+	}
+	if len(c.queueCfg) > 0 {
+		c.queues = make(map[string]workflow.QueueConfig, len(c.queueCfg))
+		for _, q := range c.queueCfg {
+			c.queues[q.Name] = q
+		}
+	}
+	for _, reg := range c.wfs {
+		if err := workflow.CheckCaps(caps, reg.wf); err != nil {
+			return err
+		}
+		if err := exprKeys(reg.wf); err != nil {
+			return err
+		}
+		if q := workflow.EffectiveQueue(reg.wf, workflow.Job{}); !c.servesLocked(q) {
+			return fmt.Errorf("%w: workflow %q runs on queue %q, which WithQueues does not list; this one-process driver would never run it", workflow.ErrInvalid, reg.wf.Name, q)
+		}
+	}
+	c.started = true
+	c.startedAt = c.clk.Now()
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	context.AfterFunc(c.ctx, c.shutdown)
+	c.startRecycleLocked()
+	c.slots = workflow.NewSlotPool(c.workers)
+	for range c.workers {
+		c.wg.Add(1)
+		go c.worker()
+	}
+	if len(c.observers) > 0 || len(c.tickObserver) > 0 || len(c.lifecycle) > 0 {
+		c.wg.Add(1)
+		go c.notifier()
+	}
+	if c.schedHeap {
+		c.schedPoke = make(chan struct{}, 1)
+		c.wg.Add(1)
+		go c.scheduler()
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.wfs)) {
+		reg := c.wfs[name]
+		loc := reg.wf.CronLocation
+		if loc == nil {
+			loc = time.UTC
+		}
+		for i, s := range reg.crons {
+			id := declaredID(reg.wf.Name, i)
+			sc := &schedule{
+				id:       id,
+				name:     reg.exprs[i],
+				s:        s,
+				loc:      loc,
+				misfire:  reg.wf.Misfire,
+				windows:  reg.wf.CronWindows,
+				overlap:  reg.wf.CronOverlap,
+				workflow: reg.wf.Name,
+				declared: true,
+				stop:     make(chan struct{}),
+				seconds:  reg.wf.CronSeconds,
+				active:   reg.wf.CronActive,
+				keep:     reg.wf.CronKeepRuns,
+			}
+			c.scheds[id] = sc
+			c.startSchedule(sc)
+		}
+	}
+	go func() { // not in wg: it waits for wg
+		<-c.ctx.Done()
+		// Mark the client stopped here rather than trusting the AfterFunc
+		// goroutine to have run: anyone woken by Done must see every call
+		// refused with ErrNotStarted. shutdown is idempotent.
+		c.shutdown()
+		c.wg.Wait()
+		close(c.done)
+	}()
+	return nil
+}

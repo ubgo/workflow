@@ -1,0 +1,10 @@
+func FuncJob(name string, arg any) (Job, error) {
+	if name == "" {
+		return Job{}, invalidf("func has no name")
+	}
+	b, err := json.Marshal(arg)
+	if err != nil {
+		return Job{}, invalidf("func %q: encode argument: %v", name, err)
+	}
+	return Job{Workflow: name, Payload: b}, nil
+}

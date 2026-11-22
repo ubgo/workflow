@@ -1,0 +1,9 @@
+func (c *Client) checkSchema(ctx context.Context) error {
+	for _, stem := range allTables {
+		var n int64
+		if err := c.st.one(ctx, c.st.db, "SELECT COUNT(*) FROM {"+stem+"} WHERE 1 = 0", nil, &n); err != nil {
+			return fmt.Errorf("sqlstore: table %s is not readable (run Migrate, or apply MigrationScripts, first): %w", c.st.table(stem), err)
+		}
+	}
+	return nil
+}

@@ -1,0 +1,7 @@
+func TestAlertsLimiterErrorStillAlerts(t *testing.T) {
+	var rec alertRec
+	middleware.Alerts(&rec, middleware.AlertConfig{Limiter: errLimiter{}})(context.Background(), failed("w", "s"))
+	if rec.n() != 1 {
+		t.Error("a failing limiter hid the alert")
+	}
+}

@@ -1,0 +1,3 @@
+func AlertPlugin(a Alerter, cfg AlertConfig) workflow.Plugin {
+	return observerPlugin{name: "alerts", fn: Alerts(a, cfg)}
+}

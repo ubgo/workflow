@@ -1,0 +1,6 @@
+func NewMemoryUnique(clk clock.Clock) *MemoryUnique {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &MemoryUnique{clk: clk, held: map[string]uniqueLock{}}
+}

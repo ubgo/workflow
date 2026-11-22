@@ -1,0 +1,7 @@
+func WithIDGenerator(g IDGenerator) Option {
+	return func(o *Outbox) {
+		if g != nil {
+			o.ids = g
+		}
+	}
+}

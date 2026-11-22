@@ -1,0 +1,22 @@
+func (c *Client) insertChained(ctx context.Context, tx *sql.Tx, reg *registered, from string, next workflow.Job, o *txOut) error {
+	key, err := idemKey(reg, next)
+	if err == nil {
+		err = c.checkJob(reg, next)
+	}
+	if err != nil {
+		c.log.Error("sqlstore: the chain ends: its next job is refused", "run", from, "workflow", next.Workflow, "error", err)
+		return nil
+	}
+	o.changed = true
+	if key == "" {
+		_, err := c.insertRun(ctx, tx, reg, next, "", "")
+		return err
+	}
+	for range maxIdemAttempts {
+		_, done, err := c.insertKeyed(ctx, tx, reg, next, key)
+		if err != nil || done {
+			return err
+		}
+	}
+	return fmt.Errorf("%w: key %q of workflow %q kept changing hands", workflow.ErrDuplicate, key, reg.wf.Name)
+}

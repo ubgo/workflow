@@ -1,0 +1,21 @@
+func TestReservedLabelRefused(t *testing.T) {
+	h := newHarness(t)
+	forged := "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+	reached := false
+	enq := h.inst.Enqueue()(func(context.Context, workflow.Job) (workflow.RunRef, error) {
+		reached = true
+		return workflow.RunRef{}, nil
+	})
+	for _, k := range []string{wfotel.LabelPrefix + "traceparent", wfotel.LabelPrefix + "anything"} {
+		_, err := enq(context.Background(), workflow.Job{Workflow: "w", Labels: map[string]string{k: forged}})
+		if !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("label %q: err = %v, want ErrInvalid", k, err)
+		}
+	}
+	if reached {
+		t.Fatal("a job with a reserved label reached the driver")
+	}
+	if _, err := enq(context.Background(), workflow.Job{Workflow: "w", Labels: map[string]string{"otelx": "ok"}}); err != nil || !reached {
+		t.Fatalf("an app label outside the prefix: err=%v reached=%v", err, reached)
+	}
+}

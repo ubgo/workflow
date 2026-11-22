@@ -1,0 +1,9 @@
+func replayTasks(d *rest.V1WorkflowRunDetails) []openapi_types.UUID {
+	var out []openapi_types.UUID
+	for _, t := range d.Tasks {
+		if t.Status == rest.V1TaskStatusFAILED || t.Status == rest.V1TaskStatusCANCELLED {
+			out = append(out, t.TaskExternalId)
+		}
+	}
+	return out
+}

@@ -1,0 +1,7 @@
+func WithClock(c clock.Clock) Option {
+	return func(cl *Client) {
+		if c != nil {
+			cl.clk = c
+		}
+	}
+}

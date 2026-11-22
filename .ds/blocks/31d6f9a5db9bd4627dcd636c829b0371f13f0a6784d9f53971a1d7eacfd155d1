@@ -1,0 +1,12 @@
+func KeyWeights(weights map[string]int, def int) func(key string) int {
+	m := make(map[string]int, len(weights))
+	for k, v := range weights {
+		m[k] = v
+	}
+	return func(key string) int {
+		if w, ok := m[key]; ok {
+			return w
+		}
+		return def
+	}
+}

@@ -1,0 +1,10 @@
+func (p *SlotPool) Release(n int) {
+	n = max(n, 1)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.used -= n
+	if p.used < 0 {
+		p.used = 0
+	}
+	p.grantLocked()
+}

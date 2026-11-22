@@ -1,0 +1,35 @@
+func (c *Client) Health(ctx context.Context) workflow.HealthReport {
+	c.mu.Lock()
+	started, drained, recycled := c.started, c.drained, c.stopCause != nil
+	workerIDs := slices.Clone(c.workerIDs)
+	enqueueOnly := c.cfg.EnqueueOnly
+	c.mu.Unlock()
+	rep := workflow.HealthReport{Live: !recycled}
+	state := workflow.HealthCheck{Name: "client", OK: started && !drained, Detail: "started"}
+	switch {
+	case recycled:
+		state.Detail = "recycled; start a fresh process"
+	case drained:
+		state.Detail = "stopped"
+	case !started:
+		state.Detail = "not started"
+	}
+	rep.Checks = append(rep.Checks, state)
+	if !state.OK {
+		return rep
+	}
+	sdk, err := c.ready()
+	if err != nil {
+		rep.Checks = append(rep.Checks, workflow.HealthCheck{Name: "engine", Detail: err.Error()})
+		return rep
+	}
+	engine := c.checkEngineReachable(ctx, sdk)
+	rep.Checks = append(rep.Checks, engine)
+	rep.Ready = engine.OK
+	if !enqueueOnly && engine.OK {
+		workers := c.checkWorkers(ctx, sdk, workerIDs)
+		rep.Checks = append(rep.Checks, workers)
+		rep.Ready = workers.OK
+	}
+	return rep
+}

@@ -1,0 +1,18 @@
+func (o *Outbox) Migrate(ctx context.Context) error {
+	if err := o.checkVersion(ctx); err != nil {
+		return err
+	}
+	l, err := o.ledger()
+	if err != nil {
+		return err
+	}
+	if _, err := l.RefuseUnknown().ApplyDB(ctx, o.db, o.migrations()...); err != nil {
+		if errors.Is(err, migrate.ErrUnknownMigration) {
+			if verr := o.checkVersion(ctx); verr != nil {
+				return verr
+			}
+		}
+		return fmt.Errorf("outbox: migrate: %w", err)
+	}
+	return nil
+}

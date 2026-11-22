@@ -1,0 +1,4 @@
+type RunPage struct {
+	Runs []RunInfo
+	Next string
+}

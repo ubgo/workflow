@@ -24,6 +24,8 @@ import (
 // deploy pipeline can check a definition's shape before any program
 // registers handlers. YAML is a superset of JSON; convert YAML to JSON with
 // the app's YAML library first (see the package doc).
+//
+//ds:def id=dsl-parse-g4vn54w9 owner=@khanakia stability=stable
 func Parse(data []byte) (Definition, error) {
 	def, err := parseDoc[Definition](data)
 	if err != nil {
@@ -38,6 +40,8 @@ func Parse(data []byte) (Definition, error) {
 // parseDoc decodes one JSON object into a T strictly: the shape is checked
 // first against T's JSON fields (so an error names the JSON path), then
 // the document is decoded with unknown fields refused.
+//
+//ds:def id=dsl-parsedoc-39gj946b owner=@khanakia stability=stable
 func parseDoc[T any](data []byte) (T, error) {
 	var zero T
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -186,6 +190,8 @@ func jsonKind(v any) string {
 // Load is Parse then Build: the one call that turns a stored definition
 // into a workflow.Workflow ready for Client.Register. Every error wraps
 // workflow.ErrInvalid.
+//
+//ds:def id=dsl-load-chpns7f3 owner=@khanakia stability=stable
 func Load(data []byte, reg *Registry) (workflow.Workflow, error) {
 	def, err := Parse(data)
 	if err != nil {

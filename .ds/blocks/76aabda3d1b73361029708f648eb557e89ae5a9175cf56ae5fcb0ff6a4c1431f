@@ -1,0 +1,3 @@
+func ByWait(cfg BalanceConfig) Balancer {
+	return Proportional(cfg, func(l QueueLoad) float64 { return l.OldestWait.Seconds() })
+}

@@ -14,6 +14,8 @@ import (
 // WithNodeID names this client's node in StepInfo.Node, AttemptError.Node,
 // RunInfo.AttemptedBy and Nodes (workflow.CapNodeIdentity). The default is
 // workflow.DefaultNodeID. An empty id is ignored.
+//
+//ds:def id=memory-withnodeid-j8sp495g owner=@khanakia stability=stable
 func WithNodeID(id string) Option {
 	return func(m *Client) {
 		if id != "" {
@@ -26,6 +28,8 @@ func WithNodeID(id string) Option {
 // job's) is over n bytes, with a *workflow.PayloadTooLargeError, so a test
 // on this driver catches a payload a production engine would reject.
 // Zero or less means no limit, the default.
+//
+//ds:def id=memory-withpayloadlimit-47kfqt3d owner=@khanakia stability=stable
 func WithPayloadLimit(n int) Option { return func(m *Client) { m.payloadLimit = max(n, 0) } }
 
 // nodeID is the node identity: WithNodeID's, else the default New set.
@@ -39,6 +43,8 @@ func (c *Client) PayloadLimit() int { return c.payloadLimit }
 // workflow.LifecycleNotifier). Lifecycle observers share the run-finished
 // observers' goroutine: in registration order, in the order things
 // happened, never while the client's lock is held.
+//
+//ds:def id=memory-client-onlifecycle-wspq9c6m owner=@khanakia stability=stable
 func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnLifecycle with a nil func", workflow.ErrInvalid)
@@ -81,6 +87,8 @@ func (c *Client) emitLocked(r *run, kind workflow.LifecycleKind, step string, at
 }
 
 // observeLife calls one lifecycle observer, recovering a panic.
+//
+//ds:def id=memory-client-observelife-8cuk4gby owner=@khanakia stability=stable
 func (c *Client) observeLife(fn workflow.LifecycleFunc, ev workflow.LifecycleEvent) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -91,6 +99,8 @@ func (c *Client) observeLife(fn workflow.LifecycleFunc, ev workflow.LifecycleEve
 }
 
 // reportProgress keeps p as t's run's progress (workflow.ReportProgress).
+//
+//ds:def id=memory-client-reportprogress-ntp97att owner=@khanakia stability=stable
 func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -105,10 +115,10 @@ func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 }
 
 // watchHeartbeat returns the attempt's Heartbeater. With a HeartbeatTimeout
-// d it also starts a watchdog that cancels the attempt with errHeartbeat
-// when d passes on the client's clock without a beat (from the start, then
-// from each beat). Without one a beat does nothing (this driver has no
-// lease to extend).
+// d it also starts a watchdog that cancels the attempt with timedOut (the
+// attempt's ErrHeartbeatTimeout error) when d passes on the client's
+// clock without a beat (from the start, then from each beat). Without one
+// a beat does nothing (this driver has no lease to extend).
 //
 // A beat stores the clock's time at once, in the handler's goroutine, and
 // the watchdog sleeps until d after the latest beat it knows of, then
@@ -117,7 +127,9 @@ func (c *Client) reportProgress(t *task, p workflow.Progress) error {
 // watchdog over a channel instead would let a beat made just before the
 // deadline lose to the timer (select picks either ready case) and count
 // each beat from when the watchdog woke rather than when it was made.
-func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration) workflow.Heartbeater {
+//
+//ds:def id=memory-client-watchheartbeat-kbuy9sm6 owner=@khanakia stability=stable
+func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration, timedOut error) workflow.Heartbeater {
 	if d <= 0 {
 		return workflow.HeartbeatFunc(func(context.Context, []byte) error { return nil })
 	}
@@ -137,7 +149,7 @@ func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseF
 			}
 			since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
 			if since >= d {
-				cancel(errHeartbeat)
+				cancel(timedOut)
 				return
 			}
 			wait = d - since
@@ -155,6 +167,8 @@ func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseF
 // armRunTimeoutLocked starts r's Workflow.RunTimeout clock at admission;
 // when it fires, the coordinator fails the run with ErrRunTimeout.
 // Callers hold c.mu.
+//
+//ds:def id=memory-client-armruntimeoutlocked-bkjrmmfs owner=@khanakia stability=stable
 func (c *Client) armRunTimeoutLocked(r *run) {
 	d := r.reg.wf.RunTimeout
 	if d <= 0 {
@@ -201,6 +215,8 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 }
 
 // CancelStep withdraws one step of a run (see workflow.StepCanceller).
+//
+//ds:def id=memory-client-cancelstep-cn7kxx27 owner=@khanakia stability=stable
 func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -256,6 +272,8 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 
 // Nodes reports this client as the one node there is (see
 // workflow.NodeLister).
+//
+//ds:def id=memory-client-nodes-zzuecmbn owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -283,6 +301,8 @@ func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // Health reports the client live unless it was stopped, and ready while
 // it is started and neither draining nor stopped (see
 // workflow.HealthChecker). There is no backend to reach.
+//
+//ds:def id=memory-client-health-t8t72hjn owner=@khanakia stability=stable
 func (c *Client) Health(context.Context) workflow.HealthReport {
 	c.mu.Lock()
 	defer c.mu.Unlock()

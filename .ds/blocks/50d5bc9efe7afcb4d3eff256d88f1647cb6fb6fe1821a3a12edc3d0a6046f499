@@ -1,0 +1,7 @@
+func WithJitterFunc(f JitterFunc) FireJitterOption {
+	return func(j *fireJitter) {
+		if f != nil {
+			j.pick = f
+		}
+	}
+}

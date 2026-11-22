@@ -1,0 +1,6 @@
+func (s *store) table(stem string) string {
+	if s.schema == "" {
+		return s.d.QuoteIdent(s.prefix + stem)
+	}
+	return s.d.QuoteIdent(s.schema) + "." + s.d.QuoteIdent(s.prefix+stem)
+}

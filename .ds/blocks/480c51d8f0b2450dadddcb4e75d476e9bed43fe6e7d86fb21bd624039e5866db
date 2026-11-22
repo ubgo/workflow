@@ -1,0 +1,12 @@
+func enqueueUnlessKeyed(ctx context.Context, c Client, job Job, key string) (RunRef, error) {
+	if q, ok := c.(RunQuerier); ok && c.Capabilities().Has(CapRunQuery) {
+		page, err := q.Runs(ctx, RunQuery{Workflow: job.Workflow, Labels: map[string]string{LabelRunKey: key}, Limit: 1})
+		if err != nil {
+			return RunRef{}, err
+		}
+		if len(page.Runs) > 0 {
+			return page.Runs[0].Ref, nil
+		}
+	}
+	return c.Enqueue(ctx, job)
+}

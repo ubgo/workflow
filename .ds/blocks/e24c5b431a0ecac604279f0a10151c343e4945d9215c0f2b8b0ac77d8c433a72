@@ -1,0 +1,20 @@
+type PartitionSet struct {
+	// Name identifies the set ("orders-backfill-2026-11", "nightly-sync").
+	Name string
+
+	// Workflow is the workflow every partition runs. Ignored when Job is
+	// set and returns a job naming its own workflow.
+	Workflow string
+
+	// Job, when set, builds the job for one key (a payload of the app's
+	// own shape, a queue, a tenant, a priority). Reserved label keys in it
+	// are refused (ErrInvalid). EnqueuePartitions still adds its labels
+	// and, when the job has none, its idempotency key. Nil means
+	// Job{Workflow: Workflow, Payload: the key as a JSON string}.
+	Job func(key string) (Job, error)
+
+	// AllowDuplicates lets EnqueuePartitions run on a client without
+	// CapIdempotencyKey; on it, enqueueing a set again starts a second
+	// run of a partition whose first run is unfinished.
+	AllowDuplicates bool
+}

@@ -1,0 +1,42 @@
+func ClusterClaimsEachStepOnce(t *testing.T) {
+	const lease = 30 * time.Second
+	const runs = 60
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			var seen perRun
+			wf := workflow.Workflow{Name: "claim", Steps: []workflow.Step{{Name: "only", Run: func(ctx context.Context, in []byte) ([]byte, error) {
+				seen.hit(ctx)
+				time.Sleep(2 * time.Millisecond) // long enough for claimers to overlap
+				return in, nil
+			}}}}
+			cs := startCluster(t, e, db, prefix, wf, sqlstore.WithLease(lease))
+			refs := make([]workflow.RunRef, 0, runs)
+			for i := range runs {
+				ref, err := cs[i%nodes].Enqueue(context.Background(), workflow.Job{Workflow: wf.Name})
+				if err != nil {
+					t.Fatalf("Enqueue: %v", err)
+				}
+				refs = append(refs, ref)
+			}
+			waitFor(t, 30*time.Second, "every run to succeed", func() bool {
+				for _, ref := range refs {
+					st, err := cs[0].Status(context.Background(), ref)
+					if err != nil || st != workflow.StatusSucceeded {
+						return false
+					}
+				}
+				return true
+			})
+			got := seen.snapshot()
+			if len(got) != runs {
+				t.Fatalf("%d runs executed, want %d", len(got), runs)
+			}
+			for id, n := range got {
+				if n != 1 {
+					t.Errorf("run %s executed %d times, want exactly 1", id, n)
+				}
+			}
+		})
+	}
+}

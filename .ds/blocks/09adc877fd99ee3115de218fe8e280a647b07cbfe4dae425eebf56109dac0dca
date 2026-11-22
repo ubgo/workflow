@@ -1,0 +1,32 @@
+func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	notFound := fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	rows, err := c.cronRows(ctx, sdk, id)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if len(rows) == 0 {
+		return workflow.RunRef{}, notFound
+	}
+	row := &rows[0]
+	name, ok := c.localName(row.WorkflowName)
+	if !ok {
+		return workflow.RunRef{}, notFound
+	}
+	var input any
+	if row.Input != nil {
+		input = map[string]any(*row.Input)
+	}
+	payload, err := decodeEnvelope(input, payloadField)
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("hatchet driver: trigger schedule %s: read its input: %w", id, err)
+	}
+	// Labelled with the ID Schedules lists, whichever ID the caller
+	// passed, so the run is found as the schedule's Last, and with the
+	// trigger time as its tick (workflow.CapTickTime).
+	labels := workflow.TriggeredLabelsAt(jobLabels(metadataStrings(row.AdditionalMetadata)), c.scheduleIDOf(*row), cronName(*row), c.cfg.Clock.Now())
+	return c.enqueue(ctx, workflow.Job{Workflow: name, Payload: payload, Labels: labels, Tenant: metadataString(row.AdditionalMetadata, metaTenant)})
+}

@@ -1,0 +1,1 @@
+var ErrThrottled = errors.New("workflow/middleware: step throttled after repeated errors")

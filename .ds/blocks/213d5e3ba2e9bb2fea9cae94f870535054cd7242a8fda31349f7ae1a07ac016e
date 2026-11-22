@@ -1,0 +1,3 @@
+type ResultReader interface {
+	Result(ctx context.Context, ref RunRef) ([]byte, error)
+}

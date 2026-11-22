@@ -1,0 +1,7 @@
+func WithDispatchLease(d time.Duration) Option {
+	return func(m *Manager) {
+		if d > 0 {
+			m.dispatchLease = d
+		}
+	}
+}

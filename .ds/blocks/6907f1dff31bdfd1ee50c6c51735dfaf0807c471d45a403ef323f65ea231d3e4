@@ -1,0 +1,7 @@
+func (m *Manager) Progress(ctx context.Context, id ID) (Progress, error) {
+	st, err := m.store.Get(ctx, id)
+	if err != nil {
+		return Progress{}, err
+	}
+	return progressOf(st), nil
+}

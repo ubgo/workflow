@@ -1,0 +1,1 @@
+func WithEnqueueOnly() Option { return func(c *Client) { c.enqueueOnly = true } }

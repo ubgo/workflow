@@ -1,0 +1,16 @@
+func (p shapePlugin) EnqueueMiddleware() []EnqueueMiddleware {
+	return []EnqueueMiddleware{func(next EnqueueFunc) EnqueueFunc {
+		return func(ctx context.Context, job Job) (RunRef, error) {
+			shape, ok := p.shapes[job.Workflow]
+			if !ok {
+				return next(ctx, job)
+			}
+			job.Labels = maps.Clone(job.Labels)
+			if job.Labels == nil {
+				job.Labels = map[string]string{}
+			}
+			job.Labels[LabelShape] = shape
+			return next(AllowReservedLabels(ctx, LabelShape), job)
+		}
+	}}
+}

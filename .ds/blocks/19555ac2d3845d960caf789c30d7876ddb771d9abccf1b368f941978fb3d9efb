@@ -1,0 +1,45 @@
+func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.clk.Now()
+	var out []workflow.ScheduleInfo
+	for _, s := range c.scheds {
+		if s.halted {
+			continue
+		}
+		info := workflow.ScheduleInfo{
+			ID:       s.id,
+			Name:     s.name,
+			Workflow: s.workflow,
+			Cron:     s.expr,
+			Location: s.loc,
+			Declared: s.declared,
+			Paused:   c.schedPausedLocked(s),
+			Misfire:  s.misfire,
+			Windows:  s.windows,
+			Labels:   maps.Clone(s.labels),
+			Overlap:  s.overlap,
+			Last:     c.lastLocked(s),
+			Seconds:  s.seconds,
+			Active:   s.active,
+			KeepRuns: s.keep,
+			Tenant:   s.tenant,
+		}
+		if info.Cron == "" {
+			info.Cron = s.name
+		}
+		if !info.Paused {
+			if next := s.s.Next(now, s.loc); !next.IsZero() {
+				info.Next = next.In(s.loc)
+			}
+		}
+		out = append(out, info)
+	}
+	slices.SortFunc(out, func(a, b workflow.ScheduleInfo) int {
+		return cmp.Or(cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
+	})
+	return out, nil
+}

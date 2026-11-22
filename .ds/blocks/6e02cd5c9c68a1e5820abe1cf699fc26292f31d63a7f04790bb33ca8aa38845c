@@ -1,0 +1,7 @@
+func (l *MemoryLog) Prune(before time.Time) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	i := sort.Search(len(l.entries), func(i int) bool { return !l.entries[i].at.Before(before) })
+	l.entries = slices.Delete(l.entries, 0, i)
+	return i
+}

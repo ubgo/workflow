@@ -1,0 +1,4 @@
+type TimerDef struct {
+	Delay string `json:"delay"`
+	Event string `json:"event"`
+}

@@ -12,6 +12,8 @@ import (
 
 // SlotHarness builds a started client whose worker pool has workers
 // slots, with wfs registered, or returns the error Register gave.
+//
+//ds:def id=workflowtest-slotharness-zawhxbmb owner=@khanakia stability=stable
 type SlotHarness struct {
 	Start func(t *testing.T, workers int, wfs ...workflow.Workflow) (workflow.Client, error)
 }
@@ -20,6 +22,8 @@ type SlotHarness struct {
 // held by running attempts never pass the pool, a heavy step still runs
 // among a stream of light ones, and a step needing more slots than the
 // pool is refused at Register.
+//
+//ds:def id=workflowtest-runslotflows-bndr8cke owner=@khanakia stability=stable
 func RunSlotFlows(t *testing.T, h SlotHarness) {
 	const pool = 4
 	var mu sync.Mutex

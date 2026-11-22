@@ -1,0 +1,1 @@
+func WithMeterProvider(mp metric.MeterProvider) Option { return func(c *config) { c.mp = mp } }

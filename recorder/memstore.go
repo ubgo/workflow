@@ -21,6 +21,10 @@ type MemoryStore struct {
 	clk       clock.Clock
 	retention Retention
 
+	// pruneMu serialises Prune, so two prunes at once cannot both list
+	// and archive the same runs (see Prune).
+	pruneMu sync.Mutex
+
 	mu sync.Mutex
 	// runs is every record by Key (KeyOf). A record holds its steps; a
 	// step holds its events.
@@ -350,11 +354,19 @@ func (s *MemoryStore) Pending(_ context.Context, limit int) ([]RunRecord, error)
 // Prune implements Pruner: stage one drops the steps of runs finished
 // longer ago than the rule's Steps age, stage two archives and deletes runs
 // finished longer ago than its Runs age.
+//
+// Archive sees each run exactly once per store: prunes run one at a time,
+// a chunk Archive accepted is deleted at once, whatever ctx does, and a
+// chunk it refused stays for the next prune.
+//
+//ds:def id=rec-memorystore-prune-j5up23a2 owner=@khanakia stability=stable
 func (s *MemoryStore) Prune(ctx context.Context) (PruneResult, error) {
 	var res PruneResult
 	if s.retention.IsZero() {
 		return res, nil
 	}
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
 	now := s.clk.Now()
 	s.mu.Lock()
 	var doomed []RunRecord
@@ -399,6 +411,8 @@ func (s *MemoryStore) Prune(ctx context.Context) (PruneResult, error) {
 
 // SortPending orders records the way Pending returns them: never checked
 // first, then least recently checked, ties by Key.
+//
+//ds:def id=rec-sortpending-6uhd5bsp owner=@khanakia stability=stable
 func SortPending(rs []RunRecord) {
 	slices.SortFunc(rs, func(a, b RunRecord) int {
 		if c := a.CheckedAt.Compare(b.CheckedAt); c != 0 {
@@ -427,6 +441,8 @@ func stepIndex(steps []StepRecord, step string, attempt int) int {
 // CheckRef refuses, with workflow.ErrInvalid, a write that names no run.
 // The bundled stores call it first; an app's own store should too
 // (recordertest.RunStore expects the refusal).
+//
+//ds:def id=rec-checkref-mdjaph5q owner=@khanakia stability=stable
 func CheckRef(op string, ref workflow.RunRef) error {
 	if ref.IsZero() {
 		return fmt.Errorf("%w: recorder %s: empty RunRef", workflow.ErrInvalid, op)
@@ -436,6 +452,8 @@ func CheckRef(op string, ref workflow.RunRef) error {
 
 // CheckStep refuses, with workflow.ErrInvalid, a step write without a
 // RunID, a step name or an attempt from 1.
+//
+//ds:def id=rec-checkstep-9z4s2dzb owner=@khanakia stability=stable
 func CheckStep(op string, ref workflow.RunRef, step string, attempt int) error {
 	if ref.RunID.IsZero() {
 		return fmt.Errorf("%w: recorder %s: a step write needs the RunID", workflow.ErrInvalid, op)

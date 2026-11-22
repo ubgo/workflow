@@ -1,0 +1,13 @@
+func dispatchTick(ctx context.Context, hs []ScheduleHooks, t Tick) {
+	for _, h := range hs {
+		if !h.matchesTick(t) {
+			continue
+		}
+		switch {
+		case t.Outcome == TickFired && h.Fired != nil:
+			h.Fired(ctx, t)
+		case t.Outcome != TickFired && h.Skipped != nil:
+			h.Skipped(ctx, t)
+		}
+	}
+}

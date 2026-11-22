@@ -1,0 +1,7 @@
+func DefaultTraceAttributes() map[string]string {
+	return map[string]string{
+		LabelPrefixOTel + "traceparent": "traceparent",
+		LabelPrefixOTel + "tracestate":  "tracestate",
+		LabelPrefixOTel + "baggage":     "baggage",
+	}
+}

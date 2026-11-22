@@ -1,0 +1,7 @@
+func forwardRunFinished(c workflow.Client, fn workflow.RunFinishedFunc) error {
+	n, ok := c.(workflow.RunNotifier)
+	if !ok {
+		return &workflow.UnsupportedError{Field: "OnRunFinished", Missing: workflow.CapRunFinished, Reason: "the wrapped client does not implement workflow.RunNotifier"}
+	}
+	return n.OnRunFinished(fn)
+}

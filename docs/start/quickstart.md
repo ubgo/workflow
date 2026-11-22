@@ -8,7 +8,7 @@ One workflow on the in-memory driver, in about thirty lines: you register a work
 
 ## Register a workflow
 
-A `workflow.Workflow` is a name plus steps. `workflow.Define` turns a typed function into a step handler: it decodes the JSON payload into the function's input type and encodes its result, and an input that does not decode fails the step for good (it is marked `workflow.Permanent`, since retrying the same bytes cannot succeed).
+A `workflow.Workflow` is a name plus steps. [`workflow.Define`](ds:block?id=define-d3ttbgk3) turns a typed function into a step handler: it decodes the JSON payload into the function's input type and encodes its result, and an input that does not decode fails the step for good (it is marked `workflow.Permanent`, since retrying the same bytes cannot succeed).
 
 <!-- snippet: examples/quickstart/main.go#register -->
 ```go
@@ -28,11 +28,11 @@ if err != nil {
 }
 ```
 
-`Register` validates the workflow on the spot (a name, at least one step, unique step names) and returns an error wrapping `workflow.ErrInvalid` naming what is wrong. `greet` is `struct{ Name string }`.
+[`Register`](ds:block?id=memory-client-register-ngcr2sck) validates the workflow on the spot ([`workflow.Validate`](ds:block?id=validate-mnthpzkp): a name, at least one step, unique step names, known `After` parents, no cycle) and returns an error wrapping `workflow.ErrInvalid` naming what is wrong. `greet` is `struct{ Name string }`.
 
 ## Start and enqueue
 
-`memory.New()` opened nothing and started nothing. `Start` starts the workers and returns at once; they live until the context passed to `Start` is cancelled, which is how the app stops the client. `Enqueue` returns a `workflow.RunRef` that points at the run.
+`memory.New()` opened nothing and started nothing. [`Start`](ds:block?id=memory-client-start-umc68snk) starts the workers and returns at once; they live until the context passed to `Start` is cancelled, which is how the app stops the client. [`Enqueue`](ds:block?id=memory-client-enqueue-agnmgyr7) returns a `workflow.RunRef` that points at the run.
 
 <!-- snippet: examples/quickstart/main.go#start -->
 ```go
@@ -71,7 +71,7 @@ if err != nil {
 defer func() { err = errors.Join(err, db.Close()) }()
 ```
 
-Then replace `memory.New()` with `sqlstore.New(db, sqlb.SQLiteDialect{})`, and call `c.Migrate(ctx)` once before `Start`: the SQL driver never creates its tables on its own, so a deploy decides when the schema changes ([Migrations](../operations/migrations.md#run-the-migrations)). `Register`, `Start` and `Enqueue` stay exactly as they are. The SQL driver lives in its own module (`github.com/ubgo/workflow/sqlstore`), so the core never pulls in a database driver; [Install](install.md) explains how to add it, and [The SQL driver](../drivers/sqlstore.md#create-the-client) covers its options. The [sqlite-worker](../../examples/sqlite-worker/) example runs the same workflow on both drivers.
+Then replace `memory.New()` with `sqlstore.New(db, sqlb.SQLiteDialect{})`, and call `c.Migrate(ctx)` once before `Start`: the SQL driver never creates its tables on its own ([`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d)), so a deploy decides when the schema changes ([Migrations](../operations/migrations.md#run-the-migrations)). `Register`, `Start` and `Enqueue` stay exactly as they are. The SQL driver lives in its own module (`github.com/ubgo/workflow/sqlstore`), so the core never pulls in a database driver; [Install](install.md) explains how to add it, and [The SQL driver](../drivers/sqlstore.md#create-the-client) covers its options. The [sqlite-worker](../../examples/sqlite-worker/) example runs the same workflow on both drivers.
 
 ## What to read next
 
@@ -82,9 +82,9 @@ Then replace `memory.New()` with `sqlstore.New(db, sqlb.SQLiteDialect{})`, and c
 
 ## Pitfalls
 
-- `Enqueue` before `Start` returns `workflow.ErrNotStarted`, and `Register` after `Start` returns `workflow.ErrAlreadyStarted`: register every workflow first, then start once ([The client](../concepts/client.md#start-and-stop)).
-- The memory driver keeps runs in the process; anything still queued when the program exits is lost. That is fine for this program and for tests, not for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
-- `Start` does not block. A `main` that returns right after `Enqueue` exits before the step runs; the example waits on a channel the step writes to.
+- `Enqueue` before `Start` returns [`workflow.ErrNotStarted`](ds:block?id=errnotstarted-x6pc2d38) ([`usableLocked`](ds:block?id=memory-client-usablelocked-ky48yta5)), and `Register` after `Start` returns [`workflow.ErrAlreadyStarted`](ds:block?id=erralreadystarted-prauyy24): register every workflow first, then start once ([The client](../concepts/client.md#start-and-stop)).
+- The memory driver keeps runs in the process; anything still queued when the program exits is lost (no `CapDurable` in its [`capabilities`](ds:block?id=memory-caps-yxkuq583)). That is fine for this program and for tests, not for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
+- [`Start`](ds:block?id=memory-client-start-umc68snk) does not block. A `main` that returns right after `Enqueue` exits before the step runs; the example waits on a channel the step writes to.
 
 ## Related
 

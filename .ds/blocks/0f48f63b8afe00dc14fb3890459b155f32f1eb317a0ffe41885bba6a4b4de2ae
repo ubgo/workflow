@@ -1,0 +1,13 @@
+func WithJournal(store JournalStore) Middleware {
+	return func(next Handler) Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := StepInfoFrom(ctx)
+			if !ok || store == nil {
+				return next(ctx, in)
+			}
+			return next(context.WithValue(ctx, journalKey{}, &journalScope{
+				store: store, run: info.RunID, step: info.Step, used: map[string]struct{}{},
+			}), in)
+		}
+	}
+}

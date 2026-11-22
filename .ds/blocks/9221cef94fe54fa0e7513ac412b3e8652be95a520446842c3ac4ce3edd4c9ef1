@@ -1,0 +1,38 @@
+func AwaitChildren(ctx context.Context, client Client, name string, jobs []Job, opts ChildOptions) ([][]byte, error) {
+	parent := opts.Parent
+	if parent == nil {
+		parent = client
+	}
+	if parent == nil || !parent.Capabilities().Has(CapSnooze) {
+		return nil, Permanent(&UnsupportedError{Field: "AwaitChild", Missing: CapSnooze,
+			Reason: "the parent's driver would spend an attempt on every look at an unfinished child"})
+	}
+	refs, err := Spawn(ctx, client, name, jobs, opts.Spawn...)
+	if err != nil {
+		return nil, err
+	}
+	poll := opts.Poll
+	if poll <= 0 {
+		poll = DefaultChildPoll
+	}
+	sts := make([]Status, len(refs))
+	for i, ref := range refs {
+		st, err := client.Status(ctx, ref)
+		if err != nil {
+			return nil, fmt.Errorf("workflow: await child %q #%d: %w", name, i, err)
+		}
+		if !st.IsTerminal() {
+			return nil, Snooze(poll)
+		}
+		sts[i] = st
+	}
+	outs := make([][]byte, len(refs))
+	for i, ref := range refs {
+		out, err := resultOf(ctx, client, ref, sts[i])
+		if err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: await child %q #%d: %w", name, i, err))
+		}
+		outs[i] = out
+	}
+	return outs, nil
+}

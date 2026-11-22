@@ -1,6 +1,6 @@
 # The client
 
-`workflow.Client` is the one interface an app uses, and every driver implements it: the memory driver, the SQL driver, the Redis driver and the Hatchet driver, plus every wrapper in the library (plugins, middleware, failover). App code depends on the interface alone, so moving from the memory driver in tests to SQLite on one server and Hatchet in a cluster changes one constructor call. This page covers its methods, its lifecycle and the validation every spec goes through.
+[`workflow.Client`](ds:block?id=client-w9gg8dzm) is the one interface an app uses, and every driver implements it: the memory driver, the SQL driver, the Redis driver and the Hatchet driver, plus every wrapper in the library (plugins, middleware, failover). App code depends on the interface alone, so moving from the memory driver in tests to SQLite on one server and Hatchet in a cluster changes one constructor call. This page covers its methods, its lifecycle and the validation every spec goes through.
 
 ## Before you start
 
@@ -12,34 +12,34 @@
 
 | Method | What it does | Errors to expect |
 |---|---|---|
-| `Register(wf Workflow) error` | Adds a workflow definition; validates it first. Registering a name again replaces it, and its declared `Cron` schedules are replaced, never duplicated | `ErrInvalid`, `ErrAlreadyStarted` after `Start`; the Hatchet driver also refuses here what its engine cannot express (`ErrUnsupported`) |
-| `Start(ctx) error` | Checks every registered workflow against `Capabilities`, then starts the workers. Returns once they run; does not block | `ErrUnsupported` naming the workflow and the missing capabilities; `ErrAlreadyStarted` on a second call |
-| `Enqueue(ctx, Job) (RunRef, error)` | Starts a run now, or at `Job.RunAt`. A delayed run's `RunRef` holds only a `ScheduledID` until it starts. With an idempotency key held by an unfinished run, starts nothing and returns that run's `RunRef` | `ErrNotStarted`, `ErrNotFound` (unknown workflow), `ErrUnsupported` for a `RunAt` or key the driver cannot honour |
-| `Cancel(ctx, RunRef) error` | Stops a run or a delayed start. Idempotent: cancelling a finished run returns nil | `ErrNotFound`, `ErrUnsupported` without `CapCancel` |
-| `Status(ctx, RunRef) (Status, error)` | Where a run is: scheduled, queued, running, waiting, succeeded, failed or cancelled | `ErrNotFound` |
-| `Signal(ctx, Event) error` | Delivers an event to runs whose wait step matches its name and key. A signal nobody waits for is not an error | `ErrNotStarted` |
-| `Schedule(ctx, Schedule) (ScheduleID, error)` | Registers a recurring trigger at run time and returns its ID | `ErrInvalid` (no `Location`, a bad expression), `ErrUnsupported` without `CapCron` or the zone or misfire capability it needs |
-| `Unschedule(ctx, ScheduleID) error` | Removes a schedule. An empty ID is a no-op, so a stored ID can be passed unchecked | `ErrNotFound` |
-| `Capabilities() Caps` | What this driver can really do. Never changes over the life of a client | — |
+| [`Register(wf Workflow) error`](ds:block?id=client-register-2bax7y5t) | Adds a workflow definition; validates it first. Registering a name again replaces it, and its declared `Cron` schedules are replaced, never duplicated | `ErrInvalid`, `ErrAlreadyStarted` after `Start`; the Hatchet driver also refuses here what its engine cannot express (`ErrUnsupported`, [`Register`](ds:block?id=hatchet-client-register-zg59b2j4)) |
+| [`Start(ctx) error`](ds:block?id=client-start-qges69hj) | Checks every registered workflow against `Capabilities`, then starts the workers. Returns once they run; does not block | `ErrUnsupported` naming the workflow and the missing capabilities; `ErrAlreadyStarted` on a second call |
+| [`Enqueue(ctx, Job) (RunRef, error)`](ds:block?id=client-enqueue-mafr75se) | Starts a run now, or at `Job.RunAt`. A delayed run's `RunRef` may hold only a `ScheduledID` until it starts; pass back the `RunRef` you were given. With an idempotency key held by an unfinished run, starts nothing and returns that run's `RunRef` | `ErrNotStarted`, `ErrNotFound` (unknown workflow), `ErrUnsupported` for a `RunAt` or key the driver cannot honour |
+| [`Cancel(ctx, RunRef) error`](ds:block?id=client-cancel-q74shguz) | Stops a run or a delayed start. Idempotent: cancelling a finished run returns nil | `ErrNotFound`, `ErrUnsupported` without `CapCancel` |
+| [`Status(ctx, RunRef) (Status, error)`](ds:block?id=client-status-f4u6hhff) | Where a run is: scheduled, queued, running, waiting, succeeded, failed or cancelled, and on a driver with `CapRunStates` also retrying or discarded | `ErrNotFound` |
+| [`Signal(ctx, Event) error`](ds:block?id=client-signal-2sdhmcdy) | Delivers an event to runs whose wait step matches its name and key. A signal nobody waits for is not an error | `ErrNotStarted` |
+| [`Schedule(ctx, Schedule) (ScheduleID, error)`](ds:block?id=client-schedule-8qsjy6qv) | Registers a recurring trigger at run time and returns its ID | `ErrInvalid` (no `Location`, a bad expression), `ErrUnsupported` without `CapCron` or the zone or misfire capability it needs |
+| [`Unschedule(ctx, ScheduleID) error`](ds:block?id=client-unschedule-2eju3acd) | Removes a schedule. An empty ID is a no-op, so a stored ID can be passed unchecked | `ErrNotFound` |
+| [`Capabilities() Caps`](ds:block?id=client-capabilities-wnp994at) | What this driver can really do. Never changes over the life of a client | — |
 
-Optional interfaces sit beside it, discovered with a type assertion so a driver that cannot do them is never forced to pretend. Each has a capability, which is the reliable check, because wrappers implement every interface and refuse when the client inside lacks it:
+Optional interfaces sit beside it, discovered with a type assertion so a driver that cannot do them is never forced to pretend. Each has a capability, which is the reliable check, because wrappers implement every interface and refuse when the client inside lacks it ([`workflow.Forward`](ds:block?id=forward-e32a7p36)):
 
 | Interface | Methods | Capability | Guide |
 |---|---|---|---|
-| `workflow.RunNotifier` | `OnRunFinished` | `CapRunFinished` (guaranteed delivery; without it best effort) | [run-finished hook](../observability/run-finished.md) |
-| `workflow.RunQuerier` | `Runs` | `CapRunQuery` | [manage runs](../jobs/manage-runs.md) |
-| `workflow.RunRetrier` | `Retry` | `CapRetryRun` | [manage runs](../jobs/manage-runs.md#step-2-re-run-a-failed-run-from-the-step-that-failed) |
-| `workflow.RunDeleter` | `Delete` | `CapDeleteRun` | [manage runs](../jobs/manage-runs.md#step-3-forget-a-finished-run) |
-| `workflow.BulkCanceller` | `CancelAll` | `CapCancelAll` | [manage runs](../jobs/manage-runs.md#step-4-cancel-every-waiting-run) |
-| `workflow.Pauser` | `Pause`, `Resume`, `Paused` | `CapPauseWorkflow`, `CapPauseQueue` | [manage runs](../jobs/manage-runs.md#pause-and-resume) |
-| `workflow.TickNotifier` | `OnTick` | `CapTickEvents` | [schedule hooks and pings](../schedules/hooks.md) |
-| `workflow.ScheduleLister` | `Schedules` | `CapScheduleList` | [manage schedules](../schedules/manage.md) |
-| `workflow.SchedulePauser` | `PauseSchedule`, `ResumeSchedule` | `CapSchedulePause` | [manage schedules](../schedules/manage.md#pause-a-schedule) |
-| `workflow.Drainer` | `Drain`, `Done` | `CapDrain` | [below](#stop-gracefully) |
-| `workflow.ReportingDrainer` | `DrainWithReport` | `CapDrainReport` | [below](#stop-gracefully) |
+| `workflow.RunNotifier` | `OnRunFinished` | [`CapRunFinished`](ds:block?id=caprunfinished-7nrsun98) (guaranteed delivery; without it best effort) | [run-finished hook](../observability/run-finished.md) |
+| `workflow.RunQuerier` | `Runs` | [`CapRunQuery`](ds:block?id=caprunquery-7pyv7hv3) | [manage runs](../jobs/manage-runs.md) |
+| `workflow.RunRetrier` | `Retry` | [`CapRetryRun`](ds:block?id=capretryrun-qf2ekfmf) | [manage runs](../jobs/manage-runs.md#step-2-re-run-a-failed-run-from-the-step-that-failed) |
+| `workflow.RunDeleter` | `Delete` | [`CapDeleteRun`](ds:block?id=capdeleterun-t4p72gkj) | [manage runs](../jobs/manage-runs.md#step-3-forget-a-finished-run) |
+| `workflow.BulkCanceller` | `CancelAll` | [`CapCancelAll`](ds:block?id=capcancelall-7enkwcsq) | [manage runs](../jobs/manage-runs.md#step-4-cancel-every-waiting-run) |
+| `workflow.Pauser` | `Pause`, `Resume`, `Paused` | [`CapPauseWorkflow`](ds:block?id=cappauseworkflow-xe2cngzv), [`CapPauseQueue`](ds:block?id=cappausequeue-5b6wusw5) | [manage runs](../jobs/manage-runs.md#pause-and-resume) |
+| `workflow.TickNotifier` | `OnTick` | [`CapTickEvents`](ds:block?id=captickevents-gkgp2seh) | [schedule hooks and pings](../schedules/hooks.md) |
+| `workflow.ScheduleLister` | `Schedules` | [`CapScheduleList`](ds:block?id=capschedulelist-3hbmmd6n) | [manage schedules](../schedules/manage.md) |
+| `workflow.SchedulePauser` | `PauseSchedule`, `ResumeSchedule` | [`CapSchedulePause`](ds:block?id=capschedulepause-h24u69mw) | [manage schedules](../schedules/manage.md#pause-a-schedule) |
+| `workflow.Drainer` | `Drain`, `Done` | [`CapDrain`](ds:block?id=capdrain-durs9rac) | [below](#stop-gracefully) |
+| `workflow.ReportingDrainer` | `DrainWithReport` | [`CapDrainReport`](ds:block?id=capdrainreport-fb2tr3jp) | [below](#stop-gracefully) |
 | `batch.GroupRunner` | `RunGroup` | none | [native groups](../batches/native-groups.md) |
 
-A wrapper you write gets all but the first and last by embedding `workflow.Forward{Inner: inner}` beside the `Client` it wraps; the client `workflow.Use` returns does this already.
+A wrapper you write gets all but the first and last by embedding [`workflow.Forward{Inner: inner}`](ds:block?id=forward-e32a7p36) beside the `Client` it wraps; the client [`workflow.Use`](ds:block?id=use-yq9nazws) returns does this already.
 
 <!-- snippet: examples/client-wrapper/main.go#wrapper -->
 ```go
@@ -63,13 +63,13 @@ func (a *audited) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRe
 }
 ```
 
-A wrapper that embeds only the `Client` hides every optional interface, and `Forward` over a client that lacks one refuses with an `*workflow.UnsupportedError` naming the capability. The program [client-wrapper](../../examples/client-wrapper/) shows all three on the memory driver.
+A wrapper that embeds only the `Client` hides every optional interface, and [`Forward`](ds:block?id=forward-e32a7p36) over a client that lacks one refuses with an `*workflow.UnsupportedError` naming the capability. The program [client-wrapper](../../examples/client-wrapper/) shows all three on the memory driver.
 
-A `workflow.Handler` is `func(ctx context.Context, in []byte) ([]byte, error)`. `workflow.Middleware` wraps every step's handler and `workflow.EnqueueMiddleware` wraps every `Enqueue`; both are the same on every driver.
+A [`workflow.Handler`](ds:block?id=handler-82jhj4f7) is `func(ctx context.Context, in []byte) ([]byte, error)`. [`workflow.Middleware`](ds:block?id=middleware-bsp4zm4w) wraps every step's handler and [`workflow.EnqueueMiddleware`](ds:block?id=enqueuemiddleware-eg4vqams) wraps every `Enqueue`; both are the same on every driver.
 
 ## Start and stop
 
-Nothing runs until `Start`. A constructor (`memory.New`, `sqlstore.New`, `hatchet.New`) opens no connection and starts no goroutine, so an app can build its client, register workflows and check capabilities in a test without a server. The lifecycle is: register every workflow, then start once.
+Nothing runs until `Start`. A constructor ([`memory.New`](ds:block?id=memory-new-8g6tnkkg), [`sqlstore.New`](ds:block?id=sql-new-89qpbdvm), [`hatchet.New`](ds:block?id=hatchet-new-4dhudaw3)) opens no connection and starts no goroutine, so an app can build its client, register workflows and check capabilities in a test without a server. The lifecycle is: register every workflow, then start once.
 
 <!-- snippet: examples/first-workflow/main.go#start -->
 ```go
@@ -90,11 +90,11 @@ if err := c.Start(ctx); err != nil {
 }
 ```
 
-The workers live until the context passed to `Start` is cancelled. That is how an app stops a client: no new step starts after that, and running steps see their own context cancelled. The interface has no `Stop`; the memory and SQL drivers add one (`Client.Stop`) that also waits until every goroutine they started has exited, which a graceful shutdown wants. What happens to unfinished runs is the driver's: the memory driver marks them cancelled, the SQL driver leaves them in the database for the next process.
+The workers live until the context passed to [`Start`](ds:block?id=client-start-qges69hj) is cancelled. That is how an app stops a client: no new step starts after that, and running steps see their own context cancelled. The interface has no `Stop`; the memory, SQL and Redis drivers add one (`Client.Stop`: [memory](ds:block?id=memory-client-stop-zqtrmq8h), [SQL](ds:block?id=sql-client-stop-p9pcyebp), [Redis](ds:block?id=redis-client-stop-az3e3p93)) that also waits until the client has fully stopped, which a graceful shutdown wants. What happens to unfinished runs is the driver's: the memory driver marks them cancelled, the SQL driver leaves them in the database for the next process.
 
 ### Stop gracefully
 
-Cancelling the `Start` context cuts running steps off. A deploy wants the opposite: stop taking work and let what is running finish. `Drain` does that on a client that declares `workflow.CapDrain`: it stops claiming step attempts at once, waits for the running ones until its context ends, then shuts down as cancelling the `Start` context would. It returns nil when everything finished and the context's error when it had to cut something off. Unfinished runs stay queued on the SQL driver for the next process and become cancelled on the memory driver.
+Cancelling the `Start` context cuts running steps off. A deploy wants the opposite: stop taking work and let what is running finish. [`Drain`](ds:block?id=drainer-tjjjbazt) does that on a client that declares [`workflow.CapDrain`](ds:block?id=capdrain-durs9rac): it stops claiming step attempts at once, waits for the running ones until its context ends, then shuts down as cancelling the `Start` context would. It returns nil when everything finished and the context's error when it had to cut something off. Unfinished runs stay queued on the SQL driver for the next process and become cancelled on the memory driver.
 
 <!-- snippet: examples/graceful-drain/main.go#drain -->
 ```go
@@ -107,9 +107,9 @@ if err := c.Drain(dctx); err != nil {
 <-c.Done()
 ```
 
-To bound the wait and learn what was cut off, use `workflow.DrainTimeout(ctx, c, grace)` or, on a client that declares `workflow.CapDrainReport`, `c.(workflow.ReportingDrainer).DrainWithReport(dctx)`, which returns a `workflow.DrainReport` listing every attempt still running at the deadline and what became of it (`requeued`, `cancelled` or `engine`). `workflow.ShutdownHookReport` packages both as a plain `func(context.Context) error` for a phased shutdown. The deploy guide covers them in [Give running steps a grace period](../operations/deploy.md#give-running-steps-a-grace-period-and-see-what-was-cut-off).
+To bound the wait, use [`workflow.DrainTimeout(ctx, c, grace)`](ds:block?id=draintimeout-esadwb5f). To also learn what was cut off, use [`workflow.DrainTimeoutReport`](ds:block?id=draintimeoutreport-febd5nuj) or, on a client that declares `workflow.CapDrainReport`, [`c.(workflow.ReportingDrainer).DrainWithReport(dctx)`](ds:block?id=reportingdrainer-najup2m2), which returns a [`workflow.DrainReport`](ds:block?id=drainreport-6gp3974h) listing every attempt still running at the deadline and what became of it ([`requeued`, `cancelled` or `engine`](ds:block?id=draindisposition-xjkm645x)). [`workflow.ShutdownHookReport`](ds:block?id=shutdownhookreport-7as6cre3) packages both as a plain `func(context.Context) error` for a phased shutdown. The deploy guide covers them in [Give running steps a grace period](../operations/deploy.md#give-running-steps-a-grace-period-and-see-what-was-cut-off).
 
-`Done` closes once the client has fully stopped, whichever way it stopped. A batch-style process gives the memory driver `WithStopWhenIdle(grace)`: once its last unfinished run has ended and nothing new arrived for `grace` on the injected clock, the client drains itself and `Done` closes. Schedules do not keep it alive, and a client that never ran anything never stops this way, so `Start` followed by `Enqueue` is safe.
+`Done` closes once the client has fully stopped, whichever way it stopped. A batch-style process gives the memory driver [`WithStopWhenIdle(grace)`](ds:block?id=memory-withstopwhenidle-tqng4nhe): once its last unfinished run has ended and nothing new arrived for `grace` on the injected clock, the client drains itself and `Done` closes. Schedules do not keep it alive, and a client that never ran anything never stops this way, so `Start` followed by `Enqueue` is safe.
 
 <!-- snippet: examples/graceful-drain/main.go#idle -->
 ```go
@@ -153,10 +153,10 @@ unknown run: true
 
 Specs are checked before anything runs, by functions every driver calls, so a spec means the same on every driver:
 
-- `workflow.Validate(wf)`, called by every driver's `Register`: a name, at least one step, unique non-empty step names, exactly one of `Run`, `Wait` and `Sleep` per step, `After` naming existing steps with no cycle, and every policy within its range (retry counts and jitter, concurrency strategy, rate limits, misfire policy, `CronLocation` not `time.Local`).
-- `workflow.ValidateSchedule(s)`, called by every driver's `Schedule`: a workflow, an expression, an explicit `Location` (use `time.UTC` for UTC), a well-formed misfire policy and no label under a [reserved prefix](labels.md#reserved-prefixes).
+- [`workflow.Validate(wf)`](ds:block?id=validate-mnthpzkp), called by every driver's `Register`: a name, at least one step, unique non-empty step names, exactly one of `Run`, `Wait` and `Sleep` per step, `After` naming existing steps with no cycle, and every policy within its range (retry counts and jitter, concurrency strategy, rate limits, misfire policy, `CronLocation` not `time.Local`).
+- [`workflow.ValidateSchedule(s)`](ds:block?id=validateschedule-knj437ed), called by every driver's `Schedule`: a workflow, an expression, an explicit `Location` (use `time.UTC` for UTC; `time.Local` is refused), well-formed windows, misfire and overlap policies, active period, `KeepRuns` and tenant, and no label under a [reserved prefix](labels.md#reserved-prefixes).
 
-Every error wraps `workflow.ErrInvalid` and names the step or field. Cron expressions themselves are parsed by the driver's cron parser at `Register` (memory, SQL, Redis) so a typo fails at start-up, not at the first fire.
+Every error wraps `workflow.ErrInvalid` and names the step or field. Cron expressions themselves are parsed by the driver's cron parser at `Register` ([memory](ds:block?id=memory-client-register-ngcr2sck), [SQL](ds:block?id=sql-client-register-buvwt9ee), [Redis](ds:block?id=redis-client-register-zy9gzzxh)) so a typo fails at start-up, not at the first fire.
 
 <!-- snippet: examples/capabilities/main.go#validate -->
 ```go
@@ -195,11 +195,11 @@ The first prints a workflow's retries, join and failure handler; the second prin
 
 ## Pitfalls
 
-- `Start` returns at once. A `main` that returns after `Enqueue` exits before anything runs; block on a signal or on your server.
-- Register through the client you will start. A client returned by `workflow.Use` or `middleware.WrapClient` wraps the driver; registering on the bare driver skips the plugin's step middleware.
-- `Register` after `Start` is refused on every driver. Declare all workflows up front; use `Schedule` for triggers made at run time.
-- `CronLocation: time.Local` is invalid. Name the zone (`time.LoadLocation`), or leave it nil for UTC.
-- `ErrNotFound` from `Enqueue` means the workflow is not registered on this client, often because it was registered on another process's client.
+- [`Start`](ds:block?id=client-start-qges69hj) returns at once. A `main` that returns after `Enqueue` exits before anything runs; block on a signal or on your server.
+- Register through the client you will start. A client returned by `workflow.Use` or `middleware.WrapClient` wraps the driver; registering on the bare driver skips the plugin's step middleware, which the `Use` client adds in its own [`Register`](ds:block?id=pluginclient-register-cdnscbg6).
+- [`Register`](ds:block?id=client-register-2bax7y5t) after `Start` is refused on every driver. Declare all workflows up front; use `Schedule` for triggers made at run time.
+- `CronLocation: time.Local` is invalid ([`Validate`](ds:block?id=validate-mnthpzkp)). Name the zone (`time.LoadLocation`), or leave it nil for UTC.
+- [`ErrNotFound`](ds:block?id=errnotfound-5m2hhaq7) from `Enqueue` means the workflow is not registered on this client, often because it was registered on another process's client.
 
 ## Related
 

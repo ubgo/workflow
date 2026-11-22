@@ -1,0 +1,5 @@
+func TriggeredLabelsAt(labels map[string]string, id ScheduleID, name string, at time.Time) map[string]string {
+	out := FiredLabelsAt(labels, id, name, at)
+	out[LabelTrigger] = LabelTriggerManual
+	return out
+}

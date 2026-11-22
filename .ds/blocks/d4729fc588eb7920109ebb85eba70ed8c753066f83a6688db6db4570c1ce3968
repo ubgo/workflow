@@ -1,0 +1,16 @@
+func (f *filter) check() error {
+	for _, l := range f.labels {
+		if k, _, ok := strings.Cut(l, "="); !ok || k == "" {
+			return usagef("--label %q: want key=value or key=prefix*", l)
+		}
+	}
+	for name, v := range map[string]string{"from": f.from, "to": f.to} {
+		if v == "" {
+			continue
+		}
+		if _, err := time.Parse(time.RFC3339, v); err != nil {
+			return usagef("--%s %q: want an RFC 3339 time such as 2026-10-14T09:00:00Z", name, v)
+		}
+	}
+	return nil
+}

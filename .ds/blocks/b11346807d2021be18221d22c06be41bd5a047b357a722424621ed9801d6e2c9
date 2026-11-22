@@ -1,0 +1,17 @@
+func ObjectState[S any](ctx context.Context, store JournalStore, object, key string) (S, bool, error) {
+	var state S
+	if store == nil || object == "" || key == "" {
+		return state, false, invalidf("ObjectState needs a store, an object and a key")
+	}
+	rec, err := loadObject(ctx, store, objectRun(object, key))
+	if err != nil {
+		return state, false, fmt.Errorf("workflow: object %q key %q: %w", object, key, err)
+	}
+	if len(rec.State) == 0 {
+		return state, false, nil
+	}
+	if err := json.Unmarshal(rec.State, &state); err != nil {
+		return state, false, fmt.Errorf("workflow: object %q key %q: stored state does not decode: %w", object, key, err)
+	}
+	return state, true, nil
+}

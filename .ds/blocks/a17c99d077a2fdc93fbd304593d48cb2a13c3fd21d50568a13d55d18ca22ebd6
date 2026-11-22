@@ -1,0 +1,3 @@
+type Balancer interface {
+	Balance(loads []QueueLoad) map[string]int
+}

@@ -1,0 +1,11 @@
+type Event struct {
+	Kind EventKind
+	// Workflow is the job's workflow name.
+	Workflow string
+	// Err is the primary's error, for EventFailedOver.
+	Err error
+	// Until is the end of the cool-off, for EventCoolOffStarted.
+	Until time.Time
+	// At is when the event happened, read from the Client's clock.
+	At time.Time
+}

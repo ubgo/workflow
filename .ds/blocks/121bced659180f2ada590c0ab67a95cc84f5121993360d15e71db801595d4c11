@@ -1,0 +1,17 @@
+func SetRunData(ctx context.Context, name string, v any) error {
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return err
+	}
+	if name == "" {
+		return Permanent(invalidf("run data name is empty"))
+	}
+	b, err := encodeJSON("run data "+name, v)
+	if err != nil {
+		return err
+	}
+	if err := j.store.Save(ctx, j.run, runDataPrefix+name, b); err != nil {
+		return fmt.Errorf("workflow: run data %q: save: %w", name, err)
+	}
+	return nil
+}

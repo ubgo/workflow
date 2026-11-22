@@ -1,0 +1,3 @@
+func hasStartGate(wf workflow.Workflow) bool {
+	return wf.Idempotency != workflow.IdempotencyOff && wf.Concurrency == nil
+}

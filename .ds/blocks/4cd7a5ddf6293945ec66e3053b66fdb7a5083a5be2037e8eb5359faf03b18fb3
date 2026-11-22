@@ -1,0 +1,7 @@
+func WithClaimKeys(fn func() (string, error)) ClaimCheckOption {
+	return func(cc *ClaimCheck) {
+		if fn != nil {
+			cc.newKey = fn
+		}
+	}
+}

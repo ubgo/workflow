@@ -1,0 +1,11 @@
+func PayloadVersionOf(labels map[string]string) (int, error) {
+	v, ok := labels[LabelPayloadVersion]
+	if !ok {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 0, invalidf("label %s is %q, not a version number", LabelPayloadVersion, v)
+	}
+	return n, nil
+}

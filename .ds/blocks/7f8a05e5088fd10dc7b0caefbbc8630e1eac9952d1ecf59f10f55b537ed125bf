@@ -1,0 +1,8 @@
+func (c *Client) observeLife(fn workflow.LifecycleFunc, ev workflow.LifecycleEvent) {
+	defer func() {
+		if p := recover(); p != nil {
+			c.log.Error("memory: lifecycle observer panicked", "workflow", ev.Workflow, "run", ev.Ref.RunID, "panic", p)
+		}
+	}()
+	fn(c.ctx, ev)
+}

@@ -1,0 +1,10 @@
+func zoneName(f Format, loc *time.Location) (string, error) {
+	if workflow.IsUTC(loc) {
+		return "", nil
+	}
+	name := loc.String()
+	if _, err := time.LoadLocation(name); err != nil || name == "Local" {
+		return "", refuse(f, "Location", "zone %q is not an IANA zone name", name)
+	}
+	return name, nil
+}

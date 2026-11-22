@@ -1,0 +1,44 @@
+func TestHandler_AuthorizeFailsClosed(t *testing.T) {
+	for name, fn := range map[string]func(context.Context, Request[user]) error{
+		"error": func(context.Context, Request[user]) error { return errors.New("policy store down") },
+		"panic": func(context.Context, Request[user]) error { panic("bug") },
+	} {
+		f := seeded()
+		auth := bearerAuth()
+		auth.Authorize = fn
+		h := NewHandler(New(f), auth)
+		for _, r := range routes {
+			if rec := do(t, h, r.method, r.path, r.body); rec.Code != http.StatusForbidden {
+				t.Errorf("%s: %s %s = %d, want 403", name, r.method, r.path, rec.Code)
+			}
+		}
+		if c := f.Calls(); len(c) != 0 {
+			t.Errorf("%s: operations ran: %v", name, c)
+		}
+	}
+
+	f := seeded()
+	auth := bearerAuth()
+	auth.Authorize = func(_ context.Context, req Request[user]) error {
+		if !req.Action.ReadOnly() {
+			return fmt.Errorf("%s is read-only", req.Who.name)
+		}
+		return nil
+	}
+	h := NewHandler(New(f, WithOutputs(NewMemoryOutputs(MemoryOutputLimits{})), WithMetrics(NewMemoryMetrics(MemoryMetricsConfig{}))), auth)
+	for _, r := range routes {
+		rec := do(t, h, r.method, r.path, r.body)
+		want := okStatus(r)
+		if !r.action.ReadOnly() {
+			want = http.StatusForbidden
+		}
+		if rec.Code != want {
+			t.Errorf("read-only: %s %s = %d, want %d (%s)", r.method, r.path, rec.Code, want, rec.Body)
+		}
+	}
+	for _, c := range f.Calls() {
+		if c != "Runs" && c != "Paused" && c != "Schedules" && c != "Nodes" {
+			t.Errorf("read-only caller reached %s", c)
+		}
+	}
+}

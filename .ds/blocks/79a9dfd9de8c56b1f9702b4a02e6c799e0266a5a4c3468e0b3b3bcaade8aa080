@@ -1,0 +1,56 @@
+func TestClaimCheck_CleanupOnFinish(t *testing.T) {
+	ctx := context.Background()
+	t.Run("prefix deleter", func(t *testing.T) {
+		store := middleware.NewMemoryBlobStore()
+		cc := newClaimCheck(t, store)
+		n := &notifierStub{stubClient: &stubClient{}}
+		if err := cc.CleanupOnFinish(n); err != nil {
+			t.Fatal(err)
+		}
+		c := middleware.WrapClient(n, cc.Enqueue())
+		big := []byte(strings.Repeat("x", 100))
+		for range 2 {
+			if _, err := c.Enqueue(ctx, workflow.Job{Payload: big}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		token := n.jobs[0].Labels[middleware.ClaimCheckLabel]
+		_ = store.Put(ctx, token+"/out/x", big) // a step output of run 0
+		if store.Len() != 3 {
+			t.Fatalf("stored %d blobs before any end, want 3", store.Len())
+		}
+		n.finish(0, workflow.StatusFailed)
+		if store.Len() != 1 {
+			t.Fatalf("after run 0 ended %d blobs remain, want run 1's payload only", store.Len())
+		}
+		if _, err := store.Get(ctx, n.jobs[1].Labels[middleware.ClaimCheckLabel]+"/payload"); err != nil {
+			t.Fatalf("another run's payload was deleted: %v", err)
+		}
+		n.finish(0, workflow.StatusFailed) // at-least-once delivery
+	})
+	t.Run("plain store", func(t *testing.T) {
+		store := plainStore{middleware.NewMemoryBlobStore()}
+		cc := newClaimCheck(t, store)
+		n := &notifierStub{stubClient: &stubClient{}}
+		if err := cc.CleanupOnFinish(n); err != nil {
+			t.Fatal(err)
+		}
+		c := middleware.WrapClient(n, cc.Enqueue())
+		if _, err := c.Enqueue(ctx, workflow.Job{Payload: []byte(strings.Repeat("x", 100))}); err != nil {
+			t.Fatal(err)
+		}
+		token := n.jobs[0].Labels[middleware.ClaimCheckLabel]
+		_ = store.Put(ctx, token+"/out/x", []byte("o"))
+		n.finish(0, workflow.StatusSucceeded)
+		if store.Len() != 1 {
+			t.Fatalf("plain store holds %d blobs, want the output left to expiry", store.Len())
+		}
+	})
+	t.Run("no notifier", func(t *testing.T) {
+		cc := newClaimCheck(t, middleware.NewMemoryBlobStore())
+		var ue *workflow.UnsupportedError
+		if err := cc.CleanupOnFinish(&stubClient{}); !errors.As(err, &ue) || ue.Missing != workflow.CapRunFinished {
+			t.Fatalf("got %v, want an UnsupportedError naming CapRunFinished", err)
+		}
+	})
+}

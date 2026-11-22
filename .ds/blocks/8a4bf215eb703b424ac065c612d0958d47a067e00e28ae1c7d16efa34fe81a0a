@@ -1,0 +1,19 @@
+func (f *follower[P]) end(ctx context.Context, st workflow.Status) {
+	f.catchUp(ctx)
+	ev := eventJSON{Status: st, Done: true}
+	if f.h.cfg.Errors {
+		if info, err := f.h.lookup(ctx, f.ref); err == nil && info != nil {
+			ev.Error = info.Error
+		}
+	}
+	if st == workflow.StatusSucceeded && f.h.hasResults() {
+		if res, err := f.h.c.(workflow.ResultReader).Result(ctx, f.ref); err == nil && len(res) > 0 {
+			if json.Valid(res) {
+				ev.Result = json.RawMessage(res)
+			} else {
+				ev.ResultBase64 = res
+			}
+		}
+	}
+	f.send("", EventEnd, ev)
+}

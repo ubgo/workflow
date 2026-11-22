@@ -14,6 +14,8 @@ import (
 // tblUniqueHolder is UniqueStore's second table (its migration
 // 002_unique_holder): the run that holds each key, for
 // middleware.UniqueWith's States and ReturnExisting.
+//
+//ds:def id=sql-tbluniqueholder-ugf42htr owner=@khanakia stability=stable
 const tblUniqueHolder = "unique_holders"
 
 // uniqueHolderDefs is the unique_holders table.

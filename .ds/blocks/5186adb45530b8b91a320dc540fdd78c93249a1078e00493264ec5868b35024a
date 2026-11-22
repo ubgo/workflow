@@ -1,0 +1,50 @@
+func TestChangeTriggerRefusals(t *testing.T) {
+	many := make([]string, maxTriggerColumns)
+	for i := range many {
+		many[i] = "c" + strings.Repeat("x", i)
+	}
+	cases := []struct {
+		name string
+		d    sqlb.Dialect
+		edit func(*TriggerSpec)
+		want error
+	}{
+		{"table with a quote", sqlb.PostgresDialect{}, func(s *TriggerSpec) { s.Table = `accounts"; DROP TABLE x; --` }, workflow.ErrInvalid},
+		{"table with a space", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Table = "my accounts" }, workflow.ErrInvalid},
+		{"empty table", sqlb.MySQLDialect{}, func(s *TriggerSpec) { s.Table = "" }, workflow.ErrInvalid},
+		{"column with a backtick", sqlb.MySQLDialect{}, func(s *TriggerSpec) { s.Columns = []string{"id", "a`b"} }, workflow.ErrInvalid},
+		{"repeated column", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Columns = []string{"id", "id"} }, workflow.ErrInvalid},
+		{"no columns", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Columns = nil }, workflow.ErrInvalid},
+		{"too many fields", sqlb.PostgresDialect{}, func(s *TriggerSpec) { s.Columns = many }, workflow.ErrInvalid},
+		{"workflow with a quote", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Workflow = "ship'); DELETE FROM x; --" }, workflow.ErrInvalid},
+		{"workflow with a backslash", sqlb.MySQLDialect{}, func(s *TriggerSpec) { s.Workflow = `ship\` }, workflow.ErrInvalid},
+		{"no operation", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Ops = nil }, workflow.ErrInvalid},
+		{"unknown operation", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Ops = []ChangeOp{"TRUNCATE"} }, workflow.ErrInvalid},
+		{"repeated operation", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Ops = []ChangeOp{OnInsert, OnInsert} }, workflow.ErrInvalid},
+		{"op field is a column", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.OpField = "email" }, workflow.ErrInvalid},
+		{"op field not an identifier", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.OpField = "o'p" }, workflow.ErrInvalid},
+		{"key column not an identifier", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.KeyColumn = "id)" }, workflow.ErrInvalid},
+		{"name not an identifier", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.Name = "trg-1" }, workflow.ErrInvalid},
+		{"name too long for its suffix", sqlb.PostgresDialect{}, func(s *TriggerSpec) { s.Name = strings.Repeat("n", 60) }, workflow.ErrInvalid},
+		{"default name too long", sqlb.MySQLDialect{}, func(s *TriggerSpec) { s.Table = strings.Repeat("t", 60) }, workflow.ErrInvalid},
+		{"schema on MySQL", sqlb.MySQLDialect{}, func(s *TriggerSpec) { s.TableSchema = "app" }, workflow.ErrUnsupported},
+		{"schema on SQLite", sqlb.SQLiteDialect{}, func(s *TriggerSpec) { s.TableSchema = "app" }, workflow.ErrUnsupported},
+		{"schema not an identifier", sqlb.PostgresDialect{}, func(s *TriggerSpec) { s.TableSchema = "app.x" }, workflow.ErrInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := validSpec()
+			tc.edit(&spec)
+			got, err := ChangeTrigger(tc.d, spec)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err = %v, want %v", err, tc.want)
+			}
+			if len(got.Create) != 0 || len(got.Drop) != 0 {
+				t.Fatalf("a refused spec rendered SQL: %+v", got)
+			}
+		})
+	}
+	if _, err := ChangeTrigger(nil, validSpec()); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil dialect: %v, want ErrInvalid", err)
+	}
+}

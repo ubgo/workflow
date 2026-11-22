@@ -9,16 +9,22 @@ import (
 // driver's error-history option is not set: enough to see a pattern in a
 // run that retried a dozen times, small enough that a run retried for a
 // week does not grow a row without bound.
+//
+//ds:def id=defaulterrorhistory-cexsqn9u owner=@khanakia stability=stable
 const DefaultErrorHistory = 20
 
 // MaxErrorStack caps AttemptError.Stack in bytes, so one deep panic does
 // not bloat a stored run. A longer stack keeps its first MaxErrorStack
 // bytes, where the panicking frame is.
+//
+//ds:def id=maxerrorstack-99dw4vyj owner=@khanakia stability=stable
 const MaxErrorStack = 8 << 10
 
 // AttemptError is one failed step attempt in a run's error history
 // (RunInfo.Errors). Drivers with CapErrorHistory record one for every
 // attempt that returned an error, oldest first.
+//
+//ds:def id=attempterror-udfhvqdf owner=@khanakia stability=stable
 type AttemptError struct {
 	// Step is the step whose attempt failed.
 	Step string
@@ -45,6 +51,8 @@ type AttemptError struct {
 // StackTracer is an error that carries a stack trace, such as the panic
 // error of middleware.Recover. StackOf finds it anywhere in an error's
 // chain.
+//
+//ds:def id=stacktracer-jaqqtjr2 owner=@khanakia stability=stable
 type StackTracer interface {
 	error
 	StackTrace() string
@@ -53,6 +61,8 @@ type StackTracer interface {
 // StackOf returns the stack trace of the first error in err's chain that
 // implements StackTracer, cut to MaxErrorStack bytes; empty when there is
 // none.
+//
+//ds:def id=stackof-hqj4syzc owner=@khanakia stability=stable
 func StackOf(err error) string {
 	var st StackTracer
 	if !errors.As(err, &st) {
@@ -66,6 +76,8 @@ func StackOf(err error) string {
 }
 
 // NewAttemptError builds the history entry of a failed attempt.
+//
+//ds:def id=newattempterror-pbsc4hxw owner=@khanakia stability=stable
 func NewAttemptError(step string, attempt int, err error, at time.Time) AttemptError {
 	return AttemptError{Step: step, Attempt: attempt, Error: err.Error(), At: at, Stack: StackOf(err)}
 }
@@ -74,6 +86,8 @@ func NewAttemptError(step string, attempt int, err error, at time.Time) AttemptE
 // dropping the oldest. max <= 0 keeps none (history turned off). Every
 // driver bounds its history with it, so the bound means the same thing on
 // each backend.
+//
+//ds:def id=appendattempterror-zp4rg4cs owner=@khanakia stability=stable
 func AppendAttemptError(hist []AttemptError, e AttemptError, max int) []AttemptError {
 	if max <= 0 {
 		return nil

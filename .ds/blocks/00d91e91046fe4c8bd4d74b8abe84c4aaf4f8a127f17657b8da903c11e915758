@@ -1,0 +1,31 @@
+func planTicks(spec BackfillSpec, t backfillTarget) ([]time.Time, error) {
+	if spec.From.IsZero() || spec.To.IsZero() || !spec.To.After(spec.From) {
+		return nil, invalidf("backfill for %q: want From before To, both set", t.workflow)
+	}
+	limit := spec.Max
+	switch {
+	case limit < 0:
+		return nil, invalidf("backfill for %q: Max is negative", t.workflow)
+	case limit == 0:
+		limit = DefaultBackfillMax
+	}
+	sched, err := ParseCron(t.cron, t.seconds, spec.Parser)
+	if err != nil {
+		return nil, fmt.Errorf("%w: backfill for %q: %w", ErrInvalid, t.workflow, err)
+	}
+	var out []time.Time
+	scanned := 0
+	for at := sched.Next(spec.From.Add(-time.Nanosecond), t.loc); !at.IsZero() && at.Before(spec.To); at = sched.Next(at, t.loc) {
+		if scanned++; scanned > maxBackfillScan {
+			return nil, invalidf("backfill for %q: more than %d ticks to scan in [%s, %s); split the range", t.workflow, maxBackfillScan, spec.From.Format(time.RFC3339), spec.To.Format(time.RFC3339))
+		}
+		if !t.active.Contains(at) || !t.windows.Allows(at, t.loc) {
+			continue
+		}
+		if len(out) == limit {
+			return nil, invalidf("backfill for %q: more than %d ticks in [%s, %s); raise Max or split the range", t.workflow, limit, spec.From.Format(time.RFC3339), spec.To.Format(time.RFC3339))
+		}
+		out = append(out, at)
+	}
+	return out, nil
+}

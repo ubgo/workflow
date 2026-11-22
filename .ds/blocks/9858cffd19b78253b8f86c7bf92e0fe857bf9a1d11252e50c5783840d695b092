@@ -1,0 +1,70 @@
+func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string, opts workflow.ResetOptions) (workflow.RunRef, error) {
+	id, err := runID(ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	r, err := c.load(ctx, id, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !workflow.ResetStatusOK(r.status, opts) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, r.status, resetWants(r.status, from != "", opts))
+	}
+	redo := r.status == workflow.StatusSucceeded
+	if redo && len(r.chain) > 0 {
+		return workflow.RunRef{}, chainPending(ref)
+	}
+	var rerun []string
+	if from != "" {
+		wf, known := c.registered(r.wf)
+		if !known {
+			return workflow.RunRef{}, fmt.Errorf("%w: ResetRun: workflow %s is not registered on this client, so its steps are unknown", workflow.ErrInvalid, r.wf)
+		}
+		if rerun = workflow.StepsFrom(wf, from); rerun == nil {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, r.wf, from)
+		}
+	}
+	again := []string{} // the steps that run again: their resolved waits are dropped
+	for name, rec := range r.steps {
+		if !rec.Done || slices.Contains(rerun, name) {
+			r.steps[name] = &stepRec{}
+			again = append(again, name)
+		}
+	}
+	againJSON, err := json.Marshal(again)
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: encode steps: %w", err)
+	}
+	allow, labels := "0", ""
+	if redo {
+		allow = "1"
+		l := maps.Clone(r.labels)
+		if l == nil {
+			l = map[string]string{}
+		}
+		l[workflow.LabelRedo] = "true"
+		b, err := json.Marshal(l)
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("redis: encode labels: %w", err)
+		}
+		labels = string(b)
+	}
+	h := &held{stored: r}
+	res, err := retryScript.Run(ctx, c.rdb, c.keys(), c.base, id, r.finishedRaw, encodeSteps(h), c.clk.Now().UnixMilli(), allow, labels, string(againJSON)).Slice()
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: retry: %w", classify(err))
+	}
+	switch str(res[0]) {
+	case "ok":
+		c.wakeAll()
+		c.pokeDispatcher()
+		return refOf(id, workflow.StatusQueued, r.sid), nil
+	case "notfound":
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	case "dup":
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v: its idempotency key is held by run %s", workflow.ErrDuplicate, ref, str(res[1]))
+	case "chain":
+		return workflow.RunRef{}, chainPending(ref)
+	}
+	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(workflow.Status(str(res[1])), from != "", opts))
+}

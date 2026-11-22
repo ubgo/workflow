@@ -1,0 +1,18 @@
+func (r *Registry) Register(name string, h workflow.Handler) error {
+	if name == "" {
+		return fieldErr("", "a handler name is empty")
+	}
+	if h == nil {
+		return fieldErr("", "handler %q is nil", name)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, dup := r.handlers[name]; dup {
+		return fieldErr("", "handler %q is already registered", name)
+	}
+	if r.handlers == nil {
+		r.handlers = make(map[string]workflow.Handler)
+	}
+	r.handlers[name] = h
+	return nil
+}

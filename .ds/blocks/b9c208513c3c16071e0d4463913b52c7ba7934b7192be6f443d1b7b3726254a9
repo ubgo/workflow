@@ -1,0 +1,55 @@
+func (c *Client) fireSchedules(ctx context.Context) error {
+	now := c.clk.Now()
+	allPaused, err := c.schedulesPaused(ctx)
+	if err != nil {
+		return err
+	}
+	var list []dueSchedule
+	var r scheduleScan
+	collect := func() error { list = append(list, r.row(c.log.Error)); return nil }
+	if !allPaused {
+		err = c.st.each(ctx, c.st.db, "SELECT "+scheduleCols+scheduleFrom+" WHERE s."+c.inNames()+
+			" AND s.active = 1 AND s.next_fire <= ? AND COALESCE(x.paused, 0) = 0 ORDER BY s.next_fire LIMIT ?",
+			c.nameArgs(now.UnixNano(), c.fetch), collect, r.targets()...)
+		if err != nil {
+			return err
+		}
+	}
+	pausedWhere := " AND x.paused = 1"
+	if allPaused {
+		pausedWhere = ""
+	}
+	var paused []dueSchedule
+	collect = func() error { paused = append(paused, r.row(c.log.Error)); return nil }
+	err = c.st.each(ctx, c.st.db, "SELECT "+scheduleCols+scheduleFrom+" WHERE s."+c.inNames()+
+		" AND s.active = 1 AND s.next_fire <= ?"+pausedWhere+" ORDER BY s.next_fire LIMIT ?",
+		c.nameArgs(now.UnixNano(), c.fetch), collect, r.targets()...)
+	if err != nil {
+		return err
+	}
+	for _, d := range paused {
+		if err := c.reportPaused(ctx, d, now); err != nil {
+			c.log.Error("sqlstore: report a paused schedule's ticks", "schedule", d.id, "error", err)
+		}
+	}
+	fired := map[string]*registered{}
+	for _, d := range list {
+		ok, err := c.fireOne(ctx, d, now)
+		if err != nil {
+			c.log.Error("sqlstore: cron fire could not enqueue", "workflow", d.workflow, "cron", d.expr, "error", err)
+			continue
+		}
+		if ok {
+			fired[d.workflow] = c.reg(d.workflow)
+		}
+	}
+	for _, reg := range fired {
+		if err := c.admit(ctx, reg); err != nil {
+			return err
+		}
+	}
+	if len(fired) > 0 {
+		c.nudge()
+	}
+	return nil
+}

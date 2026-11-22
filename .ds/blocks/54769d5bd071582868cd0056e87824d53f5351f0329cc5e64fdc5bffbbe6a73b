@@ -1,0 +1,15 @@
+func (a *aggregator) flushJob(job workflow.Job, group string, runAt time.Time) workflow.Job {
+	labels := make(map[string]string, len(job.Labels)+2)
+	maps.Copy(labels, job.Labels)
+	labels[AggregateGroupLabel] = group
+	labels[AggregateMaxLabel] = strconv.Itoa(a.cfg.MaxItems)
+	return workflow.Job{
+		Workflow: job.Workflow,
+		RunAt:    runAt,
+		Labels:   labels,
+		Tenant:   job.Tenant,
+		Priority: job.Priority,
+		Queue:    job.Queue,
+		Retry:    job.Retry,
+	}
+}

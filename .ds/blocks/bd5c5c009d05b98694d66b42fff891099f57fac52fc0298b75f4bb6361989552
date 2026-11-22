@@ -1,0 +1,6 @@
+func runInput(doc map[string]any) any {
+	if in, ok := doc["input"].(map[string]any); ok {
+		return in
+	}
+	return doc
+}

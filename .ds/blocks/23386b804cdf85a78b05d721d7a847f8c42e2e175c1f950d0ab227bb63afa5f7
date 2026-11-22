@@ -1,0 +1,11 @@
+type ReplayDelivery struct {
+	MessageID    string
+	Subscription string
+	Ref          workflow.RunRef
+
+	// Existing reports that a run an earlier replay with this ID started
+	// was found (Ref is it) and nothing was enqueued.
+	Existing bool
+
+	Err error
+}

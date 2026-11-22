@@ -1,0 +1,20 @@
+func (c *Client) claimWeighted(ctx context.Context, tier []workflow.QueueConfig, open []any) (*attempt, error) {
+	weight := map[string]int{}
+	for i := range tier { // by index: see weighted
+		weight[tier[i].Name] = tier[i].Weight
+	}
+	left := append([]any(nil), open...)
+	for len(left) > 0 {
+		ws := make([]int, len(left))
+		for i, q := range left {
+			ws[i] = weight[q.(string)]
+		}
+		i := workflow.PickWeighted(ws, c.draw())
+		a, err := c.claimFrom(ctx, left[i:i+1])
+		if err != nil || a != nil {
+			return a, err
+		}
+		left = append(left[:i], left[i+1:]...)
+	}
+	return nil, nil
+}

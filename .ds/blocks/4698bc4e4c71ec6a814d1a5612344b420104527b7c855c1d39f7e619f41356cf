@@ -1,0 +1,4 @@
+type MemoryJournal struct {
+	mu   sync.Mutex
+	runs map[RunID]map[string][]byte
+}

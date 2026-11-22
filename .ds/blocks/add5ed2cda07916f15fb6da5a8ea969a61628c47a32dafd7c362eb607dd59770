@@ -1,0 +1,32 @@
+var signalScript = goredis.NewScript(luaPrelude + `
+local b, sk, payload = ARGV[1], ARGV[2], ARGV[3]
+readyNow = tonumber(ARGV[4])
+local n = redis.call('INCR', b .. ':sigseq')
+redis.call('ZADD', b .. ':sigs:' .. sk, n, n)
+redis.call('HSET', b .. ':sigdata:' .. sk, n, payload)
+redis.call('SADD', b .. ':sigkeys', sk)
+local resumed = 0
+for _, m in ipairs(redis.call('SMEMBERS', b .. ':waiters:' .. sk)) do
+  local nl = string.find(m, '\n', 1, true)
+  local id, step = string.sub(m, 1, nl - 1), string.sub(m, nl + 1)
+  local key = rk(b, id)
+  local h = redis.call('HMGET', key, 'status', 'owner', 'w:' .. step, 'c:' .. n)
+  if not h[1] or terminal(h[1]) or h[3] ~= sk then
+    redis.call('SREM', b .. ':waiters:' .. sk, m)
+  elseif not h[4] then
+    redis.call('HSET', key, 'wv:' .. step, payload, 'c:' .. n, '1')
+    redis.call('HDEL', key, 'w:' .. step)
+    redis.call('SREM', b .. ':waiters:' .. sk, m)
+    if h[2] == '' then
+      redis.call('ZREM', b .. ':due', id)
+      redis.call('HSET', key, 'status', 'queued')
+      enready(b, id)
+    else
+      redis.call('HSET', key, 'sigpend', '1')
+    end
+    resumed = resumed + 1
+  end
+end
+if resumed > 0 then redis.call('PUBLISH', b .. ':wake', 'e') end
+return resumed
+`)

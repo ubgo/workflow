@@ -1,0 +1,7 @@
+type TaskSchedulerOptions struct {
+	// Zone is the time zone of the Windows machine the task is
+	// registered on. Required by TaskScheduler: a CalendarTrigger runs on
+	// the machine's local clock, so a schedule is exported only when its
+	// Location is this zone.
+	Zone *time.Location
+}

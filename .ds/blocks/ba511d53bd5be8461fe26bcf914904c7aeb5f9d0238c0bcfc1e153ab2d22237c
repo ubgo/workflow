@@ -1,0 +1,16 @@
+func SignalRun(ctx context.Context, client Client, ref RunRef, name string, payload []byte) error {
+	if client == nil || name == "" || ref.RunID.IsZero() {
+		return invalidf("SignalRun needs a client, a run ID and a signal name")
+	}
+	if !client.Capabilities().Has(CapWaitForEvent) {
+		return &UnsupportedError{Field: "SignalRun", Missing: CapWaitForEvent, Reason: "the run takes the signal through a wait step or the driver's signal store"}
+	}
+	ev := Event{Name: name, Key: RunKey(ref.RunID), Payload: payload}
+	if rs, ok := client.(RunSignaller); ok {
+		err := rs.SignalRun(ctx, ref, ev)
+		if !errors.Is(err, errNoRunSignaller) {
+			return err
+		}
+	}
+	return client.Signal(ctx, ev)
+}

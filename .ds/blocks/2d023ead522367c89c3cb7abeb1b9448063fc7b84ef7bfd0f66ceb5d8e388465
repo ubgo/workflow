@@ -1,0 +1,65 @@
+func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	for range c.st.txAttempts {
+		d, err := c.loadSchedule(ctx, string(id))
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		reg := c.reg(d.workflow)
+		if reg == nil {
+			return workflow.RunRef{}, fmt.Errorf("%w: schedule %s: workflow %q is not registered on this client", workflow.ErrNotFound, id, d.workflow)
+		}
+		blocked, st, err := c.overlapBlocks(ctx, d)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		if blocked {
+			return workflow.RunRef{}, workflow.OverlapRefusal(id, workflow.RunRef{RunID: workflow.RunID(d.lastRun)}, st)
+		}
+		var labels map[string]string
+		if err := json.Unmarshal([]byte(d.labels), &labels); err != nil {
+			c.log.Error("sqlstore: stored schedule labels do not decode", "schedule", d.id, "error", err)
+		}
+		runID, err := c.st.newID(IDRun)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		now := c.clk.Now()
+		var ref workflow.RunRef
+		err = c.st.tx(ctx, func(tx *sql.Tx) error {
+			if err := c.moveLast(ctx, tx, d, now.UnixNano(), runID); err != nil {
+				return err
+			}
+			job := workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: workflow.TriggeredLabelsAt(labels, id, d.tickName(), c.clk.Now()), Tenant: d.tenant}
+			row, err := c.insertRun(ctx, tx, reg, job, "", runID)
+			if err != nil {
+				return err
+			}
+			ref = row.ref()
+			return nil
+		})
+		if errors.Is(err, errLastMoved) || c.st.isUnique(err) {
+			continue // another fire landed first: decide again on the new last run
+		}
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		if err := c.admit(ctx, reg); err != nil {
+			return ref, err
+		}
+		c.nudge()
+		loc, lerr := decodeLocation(d.loc)
+		if lerr != nil {
+			loc = now.Location()
+		}
+		c.emitTicks(ctx, []workflow.Tick{{ScheduleID: id, Name: d.tickName(), Workflow: d.workflow, Declared: d.declared,
+			At: now.In(loc), Location: loc, Labels: labels, Outcome: workflow.TickFired, Run: ref, Manual: true}})
+		return ref, nil
+	}
+	return workflow.RunRef{}, fmt.Errorf("sqlstore: schedule %s kept firing elsewhere while it was triggered; try again", id)
+}

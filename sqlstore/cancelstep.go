@@ -12,6 +12,8 @@ import (
 
 // tblStepCancel is migration 008's table of running steps CancelStep asked
 // to stop: the node running one sees its row at its next lease renewal.
+//
+//ds:def id=sql-tblstepcancel-t92j8scu owner=@khanakia stability=stable
 const tblStepCancel = "step_cancel"
 
 // CancelStep stops one step of a run (workflow.StepCanceller). A running
@@ -23,6 +25,8 @@ const tblStepCancel = "step_cancel"
 // a snooze, a signal or a sleep fails that way at once. A step not started
 // yet or already ended, or a run that is not running, returns
 // ErrWrongState; an unknown run or step ErrNotFound.
+//
+//ds:def id=sql-client-cancelstep-fnqpwd5z owner=@khanakia stability=stable
 func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {

@@ -1,0 +1,18 @@
+func (r *inlineRun) nextReady(done map[string]bool) (Step, bool) {
+	for _, s := range r.wf.Steps {
+		if done[s.Name] {
+			continue
+		}
+		ready := true
+		for _, p := range s.After {
+			if !done[p] {
+				ready = false
+				break
+			}
+		}
+		if ready {
+			return s, true
+		}
+	}
+	return Step{}, false
+}

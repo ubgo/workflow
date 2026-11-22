@@ -1,6 +1,6 @@
 # Logging
 
-Two kinds of log lines come out of a workflow app: one per step attempt (started, finished, failed), written by the `Logging` step middleware, and the errors the drivers and components hit in the background, where there is no caller to return them to (a cron fire that could not enqueue, a callback that failed, a poll that errored). Both go to a `*slog.Logger` you pass in; nothing logs to a global, and with no logger nothing is written.
+Two kinds of log lines come out of a workflow app: one per step attempt (started, finished, failed), written by the [`Logging`](ds:block?id=mw-logging-zanq5b67) step middleware, and the errors the drivers and components hit in the background, where there is no caller to return them to (a cron fire that could not enqueue, a callback that failed, a poll that errored). Both go to a `*slog.Logger` you pass in; nothing logs to a global, and with no logger nothing is written (a nil logger makes [`Logging`](ds:block?id=mw-logging-zanq5b67) a no-op; each driver's [`WithLogger`](ds:block?id=memory-withlogger-bvpcm6pn) defaults to discarding).
 
 ## Before you start
 
@@ -10,9 +10,9 @@ Two kinds of log lines come out of a workflow app: one per step attempt (started
 
 ## Log every step
 
-`middleware.Logging(logger, clock, opts...)` is step middleware that writes a line when an attempt starts, finishes or fails, with the input and output sizes and the duration measured on `clock` (nil means the real clock). When the driver put a `workflow.StepInfo` on the context, which every driver does, each line also carries `workflow`, `step`, `run_id` and `attempt`. A failure line carries `duration`, `permanent` and `error`. A nil logger makes the middleware a no-op.
+[`middleware.Logging(logger, clock, opts...)`](ds:block?id=mw-logging-zanq5b67) is step middleware that writes a line when an attempt starts, finishes or fails, with the input and output sizes and the duration measured on `clock` (nil means the real clock). When the driver put a `workflow.StepInfo` on the context, which every driver does, each line also carries `workflow`, `step`, `run_id` and `attempt`. A failure line carries `duration`, `permanent` and `error`. A nil logger makes the middleware a no-op.
 
-By default start and finish lines are Debug and every failed attempt is Error. `middleware.WithLogLevel(fn)` picks the level of each line instead: `fn` receives a `middleware.StepLogEvent` with the `Phase` (`middleware.StepStarted`, `StepFinished` or `StepFailed`), the `Err` of a failed attempt, the driver's `StepInfo` and `HasInfo`. Middleware cannot see the driver's retry policy, so a function that logs retried attempts at Warn and only the last one at Error compares the attempt with the retries the app configured:
+By default start and finish lines are Debug and every failed attempt is Error ([`defaultLogLevel`](ds:block?id=mw-defaultloglevel-djyuwq58)). [`middleware.WithLogLevel(fn)`](ds:block?id=mw-withloglevel-eva4tum6) picks the level of each line instead: `fn` receives a [`middleware.StepLogEvent`](ds:block?id=mw-steplogevent-hpnm86wq) with the `Phase` ([`middleware.StepStarted`](ds:block?id=mw-stepstarted-hspsjmzj), [`StepFinished`](ds:block?id=mw-stepfinished-qc8jaym4) or [`StepFailed`](ds:block?id=mw-stepfailed-myghcstz)), the `Err` of a failed attempt, the driver's `StepInfo` and `HasInfo`. Middleware cannot see the driver's retry policy, so a function that logs retried attempts at Warn and only the last one at Error compares the attempt with the retries the app configured:
 
 <!-- snippet: examples/middleware-stack/main.go#log-level -->
 ```go
@@ -39,7 +39,7 @@ level=ERROR msg="workflow step failed" workflow=validate step=run attempt=1 dura
 
 (The example's handler drops the time and run ID so the output never varies, and measures on a fake clock, so durations read `0s`.)
 
-`Logging` never logs payload bytes or labels: either can hold personal data or secrets, and a codec may not have run yet. Put it first in the chain, outside `Recover`, so a panic reaches it as a failed attempt; [step middleware](../middleware/step-middleware.md#wrap-every-step) shows the whole stack.
+`Logging` never logs payload bytes or labels ([`TestLogging_NoPayloadInLog`](ds:block?id=mw-testlogging-nopayloadinlog-ycd9gmsu) checks the payload): either can hold personal data or secrets, and a codec may not have run yet. Put it first in the chain, outside [`Recover`](ds:block?id=mw-recover-a7qbjc9u), so a panic reaches it as a failed attempt; [step middleware](../middleware/step-middleware.md#wrap-every-step) shows the whole stack.
 
 ## Driver logs
 
@@ -47,12 +47,13 @@ The drivers and components take a logger for what they cannot return to a caller
 
 | Where | Option | What it reports |
 |---|---|---|
-| memory driver | `memory.WithLogger(l)` | a cron fire that failed to enqueue, an `OnFailure` handler error |
-| SQL driver | `sqlstore.WithLogger(l)` | a failed poll, an `OnFailure` error, a cron fire that could not enqueue |
-| Hatchet driver | `hatchet.Config{Logger: l}` | the run-finished notifier's polls, observer panics, worker stop, and `BatchSource` errors when it is given no logger of its own |
-| batches | `batch.WithLogger(l)` | a callback that failed to enqueue, a cancel that failed, poller and resume errors |
-| outbox | `outbox.WithLogger(l)` | a relay's failed enqueue, a dead entry |
-| panics | `middleware.Recover(l)` | the panic value and stack of a step that panicked |
+| memory driver | [`memory.WithLogger(l)`](ds:block?id=memory-withlogger-bvpcm6pn) | a cron fire that failed to enqueue, an `OnFailure` handler error |
+| SQL driver | [`sqlstore.WithLogger(l)`](ds:block?id=sql-withlogger-f5zjhse4) | a failed poll, an `OnFailure` error, a cron fire that could not enqueue |
+| Redis driver | [`redis.WithLogger(l)`](ds:block?id=redis-withlogger-p6xuyy9a) | a failed lease renewal, a run that could not be handed back, an `OnFailure` error, a [dropped lifecycle event](ds:block?id=redis-client-emit-dh9vkbpx) |
+| Hatchet driver | [`hatchet.Config{Logger: l}`](ds:block?id=hatchet-config-wdky3m9f) | the run-finished notifier's polls, observer panics, worker stop, and `BatchSource` errors when it is given no logger of its own |
+| batches | [`batch.WithLogger(l)`](ds:block?id=batch-withlogger-nd8ayt7j) | a callback that failed to enqueue, a cancel that failed, poller and resume errors |
+| outbox | [`outbox.WithLogger(l)`](ds:block?id=outbox-withlogger-32st7x3h) | a relay's failed enqueue, a dead entry |
+| panics | [`middleware.Recover(l)`](ds:block?id=mw-recover-a7qbjc9u) | the panic value and stack of a step that panicked |
 
 The example passes the same logger to the memory driver and to `Recover`:
 
@@ -79,10 +80,10 @@ Every `level=` line in the output comes from `Logging` or `Recover`; [step middl
 
 ## Pitfalls
 
-- **Error text is logged as is.** `Logging` writes `err.Error()`, so a step that puts a secret in an error string leaks it to the log (and to run status, which stores the same text).
-- **`Recover` logs a stack.** It is multi-line and long; route it to a handler that keeps it as one attribute (JSON), or drop the `stack` attribute as the example does for readable output.
-- **The default level hides successes.** Start and finish lines are Debug, so a handler at Info shows only failures. Raise them with `WithLogLevel` if you want a line per attempt.
-- **A component without a logger is silent.** A callback that failed to enqueue or a poll that keeps failing is invisible unless that component got a logger; pass one to each.
+- **Error text is logged as is.** [`Logging`](ds:block?id=mw-logging-zanq5b67) writes `err.Error()`, so a step that puts a secret in an error string leaks it to the log (and to run status, which stores the same text).
+- **`Recover` logs a stack** ([`Recover`](ds:block?id=mw-recover-a7qbjc9u)). It is multi-line and long; route it to a handler that keeps it as one attribute (JSON), or drop the `stack` attribute as the example does for readable output.
+- **The default level hides successes.** Start and finish lines are Debug ([`defaultLogLevel`](ds:block?id=mw-defaultloglevel-djyuwq58)), so a handler at Info shows only failures. Raise them with `WithLogLevel` if you want a line per attempt.
+- **A component without a logger is silent.** A callback that failed to enqueue or a poll that keeps failing is invisible unless that component got a logger (every `WithLogger` above, [`batch.WithLogger`](ds:block?id=batch-withlogger-nd8ayt7j) for example, defaults to discarding); pass one to each.
 
 ## Related
 

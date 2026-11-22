@@ -1,0 +1,20 @@
+func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	seq, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("%w: signal %q", workflow.ErrNotFound, id)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, ok := c.runs[run]
+	if !ok || seq <= r.seq || !c.addressedLocked(run, seq) {
+		return false, fmt.Errorf("%w: signal %q for run %s", workflow.ErrNotFound, id, run)
+	}
+	if r.consumed[seq] {
+		return false, nil
+	}
+	r.markConsumedLocked(seq)
+	return true, nil
+}

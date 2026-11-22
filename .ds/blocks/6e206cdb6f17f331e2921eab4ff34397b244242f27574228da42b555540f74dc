@@ -1,0 +1,8 @@
+func (s *StandardWebhooks) Headers(id string, body []byte) http.Header {
+	ts := s.clk.Now().Unix()
+	h := http.Header{}
+	h.Set(HeaderWebhookID, id)
+	h.Set(HeaderWebhookTimestamp, strconv.FormatInt(ts, 10))
+	h.Set(HeaderWebhookSignature, "v1,"+standardSign(s.secrets[0], id, ts, body))
+	return h
+}

@@ -1,0 +1,3 @@
+type RunDeleter interface {
+	Delete(ctx context.Context, ref RunRef) error
+}

@@ -1,0 +1,3 @@
+func WithJitterSource(rnd func() float64) Option {
+	return func(c *Client) { c.rnd = rnd }
+}

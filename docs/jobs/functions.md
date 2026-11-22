@@ -4,13 +4,13 @@ A [closure](closures.md) is quick, but it lives only in the process that enqueue
 
 ## Before you start
 
-- A `workflow.Func` is a one-step workflow underneath, so it needs no capability beyond what the driver already has: it runs on the in-memory, SQL, Redis and Hatchet drivers alike. A delay needs `CapDelayedStart`, as for any job.
+- A [`workflow.Func`](ds:block?id=func-ruxw5ptf) is a one-step workflow underneath, so it needs no capability beyond what the driver already has: it runs on the in-memory, SQL, Redis and Hatchet drivers alike. A delay needs `CapDelayedStart`, as for any job.
 - The function is registered in code, so every process that runs workers registers the same name, as with any workflow.
 - The example is [`examples/functions`](../../examples/functions). Run it with `go run ./functions` from `examples/`.
 
 ## Step 1: define the function
 
-`workflow.NewFunc(name, fn, opts...)` names a `func(ctx, In) error`. The argument type `In` is any type that encodes as JSON. The options set what belongs to the definition rather than to one enqueue:
+[`workflow.NewFunc`](ds:block?id=newfunc-r3c7u2fq)`(name, fn, opts...)` names a `func(ctx, In) error`. The argument type `In` is any type that encodes as JSON. The options set what belongs to the definition rather than to one enqueue:
 
 <!-- snippet: examples/functions/main.go#define -->
 ```go
@@ -44,16 +44,16 @@ func sendWelcome(sent *atomic.Int64, caught chan<- string) workflow.Func[welcome
 
 | Option | Meaning |
 |---|---|
-| `FuncRetry(*RetryPolicy)` | The retry policy of its one step; without it, no retry |
-| `FuncTimeout(d)` | Bounds each attempt; zero means none |
-| `FuncQueue(q)` | The default queue of its runs; empty means the default queue |
-| `FuncCatch(fn)` | Runs once when a run fails for good, with the decoded argument (the workflow's `OnFailure`) |
+| `FuncRetry(*RetryPolicy)` | The retry policy of its one step; without it, no retry ([`FuncConfig`](ds:block?id=funcconfig-r89dgthy)) |
+| `FuncTimeout(d)` | Bounds each attempt; zero means none ([`FuncConfig`](ds:block?id=funcconfig-r89dgthy)) |
+| `FuncQueue(q)` | The default queue of its runs; empty means the default queue ([`FuncConfig`](ds:block?id=funcconfig-r89dgthy)) |
+| [`FuncCatch`](ds:block?id=funccatch-ezp6ekzh)`(fn)` | Runs once when a run fails for good, with the decoded argument (the workflow's `OnFailure`) |
 
-The step is named `workflow.FuncStep` (`func`), and the run's workflow name is the function's name, so `Status`, run listings, run-finished observers and step middleware see it like any run.
+The step is named [`workflow.FuncStep`](ds:block?id=funcstep-nfvnnmmt) (`func`), and the run's workflow name is the function's name ([`Func.Workflow`](ds:block?id=func-in-workflow-9262esnn)), so `Status`, run listings, run-finished observers and step middleware see it like any run.
 
 ## Step 2: register and enqueue
 
-`workflow.RegisterFunc(client, f)` registers it (it is `client.Register(f.Workflow())`), and `f.Enqueue(ctx, client, arg)` encodes the argument and enqueues:
+[`workflow.RegisterFunc`](ds:block?id=registerfunc-a599kuce)`(client, f)` registers it (it is `client.Register(f.Workflow())`), and [`f.Enqueue`](ds:block?id=func-in-enqueue-rxwtt73r)`(ctx, client, arg)` encodes the argument and enqueues:
 
 <!-- snippet: examples/functions/main.go#register -->
 ```go
@@ -78,7 +78,7 @@ The first attempt failed and was retried. The second run returned a `Permanent` 
 
 ## Step 3: enqueue by name alone
 
-A caller that does not have the `Func` value (another package, an admin action) builds the job from the name with `workflow.FuncJob(name, arg)`. A name that no one registered on that client is refused the way any unknown workflow is:
+A caller that does not have the `Func` value (another package, an admin action) builds the job from the name with [`workflow.FuncJob`](ds:block?id=funcjob-ttzc9kdz)`(name, arg)`. A name that no one registered on that client is refused the way any unknown workflow is:
 
 <!-- snippet: examples/functions/main.go#by-name -->
 ```go
@@ -93,11 +93,11 @@ _, err = c.Enqueue(ctx, job) // nothing registered "send-invoice" here
 unregistered name: ErrNotFound true
 ```
 
-An empty name or an argument that does not encode as JSON is refused with `workflow.ErrInvalid` before anything is enqueued.
+An empty name or an argument that does not encode as JSON is refused with `workflow.ErrInvalid` before anything is enqueued ([`FuncJob`](ds:block?id=funcjob-ttzc9kdz)).
 
 ## Step 4: delay it and survive a restart
 
-`f.Job(arg)` returns the `Job` without enqueuing it, so you can set `RunAt`, `Labels`, `Priority`, `IdempotencyKey`, `Queue` or `Retry` first:
+[`f.Job`](ds:block?id=func-in-job-yhtpfxvk)`(arg)` returns the `Job` without enqueuing it, so you can set `RunAt`, `Labels`, `Priority`, `IdempotencyKey`, `Queue` or `Retry` first:
 
 <!-- snippet: examples/functions/main.go#delayed -->
 ```go
@@ -124,7 +124,7 @@ second process ran send-welcome: succeeded
 
 | | `EnqueueClosure` | `Func` |
 |---|---|---|
-| Drivers | In-memory only (`CapClosure`) | Every driver |
+| Drivers | In-memory only (`CapClosure`: [memory](ds:block?id=memory-caps-yxkuq583); the [SQL](ds:block?id=sql-batch2caps-9rm4b4ck) driver refuses it) | Every driver ([`Func`](ds:block?id=func-ruxw5ptf)) |
 | Survives a restart | No | Yes, on a durable driver |
 | Runs on another machine | No | Yes, on any worker that registered the name |
 | Captures local variables | Yes | No: everything it needs is in the argument |
@@ -149,10 +149,10 @@ The function failed once and succeeded on its retry; the run that failed for goo
 
 ## Pitfalls
 
-- **The name is the contract.** Runs are stored under the name, not the code. Renaming a `Func` leaves its waiting runs under the old name, and the SQL driver claims only workflows its client registered, so they wait until some process registers the old name again. Keep the old name registered until its runs drain.
-- **The argument is JSON.** Unexported fields are dropped, and a time or a number goes through its JSON form. An argument that no longer decodes after a type change fails the run with a `Permanent` error and no retry; the catch function then gets the zero value of `In`.
-- **The enqueuing client must know the name on the SQL driver.** The SQL driver refuses to enqueue a workflow its own client did not register, even when another process would run it, so a web process that only enqueues still calls `RegisterFunc`, and since its client is started, it can pick up runs of that function too.
-- **Two functions with one name replace each other**, as two workflows registered under one name do.
+- **The name is the contract.** Runs are stored under the name, not the code. Renaming a `Func` leaves its waiting runs under the old name, and the SQL driver claims only workflows its client registered ([`claimFilter`](ds:block?id=sql-client-claimfilter-fxuq8cus)), so they wait until some process registers the old name again. Keep the old name registered until its runs drain.
+- **The argument is JSON.** Unexported fields are dropped, and a time or a number goes through its JSON form. An argument that no longer decodes after a type change fails the run with a `Permanent` error and no retry ([`Define`](ds:block?id=define-d3ttbgk3)); the catch function then gets the zero value of `In` ([`FuncCatch`](ds:block?id=funccatch-ezp6ekzh)).
+- **The enqueuing client must know the name on the SQL driver.** The SQL driver refuses to enqueue a workflow its own client did not register, with `ErrNotFound`, even when another process would run it ([`enqueueReg`](ds:block?id=sql-client-enqueuereg-pzaxh9eg)), so a web process that enqueues still calls `RegisterFunc`, and since its client is started, it can pick up runs of that function too. The exception is a client built with [`sqlstore.WithEnqueueOnly`](ds:block?id=sql-withenqueueonly-z8xgtkdr): it enqueues a name it never registered and runs no steps.
+- **Two functions with one name replace each other**, as two workflows registered under one name do ([`NewFunc`](ds:block?id=newfunc-r3c7u2fq)).
 - **No captured state.** Values captured by the function are those of the process that runs it, not of the one that enqueued it. Put what the run needs into the argument.
 
 ## Related

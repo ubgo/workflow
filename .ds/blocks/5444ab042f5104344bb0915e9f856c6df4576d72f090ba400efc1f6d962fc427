@@ -1,0 +1,3 @@
+func UniqueUntilStarted(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) (enqueue workflow.EnqueueMiddleware, step workflow.Middleware) {
+	return Unique(by, store, ttl), ReleaseUniqueOnStart(store)
+}

@@ -1,0 +1,45 @@
+func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := c.listCrons(ctx, sdk, rest.CronWorkflowListParams{})
+	if err != nil {
+		return nil, err
+	}
+	now := c.cfg.Clock.Now()
+	var out []workflow.ScheduleInfo
+	for _, row := range rows {
+		name, ok := c.localName(row.WorkflowName)
+		if !ok {
+			continue
+		}
+		info := workflow.ScheduleInfo{
+			ID:       c.scheduleIDOf(row),
+			Name:     row.Cron,
+			Workflow: name,
+			Cron:     row.Cron,
+			Location: time.UTC,
+			Declared: row.Method != rest.CronWorkflowsMethodAPI,
+			Paused:   !row.Enabled,
+			Labels:   jobLabels(metadataStrings(row.AdditionalMetadata)),
+			Tenant:   metadataString(row.AdditionalMetadata, metaTenant),
+		}
+		if !info.Declared && row.Name != nil {
+			info.Name = *row.Name
+		}
+		// The engine tells a seconds expression by its six fields.
+		info.Seconds = len(strings.Fields(row.Cron)) == cronSecondsFields
+		if sched, err := workflow.ParseCron(row.Cron, info.Seconds, nil); err == nil && !info.Paused {
+			info.Next = sched.Next(now, time.UTC)
+		}
+		if info.Last, err = c.scheduleLast(ctx, sdk, row); err != nil {
+			return nil, err
+		}
+		out = append(out, info)
+	}
+	slices.SortFunc(out, func(a, b workflow.ScheduleInfo) int {
+		return cmp.Or(cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
+	})
+	return out, nil
+}

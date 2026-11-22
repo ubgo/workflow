@@ -1,0 +1,19 @@
+func (c *Client) recycleNow(hit *workflow.RecycleError) {
+	c.mu.Lock()
+	first := c.stopCause == nil && !c.stopped && !c.draining.Load()
+	if first {
+		c.stopCause = hit
+		c.draining.Store(true)
+	}
+	c.mu.Unlock()
+	if !first {
+		return
+	}
+	// Drain waits for every goroutine in c.wg, which may include the
+	// caller, so it runs on its own goroutine; Done reports the end.
+	go func() {
+		if err := c.Drain(context.Background()); err != nil {
+			c.log.Error("sqlstore: recycle", "error", err)
+		}
+	}()
+}

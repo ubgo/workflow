@@ -1,0 +1,4 @@
+const (
+	DefaultSchedulesLimit = 100
+	MaxSchedulesLimit     = 1000
+)

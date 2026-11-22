@@ -1,0 +1,6 @@
+func (f Forward) OnLifecycle(fn LifecycleFunc) error {
+	if i, ok := f.Inner.(LifecycleNotifier); ok {
+		return i.OnLifecycle(fn)
+	}
+	return lacks("OnLifecycle", Caps{})
+}

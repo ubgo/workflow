@@ -1,0 +1,7 @@
+func WithCronParser(p cron.Parser) Option {
+	return func(cl *Client) {
+		if p != nil {
+			cl.parse = p
+		}
+	}
+}

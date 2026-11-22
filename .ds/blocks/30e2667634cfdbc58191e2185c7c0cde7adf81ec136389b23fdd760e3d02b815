@@ -1,0 +1,9 @@
+func NewUniqueStore(rdb goredis.UniversalClient, prefix string) (*UniqueStore, error) {
+	if rdb == nil {
+		return nil, fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)
+	}
+	if !prefixPattern.MatchString(prefix) {
+		return nil, fmt.Errorf("%w: redis: prefix %q must match %s", workflow.ErrInvalid, prefix, prefixPattern)
+	}
+	return &UniqueStore{rdb: rdb, base: "{" + prefix + "}"}, nil
+}

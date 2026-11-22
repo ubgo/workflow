@@ -1,0 +1,22 @@
+func (c *Client) pruneLocked() {
+	ret := c.retention
+	if ret.MaxAge == 0 && ret.MaxRuns == 0 {
+		return
+	}
+	now := c.clk.Now()
+	n := 0
+	for n < len(c.finished) {
+		r := c.finished[n]
+		overCount := ret.MaxRuns > 0 && len(c.finished)-n > ret.MaxRuns
+		overAge := ret.MaxAge > 0 && now.Sub(r.finishedAt) > ret.MaxAge
+		if !overCount && !overAge {
+			break
+		}
+		c.dropLocked(r)
+		n++
+	}
+	if n > 0 {
+		clear(c.finished[:n])
+		c.finished = c.finished[n:]
+	}
+}

@@ -1,0 +1,14 @@
+func (p RetryPolicy) NextDelay(err error, retry int, rnd func() float64) time.Duration {
+	if p.DelayFor != nil {
+		if d, ok := p.DelayFor(err, retry); ok {
+			return max(d, 0)
+		}
+	}
+	if p.Backoff.Jitter <= 0 {
+		return p.Backoff.Delay(retry)
+	}
+	if rnd == nil {
+		rnd = rand.Float64
+	}
+	return p.Backoff.JitteredDelay(retry, rnd())
+}

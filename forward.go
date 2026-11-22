@@ -25,6 +25,8 @@ import (
 // A wrapper that rewrites RunRefs or queries (failover's prefixed refs)
 // implements those methods itself instead. RunNotifier is not here: the
 // client Use returns forwards it on its own.
+//
+//ds:def id=forward-e32a7p36 owner=@khanakia stability=stable
 type Forward struct {
 	Inner Client
 }
@@ -178,6 +180,8 @@ func (f Forward) Done() <-chan struct{} {
 
 // StopCause forwards to Inner's StopCauser; an inner client without one
 // never stops itself, so it returns nil.
+//
+//ds:def id=forward-stopcause-8kqevxch owner=@khanakia stability=stable
 func (f Forward) StopCause() error {
 	if i, ok := f.Inner.(StopCauser); ok {
 		return i.StopCause()
@@ -203,6 +207,8 @@ func (f Forward) SetWorkers(ctx context.Context, queue string, n int) error {
 
 // EnqueueClosure forwards to Inner's ClosureEnqueuer. Enqueue middleware
 // of the wrapper does not run for a closure: it has no Job to rewrite.
+//
+//ds:def id=forward-enqueueclosure-d39b2q5k owner=@khanakia stability=stable
 func (f Forward) EnqueueClosure(ctx context.Context, c ClosureJob) (RunRef, error) {
 	if i, ok := f.Inner.(ClosureEnqueuer); ok {
 		return i.EnqueueClosure(ctx, c)
@@ -243,6 +249,8 @@ func (f Forward) Reschedule(ctx context.Context, ref RunRef, at time.Time) (RunR
 }
 
 // EditRun forwards to Inner's RunEditor.
+//
+//ds:def id=forward-editrun-9nwm59f3 owner=@khanakia stability=stable
 func (f Forward) EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef, error) {
 	if i, ok := f.Inner.(RunEditor); ok {
 		return i.EditRun(ctx, ref, edit)
@@ -259,6 +267,8 @@ func (f Forward) CancelStep(ctx context.Context, ref RunRef, step string) error 
 }
 
 // Result forwards to Inner's ResultReader.
+//
+//ds:def id=forward-result-czjn2shp owner=@khanakia stability=stable
 func (f Forward) Result(ctx context.Context, ref RunRef) ([]byte, error) {
 	if i, ok := f.Inner.(ResultReader); ok {
 		return i.Result(ctx, ref)
@@ -279,6 +289,8 @@ func (f Forward) Nodes(ctx context.Context) ([]NodeInfo, error) {
 func (f Forward) Health(ctx context.Context) HealthReport { return CheckHealth(ctx, f.Inner) }
 
 // OnLifecycle forwards to Inner's LifecycleNotifier.
+//
+//ds:def id=forward-onlifecycle-h3z2xmg2 owner=@khanakia stability=stable
 func (f Forward) OnLifecycle(fn LifecycleFunc) error {
 	if i, ok := f.Inner.(LifecycleNotifier); ok {
 		return i.OnLifecycle(fn)
@@ -288,6 +300,8 @@ func (f Forward) OnLifecycle(fn LifecycleFunc) error {
 
 // PayloadLimit forwards to Inner's PayloadLimiter; zero (no cap) when
 // Inner has none.
+//
+//ds:def id=forward-payloadlimit-g7zey23z owner=@khanakia stability=stable
 func (f Forward) PayloadLimit() int {
 	if i, ok := f.Inner.(PayloadLimiter); ok {
 		return i.PayloadLimit()

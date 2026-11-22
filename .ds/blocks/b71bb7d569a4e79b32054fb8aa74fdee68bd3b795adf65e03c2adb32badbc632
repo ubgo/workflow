@@ -1,0 +1,19 @@
+func DecodeStep(c Codec) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			plain, err := open(c, in)
+			if err != nil {
+				return nil, workflow.Permanent(fmt.Errorf("%w: %w", ErrDecode, err))
+			}
+			out, err := next(withMappedChain(ctx, sealJob(c)), plain)
+			if err != nil {
+				return out, err
+			}
+			sealed, err := seal(c, out)
+			if err != nil {
+				return nil, workflow.Permanent(fmt.Errorf("workflow/middleware: encode output: %w", err))
+			}
+			return sealed, nil
+		}
+	}
+}

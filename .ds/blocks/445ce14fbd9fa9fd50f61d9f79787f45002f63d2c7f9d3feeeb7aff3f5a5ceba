@@ -1,0 +1,5 @@
+func ApplyOutcome(r *RunRecord, o OutcomeWrite) {
+	fillRef(r, o.Ref)
+	r.Outcome, r.OutcomeNote, r.OutcomeSet = o.Outcome, o.Note, true
+	touch(r, o.At)
+}

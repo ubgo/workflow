@@ -1,0 +1,5 @@
+type ClaimCheck struct {
+	store     BlobStore
+	threshold int
+	newKey    func() (string, error)
+}

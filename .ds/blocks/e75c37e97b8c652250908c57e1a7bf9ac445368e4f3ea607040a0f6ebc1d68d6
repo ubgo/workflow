@@ -1,0 +1,10 @@
+func TestRunAllReportsAStall(t *testing.T) {
+	c, _ := newClient(t, []workflow.Workflow{one("held", ok)})
+	if err := c.Pause(context.Background(), workflow.PauseTarget{Workflow: "held"}); err != nil {
+		t.Fatal(err)
+	}
+	enqueue(t, c, workflow.Job{Workflow: "held"})
+	if _, err := c.RunAll(context.Background()); !errors.Is(err, memory.ErrRunAllStalled) {
+		t.Fatalf("RunAll with a paused run = %v, want ErrRunAllStalled", err)
+	}
+}

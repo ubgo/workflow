@@ -1,0 +1,14 @@
+func (c *Client) emit(ev workflow.LifecycleEvent) {
+	c.mu.Lock()
+	n := len(c.lifecycle)
+	c.mu.Unlock()
+	if n == 0 {
+		return
+	}
+	ev.Node = c.node
+	select {
+	case c.lifeCh <- ev:
+	default:
+		c.log.Warn("redis: lifecycle event dropped (observers too slow)", "kind", ev.Kind, "run", ev.Ref.RunID)
+	}
+}

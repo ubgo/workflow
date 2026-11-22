@@ -1,0 +1,19 @@
+func TestEnqueueTxRefusals(t *testing.T) {
+	e := engines(t)[0]
+	ctx := context.Background()
+	c, db, _, _ := txSetup(t, e, workflow.IdempotencyRequired)
+	if _, err := c.EnqueueTx(ctx, nil, workflow.Job{Workflow: "ship"}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil tx: %v, want ErrInvalid", err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() }) // a no-op after Commit; frees locks when a check fails first
+	if _, err := c.EnqueueTx(ctx, tx, workflow.Job{Workflow: "ship"}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("missing required key: %v, want ErrInvalid", err)
+	}
+	if _, err := c.EnqueueTx(ctx, tx, workflow.Job{Workflow: "nope"}); !errors.Is(err, workflow.ErrNotFound) {
+		t.Fatalf("unregistered workflow: %v, want ErrNotFound", err)
+	}
+}

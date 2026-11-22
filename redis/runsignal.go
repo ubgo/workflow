@@ -19,6 +19,8 @@ var _ workflow.RunSignalReader = (*Client)(nil)
 // without the run's consumed marker, oldest first
 // (workflow.RunSignalReader). The ID is "<sequence>/<name>", so
 // TakeSignal finds the signal key without a scan.
+//
+//ds:def id=redis-client-pendingsignals-77ueus8d owner=@khanakia stability=stable
 func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -49,6 +51,8 @@ func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names [
 // wait step taking it sets, in one script that first checks the signal is
 // kept under the run's address and above its floor
 // (workflow.RunSignalReader).
+//
+//ds:def id=redis-client-takesignal-hdqe5brh owner=@khanakia stability=stable
 func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err

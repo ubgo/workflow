@@ -1,0 +1,1 @@
+const DefaultMaxBody = 64 << 10

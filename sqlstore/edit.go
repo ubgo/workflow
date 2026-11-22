@@ -18,6 +18,8 @@ var _ workflow.RunEditor = (*Client)(nil)
 // concurrency and rate keys are computed again from it (left for the
 // admitting worker when this client does not register the workflow, as
 // an enqueue-only client's runs are).
+//
+//ds:def id=sql-client-editrun-fwr9u4yr owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	if err := workflow.CheckJobEdit(edit); err != nil {
 		return workflow.RunRef{}, err

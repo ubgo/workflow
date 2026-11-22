@@ -1,0 +1,6 @@
+func hashValue(seed string, field, item int) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(seed))
+	h.Write([]byte{0, byte(field), byte(item)})
+	return h.Sum64()
+}

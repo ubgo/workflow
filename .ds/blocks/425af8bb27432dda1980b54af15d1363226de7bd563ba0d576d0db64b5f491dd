@@ -1,0 +1,1 @@
+	ErrDuplicate = errors.New("workflow: duplicate idempotency key")

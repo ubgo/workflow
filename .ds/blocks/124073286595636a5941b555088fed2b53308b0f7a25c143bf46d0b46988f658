@@ -1,0 +1,7 @@
+func WithIDFunc(f func() string) Option {
+	return func(c *Client) {
+		if f != nil {
+			c.newID = f
+		}
+	}
+}

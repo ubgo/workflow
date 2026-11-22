@@ -1,0 +1,3 @@
+type StepCanceller interface {
+	CancelStep(ctx context.Context, ref RunRef, step string) error
+}

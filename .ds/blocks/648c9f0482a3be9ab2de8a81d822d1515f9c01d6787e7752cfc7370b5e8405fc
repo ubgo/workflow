@@ -1,0 +1,14 @@
+func (m *MemoryBuckets) Take(_ context.Context, key string, spec BucketSpec, cost float64, now time.Time) (time.Duration, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.buckets == nil {
+		m.buckets = map[string]bucketLevel{}
+	}
+	level := m.buckets[key].drained(spec, now)
+	if over := level + cost - spec.Capacity; over > 0 {
+		m.buckets[key] = bucketLevel{level: level, at: now}
+		return time.Duration(math.Ceil(over / spec.LeakPerSecond * float64(time.Second))), nil
+	}
+	m.buckets[key] = bucketLevel{level: level + cost, at: now}
+	return 0, nil
+}

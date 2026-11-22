@@ -1,0 +1,6 @@
+func (f Forward) EnqueueClosure(ctx context.Context, c ClosureJob) (RunRef, error) {
+	if i, ok := f.Inner.(ClosureEnqueuer); ok {
+		return i.EnqueueClosure(ctx, c)
+	}
+	return RunRef{}, lacks("EnqueueClosure", CapClosure)
+}

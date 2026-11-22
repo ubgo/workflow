@@ -1,0 +1,10 @@
+func Describe(expr string) (string, error) {
+	trimmed := strings.TrimSpace(expr)
+	if _, err := ParseExtended(expr); err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		return describeMacro(trimmed)
+	}
+	return describeFields(strings.Fields(trimmed), false), nil
+}

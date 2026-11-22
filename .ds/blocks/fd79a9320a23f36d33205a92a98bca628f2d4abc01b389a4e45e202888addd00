@@ -1,0 +1,10 @@
+func (h *handler[P]) location(ref workflow.RunRef) string {
+	base := "runs/"
+	if h.cfg.Mount != "" {
+		base = strings.TrimSuffix(h.cfg.Mount, "/") + "/runs/"
+	}
+	if ref.RunID.IsZero() {
+		return base + url.PathEscape(ref.ScheduledID.String()) + "?scheduled=1"
+	}
+	return base + url.PathEscape(ref.RunID.String())
+}

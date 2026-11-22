@@ -1,0 +1,4 @@
+func (l Lineage) same(o Lineage) bool {
+	return l.Kind == o.Kind && l.Dataset == o.Dataset && l.Version == o.Version &&
+		l.Run == o.Run && l.Workflow == o.Workflow && l.Step == o.Step && l.Trigger == o.Trigger
+}

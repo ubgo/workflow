@@ -1,0 +1,64 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := workflow.ValidateSchedule(s); err != nil {
+		return "", err
+	}
+	if err := workflow.CheckScheduleCaps(caps, s); err != nil {
+		return "", err
+	}
+	parsed, err := c.parseFor(s.Cron, specOf(s))
+	if err != nil {
+		return "", fmt.Errorf("%w: schedule for %q: %w", workflow.ErrInvalid, s.Workflow, err)
+	}
+	if err := c.usable(); err != nil {
+		return "", err
+	}
+	if c.reg(s.Workflow) == nil {
+		return "", fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, s.Workflow)
+	}
+	loc, err := encodeLocation(s.Location)
+	if err != nil {
+		return "", err
+	}
+	labels, err := json.Marshal(nonNil(s.Labels))
+	if err != nil {
+		return "", fmt.Errorf("sqlstore: encode labels: %w", err)
+	}
+	row := scheduleRow{s: s, loc: loc, labels: string(labels)}
+	if next := parsed.Next(c.clk.Now(), s.Location); !next.IsZero() {
+		row.next, row.active = next.UnixNano(), 1
+	}
+	if s.Name == "" {
+		if row.id, err = c.st.newID(IDSchedule); err != nil {
+			return "", err
+		}
+		err = c.st.tx(ctx, func(tx *sql.Tx) error {
+			if err := c.writeMisfire(ctx, tx, row.id, s.Misfire); err != nil {
+				return err
+			}
+			if err := c.writeWindows(ctx, tx, row.id, s.Windows); err != nil {
+				return err
+			}
+			if err := c.writeOverlap(ctx, tx, row.id, s.Overlap); err != nil {
+				return err
+			}
+			if err := c.writeSpec(ctx, tx, row.id, specOf(s)); err != nil {
+				return err
+			}
+			if err := c.writeTenant(ctx, tx, row.id, s.Tenant); err != nil {
+				return err
+			}
+			return c.insertSchedule(ctx, tx, row)
+		})
+	} else {
+		row.id = namedScheduleID(s.Workflow, s.Name)
+		err = c.upsertNamed(ctx, row)
+	}
+	if err != nil {
+		return "", err
+	}
+	c.nudge()
+	return workflow.ScheduleID(row.id), nil
+}

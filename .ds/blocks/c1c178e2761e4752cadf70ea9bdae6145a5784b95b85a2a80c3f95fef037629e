@@ -1,0 +1,16 @@
+func GetData[T any](ctx context.Context, scope DataScope, name string) (T, bool, error) {
+	var zero T
+	store, scope, err := dataFrom(ctx, scope, name)
+	if err != nil {
+		return zero, false, err
+	}
+	raw, _, ok, err := store.Get(ctx, scope, name)
+	if err != nil {
+		return zero, false, fmt.Errorf("workflow: %s data %q: get: %w", scope, name, err)
+	}
+	if !ok {
+		return zero, false, nil
+	}
+	v, err := decodeData[T](scope, name, raw)
+	return v, err == nil, err
+}

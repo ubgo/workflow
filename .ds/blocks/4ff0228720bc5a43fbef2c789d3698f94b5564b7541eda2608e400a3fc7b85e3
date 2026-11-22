@@ -1,0 +1,15 @@
+func (s *OutputStore) RunOutput(ctx context.Context, run workflow.RunID) ([]StoredOutput, error) {
+	out := []StoredOutput{}
+	var r StoredOutput
+	var attempt, started, finished, truncated int64
+	err := s.st.each(ctx, s.st.db, "SELECT step, attempt, started_at, finished_at, body, truncated, err FROM {outputs} WHERE run_id = ? ORDER BY id",
+		[]any{string(run)}, func() error {
+			r.Attempt, r.Started, r.Finished, r.Truncated = int(attempt), unixTime(started), unixTime(finished), truncated == 1
+			out = append(out, r)
+			return nil
+		}, &r.Step, &attempt, &started, &finished, &r.Text, &truncated, &r.Error)
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: read output: %w", err)
+	}
+	return out, nil
+}

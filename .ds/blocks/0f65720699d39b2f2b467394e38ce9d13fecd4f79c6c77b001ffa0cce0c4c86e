@@ -1,0 +1,5 @@
+func (s *store) debounceMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(DebounceMigrationOwner), Name: "001_debounce", Script: s.script(s.render(debounceDefs(typesFor(s.engine))))},
+	}
+}

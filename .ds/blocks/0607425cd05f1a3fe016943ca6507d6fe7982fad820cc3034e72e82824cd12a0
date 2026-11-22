@@ -1,0 +1,16 @@
+type ReplayCtx struct {
+	ctx     context.Context
+	j       *journalScope
+	opts    ReplayOptions
+	prefix  string
+	pos     int
+	peeked  int   // the position Replaying last looked at, plus one; 0: none
+	peekOK  bool  // whether a call is recorded at peeked-1
+	suspend error // set once a wait suspends this run of the handler
+	fault   error // set once a call failed for good (nondeterminism, a store error)
+
+	// children counts the ReplayChild calls per name made so far in this
+	// run of the body, recorded or live, so each call gets a spawn name
+	// of its own (childSpawnName).
+	children map[string]int
+}

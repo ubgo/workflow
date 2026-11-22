@@ -1,0 +1,10 @@
+func (r *Relay) Stop() {
+	r.mu.Lock()
+	cancel, done := r.cancel, r.done
+	r.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	<-done
+}

@@ -1,0 +1,5 @@
+func SkipExcluded(cal ExclusionCalendar) func(context.Context, Tick) bool {
+	return func(_ context.Context, t Tick) bool {
+		return cal == nil || !cal.Excluded(t.At)
+	}
+}

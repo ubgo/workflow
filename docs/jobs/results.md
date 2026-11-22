@@ -1,19 +1,19 @@
 # Results and awaiting a run
 
-Most jobs are fire-and-forget, but some callers need the answer: a CLI that kicks off an export and prints the file name, a request handler that runs a quote calculation in the background and waits a few seconds for it, an admin page that shows what a run produced. A run that succeeds keeps its result, and `workflow.AwaitResult` waits for a run and returns it.
+Most jobs are fire-and-forget, but some callers need the answer: a CLI that kicks off an export and prints the file name, a request handler that runs a quote calculation in the background and waits a few seconds for it, an admin page that shows what a run produced. A run that succeeds keeps its result, and [`workflow.AwaitResult`](ds:block?id=awaitresult-h9zwfuxa) waits for a run and returns it.
 
 ## Before you start
 
-- Keeping results needs `workflow.CapResult`: the client implements `workflow.ResultReader` and fills `RunInfo.Output`. The memory, Redis, SQL and Hatchet drivers have it.
-- `workflow.Await` (wait for the end, no result) polls `Client.Status`, so it works on every driver.
+- Keeping results needs [`workflow.CapResult`](ds:block?id=capresult-9dusbjaz): the client implements [`workflow.ResultReader`](ds:block?id=resultreader-8cjugqbr) and fills `RunInfo.Output`. The memory, Redis, SQL and Hatchet drivers have it ([`memory`](ds:block?id=memory-caps-yxkuq583), [`redis`](ds:block?id=redis-caps-bfgdst9t), [`sqlstore`](ds:block?id=sql-p5caps-wggh6esn), [`hatchet`](ds:block?id=hatchet-caps-d6x9fv8z)).
+- [`workflow.Await`](ds:block?id=await-c22rhzy9) (wait for the end, no result) polls `Client.Status`, so it works on every driver.
 - The example is [`examples/results-progress`](../../examples/results-progress). It runs on the memory driver, so its output never varies. Run it with `go run ./results-progress` from `examples/`.
 
 ## What a run's result is
 
-A run's result is the output of its final steps, the steps no other step lists in `After` (`workflow.Sinks(wf)` names them, in declaration order). `workflow.RunOutput(wf, outputs)` is the rule every driver with `CapResult` applies:
+A run's result is the output of its final steps, the steps no other step lists in `After` ([`workflow.Sinks(wf)`](ds:block?id=sinks-jnxkcnss) names them, in declaration order). [`workflow.RunOutput(wf, outputs)`](ds:block?id=runoutput-hvt3unpt) is the rule every driver with `CapResult` applies:
 
-- **One final step:** its output, unchanged. A one-step job's result is simply what its handler returned.
-- **Several final steps:** a JSON object keyed by step name, built the way `workflow.StepInput` builds a joining step's input.
+- **One final step:** its output, unchanged ([`RunOutput`](ds:block?id=runoutput-hvt3unpt)). A one-step job's result is simply what its handler returned.
+- **Several final steps:** a JSON object keyed by step name, built the way [`workflow.StepInput`](ds:block?id=stepinput-ykz7ud5d) builds a joining step's input.
 
 The checkout workflow below ends in two steps, so its result is an object with both outputs:
 
@@ -33,7 +33,7 @@ checkout := workflow.Workflow{
   checkout, final steps [email invoice]: {"email":"sent","invoice":"inv_7"}
 ```
 
-The result is kept with the run until the run is deleted or removed by retention. `ResultReader.Result(ctx, ref)` returns it for a run in `StatusSucceeded`; any other status returns `workflow.ErrWrongState`, and an unknown run `workflow.ErrNotFound`, so a caller can tell "not done yet" from "done with an empty result". `ResultReader` is an optional interface, so reach it with a type assertion; `RunInfo.Output` carries the same bytes in a `Runs` listing, and `RunOutput` over the step outputs gives them again:
+The result is kept with the run until the run is deleted or removed by retention. [`ResultReader.Result(ctx, ref)`](ds:block?id=resultreader-8cjugqbr) returns it for a run in `StatusSucceeded`; any other status returns `workflow.ErrWrongState`, and an unknown run `workflow.ErrNotFound`, so a caller can tell "not done yet" from "done with an empty result". `ResultReader` is an optional interface, so reach it with a type assertion; `RunInfo.Output` carries the same bytes in a `Runs` listing, and `RunOutput` over the step outputs gives them again:
 
 <!-- snippet: examples/results-progress/main.go#read-result -->
 ```go
@@ -66,11 +66,11 @@ fmt.Printf("  RunOutput gives the same: %t\n", bytes.Equal(rule, raw2))
   RunOutput gives the same: true
 ```
 
-`workflow.Client(c)` in the assertion turns the concrete `*memory.Client` into the interface first, as app code that holds a `workflow.Client` already has it. A wrapper (`workflow.Use`, middleware, failover) implements `ResultReader` whatever it wraps and refuses with an `UnsupportedError` when the client inside lacks `CapResult`, so on a wrapped client check `Capabilities().Has(workflow.CapResult)` as well.
+`workflow.Client(c)` in the assertion turns the concrete `*memory.Client` into the interface first, as app code that holds a `workflow.Client` already has it. A wrapper (`workflow.Use`, middleware, failover) implements `ResultReader` whatever it wraps and refuses with an `UnsupportedError` when the client inside lacks `CapResult` ([`workflow.Forward`](ds:block?id=forward-result-czjn2shp)), so on a wrapped client check `Capabilities().Has(workflow.CapResult)` as well.
 
 ## Wait for a result
 
-`workflow.AwaitResult(ctx, client, ref, opts)` blocks until the run ends and returns its result. Give `ctx` a deadline: it is how long the caller is willing to wait. Decode the bytes with `workflow.DecodePayload` (see [typed payloads](payloads.md)):
+[`workflow.AwaitResult(ctx, client, ref, opts)`](ds:block?id=awaitresult-h9zwfuxa) blocks until the run ends and returns its result. Give `ctx` a deadline: it is how long the caller is willing to wait. Decode the bytes with `workflow.DecodePayload` (see [typed payloads](payloads.md)):
 
 <!-- snippet: examples/results-progress/main.go#await -->
 ```go
@@ -90,13 +90,13 @@ if err != nil {
 }
 ```
 
-It polls `Client.Status` every `AwaitOptions.Poll` (zero means `workflow.DefaultAwaitPoll`, 500 ms). `AwaitOptions.Sleep` replaces the real timer, for a test that drives the wait with a fake clock. When the run succeeds it calls `Result`; a client without `ResultReader` returns an `UnsupportedError` naming `CapResult` there, after the wait.
+It polls `Client.Status` every [`AwaitOptions.Poll`](ds:block?id=awaitoptions-ssb9n85j) (zero means [`workflow.DefaultAwaitPoll`](ds:block?id=defaultawaitpoll-ydpf9j3f), 500 ms). [`AwaitOptions.Sleep`](ds:block?id=awaitoptions-ssb9n85j) replaces the real timer, for a test that drives the wait with a fake clock. When the run succeeds it calls `Result`; a client without `ResultReader` returns an `UnsupportedError` naming `CapResult` there, after the wait ([`resultOf`](ds:block?id=resultof-47y497xy)).
 
-`workflow.Await(ctx, client, ref, opts)` is the same wait without the result: it returns the run's terminal status, or `ctx`'s error with the last status seen.
+[`workflow.Await(ctx, client, ref, opts)`](ds:block?id=await-c22rhzy9) is the same wait without the result: it returns the run's terminal status, or `ctx`'s error with the last status seen.
 
 ## When the run fails
 
-A run that ends in any status but succeeded makes `AwaitResult` return a `*workflow.RunFailedError` with the run's `Ref`, its `Status` and, when the client can list runs (`RunQuerier`), `Err`, the run's error message:
+A run that ends in any status but succeeded makes `AwaitResult` return a [`*workflow.RunFailedError`](ds:block?id=runfailederror-nzegsjbf) with the run's `Ref`, its `Status` and, when the client can list runs (`RunQuerier`), `Err`, the run's error message ([`runError`](ds:block?id=runerror-we6rtrsq)):
 
 <!-- snippet: examples/results-progress/main.go#failed -->
 ```go
@@ -111,7 +111,7 @@ if errors.As(err, &failed) {
   pay: ended failed: memory: step "charge" failed after 1 attempt(s): card declined
 ```
 
-A cancelled or discarded run's `RunFailedError` matches `workflow.ErrCancelled`, so `errors.Is(err, workflow.ErrCancelled)` tells "someone stopped it" from "it failed".
+A cancelled or discarded run's [`RunFailedError`](ds:block?id=runfailederror-is-zxcskcjw) matches `workflow.ErrCancelled`, so `errors.Is(err, workflow.ErrCancelled)` tells "someone stopped it" from "it failed".
 
 ## Try it
 
@@ -137,11 +137,11 @@ result:
 
 ## Pitfalls
 
-- **Never await inside a step.** `Await` holds the calling goroutine for the whole wait; in a step that is a worker held idle, and once every worker is awaiting, none is left to run the runs being awaited. A step that needs another run's result starts it as a child and waits with `workflow.AwaitChild`, which holds no worker (see [child runs](../workflows/children.md)).
-- **Results are stored with the run.** A step that returns a large blob makes every run's record that large. Return a reference (a file name, a blob key) and keep the data elsewhere, or use the [claim check](../reliability/claim-check.md) for step outputs.
-- **A result outlives nothing.** Once retention prunes or `Delete` removes a run, `Result` returns `ErrNotFound`. Copy what you need when the run finishes, for instance from the [run-finished hook](../observability/run-finished.md).
-- **`AwaitResult` without a deadline waits forever** on a run that never ends (a wait step whose event never comes). Always pass a `ctx` with a timeout.
-- **Polling is not free.** Each poll is a `Status` call to the backend; on a busy durable driver, keep `Poll` at a second or more for long runs.
+- **Never await inside a step.** [`Await`](ds:block?id=await-c22rhzy9) holds the calling goroutine for the whole wait; in a step that is a worker held idle, and once every worker is awaiting, none is left to run the runs being awaited. A step that needs another run's result starts it as a child and waits with [`workflow.AwaitChild`](ds:block?id=awaitchild-bk9f29f4), which holds no worker (see [child runs](../workflows/children.md)).
+- **Results are stored with the run.** A step that returns a large blob makes every run's record that large ([`ResultReader`](ds:block?id=resultreader-8cjugqbr)). Return a reference (a file name, a blob key) and keep the data elsewhere, or use the [claim check](../reliability/claim-check.md) for step outputs.
+- **A result outlives nothing.** Once retention prunes or `Delete` removes a run, [`Result`](ds:block?id=resultreader-8cjugqbr) returns `ErrNotFound`. Copy what you need when the run finishes, for instance from the [run-finished hook](../observability/run-finished.md).
+- **[`AwaitResult`](ds:block?id=awaitresult-h9zwfuxa) without a deadline waits forever** on a run that never ends (a wait step whose event never comes). Always pass a `ctx` with a timeout.
+- **Polling is not free.** Each poll is a `Status` call to the backend ([`Await`](ds:block?id=await-c22rhzy9)); on a busy durable driver, keep `Poll` at a second or more for long runs.
 
 ## Related
 

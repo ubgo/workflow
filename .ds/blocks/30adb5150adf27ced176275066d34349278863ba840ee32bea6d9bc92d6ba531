@@ -1,0 +1,4 @@
+type RunRef struct {
+	RunID       RunID
+	ScheduledID ScheduledID
+}

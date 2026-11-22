@@ -1,0 +1,10 @@
+type Alert struct {
+	workflow.Failure
+
+	// Key is the dedup key (AlertConfig.Key).
+	Key string
+
+	// Suppressed counts the alerts for Key the limiter held back since
+	// the previous one sent, so a sink can say "and 12 more".
+	Suppressed int
+}

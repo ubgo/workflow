@@ -1,0 +1,16 @@
+func (c *Client) Health(context.Context) workflow.HealthReport {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	workers := workflow.HealthCheck{Name: "workers", OK: c.started && !c.stopped && !c.draining}
+	switch {
+	case !c.started:
+		workers.Detail = "not started"
+	case c.stopped:
+		workers.Detail = "stopped"
+	case c.draining:
+		workers.Detail = "draining"
+	default:
+		workers.Detail = fmt.Sprintf("%d of %d busy", c.executing, c.workers)
+	}
+	return workflow.HealthReport{Live: !c.stopped, Ready: workers.OK, Checks: []workflow.HealthCheck{workers}}
+}

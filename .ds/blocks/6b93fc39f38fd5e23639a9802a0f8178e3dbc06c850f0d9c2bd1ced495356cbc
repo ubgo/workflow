@@ -1,0 +1,9 @@
+func (s Status) TransitionsFrom() []Transition {
+	var out []Transition
+	for _, t := range transitions {
+		if t.From == s {
+			out = append(out, t)
+		}
+	}
+	return out
+}

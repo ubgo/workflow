@@ -1,0 +1,52 @@
+func (c *Client) heartbeat(a *attempt, done <-chan struct{}) {
+	defer c.wg.Done()
+	for {
+		wait := c.lease / 3
+		if left := c.lease - c.leaseClk.Now().Sub(a.leaseFrom); left < wait {
+			wait = left
+		}
+		if wait <= 0 {
+			c.log.Error("sqlstore: a step lease went unrenewed for a whole lease; stopping the attempt", "run", a.runID, "step", a.name)
+			a.cancel(ErrLeaseLost)
+			return
+		}
+		t := c.leaseClk.NewTimer(wait)
+		select {
+		case <-done:
+			t.Stop()
+			return
+		case <-c.ctx.Done():
+			t.Stop()
+			return
+		case <-t.C():
+		}
+		if c.lease-c.leaseClk.Now().Sub(a.leaseFrom) > c.lease*2/3 {
+			continue // woken early for the fence check only: not due for renewal yet
+		}
+		from := c.leaseClk.Now()
+		n, err, fenced := c.renew(a, from)
+		if fenced {
+			c.log.Error("sqlstore: a step lease went unrenewed for a whole lease; stopping the attempt", "run", a.runID, "step", a.name)
+			a.cancel(ErrLeaseLost)
+			return
+		}
+		if err != nil {
+			if c.ctx.Err() == nil {
+				c.log.Error("sqlstore: renew a step lease", "run", a.runID, "step", a.name, "error", err)
+			}
+			continue
+		}
+		if n == 0 {
+			a.cancel(workflow.ErrCancelled)
+			return
+		}
+		a.leaseFrom = from
+		if stop, err := c.stepCancelRequested(c.ctx, a); err != nil {
+			if c.ctx.Err() == nil {
+				c.log.Error("sqlstore: read a step cancel request", "run", a.runID, "step", a.name, "error", err)
+			}
+		} else if stop {
+			a.cancel(workflow.ErrStepCancelled)
+		}
+	}
+}

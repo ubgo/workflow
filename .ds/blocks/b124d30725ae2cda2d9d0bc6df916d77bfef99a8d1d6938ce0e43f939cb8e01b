@@ -1,0 +1,10 @@
+func NextActive(s cron.Schedule, after time.Time, loc *time.Location, a Active) time.Time {
+	if !a.From.IsZero() && after.Before(a.From) {
+		after = a.From.Add(-time.Nanosecond)
+	}
+	t := s.Next(after, loc)
+	if t.IsZero() || !a.Contains(t) {
+		return time.Time{}
+	}
+	return t
+}

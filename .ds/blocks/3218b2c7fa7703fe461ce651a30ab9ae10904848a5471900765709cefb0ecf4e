@@ -1,0 +1,21 @@
+func TestLogging_NoPayloadInLog(t *testing.T) {
+	var buf bytes.Buffer
+	l := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	clk := clock.NewFake(time.Unix(0, 0))
+	h := middleware.Logging(l, clk)(func(context.Context, []byte) ([]byte, error) {
+		clk.Advance(2 * time.Second)
+		return nil, errBoom
+	})
+	if _, err := h(context.Background(), []byte("secret-card-number")); !errors.Is(err, errBoom) {
+		t.Fatalf("err = %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "secret-card-number") {
+		t.Fatal("payload leaked into the log")
+	}
+	for _, want := range []string{"step started", "step failed", "duration=2s", "error=boom"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log lacks %q:\n%s", want, out)
+		}
+	}
+}

@@ -36,7 +36,7 @@ const (
 	// invoices is how many runs the program finishes and archives.
 	invoices = 3
 	// pageSize is the ArchiveQuery limit, below invoices so the program
-	// shows paging with FinishedBefore.
+	// shows paging, with a tie across the page boundary.
 	pageSize = 2
 	// keepSucceeded is the retention of succeeded runs in the hot tables.
 	keepSucceeded = time.Hour
@@ -143,7 +143,9 @@ func run(ctx context.Context, w io.Writer) (err error) {
 		if i == 1 {
 			first = ref
 		}
-		clk.Advance(time.Minute) // one minute apart, so the finish order is clear
+		if i == 2 {
+			clk.Advance(time.Minute) // INV-1 and INV-2 finish at the same instant, INV-3 a minute later
+		}
 	}
 	clk.Advance(2 * keepSucceeded) // past the retention: every run may go
 
@@ -159,9 +161,10 @@ func run(ctx context.Context, w io.Writer) (err error) {
 	// snippet:end
 
 	// snippet:read
-	var before time.Time // zero: start from the newest finish
+	var before time.Time     // zero: start from the newest finish
+	var after workflow.RunID // the tie-breaker: runs that finished at before, after this ID
 	for page := 1; ; page++ {
-		runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, Limit: pageSize})
+		runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, AfterRunID: after, Limit: pageSize})
 		if err != nil {
 			return err
 		}
@@ -171,7 +174,8 @@ func run(ctx context.Context, w io.Writer) (err error) {
 		for _, r := range runs {
 			fmt.Fprintf(w, "page %d: %s %s %s outputs %s\n", page, r.Ref.RunID, r.Status, r.Payload, outputs(r.Outputs))
 		}
-		before = runs[len(runs)-1].FinishedAt // the next page finished before the last one here
+		last := runs[len(runs)-1] // the next page starts after it in (finish, ID) order
+		before, after = last.FinishedAt, last.Ref.RunID
 	}
 	// snippet:end
 	return nil

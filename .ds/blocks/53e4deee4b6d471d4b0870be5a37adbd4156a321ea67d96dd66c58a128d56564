@@ -1,0 +1,36 @@
+func slotGate(store UniqueStore, ttl time.Duration, cfg poolConfig, needInfo bool, keys func(workflow.StepInfo) ([]string, error)) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := workflow.StepInfoFrom(ctx)
+			if len(cfg.steps) > 0 && (!ok || !slices.Contains(cfg.steps, info.Step)) {
+				return next(ctx, in)
+			}
+			if needInfo && !ok {
+				return nil, workflow.Unsupported("CriticalSection", "the step's ctx carries no workflow.StepInfo")
+			}
+			ks, err := keys(info)
+			if err != nil {
+				return nil, err
+			}
+			owner, err := newOwnerToken()
+			if err != nil {
+				return nil, err
+			}
+			for _, k := range ks {
+				got, err := store.Acquire(ctx, k, owner, ttl)
+				if err != nil {
+					return nil, fmt.Errorf("workflow/middleware: pool acquire: %w", err)
+				}
+				if !got {
+					continue
+				}
+				defer func() { _ = store.Release(context.WithoutCancel(ctx), k, owner) }()
+				return next(ctx, in)
+			}
+			if cfg.retryAfter {
+				return nil, workflow.RetryAfter(fmt.Errorf("%w: %d slot(s) taken", ErrPoolBusy, len(ks)), cfg.retry)
+			}
+			return nil, workflow.Snooze(cfg.retry)
+		}
+	}
+}

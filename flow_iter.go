@@ -12,6 +12,8 @@ import (
 // ErrLoopLimit means a Loop reached its iteration limit without its body
 // saying it was done. It is returned marked Permanent: running the same
 // loop again would reach the same limit.
+//
+//ds:def id=errlooplimit-mtqewctv owner=@khanakia stability=stable
 var ErrLoopLimit = errors.New("workflow: loop reached its iteration limit")
 
 // MapOption configures MapEach.
@@ -21,6 +23,8 @@ type mapConfig struct{ concurrency int }
 
 // MapConcurrency runs at most n items at once. The default is 1 (one
 // after another); n below 1 counts as 1.
+//
+//ds:def id=mapconcurrency-96x8ckps owner=@khanakia stability=stable
 func MapConcurrency(n int) MapOption { return func(c *mapConfig) { c.concurrency = max(n, 1) } }
 
 // MapEach runs fn once per item and returns the results in the order of
@@ -39,6 +43,8 @@ func MapConcurrency(n int) MapOption { return func(c *mapConfig) { c.concurrency
 // To run each instance as its own run instead (its own retries, its own
 // worker, visible in run listings), enqueue them with Spawn. MapEach needs
 // the Journal plugin, as Memo does.
+//
+//ds:def id=mapeach-ej8wxp2x owner=@khanakia stability=stable
 func MapEach[In, Out any](ctx context.Context, name string, items []In, fn func(ctx context.Context, i int, item In) (Out, error), opts ...MapOption) ([]Out, error) {
 	cfg := mapConfig{concurrency: 1}
 	for _, o := range opts {
@@ -105,6 +111,8 @@ type loopEntry[S any] struct {
 // For a loop over steps of the graph rather than code (repeat a block of
 // steps), enqueue a new run of the workflow from its last step: a run's
 // graph is fixed when it starts.
+//
+//ds:def id=loop-uyhhf49v owner=@khanakia stability=stable
 func Loop[S any](ctx context.Context, name string, init S, limit int, body func(ctx context.Context, i int, state S) (next S, done bool, err error)) (S, error) {
 	if limit < 1 {
 		return init, Permanent(invalidf("loop %q: limit %d is below 1", name, limit))

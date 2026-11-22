@@ -1,0 +1,16 @@
+func startGateFunc(dctx hatchetsdk.DurableContext, _ any) (any, error) {
+	at, ok := startAtOf(dctx.AdditionalMetadata())
+	if !ok {
+		return encodeOutput(nil), nil
+	}
+	now, err := dctx.Now()
+	if err != nil {
+		return nil, err
+	}
+	if d := at.Sub(now); d > 0 {
+		if _, err := dctx.SleepFor(d); err != nil {
+			return nil, err
+		}
+	}
+	return encodeOutput(nil), nil
+}

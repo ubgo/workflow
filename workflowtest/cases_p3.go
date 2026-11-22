@@ -100,6 +100,8 @@ var payloadSearchCases = []testCase{
 }
 
 // p3Groups are the conformance groups of the P3 contracts, in Run order.
+//
+//ds:def id=workflowtest-p3groups-hzv36c8h owner=@khanakia stability=stable
 var p3Groups = []suiteGroup{
 	{"fair", fairCases},
 	{"edit", editCases},

@@ -1,0 +1,1 @@
+	Unschedule(ctx context.Context, id ScheduleID) error

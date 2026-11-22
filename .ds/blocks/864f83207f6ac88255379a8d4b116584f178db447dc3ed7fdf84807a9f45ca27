@@ -1,0 +1,13 @@
+func TestRun_APIErrorExit1(t *testing.T) {
+	_, srv := newFake(t)
+	code, _, stderr := runCLI(t, srv, nil, "delete", "r1")
+	if code != ExitError || !strings.Contains(stderr, "409") || !strings.Contains(stderr, "not finished") {
+		t.Errorf("delete conflict: %d %q", code, stderr)
+	}
+	// An answer that is not the API's JSON.
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "<html>") }))
+	defer plain.Close()
+	if code, _, stderr := runCLI(t, nil, map[string]string{EnvURL: plain.URL}, "caps"); code != ExitError || !strings.Contains(stderr, "--url") {
+		t.Errorf("html answer: %d %q", code, stderr)
+	}
+}

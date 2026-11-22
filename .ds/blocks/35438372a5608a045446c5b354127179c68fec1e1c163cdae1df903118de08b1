@@ -1,0 +1,4 @@
+func (b *Bus) CurrentVersion(event string) (int, bool) {
+	p, ok := b.versions[event]
+	return p.current, ok
+}

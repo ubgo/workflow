@@ -1,0 +1,9 @@
+func ParseCron(expr string, seconds bool, custom cron.Parser) (cron.Schedule, error) {
+	switch {
+	case seconds:
+		return cron.ParseSeconds(expr)
+	case custom != nil:
+		return custom(expr)
+	}
+	return cron.Parse(expr)
+}

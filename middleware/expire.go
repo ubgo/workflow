@@ -17,11 +17,15 @@ import (
 // UTC. ExpireAt and ExpireAfter write it; the step middleware Expire
 // reads it. It sits under workflow.LabelPrefixInternal, so a driver
 // refuses it unless it arrives through ExpireAfter, which allows it.
+//
+//ds:def id=mw-labelexpiresat-2kjjd2g8 owner=@khanakia stability=stable
 const LabelExpiresAt = workflow.LabelPrefixInternal + "expires-at"
 
 // ErrExpired matches the error Expire ends a run with: the run started
 // after its expiry (LabelExpiresAt), or a step waited longer than
 // ExpireMaxWait for a worker.
+//
+//ds:def id=mw-errexpired-z9nksyp4 owner=@khanakia stability=stable
 var ErrExpired = errors.New("workflow/middleware: run expired before it started")
 
 // ExpireAt returns job with its expiry set to t: a run that has not
@@ -37,6 +41,8 @@ var ErrExpired = errors.New("workflow/middleware: run expired before it started"
 // reserved label but their own, so a job carrying an expiry cannot pass
 // through them; set the expiry with ExpireAfter placed after them in the
 // chain instead.
+//
+//ds:def id=mw-expireat-ru44arfm owner=@khanakia stability=stable
 func ExpireAt(job workflow.Job, t time.Time) workflow.Job {
 	labels := make(map[string]string, len(job.Labels)+1)
 	maps.Copy(labels, job.Labels)
@@ -64,6 +70,8 @@ func ExpireAt(job workflow.Job, t time.Time) workflow.Job {
 // stamped. The expiry is enforced on the worker by Expire; without Expire
 // in the worker's step middleware it is only a label. It runs on every
 // driver.
+//
+//ds:def id=mw-expireafter-q9r4nusx owner=@khanakia stability=stable
 func ExpireAfter(d time.Duration, clk clock.Clock) workflow.EnqueueMiddleware {
 	if clk == nil {
 		clk = clock.Real{}
@@ -100,6 +108,8 @@ type expireConfig struct {
 
 // ExpireFail ends an expired run failed (workflow.Permanent) instead of
 // discarded, for work whose lapse an operator must see.
+//
+//ds:def id=mw-expirefail-8mn2e7xm owner=@khanakia stability=stable
 func ExpireFail() ExpireOption { return func(c *expireConfig) { c.fail = true } }
 
 // ExpireMaxWait also expires a step attempt that waited more than d for
@@ -107,12 +117,16 @@ func ExpireFail() ExpireOption { return func(c *expireConfig) { c.fail = true } 
 // time of that attempt, retries included). It needs a driver that fills
 // ReadyAt (memory, sqlstore and Redis do; Hatchet leaves it zero, and the
 // check is then skipped). A d of zero or less turns it off.
+//
+//ds:def id=mw-expiremaxwait-uxwe8yjr owner=@khanakia stability=stable
 func ExpireMaxWait(d time.Duration) ExpireOption { return func(c *expireConfig) { c.maxWait = d } }
 
 // ExpireSteps limits Expire to the named steps. For a workflow of more
 // than one step, name its first steps: a run that started in time is then
 // never ended between two of its steps because a later one began after
 // the expiry. With no names, every step is checked.
+//
+//ds:def id=mw-expiresteps-k7npcp3g owner=@khanakia stability=stable
 func ExpireSteps(steps ...string) ExpireOption {
 	return func(c *expireConfig) { c.steps = append(c.steps, steps...) }
 }
@@ -138,6 +152,8 @@ func ExpireSteps(steps ...string) ExpireOption {
 //
 // It only acts when a step runs. A run that no worker ever takes (its
 // queue unserved) is not seen here; workflow.ExpireWaiting sweeps those.
+//
+//ds:def id=mw-expire-wad5xu2m owner=@khanakia stability=stable
 func Expire(clk clock.Clock, opts ...ExpireOption) workflow.Middleware {
 	if clk == nil {
 		clk = clock.Real{}

@@ -1,0 +1,11 @@
+func (f *Fake) AssertSignalledWaiting(t testing.TB, name, key string) {
+	t.Helper()
+	var all []string
+	for _, ev := range f.SignalsWaiting() {
+		if ev.Name == name && ev.Key == key {
+			return
+		}
+		all = append(all, ev.Name+"/"+ev.Key)
+	}
+	t.Errorf("event %q with key %q was not sent to SignalWaiting; sent: [%s]", name, key, strings.Join(all, ", "))
+}

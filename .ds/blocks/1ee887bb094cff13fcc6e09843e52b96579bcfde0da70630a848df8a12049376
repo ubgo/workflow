@@ -1,0 +1,21 @@
+func (a *aggregator) check(job workflow.Job) ([]byte, error) {
+	if job.IdempotencyKey != "" || len(job.Chain) > 0 {
+		return nil, fmt.Errorf("%w: Aggregate: a job of aggregated workflow %q may not set an IdempotencyKey or a Chain", workflow.ErrInvalid, job.Workflow)
+	}
+	for _, k := range []string{AggregateGroupLabel, AggregateMaxLabel} {
+		if _, ok := job.Labels[k]; ok {
+			return nil, fmt.Errorf("%w: Aggregate: label %q is reserved for the flush run", workflow.ErrInvalid, k)
+		}
+	}
+	item := job.Payload
+	if a.cfg.RawItems {
+		return item, nil
+	}
+	if len(item) == 0 {
+		return []byte("null"), nil
+	}
+	if !json.Valid(item) {
+		return nil, fmt.Errorf("%w: Aggregate: the payload of a job of %q is not JSON (set RawItems to aggregate other bytes)", workflow.ErrInvalid, job.Workflow)
+	}
+	return item, nil
+}

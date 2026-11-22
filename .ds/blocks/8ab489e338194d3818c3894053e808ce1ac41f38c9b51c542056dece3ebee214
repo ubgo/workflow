@@ -1,0 +1,6 @@
+func SuspendRun(ctx context.Context, store JournalStore, ref RunRef) error {
+	if ref.RunID.IsZero() {
+		return invalidf("SuspendRun needs a RunID; a run that has not started is moved with Reschedule")
+	}
+	return store.Save(ctx, ref.RunID, suspendKey, []byte("1"))
+}

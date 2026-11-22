@@ -20,6 +20,8 @@ const runDataPrefix = "data/"
 // A later SetRunData of the same name replaces the value. Two steps
 // running in parallel that set one name leave whichever wrote last, so
 // give parallel steps their own names. v is stored as JSON; keep it small.
+//
+//ds:def id=setrundata-2gsvewmu owner=@khanakia stability=stable
 func SetRunData(ctx context.Context, name string, v any) error {
 	j, err := journalFrom(ctx)
 	if err != nil {
@@ -41,6 +43,8 @@ func SetRunData(ctx context.Context, name string, v any) error {
 // RunData returns the value SetRunData stored under name in this run, and
 // false when none was stored. A stored value that does not decode into T
 // is a Permanent error.
+//
+//ds:def id=rundata-43fsr5xk owner=@khanakia stability=stable
 func RunData[T any](ctx context.Context, name string) (T, bool, error) {
 	var zero T
 	j, err := journalFrom(ctx)

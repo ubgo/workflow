@@ -26,7 +26,9 @@ import (
 // is not covered by that and must not carry them. One Unique per chain:
 // a second would refuse the first one's labels.
 const (
-	UniqueKeyLabel   = "ubgo.workflow/unique-key"
+	//ds:def id=mw-uniquekeylabel-8nbrpuxx owner=@khanakia stability=stable
+	UniqueKeyLabel = "ubgo.workflow/unique-key"
+	//ds:def id=mw-uniqueownerlabel-mdhum8kz owner=@khanakia stability=stable
 	UniqueOwnerLabel = "ubgo.workflow/unique-owner"
 )
 
@@ -45,6 +47,8 @@ const ownerTokenBytes = 16
 // frees the key only while that owner still holds it. Run-finished events
 // arrive at least once, so a late duplicate for an old run must not free
 // the lock a newer job has taken since.
+//
+//ds:def id=mw-uniquestore-udbnz7hp owner=@khanakia stability=stable
 type UniqueStore interface {
 	// Acquire takes key for owner for ttl and reports true, or reports
 	// false when another holder has it and its ttl has not run out.
@@ -65,6 +69,8 @@ type UniqueStore interface {
 // the enqueue, the lock is released at once so a retry can pass. A ttl of
 // zero or less fails each enqueue with workflow.ErrInvalid rather than
 // holding a lock forever.
+//
+//ds:def id=mw-unique-pgzepgu6 owner=@khanakia stability=stable
 func Unique(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -114,6 +120,8 @@ func Unique(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) 
 // ttl of blocked enqueues, never a lock held forever. A client that does
 // not implement workflow.RunNotifier gets an UnsupportedError naming
 // CapRunFinished; use Unique there and accept the TTL alone.
+//
+//ds:def id=mw-uniqueuntilfinished-kgv65kyf owner=@khanakia stability=stable
 func UniqueUntilFinished(c workflow.Client, by func(workflow.Job) string, store UniqueStore, ttl time.Duration) (workflow.EnqueueMiddleware, error) {
 	n, ok := c.(workflow.RunNotifier)
 	if !ok {
@@ -148,6 +156,8 @@ func UniqueUntilFinished(c workflow.Client, by func(workflow.Job) string, store 
 // that never starts, and for a release that fails. The store must be one
 // every enqueuing and working process shares (a SQL store, not
 // MemoryUnique) when they are separate processes.
+//
+//ds:def id=mw-uniqueuntilstarted-x6mbz7nc owner=@khanakia stability=stable
 func UniqueUntilStarted(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) (enqueue workflow.EnqueueMiddleware, step workflow.Middleware) {
 	return Unique(by, store, ttl), ReleaseUniqueOnStart(store)
 }
@@ -165,6 +175,8 @@ func UniqueUntilStarted(by func(workflow.Job) string, store UniqueStore, ttl tim
 // a release that failed earlier. Each costs one store call. A failed
 // release is not reported: the step has no reason to fail for it, and the
 // ttl frees the key anyway.
+//
+//ds:def id=mw-releaseuniqueonstart-fz2254h2 owner=@khanakia stability=stable
 func ReleaseUniqueOnStart(store UniqueStore) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -202,6 +214,8 @@ var uniqueOwnLabels = []string{UniqueKeyLabel, UniqueOwnerLabel}
 // and ExpireAfter do for the labels they own) is not an app's label and
 // passes too. Keys are checked in sorted order, so the error is the same
 // on every call.
+//
+//ds:def id=mw-refuseinternallabels-2brs9sqg owner=@khanakia stability=stable
 func refuseInternalLabels(ctx context.Context, owner string, labels map[string]string, own []string, allow ...string) error {
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
 		if !strings.HasPrefix(k, workflow.LabelPrefixInternal) || slices.Contains(allow, k) {
@@ -215,6 +229,7 @@ func refuseInternalLabels(ctx context.Context, owner string, labels map[string]s
 	return nil
 }
 
+//ds:def id=mw-newownertoken-87yjqfvt owner=@khanakia stability=stable
 func newOwnerToken() (string, error) {
 	b := make([]byte, ownerTokenBytes)
 	if _, err := rand.Read(b); err != nil {
@@ -226,6 +241,8 @@ func newOwnerToken() (string, error) {
 // MemoryUnique is a UniqueStore inside one process, for tests, a single
 // server, or a cap that only needs to hold per process. Expired keys are
 // dropped when they are next touched. Use NewMemoryUnique.
+//
+//ds:def id=mw-memoryunique-uwj4x9gs owner=@khanakia stability=stable
 type MemoryUnique struct {
 	clk  clock.Clock
 	mu   sync.Mutex
@@ -240,6 +257,8 @@ type uniqueLock struct {
 
 // NewMemoryUnique returns an empty store reading time from clk (nil means
 // clock.Real).
+//
+//ds:def id=mw-newmemoryunique-7y4bnqj8 owner=@khanakia stability=stable
 func NewMemoryUnique(clk clock.Clock) *MemoryUnique {
 	if clk == nil {
 		clk = clock.Real{}
@@ -248,6 +267,8 @@ func NewMemoryUnique(clk clock.Clock) *MemoryUnique {
 }
 
 // Acquire implements UniqueStore.
+//
+//ds:def id=mw-memoryunique-acquire-k57hg9em owner=@khanakia stability=stable
 func (m *MemoryUnique) Acquire(_ context.Context, key, owner string, ttl time.Duration) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

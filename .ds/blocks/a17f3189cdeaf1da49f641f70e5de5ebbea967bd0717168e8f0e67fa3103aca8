@@ -1,0 +1,56 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJobLabels(ctx, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.ValidateJob(job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJob(caps, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckPayload(job, c.PayloadLimit(), "redis"); err != nil {
+		return workflow.RunRef{}, err
+	}
+	c.mu.Lock()
+	_, ok := c.wfs[job.Workflow]
+	c.mu.Unlock()
+	if !ok && !c.enqueueOnly {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, job.Workflow)
+	}
+	field, err := c.idemFieldFor(job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	now := c.clk.Now()
+	delayed := !job.RunAt.IsZero() && job.RunAt.After(now)
+	id := c.newID()
+	args, err := c.createArgs(id, job, field, delayed, now)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	res, err := enqueueScript.Run(ctx, c.rdb, c.keys(), append([]any{c.base, field}, args...)...).Slice()
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: enqueue: %w", classify(err))
+	}
+	if len(res) == 4 && res[0] == "dup" {
+		workflow.MarkDuplicate(ctx)
+		return refOf(str(res[1]), workflow.Status(str(res[2])), str(res[3])), nil
+	}
+	workflow.MarkInserted(ctx)
+	c.wakeAll()
+	c.pokeDispatcher()
+	ref := workflow.RunRef{RunID: workflow.RunID(id)}
+	status := workflow.StatusQueued
+	if delayed {
+		ref, status = workflow.RunRef{ScheduledID: workflow.ScheduledID(scheduledPrefix + id)}, workflow.StatusScheduled
+	}
+	c.emit(workflow.LifecycleEvent{Kind: workflow.LifecycleInserted, Ref: ref, Workflow: job.Workflow, Queue: workflow.EffectiveQueue(c.wfOf(job.Workflow), job),
+		Tenant: job.Tenant, Status: status, Labels: job.Labels, At: now})
+	return ref, nil
+}

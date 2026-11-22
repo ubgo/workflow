@@ -1,0 +1,43 @@
+func (c *Client) cancelRef(ctx context.Context, sdk *hatchetsdk.Client, ref workflow.RunRef) (*lateStart, error) {
+	runID, state, err := c.resolve(ctx, sdk, ref)
+	if err != nil {
+		return nil, err
+	}
+	switch state {
+	case stateGone:
+		return nil, nil
+	case stateRun:
+		_, err := c.cancelRun(ctx, sdk, runID)
+		return nil, err
+	}
+	sid, _ := parseScheduledID(ref.ScheduledID) // parsed in resolve
+	sched, err := findSchedule(ctx, sdk, sid.token)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now() // compared with the engine's due time: wall clock
+	if sched == nil {
+		// Fired or deleted elsewhere since resolve: watch for its run.
+		return &lateStart{ref: ref, sid: sid, deadline: now.Add(c.cfg.VisibilityLag)}, nil
+	}
+	err = sdk.Schedules().Delete(ctx, sched.Metadata.Id)
+	if err != nil && !isNotFound(err) && !isNoContent(err) {
+		return nil, engineErr(err, "delete scheduled run")
+	}
+	due := sched.TriggerAt
+	if due.Before(now) {
+		due = now
+	}
+	if isNotFound(err) {
+		// Gone under the delete: it may have just fired. Not this
+		// client's delete, so not reported cancelled by it either.
+		return &lateStart{ref: ref, sid: sid, deadline: due.Add(c.cfg.VisibilityLag)}, nil
+	}
+	if sched.TriggerAt.Sub(now) >= dueGuard {
+		// Deleted before the engine could load it to fire: final.
+		c.deleted.add(sid.token)
+		c.cancelledBeforeFire(ref, sched)
+		return nil, nil
+	}
+	return &lateStart{ref: ref, sid: sid, sched: sched, deadline: due.Add(c.cfg.VisibilityLag)}, nil
+}

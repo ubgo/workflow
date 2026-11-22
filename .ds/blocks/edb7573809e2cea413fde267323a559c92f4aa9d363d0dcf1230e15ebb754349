@@ -1,0 +1,8 @@
+func checkRunStates(q workflow.RunQuery) error {
+	for _, s := range q.Statuses {
+		if s == workflow.StatusRetrying || s == workflow.StatusDiscarded {
+			return unsupported("RunQuery.Statuses", workflow.CapRunStates, "Hatchet has no "+string(s)+" status: a run in retry backoff reads queued and a discarded run reads failed")
+		}
+	}
+	return nil
+}

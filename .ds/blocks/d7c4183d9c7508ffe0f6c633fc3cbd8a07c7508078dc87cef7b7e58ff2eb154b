@@ -1,0 +1,29 @@
+func Loop[S any](ctx context.Context, name string, init S, limit int, body func(ctx context.Context, i int, state S) (next S, done bool, err error)) (S, error) {
+	if limit < 1 {
+		return init, Permanent(invalidf("loop %q: limit %d is below 1", name, limit))
+	}
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return init, err
+	}
+	key, err := j.claim(name)
+	if err != nil {
+		return init, err
+	}
+	state := init
+	for i := range limit {
+		in := state
+		e, err := memoKey(ctx, j, key+"#"+strconv.Itoa(i), name+"#"+strconv.Itoa(i), func(ctx context.Context) (loopEntry[S], error) {
+			next, done, err := body(ctx, i, in)
+			return loopEntry[S]{State: next, Done: done}, err
+		})
+		if err != nil {
+			return state, err
+		}
+		state = e.State
+		if e.Done {
+			return state, nil
+		}
+	}
+	return state, Permanent(fmt.Errorf("%w: loop %q ran %d iterations", ErrLoopLimit, name, limit))
+}

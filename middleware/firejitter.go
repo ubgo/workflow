@@ -12,6 +12,8 @@ import (
 // FireJitterNeeds is what FireJitter needs from the driver: the tick
 // label on fired runs (CapTickTime) and a snooze that spends no attempt
 // (CapSnooze). CheckFireJitter tests a client against it.
+//
+//ds:def id=mw-firejitterneeds-j76ggebk owner=@khanakia stability=stable
 var FireJitterNeeds = workflow.CapsOf(workflow.CapTickTime, workflow.CapSnooze)
 
 // JitterFunc picks a run's jitter in [0, window) from its StepInfo. It must
@@ -22,6 +24,8 @@ type JitterFunc func(info workflow.StepInfo, window time.Duration) time.Duration
 // RunIDJitter is the default JitterFunc: FNV-1a of the run ID, modulo
 // window, so runs fired by one tick spread evenly across the window while
 // each run's own delay never changes.
+//
+//ds:def id=mw-runidjitter-2d56ttaz owner=@khanakia stability=stable
 func RunIDJitter(info workflow.StepInfo, window time.Duration) time.Duration {
 	h := fnv.New64a()
 	h.Write([]byte(info.RunID))
@@ -35,6 +39,8 @@ func RunIDJitter(info workflow.StepInfo, window time.Duration) time.Duration {
 type FireJitterOption func(*fireJitter)
 
 // WithJitterFunc replaces RunIDJitter. Nil is ignored.
+//
+//ds:def id=mw-withjitterfunc-crjuxjmv owner=@khanakia stability=stable
 func WithJitterFunc(f JitterFunc) FireJitterOption {
 	return func(j *fireJitter) {
 		if f != nil {
@@ -45,6 +51,8 @@ func WithJitterFunc(f JitterFunc) FireJitterOption {
 
 // WithFireJitterClock sets the clock now is read from; the default is
 // clock.Real. Use the driver's clock (a clock.Fake in tests).
+//
+//ds:def id=mw-withfirejitterclock-n4hs9pyj owner=@khanakia stability=stable
 func WithFireJitterClock(c clock.Clock) FireJitterOption {
 	return func(j *fireJitter) {
 		if c != nil {
@@ -84,6 +92,8 @@ type fireJitter struct {
 // without CapTickTime nothing is delayed; on one without CapSnooze the
 // snooze is an ordinary error that spends an attempt, so do not use it
 // there.
+//
+//ds:def id=mw-firejitter-w7z8zc39 owner=@khanakia stability=stable
 func FireJitter(window time.Duration, opts ...FireJitterOption) workflow.Middleware {
 	j := &fireJitter{window: window, pick: RunIDJitter, clk: clock.Real{}}
 	for _, o := range opts {
@@ -113,6 +123,8 @@ func FireJitter(window time.Duration, opts ...FireJitterOption) workflow.Middlew
 
 // CheckFireJitter refuses a client that lacks FireJitterNeeds with a
 // *workflow.UnsupportedError naming what is missing.
+//
+//ds:def id=mw-checkfirejitter-nacz2uut owner=@khanakia stability=stable
 func CheckFireJitter(c workflow.Client) error {
 	if missing := c.Capabilities().Missing(FireJitterNeeds); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: "FireJitter", Missing: missing}

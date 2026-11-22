@@ -1,0 +1,10 @@
+func (b *Bus) checkVersion(m Message) error {
+	if m.Version < 0 {
+		return fmt.Errorf("%w: events: message %q has negative version %d", workflow.ErrInvalid, m.Name, m.Version)
+	}
+	p, ok := b.versions[m.Name]
+	if ok && m.Version > p.current {
+		return fmt.Errorf("%w: events: message %q has version %d, newer than this code's %d", workflow.ErrInvalid, m.Name, m.Version, p.current)
+	}
+	return nil
+}

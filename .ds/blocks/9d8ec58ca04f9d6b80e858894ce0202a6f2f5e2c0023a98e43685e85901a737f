@@ -1,0 +1,55 @@
+func drainCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	var queues multiFlag
+	fs.Var(&queues, "queue", "queue to wait for, comma-separated or repeated (default: every queue)")
+	wait := fs.Duration("wait", 10*time.Minute, "give up after this long (exit 1)")
+	interval := fs.Duration("interval", 2*time.Second, "time between checks")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) > 0 {
+			return usagef("drain takes flags only")
+		}
+		if *wait <= 0 || *interval <= 0 {
+			return usagef("--wait and --interval must be positive")
+		}
+		names := splitList(queues)
+		if len(names) == 0 {
+			names = []string{""}
+		}
+		start := e.opts.Now()
+		for {
+			left := 0
+			for _, q := range names {
+				v := url.Values{"status": {drainStatuses}, "limit": {"1"}, "count": {"1"}}
+				if q != "" {
+					v.Set("queue", q)
+				}
+				var page pageJSON
+				if _, err := e.api.get(ctx, "runs?"+v.Encode(), &page); err != nil {
+					return err
+				}
+				if page.Total != nil {
+					left += *page.Total
+				}
+			}
+			waited := e.opts.Now().Sub(start)
+			if left == 0 {
+				if e.asJSON {
+					return e.printJSON([]byte(fmt.Sprintf(`{"drained":true,"remaining":0,"waited_seconds":%g}`, waited.Seconds())))
+				}
+				fprintf(e.out, "drained after %s\n", waited.Round(time.Second))
+				return nil
+			}
+			if waited >= *wait {
+				if e.asJSON {
+					_ = e.printJSON([]byte(fmt.Sprintf(`{"drained":false,"remaining":%d,"waited_seconds":%g}`, left, waited.Seconds())))
+				}
+				return fmt.Errorf("drain: %d runs still queued or running after %s", left, wait.String())
+			}
+			if !e.asJSON {
+				fprintf(e.errw, "%d runs left\n", left)
+			}
+			if err := e.opts.Sleep(ctx, *interval); err != nil {
+				return err
+			}
+		}
+	}
+}

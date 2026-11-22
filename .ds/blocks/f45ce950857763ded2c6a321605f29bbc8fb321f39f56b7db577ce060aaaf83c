@@ -1,0 +1,10 @@
+type CircuitStore interface {
+	// IsOpen reports whether key's circuit is open now.
+	IsOpen(ctx context.Context, key string) (bool, error)
+	// RecordError counts one error for key and opens its circuit for
+	// p.Cooldown once p.MaxErrors errors fall inside p.Window, counted
+	// from the first of them.
+	RecordError(ctx context.Context, key string, p CircuitPolicy) error
+	// Reset closes key's circuit and clears its count, after a success.
+	Reset(ctx context.Context, key string) error
+}

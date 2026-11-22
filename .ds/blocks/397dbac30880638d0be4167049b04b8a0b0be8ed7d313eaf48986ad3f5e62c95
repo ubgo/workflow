@@ -1,0 +1,31 @@
+func (c *Client) skipPausedTicks(ctx context.Context, t workflow.ScheduleTarget) error {
+	allPaused, err := c.schedulesPaused(ctx)
+	if err != nil {
+		return err
+	}
+	where, args := " AND x.paused = 1", []any{}
+	switch {
+	case t.All && allPaused:
+		where = ""
+	case !t.All && allPaused:
+		return nil // still paused by All
+	}
+	if !t.All {
+		where += " AND s.id = ?"
+		args = append(args, string(t.ID))
+	}
+	now := c.clk.Now()
+	var list []dueSchedule
+	var r scheduleScan
+	err = c.st.each(ctx, c.st.db, "SELECT "+scheduleCols+scheduleFrom+" WHERE s.active = 1 AND s.next_fire <= ?"+where,
+		append([]any{now.UnixNano()}, args...), func() error { list = append(list, r.row(c.log.Error)); return nil }, r.targets()...)
+	if err != nil {
+		return fmt.Errorf("sqlstore: read paused schedules: %w", err)
+	}
+	for _, d := range list {
+		if err := c.reportPaused(ctx, d, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -1,0 +1,24 @@
+type AlertConfig struct {
+	// Discarded also alerts on runs a step discarded.
+	Discarded bool
+
+	// When, if set, filters failures: only those it returns true for
+	// alert.
+	When func(workflow.Failure) bool
+
+	// Key is the dedup key of a failure. Nil means workflow + "/" + step.
+	Key func(workflow.Failure) string
+
+	// Limiter decides dedup and rate limits. Nil means a
+	// MemoryAlertLimiter with Dedup DefaultAlertDedup on Clock; pass one
+	// built with AlertLimits{} to send every alert.
+	Limiter AlertLimiter
+
+	// Clock stamps Failure.At and drives the default limiter. Nil means
+	// clock.Real.
+	Clock clock.Clock
+
+	// Logger receives errors from the Alerter and the Limiter. Nil
+	// discards them.
+	Logger *slog.Logger
+}

@@ -1,0 +1,1 @@
+func WithCorrelation() Option { return func(b *Bus) { b.correlate = true } }

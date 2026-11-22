@@ -1,0 +1,17 @@
+func (l *LocalCron) Start(ctx context.Context) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.started {
+		return ErrLocalCronStarted
+	}
+	l.started = true
+	for _, e := range l.entries {
+		l.wg.Add(1)
+		go l.loop(ctx, e)
+	}
+	go func() {
+		l.wg.Wait()
+		close(l.done)
+	}()
+	return nil
+}

@@ -1,0 +1,7 @@
+func WithDebounceStore(s DebounceStore) DebounceOption {
+	return func(d *debouncer) {
+		if s != nil {
+			d.store = s
+		}
+	}
+}

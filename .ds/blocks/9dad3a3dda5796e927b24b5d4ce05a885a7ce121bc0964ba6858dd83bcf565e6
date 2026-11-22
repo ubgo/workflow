@@ -1,0 +1,11 @@
+type RunSignal struct {
+	// ID is the driver's identity of the signal, stable across reads, so
+	// a handler can dedup on it.
+	ID string
+
+	// Name is the signal's name (Event.Name).
+	Name string
+
+	// Payload is the signal's payload.
+	Payload []byte
+}

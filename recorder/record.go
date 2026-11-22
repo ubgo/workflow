@@ -125,6 +125,8 @@ const (
 )
 
 // stepStatuses is the canonical list, for validation.
+//
+//ds:def id=rec-stepstatuses-8svs5ers owner=@khanakia stability=stable
 var stepStatuses = [...]StepStatus{StepRunning, StepSucceeded, StepFailed, StepSnoozed}
 
 // StepStatuses returns every step status, as a fresh slice.

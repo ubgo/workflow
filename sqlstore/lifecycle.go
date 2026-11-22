@@ -26,6 +26,8 @@ type lifecycle struct {
 // Best-effort and local to the process: another client's events are seen
 // there. Observers run on the goroutine that caused the event, in order per
 // run; a panic is recovered and logged. It must be called before Start.
+//
+//ds:def id=sql-client-onlifecycle-yrrp27ek owner=@khanakia stability=stable
 func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnLifecycle needs a function", workflow.ErrInvalid)
@@ -130,6 +132,8 @@ type ended struct {
 
 // emitFinished reports the Finished events of the runs a committed
 // transaction ended.
+//
+//ds:def id=sql-client-emitfinished-xaqvpkwt owner=@khanakia stability=stable
 func (c *Client) emitFinished(ctx context.Context, list []ended) {
 	for _, e := range list {
 		ev := workflow.LifecycleEvent{Kind: workflow.LifecycleFinished, Ref: workflow.RunRef{RunID: workflow.RunID(e.id)},

@@ -1,0 +1,17 @@
+func (f *Fake) AssertPromiseRejected(t testing.TB, id, reason string) {
+	t.Helper()
+	_, settled, err := workflow.PromiseResult(context.Background(), f.Promises(), id)
+	var rej *workflow.PromiseRejectedError
+	switch {
+	case !settled:
+		t.Errorf("promise %q is not settled in the Fake's Promises store", id)
+		return
+	case !errors.As(err, &rej):
+		t.Errorf("promise %q was not rejected: %v", id, err)
+		return
+	case reason != "" && rej.Reason != reason:
+		t.Errorf("promise %q rejected with %q, want %q", id, rej.Reason, reason)
+		return
+	}
+	f.assertPromiseSignalled(t, id)
+}

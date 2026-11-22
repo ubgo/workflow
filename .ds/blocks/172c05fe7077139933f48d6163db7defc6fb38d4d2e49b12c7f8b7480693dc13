@@ -1,0 +1,6 @@
+func (f Forward) StopCause() error {
+	if i, ok := f.Inner.(StopCauser); ok {
+		return i.StopCause()
+	}
+	return nil
+}

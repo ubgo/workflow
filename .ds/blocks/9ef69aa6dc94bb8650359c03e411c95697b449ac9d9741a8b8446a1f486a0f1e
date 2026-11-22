@@ -1,0 +1,6 @@
+func ValidateScheduleTarget(t ScheduleTarget) error {
+	if t.ID.IsZero() == !t.All {
+		return invalidf("schedule target must set exactly one of ID and All")
+	}
+	return nil
+}

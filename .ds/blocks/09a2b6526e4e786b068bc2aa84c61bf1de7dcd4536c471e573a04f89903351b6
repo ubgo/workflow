@@ -1,0 +1,12 @@
+func (a *Admin) RunOutput(ctx context.Context, ref workflow.RunRef) ([]AttemptOutput, error) {
+	if a.outputs == nil {
+		return nil, errNoOutputs
+	}
+	if ref.IsZero() {
+		return nil, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if ref.RunID.IsZero() {
+		return []AttemptOutput{}, nil
+	}
+	return a.outputs.RunOutput(ctx, ref.RunID)
+}

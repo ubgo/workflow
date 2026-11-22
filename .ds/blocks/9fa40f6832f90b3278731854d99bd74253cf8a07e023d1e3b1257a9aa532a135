@@ -1,0 +1,8 @@
+func scheduledIDFromMetadata(md map[string]string) workflow.ScheduledID {
+	token := md[metaScheduleToken]
+	at, ok := enqueuedAt(md)
+	if token == "" || !ok {
+		return ""
+	}
+	return scheduledRef{token: token, runAt: at}.id()
+}

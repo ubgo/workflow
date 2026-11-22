@@ -1,0 +1,19 @@
+func (c *Client) Stop() {
+	if c.enqueueOnly {
+		c.shutdown()
+		c.doneOnce.Do(func() { close(c.done) })
+		return
+	}
+	c.mu.Lock()
+	cancel := c.cancel
+	c.mu.Unlock()
+	if cancel == nil {
+		return
+	}
+	cancel()
+	c.shutdown()
+	c.wg.Wait()
+	// The goroutine that closes done removes this node's registry row
+	// first; waiting for it means nothing writes after Stop returns.
+	<-c.done
+}

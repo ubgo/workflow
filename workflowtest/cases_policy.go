@@ -89,6 +89,8 @@ func concurrencyWorkflow(e *env, s workflow.ConcurrencyStrategy, tr *tracker, g 
 // cancel-newest strategy: Enqueue accepts it (nil error, a RunRef), its
 // status becomes StatusCancelled, and its step never runs. The rule is on
 // the strategy constants in spec.go.
+//
+//ds:def id=workflowtest-newestrefused-mx5r7ykq owner=@khanakia stability=stable
 func newestRefused(e *env, s workflow.ConcurrencyStrategy) {
 	e.need(workflow.CapConcurrencyKey)
 	tr, g := newTracker(), newGate(e.t)

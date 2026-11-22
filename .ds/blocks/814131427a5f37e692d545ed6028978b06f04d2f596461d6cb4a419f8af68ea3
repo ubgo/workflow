@@ -1,0 +1,38 @@
+func (a *Admin) bulk(ctx context.Context, q workflow.RunQuery, opts BulkOptions, act func(context.Context, workflow.RunRef) error) (BulkResult, error) {
+	if q.Cursor != "" || q.Limit != 0 {
+		return BulkResult{}, fmt.Errorf("%w: admin: a bulk call covers every match; Limit and Cursor are not used", workflow.ErrInvalid)
+	}
+	if opts.Max < 0 {
+		return BulkResult{}, fmt.Errorf("%w: admin: bulk Max %d is negative", workflow.ErrInvalid, opts.Max)
+	}
+	if err := a.validateClientQuery(q); err != nil {
+		return BulkResult{}, err
+	}
+	bound := a.maxBulk
+	if opts.Max > 0 && opts.Max < bound {
+		bound = opts.Max
+	}
+	refs, truncated, err := a.collect(ctx, q, bound)
+	if err != nil {
+		return BulkResult{}, err
+	}
+	res := BulkResult{Matched: len(refs), Truncated: truncated, Sample: sample(refs)}
+	if opts.DryRun {
+		return res, nil
+	}
+	for _, ref := range refs {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
+		err := act(ctx, ref)
+		switch {
+		case err == nil:
+			res.Done++
+		case skippable(err):
+			res.Skipped++
+		default:
+			return res, err
+		}
+	}
+	return res, nil
+}

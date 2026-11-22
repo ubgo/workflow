@@ -1,0 +1,3 @@
+func (s *PromiseStore) Migrate(ctx context.Context) error {
+	return s.st.migrate(ctx, s.st.journalMigrations())
+}

@@ -1,0 +1,13 @@
+type Cancellation struct {
+	Subscription string
+
+	// Cancelled is how many runs CancelAll cancelled.
+	Cancelled int
+
+	// Diverted is the divert run; zero without Divert or when the cancel
+	// failed.
+	Diverted workflow.RunRef
+
+	// Err is the cancel's or the divert's error.
+	Err error
+}

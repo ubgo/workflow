@@ -1,0 +1,10 @@
+func (f *Fake) AssertCancelled(t testing.TB, ref workflow.RunRef) {
+	t.Helper()
+	cancels := f.Cancels()
+	for _, c := range cancels {
+		if c == ref {
+			return
+		}
+	}
+	t.Errorf("run %+v was not cancelled; cancelled: %v", ref, cancels)
+}

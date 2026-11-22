@@ -1,0 +1,18 @@
+func runError(st workflow.Status, msg *string) error {
+	switch st {
+	case workflow.StatusCancelled:
+		return workflow.ErrCancelled
+	case workflow.StatusFailed:
+		if msg != nil && *msg != "" {
+			text := stripFinal(*msg)
+			for _, kind := range storedTimeoutKinds {
+				if strings.HasPrefix(strings.TrimPrefix(text, `"`), kind.Error()) {
+					return storedTimeout{kind: kind, text: text}
+				}
+			}
+			return errors.New(text)
+		}
+		return errors.New("hatchet driver: run failed")
+	}
+	return nil
+}

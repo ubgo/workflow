@@ -1,0 +1,19 @@
+func UniqueUntilFinished(c workflow.Client, by func(workflow.Job) string, store UniqueStore, ttl time.Duration) (workflow.EnqueueMiddleware, error) {
+	n, ok := c.(workflow.RunNotifier)
+	if !ok {
+		return nil, &workflow.UnsupportedError{Field: "UniqueUntilFinished", Missing: workflow.CapRunFinished, Reason: "the client does not implement workflow.RunNotifier"}
+	}
+	err := n.OnRunFinished(func(ctx context.Context, ev workflow.RunEvent) {
+		key, owner := ev.Labels[UniqueKeyLabel], ev.Labels[UniqueOwnerLabel]
+		if key == "" || owner == "" {
+			return
+		}
+		// A failed release is not reported: the observer has no caller to
+		// tell, and the ttl frees the key anyway.
+		_ = store.Release(context.WithoutCancel(ctx), key, owner)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("workflow/middleware: register unique release: %w", err)
+	}
+	return Unique(by, store, ttl), nil
+}

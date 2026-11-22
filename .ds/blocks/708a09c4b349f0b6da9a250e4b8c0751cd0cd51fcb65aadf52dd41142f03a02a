@@ -1,0 +1,1 @@
+var ErrCancelTooLate = errors.New("hatchet driver: delayed start fired before the cancel reached the engine")

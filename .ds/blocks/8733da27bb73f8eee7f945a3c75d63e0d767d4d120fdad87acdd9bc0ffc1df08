@@ -1,0 +1,1 @@
+var ErrForced = errors.New("workflow: run ended by an operator")

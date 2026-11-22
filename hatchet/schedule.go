@@ -37,6 +37,8 @@ var _ workflow.ScheduleLister = (*Client)(nil)
 // or TriggerSchedule started for it within Config.ScheduleHistoryWindow,
 // with its status as Status reads it; this costs two run-list calls and
 // one run read per trigger.
+//
+//ds:def id=hatchet-client-schedules-r5btud4q owner=@khanakia stability=stable
 func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -110,6 +112,8 @@ type replacedCron struct {
 // holds s's definition, or deletes every trigger of that name whose
 // definition differs and reports found false, so the caller creates the
 // replacement.
+//
+//ds:def id=hatchet-client-replacenamedcron-3yexpvd5 owner=@khanakia stability=stable
 func (c *Client) replaceNamedCron(ctx context.Context, sdk *hatchetsdk.Client, s workflow.Schedule) (replacedCron, bool, error) {
 	var out replacedCron
 	rows, err := c.listCrons(ctx, sdk, rest.CronWorkflowListParams{CronName: &s.Name})
@@ -151,6 +155,8 @@ const namedSep = "\x00"
 
 // namedScheduleID is the ScheduleID of the named schedule name of
 // workflow wf.
+//
+//ds:def id=hatchet-namedscheduleid-cbs2f42h owner=@khanakia stability=stable
 func namedScheduleID(wf, name string) workflow.ScheduleID {
 	return workflow.ScheduleID(namedIDPrefix + base64.RawURLEncoding.EncodeToString([]byte(wf+namedSep+name)))
 }

@@ -1,0 +1,35 @@
+func (s *Inbox) MarkTx(ctx context.Context, tx *sql.Tx, key workflow.InboxKey, keep time.Duration, now time.Time) (bool, error) {
+	if tx == nil {
+		return false, fmt.Errorf("%w: sqlstore: inbox MarkTx needs a transaction", workflow.ErrInvalid)
+	}
+	if key.Consumer == "" || key.ID == "" {
+		return false, fmt.Errorf("%w: sqlstore: inbox key needs a Consumer and an ID", workflow.ErrInvalid)
+	}
+	h, at, until := keyHash(key.String()), now.UnixNano(), now.Add(keep).UnixNano()
+	n, err := s.st.execN(ctx, tx, "UPDATE {inbox} SET state = ?, token = ?, until_ns = ? WHERE key_hash = ? AND until_ns <= ?",
+		inboxDone, "", until, h, at)
+	if err != nil {
+		return false, fmt.Errorf("sqlstore: inbox mark: %w", err)
+	}
+	if n == 1 {
+		return true, nil
+	}
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+inboxSavepoint); err != nil {
+		return false, fmt.Errorf("sqlstore: inbox mark: savepoint: %w", err)
+	}
+	_, err = s.st.exec(ctx, tx, "INSERT INTO {inbox} (key_hash, consumer, msg_id, state, token, until_ns) VALUES (?, ?, ?, ?, ?, ?)",
+		h, key.Consumer, key.ID, inboxDone, "", until)
+	if err == nil {
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+inboxSavepoint); err != nil {
+			return false, fmt.Errorf("sqlstore: inbox mark: release savepoint: %w", err)
+		}
+		return true, nil
+	}
+	if !s.st.isUnique(err) {
+		return false, fmt.Errorf("sqlstore: inbox mark: %w", err)
+	}
+	if _, rerr := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+inboxSavepoint); rerr != nil {
+		return false, fmt.Errorf("sqlstore: inbox mark: roll back to savepoint: %w", rerr)
+	}
+	return false, nil
+}

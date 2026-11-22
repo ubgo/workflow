@@ -1,0 +1,1 @@
+	CapScheduleActive = defineCap(55, "ScheduleActive")

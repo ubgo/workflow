@@ -1,0 +1,30 @@
+func (f *Client) Start(ctx context.Context) error {
+	f.mu.Lock()
+	if f.started {
+		f.mu.Unlock()
+		return workflow.ErrAlreadyStarted
+	}
+	caps := f.Capabilities()
+	for _, wf := range f.wfs {
+		if err := workflow.CheckCaps(caps, wf); err != nil {
+			f.mu.Unlock()
+			return err
+		}
+	}
+	f.started = true
+	f.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(ctx)
+	if err := f.primary.Start(ctx); err != nil {
+		cancel()
+		return fmt.Errorf("failover: primary: %w", err)
+	}
+	if err := f.secondary.Start(ctx); err != nil {
+		cancel()
+		return fmt.Errorf("failover: secondary: %w", err)
+	}
+	f.mu.Lock()
+	f.stopBackends = cancel
+	f.mu.Unlock()
+	return nil
+}

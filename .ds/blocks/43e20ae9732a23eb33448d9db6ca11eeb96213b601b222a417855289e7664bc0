@@ -1,0 +1,73 @@
+func (c *Client) startWait(r *run, s workflow.Step) {
+	key, err := s.Wait.ResolveKeyFor(r.job, r.id) // Start refused Expr keys, so this is Func, the fixed Key or the run address
+	if err != nil {
+		c.wg.Add(1)
+		go func() { // the coordinator calls startWait, so it cannot send to itself
+			defer c.wg.Done()
+			c.send(r, runEvent{step: s.Name, kind: evWaitTimed, err: err})
+		}()
+		return
+	}
+	w := &waiter{r: r, ch: make(chan []byte, 1)}
+	k := eventKey{name: s.Wait.Event, key: key}
+	c.mu.Lock()
+	r.suspended++
+	r.awaiting++
+	r.park(s.Name)
+	if p, ok := c.consumeLocked(r, k); ok {
+		w.ch <- p // a signal arrived before the wait began; resume at once
+		w.deliverLocked()
+	} else {
+		c.waiters[k] = append(c.waiters[k], w)
+	}
+	c.mu.Unlock()
+
+	var timeout <-chan time.Time
+	var stop func() bool
+	d := s.Wait.Timeout
+	if !s.Wait.Deadline.IsZero() {
+		d = s.Wait.Deadline.Sub(c.clk.Now())
+		if d <= 0 {
+			d = -1 // already past: time out at once
+		}
+	}
+	if d != 0 {
+		t := c.clk.NewTimer(d)
+		timeout, stop = t.C(), t.Stop
+	}
+	remove := func() {
+		c.mu.Lock()
+		r.suspended--
+		if !w.delivered {
+			w.r.awaiting--
+			w.delivered = true
+		}
+		c.waiters[k] = slices.DeleteFunc(c.waiters[k], func(o *waiter) bool { return o == w })
+		if len(c.waiters[k]) == 0 {
+			delete(c.waiters, k)
+		}
+		c.mu.Unlock()
+	}
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		select {
+		case p := <-w.ch:
+			if stop != nil {
+				stop()
+			}
+			remove()
+			c.send(r, runEvent{step: s.Name, kind: evWaitDone, out: p})
+		case <-timeout:
+			remove()
+			c.send(r, runEvent{step: s.Name, kind: evWaitTimed,
+				err: fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrWaitTimeout,
+					fmt.Sprintf("memory: wait step %q for event %q key %q", s.Name, s.Wait.Event, key)), context.DeadlineExceeded)})
+		case <-r.ctx.Done():
+			if stop != nil {
+				stop()
+			}
+			remove()
+		}
+	}()
+}

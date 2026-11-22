@@ -1,0 +1,1 @@
+"Hatchet never catches up a missed cron tick (no backfill) and has no setting for how late a tick may still fire, so only the driver default is honoured: a tick missed while the engine was down is dropped"

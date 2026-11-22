@@ -25,6 +25,8 @@ var _ workflow.PromiseStore = (*PromiseStore)(nil)
 
 // NewPromiseStore returns a PromiseStore over rdb under prefix whose
 // values expire ttl after they are stored (zero: never).
+//
+//ds:def id=redis-newpromisestore-v66xmp89 owner=@khanakia stability=stable
 func NewPromiseStore(rdb goredis.UniversalClient, prefix string, ttl time.Duration) (*PromiseStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -38,11 +40,15 @@ func NewPromiseStore(rdb goredis.UniversalClient, prefix string, ttl time.Durati
 
 // PromiseStore returns a PromiseStore over this client's Redis and prefix
 // with no expiry.
+//
+//ds:def id=redis-client-promisestore-r626cn6b owner=@khanakia stability=stable
 func (c *Client) PromiseStore() *PromiseStore { return &PromiseStore{rdb: c.rdb, base: c.base} }
 
 func (p *PromiseStore) key(id string) string { return p.base + ":promise:" + id }
 
 // Settle implements workflow.PromiseStore.
+//
+//ds:def id=redis-promisestore-settle-tctztsg7 owner=@khanakia stability=stable
 func (p *PromiseStore) Settle(ctx context.Context, id string, val []byte) ([]byte, bool, error) {
 	if val == nil {
 		val = []byte{}

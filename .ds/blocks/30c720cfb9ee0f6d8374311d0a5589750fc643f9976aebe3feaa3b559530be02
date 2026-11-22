@@ -1,0 +1,24 @@
+type Target struct {
+	// Name names the job, unit, label or task. Empty means the
+	// Schedule's Name. Each format checks it against its own rules.
+	Name string
+
+	// Description is a human-readable line where the format has one.
+	// Empty means a default made from the name.
+	Description string
+
+	// Command is the program and its leading arguments. It is required
+	// by the OS formats; for a CronJob it overrides the image's
+	// entrypoint and may be empty.
+	Command []string
+
+	// Args are further arguments (a CronJob's container args).
+	Args []string
+
+	// Parser reads Schedule.Cron when Schedule.Seconds is false, as a
+	// driver's WithCronParser does (cron.ParseYear for a year field).
+	// Nil means cron.Parse. A schedule from another parser is exported
+	// when it offers its fields (cron.FieldsOf); the NextFire forms need
+	// only its Next.
+	Parser cron.Parser
+}

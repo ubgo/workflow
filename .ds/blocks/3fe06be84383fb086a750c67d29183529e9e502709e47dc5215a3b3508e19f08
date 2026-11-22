@@ -1,0 +1,1 @@
+func WithClock(clk clock.Clock) Option { return func(c *config) { c.clk = clk } }

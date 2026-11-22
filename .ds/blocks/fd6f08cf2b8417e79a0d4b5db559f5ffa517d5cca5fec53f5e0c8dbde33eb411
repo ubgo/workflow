@@ -1,0 +1,11 @@
+func (r *MachineRegistry[D]) action(path, name string) (workflow.MachineAction[D], error) {
+	if r != nil {
+		r.mu.RLock()
+		a, ok := r.actions[name]
+		r.mu.RUnlock()
+		if ok {
+			return a, nil
+		}
+	}
+	return nil, fieldErr(path, "no action is registered as %q (registered: %s)", name, r.names(false))
+}

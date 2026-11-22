@@ -1,0 +1,7 @@
+var enqueueScript = goredis.NewScript(luaPrelude + `
+local b, f = ARGV[1], ARGV[2]
+local dup = create_idem(b, f, ARGV, 3)
+if dup then return dup end
+redis.call('PUBLISH', b .. ':wake', 'e')
+return {'new'}
+`)

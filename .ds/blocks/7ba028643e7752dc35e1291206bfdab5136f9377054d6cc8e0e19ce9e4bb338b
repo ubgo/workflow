@@ -1,0 +1,42 @@
+func (d *Datasets) start(ctx context.Context, t DatasetTrigger, versions map[string]string) (workflow.RunRef, error) {
+	var job workflow.Job
+	if t.Job != nil {
+		var err error
+		if job, err = t.Job(maps.Clone(versions)); err != nil {
+			return workflow.RunRef{}, err
+		}
+		if err := workflow.ValidateLabels(job.Labels); err != nil {
+			return workflow.RunRef{}, err
+		}
+		if job.Workflow == "" {
+			job.Workflow = t.Workflow
+		}
+	} else {
+		payload, err := json.Marshal(versions)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		job = workflow.Job{Workflow: t.Workflow, Payload: payload}
+	}
+	job.Labels = maps.Clone(job.Labels)
+	if job.Labels == nil {
+		job.Labels = map[string]string{}
+	}
+	job.Labels[LabelDatasetTrigger] = t.Name
+	if job.IdempotencyKey == "" {
+		job.IdempotencyKey = triggerKey(t.Name, versions)
+	}
+	ref, err := d.bus.client.Enqueue(workflow.AllowReservedLabels(ctx, LabelDatasetTrigger), job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	now := d.clock.Now()
+	for _, ds := range slices.Sorted(maps.Keys(versions)) {
+		err := d.store.Record(ctx, Lineage{Kind: LineageConsumed, Dataset: ds, Version: versions[ds],
+			Run: ref.RunID, Workflow: job.Workflow, Trigger: t.Name, At: now})
+		if err != nil {
+			return ref, fmt.Errorf("record consumed %q version %q: %w", ds, versions[ds], err)
+		}
+	}
+	return ref, nil
+}

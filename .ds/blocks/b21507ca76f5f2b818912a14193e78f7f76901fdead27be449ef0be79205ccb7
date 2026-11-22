@@ -1,0 +1,1 @@
+var ErrNoSecretRef = errors.New("workflow: secret reference has no name")

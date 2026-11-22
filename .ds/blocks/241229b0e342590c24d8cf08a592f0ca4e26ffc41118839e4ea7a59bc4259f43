@@ -1,0 +1,1 @@
+var ErrExpired = errors.New("workflow/middleware: run expired before it started")

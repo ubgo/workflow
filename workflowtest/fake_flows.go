@@ -17,6 +17,8 @@ import (
 // The optional operations the Fake records itself although they carry no
 // capability bit: it does them unless FakeLike copied a client that does
 // not (workflow.Supports).
+//
+//ds:def id=workflowtest-fakeops-pwnskjhn owner=@khanakia stability=stable
 var fakeOps = []workflow.Op{workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting}
 
 var (
@@ -41,6 +43,8 @@ func (f *Fake) Supports(op workflow.Op) bool {
 }
 
 // FakeReset is one successful ResetRun or ResetRunWith call.
+//
+//ds:def id=workflowtest-fakereset-dw7kj5kq owner=@khanakia stability=api
 type FakeReset struct {
 	Ref  workflow.RunRef
 	Step string
@@ -68,6 +72,8 @@ func (f *Fake) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (
 // workflow.RunResetterWith does. After FakeLike(c) with a c that does
 // not reset succeeded runs (workflow.OpResetSucceeded), such a call is an
 // UnsupportedError.
+//
+//ds:def id=workflowtest-fake-resetrunwith-6smy4tj4 owner=@khanakia stability=stable
 func (f *Fake) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -121,6 +127,8 @@ func (f *Fake) ResetRunWith(ctx context.Context, ref workflow.RunRef, step strin
 // client resumed when there is one (which refuses when that client has no
 // SignalWaiting). After FakeLike(c) with a c that has no SignalWaiting it
 // is an UnsupportedError and nothing is recorded.
+//
+//ds:def id=workflowtest-fake-signalwaiting-84da3r4b owner=@khanakia stability=stable
 func (f *Fake) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err
@@ -152,6 +160,8 @@ func (f *Fake) Resets() []FakeReset {
 
 // SignalsWaiting returns every SignalWaiting event, in order. Signal's
 // events are in Signals.
+//
+//ds:def id=workflowtest-fake-signalswaiting-haecqnnh owner=@khanakia stability=stable
 func (f *Fake) SignalsWaiting() []workflow.Event {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -160,6 +170,8 @@ func (f *Fake) SignalsWaiting() []workflow.Event {
 
 // AssertReset fails t unless ref was reset from step (a failed or a
 // succeeded run).
+//
+//ds:def id=workflowtest-fake-assertreset-2gjbkxqc owner=@khanakia stability=stable
 func (f *Fake) AssertReset(t testing.TB, ref workflow.RunRef, step string) {
 	t.Helper()
 	resets := f.Resets()
@@ -171,6 +183,8 @@ func (f *Fake) AssertReset(t testing.TB, ref workflow.RunRef, step string) {
 
 // AssertSignalledWaiting fails t unless an event named name with key key
 // went to SignalWaiting. An event sent with Signal does not count.
+//
+//ds:def id=workflowtest-fake-assertsignalledwaiting-x9ecyaxg owner=@khanakia stability=stable
 func (f *Fake) AssertSignalledWaiting(t testing.TB, name, key string) {
 	t.Helper()
 	var all []string
@@ -189,6 +203,8 @@ func (f *Fake) AssertSignalledWaiting(t testing.TB, name, key string) {
 // AssertPromiseRejected and AssertPromisePending, which read this store
 // and the signals the settlement sent (the Fake must be started for
 // those).
+//
+//ds:def id=workflowtest-fake-promises-yqrgjhnb owner=@khanakia stability=stable
 func (f *Fake) Promises() *workflow.MemoryPromises {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -201,6 +217,8 @@ func (f *Fake) Promises() *workflow.MemoryPromises {
 // AssertPromiseResolved fails t unless promise id was resolved in
 // Promises and its settlement signalled (workflow.PromiseEvent with key
 // id) through the Fake. A non-nil value must equal the resolved value.
+//
+//ds:def id=workflowtest-fake-assertpromiseresolved-wy83merk owner=@khanakia stability=stable
 func (f *Fake) AssertPromiseResolved(t testing.TB, id string, value []byte) {
 	t.Helper()
 	v, settled, err := workflow.PromiseResult(context.Background(), f.Promises(), id)
@@ -221,6 +239,8 @@ func (f *Fake) AssertPromiseResolved(t testing.TB, id string, value []byte) {
 // AssertPromiseRejected fails t unless promise id was rejected in Promises
 // and its settlement signalled through the Fake. A non-empty reason must
 // equal the rejection's reason.
+//
+//ds:def id=workflowtest-fake-assertpromiserejected-9btpkcnz owner=@khanakia stability=stable
 func (f *Fake) AssertPromiseRejected(t testing.TB, id, reason string) {
 	t.Helper()
 	_, settled, err := workflow.PromiseResult(context.Background(), f.Promises(), id)
@@ -240,6 +260,8 @@ func (f *Fake) AssertPromiseRejected(t testing.TB, id, reason string) {
 }
 
 // AssertPromisePending fails t if promise id is settled in Promises.
+//
+//ds:def id=workflowtest-fake-assertpromisepending-56tykqm3 owner=@khanakia stability=stable
 func (f *Fake) AssertPromisePending(t testing.TB, id string) {
 	t.Helper()
 	if _, settled, _ := workflow.PromiseResult(context.Background(), f.Promises(), id); settled {
@@ -247,6 +269,7 @@ func (f *Fake) AssertPromisePending(t testing.TB, id string) {
 	}
 }
 
+//ds:def id=workflowtest-fake-assertpromisesignalled-hvhde9wj owner=@khanakia stability=stable
 func (f *Fake) assertPromiseSignalled(t testing.TB, id string) {
 	t.Helper()
 	for _, ev := range f.Signals() {
@@ -259,6 +282,8 @@ func (f *Fake) assertPromiseSignalled(t testing.TB, id string) {
 
 // FakeObjectCall is one recorded call of a virtual object
 // (workflow.CallObject): the job enqueued for it, read back.
+//
+//ds:def id=workflowtest-fakeobjectcall-hpe9wvp3 owner=@khanakia stability=api
 type FakeObjectCall struct {
 	Key    string
 	Method string
@@ -269,6 +294,8 @@ type FakeObjectCall struct {
 // ObjectCalls returns the recorded calls of the virtual object named
 // object, in order. The Fake runs none of them; register the object's
 // workflow (workflow.DefineObject) so CallObject's Enqueue is accepted.
+//
+//ds:def id=workflowtest-fake-objectcalls-d36grba2 owner=@khanakia stability=stable
 func (f *Fake) ObjectCalls(object string) []FakeObjectCall {
 	var out []FakeObjectCall
 	for _, j := range f.Enqueued(object) {
@@ -289,6 +316,8 @@ func (f *Fake) ObjectCalls(object string) []FakeObjectCall {
 }
 
 // AssertObjectCalled fails t unless method of object was called for key.
+//
+//ds:def id=workflowtest-fake-assertobjectcalled-kmbmnk46 owner=@khanakia stability=stable
 func (f *Fake) AssertObjectCalled(t testing.TB, object, key, method string) {
 	t.Helper()
 	calls := f.ObjectCalls(object)
@@ -304,6 +333,8 @@ func (f *Fake) AssertObjectCalled(t testing.TB, object, key, method string) {
 
 // AssertObjectNotCalled fails t if any method of object was called for
 // key.
+//
+//ds:def id=workflowtest-fake-assertobjectnotcalled-saufgrh2 owner=@khanakia stability=stable
 func (f *Fake) AssertObjectNotCalled(t testing.TB, object, key string) {
 	t.Helper()
 	for _, c := range f.ObjectCalls(object) {

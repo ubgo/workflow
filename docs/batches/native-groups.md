@@ -1,22 +1,22 @@
 # Native group runs
 
-By default `Dispatch` enqueues a batch's jobs one at a time: a 10,000-job batch is 10,000 `Enqueue` calls from the dispatching process. A driver that can start many runs in one engine call implements an optional interface, and `Dispatch` uses it with no change to the app's code. The Hatchet driver offers two: bulk triggers from the dispatching process, and a coordinator run that starts every job on the engine's side.
+By default [`Dispatch`](ds:block?id=batch-manager-start-srx3z8d9) enqueues a batch's jobs one at a time: a 10,000-job batch is 10,000 `Enqueue` calls from the dispatching process. A driver that can start many runs in one engine call implements an optional interface, and `Dispatch` uses it with no change to the app's code. The Hatchet driver offers two: bulk triggers from the dispatching process ([`RunGroup`](ds:block?id=hatchet-client-rungroup-mjs85udq)), and a coordinator run that starts every job on the engine's side ([`SpawnGroup`](ds:block?id=hatchet-client-spawngroup-gqf5rmbq)).
 
 ## Before you start
 
-- A batch `Manager` ([batches](batches.md)) on a client that implements `batch.GroupRunner` or `batch.GroupSpawner`; the Hatchet driver implements both.
-- Only eligible batches take these paths: no job with `RunAt` or an `IdempotencyKey`, since those need `Enqueue`'s own handling. Any other batch is enqueued one job at a time.
+- A batch `Manager` ([batches](batches.md)) on a client that implements [`batch.GroupRunner`](ds:block?id=batch-grouprunner-v7nf5w8m) or [`batch.GroupSpawner`](ds:block?id=batch-groupspawner-wdpwa8xv); the Hatchet driver implements both.
+- Only eligible batches take these paths: no job with `RunAt` or an `IdempotencyKey`, since those need `Enqueue`'s own handling ([`groupEligible`](ds:block?id=batch-groupeligible-nq5pd453)). Any other batch is enqueued one job at a time.
 - The runnable program for this page is [examples/batches](../../examples/batches/): `groups.go` runs a `GroupRunner` on the memory driver and checks the Hatchet chunk limits with no engine, and `hatchet.go` runs the coordinator when `HATCHET_CLIENT_TOKEN` is set.
 
 ## Native group runs
 
-`batch.GroupRunner` has one method, `RunGroup(ctx, group, jobs)`, which starts every job and returns one `RunRef` per job in order. `Dispatch` calls it when the client implements it and every job is eligible. The batch learns of each child's end exactly as for an enqueued job, through its sources, so an implementation keeps two promises: each job's labels (which carry the batch labels) reach that child's `RunEvent.Labels`, and each returned ref answers `Status` and `Cancel` like a ref from `Enqueue`.
+[`batch.GroupRunner`](ds:block?id=batch-grouprunner-v7nf5w8m) has one method, `RunGroup(ctx, group, jobs)`, which starts every job and returns one `RunRef` per job in order. `Dispatch` calls it when the client implements it and every job is eligible ([`start`](ds:block?id=batch-manager-start-srx3z8d9)). The batch learns of each child's end exactly as for an enqueued job, through its sources, so an implementation keeps two promises: each job's labels (which carry the batch labels) reach that child's `RunEvent.Labels`, and each returned ref answers `Status` and `Cancel` like a ref from `Enqueue`.
 
-An error wrapping `workflow.ErrUnsupported`, returned before anything started, makes `Dispatch` fall back to one `Enqueue` per job. Any other error means the group did not fully start; the refs of the children that did start are kept and `Dispatch` cancels the batch, which cancels them.
+An error wrapping `workflow.ErrUnsupported`, returned before anything started, makes `Dispatch` fall back to one `Enqueue` per job. Any other error means the group did not fully start; the refs of the children that did start are kept and `Dispatch` cancels the batch, which cancels them ([`dispatchGroup`](ds:block?id=batch-manager-dispatchgroup-b5w49829)).
 
 ### Step 1: implement `GroupRunner` on a client
 
-The example's client embeds the memory driver and adds `RunGroup`. It loops over `Enqueue` where a real driver would make one engine call per chunk, and counts its calls so the output shows which path a batch took. Embedding keeps the driver's run-finished hook, so the batch hears of each child's end as for an enqueued job:
+The example's client embeds the memory driver and adds `RunGroup`. It loops over `Enqueue` where a real driver would make one engine call per chunk, and counts its calls so the output shows which path a batch took. Embedding keeps the driver's run-finished hook, so the batch hears of each child's end as for an enqueued job ([`GroupRunner`](ds:block?id=batch-grouprunner-v7nf5w8m)):
 
 <!-- snippet: examples/batches/groups.go#group-runner -->
 ```go
@@ -50,7 +50,7 @@ func (g *groupClient) RunGroup(ctx context.Context, group string, jobs []workflo
 
 ### Step 2: dispatch as usual
 
-Nothing in the app's code changes. `Dispatch` sees that the client implements `GroupRunner` and that every job is eligible, sets `State.Grouped` and starts the whole batch in one call:
+Nothing in the app's code changes. `Dispatch` sees that the client implements `GroupRunner` and that every job is eligible, sets `State.Grouped` and starts the whole batch in one call ([`dispatchGroup`](ds:block?id=batch-manager-dispatchgroup-b5w49829)):
 
 <!-- snippet: examples/batches/groups.go#group-dispatch -->
 ```go
@@ -65,7 +65,7 @@ if err != nil {
 fmt.Printf("%s: grouped=%v, RunGroup calls=%d\n", id, st.Grouped, g.groups.Load())
 ```
 
-It prints `group-1: grouped=true, RunGroup calls=1`. One job with an `IdempotencyKey` (or a `RunAt`) makes the batch ineligible, and `Dispatch` enqueues every job of it one at a time; the count stays at one:
+It prints `group-1: grouped=true, RunGroup calls=1`. One job with an `IdempotencyKey` (or a `RunAt`) makes the batch ineligible ([`groupEligible`](ds:block?id=batch-groupeligible-nq5pd453)), and `Dispatch` enqueues every job of it one at a time; the count stays at one:
 
 <!-- snippet: examples/batches/groups.go#group-ineligible -->
 ```go
@@ -83,13 +83,13 @@ fmt.Printf("%s: grouped=%v, RunGroup calls=%d\n", id, st.Grouped, g.groups.Load(
 
 It prints `group-2: grouped=false, RunGroup calls=1`. Both batches reach `Finally` with every job succeeded.
 
-`hatchet.Client.RunGroup` implements it as Hatchet bulk triggers: one `RunMany` call per chunk of jobs of the same workflow, so a batch of N jobs costs about N/1000 calls instead of N. Each run carries exactly what `Enqueue` stamps (input envelope, labels, idempotency metadata, priority). A chunk is at most `hatchet.Config.GroupChunkRuns` runs (default and maximum `hatchet.DefaultGroupChunkRuns`, 1000) and at most `GroupChunkBytes` of JSON input and metadata (default and maximum `hatchet.DefaultGroupChunkBytes`, 2 MiB), so the SDK never splits a chunk again and a failed chunk maps back to its jobs; [Hatchet tunings](../operations/tuning.md#hatchet-tunings) covers when to lower them. Every job is checked before anything starts.
+[`hatchet.Client.RunGroup`](ds:block?id=hatchet-client-rungroup-mjs85udq) implements it as Hatchet bulk triggers: one `RunMany` call per chunk of jobs of the same workflow, so a batch of N jobs costs about N/1000 calls instead of N. Each run carries exactly what `Enqueue` stamps (input envelope, labels, idempotency metadata, priority). A chunk is at most `hatchet.Config.GroupChunkRuns` runs (default and maximum [`hatchet.DefaultGroupChunkRuns`](ds:block?id=hatchet-defaultgroupchunkruns-7excax35), 1000) and at most `GroupChunkBytes` of JSON input and metadata (default and maximum [`hatchet.DefaultGroupChunkBytes`](ds:block?id=hatchet-defaultgroupchunkbytes-nf3tst7q), 2 MiB), so the SDK never splits a chunk again and a failed chunk maps back to its jobs; [Hatchet tunings](../operations/tuning.md#hatchet-tunings) covers when to lower them. Every job is checked before anything starts.
 
 Nothing is needed to turn it on: a batch dispatched on the Hatchet client with eligible jobs uses it.
 
 ### Step 3: size the Hatchet chunks
 
-The defaults fit an engine with the default 4 MiB gRPC message. For an engine with a lower limit, lower the chunk sizes in `hatchet.Config`; the client is still a `GroupRunner`:
+The defaults fit an engine with the default 4 MiB gRPC message ([`DefaultGroupChunkBytes`](ds:block?id=hatchet-defaultgroupchunkbytes-nf3tst7q)). For an engine with a lower limit, lower the chunk sizes in [`hatchet.Config`](ds:block?id=hatchet-config-wdky3m9f); the client is still a `GroupRunner`:
 
 <!-- snippet: examples/batches/groups.go#chunks -->
 ```go
@@ -101,7 +101,7 @@ bulk := hatchet.New(hatchet.Config{
 var _ batch.GroupRunner = bulk // Dispatch on bulk starts an eligible batch with RunGroup
 ```
 
-The defaults are also the ceilings. `Start` refuses a larger value with `workflow.ErrInvalid` before it connects, so a misconfiguration fails at boot rather than at the first big batch:
+The defaults are also the ceilings. `Start` refuses a larger value with `workflow.ErrInvalid` before it connects ([`checkConfig`](ds:block?id=hatchet-checkconfig-wx933eq2)), so a misconfiguration fails at boot rather than at the first big batch:
 
 <!-- snippet: examples/batches/groups.go#chunk-ceiling -->
 ```go
@@ -111,13 +111,13 @@ err = tooBig.Start(ctx)
 fmt.Println("over the ceiling refused:", errors.Is(err, workflow.ErrInvalid))
 ```
 
-It prints `over the ceiling refused: true` with no engine running. A single job larger than `GroupChunkBytes` is not refused; it goes in a chunk of its own.
+It prints `over the ceiling refused: true` with no engine running. A single job larger than `GroupChunkBytes` is not refused; it goes in a chunk of its own ([`RunGroup`](ds:block?id=hatchet-client-rungroup-mjs85udq)).
 
 ## The Hatchet batch coordinator
 
-Bulk triggers still run in the dispatching process: if it dies between chunks, the remaining jobs wait for a resumer. `batch.GroupSpawner` moves the work to the engine. `SpawnGroup(ctx, group, jobs)` starts one coordinator run whose task starts every job as its own child run, so `Dispatch` is one trigger whatever the batch's size and the engine sees the jobs through to started; `CancelGroup` cancels the coordinator and every unfinished child, finding them by label; `SpawnsGroups()` reports whether the client wants the path for new batches.
+Bulk triggers still run in the dispatching process: if it dies between chunks, the remaining jobs wait for a resumer. [`batch.GroupSpawner`](ds:block?id=batch-groupspawner-wdpwa8xv) moves the work to the engine. `SpawnGroup(ctx, group, jobs)` starts one coordinator run whose task starts every job as its own child run, so [`Dispatch`](ds:block?id=batch-manager-dispatchspawn-5eerqxk9) is one trigger whatever the batch's size and the engine sees the jobs through to started; [`CancelGroup`](ds:block?id=hatchet-client-cancelgroup-m5wws29a) cancels the coordinator and every unfinished child, finding them by label; `SpawnsGroups()` reports whether the client wants the path for new batches.
 
-On the Hatchet driver, `hatchet.Config.BatchCoordinator` turns it on, and `Start` then registers the coordinator workflow on the worker:
+On the Hatchet driver, [`hatchet.Config.BatchCoordinator`](ds:block?id=hatchet-config-wdky3m9f) turns it on ([`SpawnsGroups`](ds:block?id=hatchet-client-spawnsgroups-8fdpa7cd)), and [`Start`](ds:block?id=hatchet-client-start-mjwjna3p) then registers the coordinator workflow on the worker:
 
 <!-- snippet: examples/batches/hatchet.go#coordinator -->
 ```go
@@ -135,7 +135,7 @@ if err := m.Attach(ctx); err != nil {
 }
 ```
 
-The children get no `RunRef`: the engine names a child only when the coordinator starts it, after `Dispatch` has returned. The batch keeps the coordinator as `State.Parent` instead and learns each child's end by its `workflow.batch.id` label, which is why a coordinated batch needs a `batch.LabelSource` such as the Hatchet `BatchSource` among the Manager's sources. `Dispatch` refuses one without it, before saving anything:
+The children get no `RunRef`: the engine names a child only when the coordinator starts it, after `Dispatch` has returned. The batch keeps the coordinator as `State.Parent` instead and learns each child's end by its `workflow.batch.id` label, which is why a coordinated batch needs a [`batch.LabelSource`](ds:block?id=batch-labelsource-rq5svjm2) such as the Hatchet [`BatchSource`](ds:block?id=hatchet-client-batchsource-prb3q7d4) among the Manager's sources. [`Dispatch`](ds:block?id=batch-manager-dispatch-6uvrxrj7) refuses one without it, before saving anything:
 
 <!-- snippet: examples/batches/hatchet.go#needs-label-source -->
 ```go
@@ -147,7 +147,7 @@ _, err = plain.Dispatch(ctx, batch.Batch{Jobs: jobs[:1]})
 fmt.Println("hatchet: coordinated batch without a LabelSource refused:", errors.Is(err, workflow.ErrInvalid))
 ```
 
-The coordinator trigger is idempotent per batch, so a resumed dispatch that calls `SpawnGroup` again gets the first coordinator back rather than a second one. A batch whose jobs' input and metadata exceed `hatchet.Config.BatchCoordinatorMaxInput` (default about 2 MiB, which fits the engine's default 4 MiB message) is declined with `ErrUnsupported` and started as bulk triggers instead. `BatchCoordinatorTimeout` bounds one attempt of the coordinator's task (and is how long a coordinator whose worker died waits before the engine retries it elsewhere); `BatchCoordinatorRetry` is its retry policy.
+The coordinator trigger is idempotent per batch ([`coordinatorIdempotencyExpression`](ds:block?id=hatchet-coordinatoridempotencyexpression-nzzx32n2)), so a resumed dispatch that calls `SpawnGroup` again gets the first coordinator back rather than a second one. A batch whose jobs' input and metadata exceed `hatchet.Config.BatchCoordinatorMaxInput` (default about 2 MiB, [`DefaultBatchCoordinatorMaxInput`](ds:block?id=hatchet-defaultbatchcoordinatormaxinput-b29nb5pz), which fits the engine's default 4 MiB message) is declined with `ErrUnsupported` and started as bulk triggers instead ([`SpawnGroup`](ds:block?id=hatchet-client-spawngroup-gqf5rmbq)). `BatchCoordinatorTimeout` ([`DefaultBatchCoordinatorTimeout`](ds:block?id=hatchet-defaultbatchcoordinatortimeout-76ab65pt), five minutes) bounds one attempt of the coordinator's task (and is how long a coordinator whose worker died waits before the engine retries it elsewhere); `BatchCoordinatorRetry` is its retry policy ([`DefaultBatchCoordinatorRetry`](ds:block?id=hatchet-defaultbatchcoordinatorretry-gvwnme9q): 10 retries at 2^n seconds, capped at two minutes).
 
 ## Try it
 
@@ -189,13 +189,13 @@ Without the token the Hatchet part does not run, and `go test ./batches` skips i
 
 ## Pitfalls
 
-- **One ref per job, in order.** `Dispatch` treats a `RunGroup` that returns no error but a different number of refs as a failed group and cancels the batch. When a group fails part-way, return one entry per job with a zero ref for each job that did not start: `Dispatch` keeps the refs it can place and cancels those children. Nil refs, or any other length, make it record every job as cancelled without a ref, so a child that did start is never cancelled on the engine and runs on unseen by the batch.
-- **Decline only before starting.** `ErrUnsupported` means "nothing started, enqueue them instead". Returned after some children started, it makes `Dispatch` enqueue every job again, so those jobs run twice.
-- **Wrappers hide the group paths.** `middleware.WrapClient`, `middleware.WithCodec` and `workflow.Use` embed `workflow.Client`, so a batch dispatched through them enqueues each job through the wrapper. That is deliberate (a codec is never bypassed), but it also means no bulk trigger and no coordinator; build the Manager on the driver's own client when the jobs need neither.
-- **Set `BatchCoordinator` alike everywhere.** Every process sharing a batch store should set it the same way, so a resumed dispatch finds the coordinator; a process with it off cannot run the coordinator's task.
-- **A coordinated batch's jobs have no refs.** `Progress` counts them as usual, but `State.Jobs[i].Ref` stays zero; look children up on the engine by the `workflow.batch.id` label.
-- **Keys and delays opt a batch out.** One job with `RunAt` or an `IdempotencyKey` sends the whole batch down the one-`Enqueue`-per-job path.
-- **Hatchet chunk limits have a ceiling.** `Start` refuses a `GroupChunkRuns` or `GroupChunkBytes` above the default, because the SDK would split the call itself and could no longer say which runs failed.
+- **One ref per job, in order.** `Dispatch` treats a `RunGroup` that returns no error but a different number of refs as a failed group and cancels the batch ([`dispatchGroup`](ds:block?id=batch-manager-dispatchgroup-b5w49829)). When a group fails part-way, return one entry per job with a zero ref for each job that did not start: `Dispatch` keeps the refs it can place and cancels those children. Nil refs, or any other length, make it record every job as cancelled without a ref; the children that did start are then found by their `batch.LabelBatch` label and cancelled with one `CancelAll`, which needs `workflow.CapCancelAll` on the client. Without it `Dispatch`'s error carries a `*workflow.UnsupportedError` naming `CapCancelAll` ([`cancelUnplaced`](ds:block?id=batch-manager-cancelunplaced-4t7aybp3)), and those children run on unseen by the batch, so prefer positional refs.
+- **Decline only before starting.** `ErrUnsupported` means "nothing started, enqueue them instead". Returned after some children started, it makes `Dispatch` enqueue every job again ([`dispatchGroup`](ds:block?id=batch-manager-dispatchgroup-b5w49829)), so those jobs run twice.
+- **Wrappers hide the group paths.** `middleware.WrapClient`, `middleware.WithCodec` and `workflow.Use` embed `workflow.Client` ([`GroupRunner`](ds:block?id=batch-grouprunner-v7nf5w8m)), so a batch dispatched through them enqueues each job through the wrapper. That is deliberate (a codec is never bypassed), but it also means no bulk trigger and no coordinator; build the Manager on the driver's own client when the jobs need neither.
+- **Set `BatchCoordinator` alike everywhere.** Every process sharing a batch store should set it the same way, so a resumed dispatch finds the coordinator; a process with it off cannot run the coordinator's task ([`SpawnGroup`](ds:block?id=hatchet-client-spawngroup-gqf5rmbq) refuses with `workflow.ErrInvalid` there).
+- **A coordinated batch's jobs have no refs.** `Progress` counts them as usual, but `State.Jobs[i].Ref` stays zero ([`GroupSpawner`](ds:block?id=batch-groupspawner-wdpwa8xv)); look children up on the engine by the `workflow.batch.id` label.
+- **Keys and delays opt a batch out.** One job with `RunAt` or an `IdempotencyKey` sends the whole batch down the one-`Enqueue`-per-job path ([`groupEligible`](ds:block?id=batch-groupeligible-nq5pd453)).
+- **Hatchet chunk limits have a ceiling.** `Start` refuses a `GroupChunkRuns` or `GroupChunkBytes` above the default ([`checkConfig`](ds:block?id=hatchet-checkconfig-wx933eq2)), because the SDK would split the call itself and could no longer say which runs failed. See [Hatchet limitations](../drivers/hatchet.md#limitations).
 
 ## Related
 

@@ -1,0 +1,11 @@
+func (c *Client) Capabilities() workflow.Caps {
+	caps := workflow.AllCaps()
+	for _, name := range c.names {
+		caps = caps.Intersect(c.regions[name].Capabilities())
+	}
+	caps = caps.Without(excludedCaps)
+	if _, ok := c.notifiers(); !ok {
+		caps = caps.Without(workflow.CapRunFinished)
+	}
+	return caps
+}

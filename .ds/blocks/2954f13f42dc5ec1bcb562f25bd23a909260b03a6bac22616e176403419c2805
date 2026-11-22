@@ -1,0 +1,5 @@
+type Pinger struct {
+	send    PingFunc
+	timeout time.Duration
+	logger  *slog.Logger
+}

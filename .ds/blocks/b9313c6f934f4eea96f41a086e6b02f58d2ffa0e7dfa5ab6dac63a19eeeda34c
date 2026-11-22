@@ -1,0 +1,6 @@
+type SlotPool struct {
+	mu      sync.Mutex
+	size    int
+	used    int
+	waiting []*slotWaiter
+}

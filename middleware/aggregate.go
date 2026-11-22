@@ -17,6 +17,8 @@ import (
 
 // aggregateNeeds is what Aggregate asks of the client the jobs reach: a
 // delayed start, so the flush run waits for its window to close.
+//
+//ds:def id=mw-aggregateneeds-4qsn28f8 owner=@khanakia stability=stable
 var aggregateNeeds = workflow.CapDelayedStart
 
 // The reserved labels a flush run carries. Aggregate stamps them; the
@@ -42,6 +44,8 @@ const aggregateItemsData = workflow.LabelPrefixInternal + "aggregate-items"
 // group in this process enqueues a flush at once, and so does any later
 // trigger of the group in another process. Do not enqueue the same job
 // again: its payload is already in the group and would go out twice.
+//
+//ds:def id=mw-errflushnotenqueued-wyzy7c7x owner=@khanakia stability=stable
 var ErrFlushNotEnqueued = errors.New("workflow/middleware: aggregate: the item is stored but its flush run could not be enqueued")
 
 // AggregateStore holds the pending items of each aggregation group. It is
@@ -54,6 +58,8 @@ var ErrFlushNotEnqueued = errors.New("workflow/middleware: aggregate: the item i
 // guarantee hold under concurrency: every appended item is returned by
 // exactly one Take, never by two and never by none (as long as Takes keep
 // coming, which Aggregate's flush runs arrange).
+//
+//ds:def id=mw-aggregatestore-4ujmkzzc owner=@khanakia stability=stable
 type AggregateStore interface {
 	// Append adds item to the end of group and returns how many items the
 	// group holds now (this one included) and when its oldest pending
@@ -67,6 +73,8 @@ type AggregateStore interface {
 }
 
 // AggregateConfig configures Aggregate.
+//
+//ds:def id=mw-aggregateconfig-rxz5zsns owner=@khanakia stability=stable
 type AggregateConfig struct {
 	// Workflows names the workflows whose jobs are aggregated. A job of
 	// another workflow passes through untouched. At least one is
@@ -138,6 +146,8 @@ type AggregateConfig struct {
 // returned. If the item is stored and its flush run cannot be enqueued,
 // the error matches ErrFlushNotEnqueued: the item is kept, and the next
 // job of the group in this process enqueues an immediate flush.
+//
+//ds:def id=mw-aggregate-pdu5kk9k owner=@khanakia stability=stable
 func Aggregate(c workflow.Client, store AggregateStore, cfg AggregateConfig) (workflow.EnqueueMiddleware, error) {
 	if c == nil || store == nil {
 		return nil, fmt.Errorf("%w: Aggregate needs a client and a store", workflow.ErrInvalid)
@@ -179,6 +189,7 @@ func (a *aggregator) group(job workflow.Job) string {
 	return a.cfg.Group(job)
 }
 
+//ds:def id=mw-aggregator-wrap-mhdsx7xx owner=@khanakia stability=stable
 func (a *aggregator) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 		if !a.wfs[job.Workflow] {
@@ -226,6 +237,8 @@ func (a *aggregator) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 
 // check refuses what a flush run cannot carry and returns the payload to
 // store (an empty payload is the JSON null).
+//
+//ds:def id=mw-aggregator-check-vqkgkvza owner=@khanakia stability=stable
 func (a *aggregator) check(job workflow.Job) ([]byte, error) {
 	if job.IdempotencyKey != "" || len(job.Chain) > 0 {
 		return nil, fmt.Errorf("%w: Aggregate: a job of aggregated workflow %q may not set an IdempotencyKey or a Chain", workflow.ErrInvalid, job.Workflow)
@@ -258,6 +271,8 @@ func (a *aggregator) check(job workflow.Job) ([]byte, error) {
 // items. The job that fills a chunk (count M, 2M, ...) adds an immediate
 // one, so a full chunk does not wait for the window. With M of one every
 // job is a full chunk and enqueues one immediate flush.
+//
+//ds:def id=mw-aggregator-trigger-8xtzdnbj owner=@khanakia stability=stable
 func (a *aggregator) trigger(count int, first time.Time) (runAt time.Time, ok bool) {
 	m := a.cfg.MaxItems
 	switch {
@@ -271,6 +286,8 @@ func (a *aggregator) trigger(count int, first time.Time) (runAt time.Time, ok bo
 
 // flushJob is the flush run for group: job's routing fields, no payload,
 // and the group labels.
+//
+//ds:def id=mw-aggregator-flushjob-nfx9yqzx owner=@khanakia stability=stable
 func (a *aggregator) flushJob(job workflow.Job, group string, runAt time.Time) workflow.Job {
 	labels := make(map[string]string, len(job.Labels)+2)
 	maps.Copy(labels, job.Labels)
@@ -315,6 +332,8 @@ func AggregateGroup(ctx context.Context) (string, bool) {
 // JournalStore so the window is two store calls wide. A run that fails
 // for good after taking keeps its items only in its journal: keep failed
 // journals (workflow.JournalKeepFailed) to retry it with the same items.
+//
+//ds:def id=mw-aggregateditems-mgvmxuw5 owner=@khanakia stability=stable
 func AggregatedItems(ctx context.Context, store AggregateStore) ([][]byte, error) {
 	group, ok := AggregateGroup(ctx)
 	if !ok {
@@ -351,6 +370,8 @@ func AggregatedItems(ctx context.Context, store AggregateStore) ([][]byte, error
 // data; give a flush workflow one step that reads the items, or steps
 // that run one after another. An item that is not JSON (RawItems) fails
 // the step with a Permanent error; read such items with AggregatedItems.
+//
+//ds:def id=mw-aggregateinput-zg7dq6qm owner=@khanakia stability=stable
 func AggregateInput(store AggregateStore) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -381,6 +402,8 @@ func AggregateInput(store AggregateStore) workflow.Middleware {
 // single server, or aggregation that only needs to hold per process. Its
 // items are lost when the process exits. The zero value is not ready: use
 // NewMemoryAggregate.
+//
+//ds:def id=mw-memoryaggregate-d68n2mzr owner=@khanakia stability=stable
 type MemoryAggregate struct {
 	mu     sync.Mutex
 	groups map[string]*memGroup
@@ -449,6 +472,8 @@ func (m *MemoryAggregate) Pending(group string) int {
 //	c, err := workflow.Use(inner, workflow.Journal(journal), agg)
 //
 // It returns Aggregate's errors.
+//
+//ds:def id=mw-aggregateplugin-fpzxvv2y owner=@khanakia stability=stable
 func AggregatePlugin(c workflow.Client, store AggregateStore, cfg AggregateConfig) (workflow.Plugin, error) {
 	mw, err := Aggregate(c, store, cfg)
 	if err != nil {

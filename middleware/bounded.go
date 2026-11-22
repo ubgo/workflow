@@ -15,11 +15,15 @@ import (
 // verdict on the app's load, not an outage: it deliberately does not
 // match workflow.ErrUnavailable, so a failover client never sends the job
 // to its secondary backend because the primary is busy.
+//
+//ds:def id=mw-errqueuefull-6qbdqgbm owner=@khanakia stability=stable
 var ErrQueueFull = errors.New("workflow/middleware: queue is full")
 
 // ErrQuotaExceeded matches the error Quota refuses an enqueue with when
 // the job's tenant holds its limit of unfinished runs. Like ErrQueueFull
 // it is not an outage and does not match workflow.ErrUnavailable.
+//
+//ds:def id=mw-errquotaexceeded-bppgny9j owner=@khanakia stability=stable
 var ErrQuotaExceeded = errors.New("workflow/middleware: tenant quota exceeded")
 
 // MaxDepthScan bounds how many runs DepthFromRuns and TenantCount read
@@ -27,6 +31,8 @@ var ErrQuotaExceeded = errors.New("workflow/middleware: tenant quota exceeded")
 // deeper than that is reported as MaxDepthScan, so a limit above it is
 // never reached through them; plug in a DepthFunc that asks the store
 // directly for deeper bounds.
+//
+//ds:def id=mw-maxdepthscan-mqa588yu owner=@khanakia stability=stable
 const MaxDepthScan = 10 * workflow.MaxRunsLimit
 
 // DepthFunc counts what a job would join, such as the waiting runs of
@@ -36,6 +42,8 @@ type DepthFunc func(ctx context.Context, job workflow.Job) (int, error)
 
 // CountFunc counts what a job counts against, such as its tenant's
 // unfinished runs. It has DepthFunc's contract; Quota calls it.
+//
+//ds:def id=mw-countfunc-mfn4zqn8 owner=@khanakia stability=api
 type CountFunc = DepthFunc
 
 // BoundedOption configures Bounded and Quota. The modes are exclusive:
@@ -64,6 +72,8 @@ type boundedConfig struct {
 // or until ctx ends, which returns an error matching both ErrQueueFull
 // (or ErrQuotaExceeded) and ctx's error. Use it for producers that should
 // slow down rather than drop work, such as a batch import.
+//
+//ds:def id=mw-boundedwait-tuvbt8nb owner=@khanakia stability=stable
 func BoundedWait(poll time.Duration, clk clock.Clock) BoundedOption {
 	return func(c *boundedConfig) {
 		if poll <= 0 {
@@ -84,6 +94,8 @@ func BoundedWait(poll time.Duration, clk clock.Clock) BoundedOption {
 // job (workflow.ErrUnsupported), never runs it at once. Delayed runs
 // still count as waiting under DepthFromRuns, so a long burst keeps being
 // pushed back by d. A d of zero or less is one second.
+//
+//ds:def id=mw-boundeddelay-qsyzff75 owner=@khanakia stability=stable
 func BoundedDelay(d time.Duration, clk clock.Clock) BoundedOption {
 	return func(c *boundedConfig) {
 		if d <= 0 {
@@ -111,6 +123,8 @@ func BoundedDelay(d time.Duration, clk clock.Clock) BoundedOption {
 // hold exactly belongs to the driver (CapQueueLimitGlobal limits running
 // runs, Concurrency limits runs per key). It runs on every driver; the
 // depth's own needs are its own (DepthFromRuns needs CapRunQuery).
+//
+//ds:def id=mw-bounded-825vj7pf owner=@khanakia stability=stable
 func Bounded(depth DepthFunc, limit func(workflow.Job) int, opts ...BoundedOption) workflow.EnqueueMiddleware {
 	return gate("Bounded", ErrQueueFull, depth, limit, opts)
 }
@@ -122,6 +136,8 @@ func Bounded(depth DepthFunc, limit func(workflow.Job) int, opts ...BoundedOptio
 // a maxRuns of zero or less, passes without a count. The count is as
 // approximate as Bounded's: concurrent enqueues for one tenant can
 // overshoot by the number of racers.
+//
+//ds:def id=mw-quota-e5mx6ukd owner=@khanakia stability=stable
 func Quota(count CountFunc, maxRuns int, opts ...BoundedOption) workflow.EnqueueMiddleware {
 	limit := func(job workflow.Job) int {
 		if job.Tenant == "" {
@@ -133,6 +149,8 @@ func Quota(count CountFunc, maxRuns int, opts ...BoundedOption) workflow.Enqueue
 }
 
 // gate is the shared body of Bounded and Quota.
+//
+//ds:def id=mw-gate-qm9khb2k owner=@khanakia stability=stable
 func gate(name string, full error, count DepthFunc, limit func(workflow.Job) int, opts []BoundedOption) workflow.EnqueueMiddleware {
 	var cfg boundedConfig
 	for _, o := range opts {
@@ -183,6 +201,8 @@ func gate(name string, full error, count DepthFunc, limit func(workflow.Job) int
 // when it is empty; a queue missing from the table has no bound. The
 // middleware cannot see Workflow.Queue, so jobs of a workflow declared on
 // its own queue should name it in Job.Queue. The table is copied.
+//
+//ds:def id=mw-queuelimits-yvqej46h owner=@khanakia stability=stable
 func QueueLimits(limits map[string]int) func(workflow.Job) int {
 	table := make(map[string]int, len(limits))
 	for k, v := range limits {
@@ -199,6 +219,8 @@ func QueueLimits(limits map[string]int) func(workflow.Job) int {
 // low thousands; a deeper queue reads as MaxDepthScan. It needs
 // CapRunQuery and refuses with an UnsupportedError without it (memory,
 // sqlstore, Redis and Hatchet have it).
+//
+//ds:def id=mw-depthfromruns-vmgnha7q owner=@khanakia stability=stable
 func DepthFromRuns(c workflow.Client) (DepthFunc, error) {
 	rq, err := runQuerier(c, "DepthFromRuns", workflow.Caps{})
 	if err != nil {
@@ -218,6 +240,8 @@ func DepthFromRuns(c workflow.Client) (DepthFunc, error) {
 // DepthFromRuns. A job without a tenant counts zero. It needs CapRunQuery
 // and CapTenant and refuses with an UnsupportedError without them
 // (memory, sqlstore, Redis and Hatchet have both).
+//
+//ds:def id=mw-tenantcount-4dmx9yc6 owner=@khanakia stability=stable
 func TenantCount(c workflow.Client) (CountFunc, error) {
 	rq, err := runQuerier(c, "TenantCount", workflow.CapTenant)
 	if err != nil {

@@ -37,6 +37,8 @@ func metricNamed(rm metricdata.ResourceMetrics, name string) (metricdata.Metrics
 // TestQueueWait: the wait histogram records attempt start minus
 // StepInfo.ReadyAt, with the queue as an attribute, and records nothing
 // when the driver leaves ReadyAt zero.
+//
+//ds:def id=sdktest-testqueuewait-ufty8c7b owner=@khanakia stability=stable
 func TestQueueWait(t *testing.T) {
 	t0 := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
 	clk := clock.NewFake(t0)

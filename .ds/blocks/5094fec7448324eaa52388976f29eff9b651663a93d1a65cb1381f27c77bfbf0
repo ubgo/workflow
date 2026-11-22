@@ -1,0 +1,24 @@
+func (c *Client) keepLocked(s *schedule) {
+	if s.keep <= 0 {
+		return
+	}
+	s.fired = slices.DeleteFunc(s.fired, func(r *run) bool { return r.forgotten })
+	finished := 0
+	for _, r := range s.fired {
+		if r.status.IsTerminal() {
+			finished++
+		}
+	}
+	for i := 0; finished > s.keep && i < len(s.fired); {
+		r := s.fired[i]
+		if !r.status.IsTerminal() {
+			i++
+			continue
+		}
+		c.dropLocked(r)
+		c.forgetFinishedLocked(r)
+		r.forgotten = true
+		s.fired = slices.Delete(s.fired, i, i+1)
+		finished--
+	}
+}

@@ -1,0 +1,1 @@
+var errRescheduleGated = workflow.Unsupported("Reschedule", "of a delayed start with an idempotency key: on Hatchet it is a started run whose start gate sleeps until RunAt, and the engine cannot move a durable sleep; Cancel it and Enqueue it again with the new RunAt (the cancel frees the key)")

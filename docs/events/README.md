@@ -1,29 +1,29 @@
 # Events
 
-The `events` package (`github.com/ubgo/workflow/events`, in the core module) starts runs from events: publish and subscribe inside your app, and an HTTP handler that turns a signed webhook delivery into a run. It is not a message broker. Publishing an event enqueues one run per matching subscription on an ordinary `workflow.Client`, so an event is exactly as durable as that client's runs, and deduplication rides on the client's idempotency keys.
+The `events` package (`github.com/ubgo/workflow/events`, in the core module) starts runs from events: publish and subscribe inside your app, and an HTTP handler that turns a signed webhook delivery into a run. It is not a message broker. Publishing an event ([`Bus.Publish`](ds:block?id=events-bus-publish-k8u3yru9)) enqueues one run per matching subscription on an ordinary `workflow.Client`, so an event is exactly as durable as that client's runs, and deduplication rides on the client's idempotency keys ([`deliver`](ds:block?id=events-bus-deliver-zntu7tc7)).
 
 Use it when one thing that happened should start several independent reactions (a receipt, a CRM update, a fulfilment run), when another system calls you with a webhook or a CloudEvent, or when a workflow should start because a dataset it reads has a new version. Use a plain `Enqueue` when only one workflow ever reacts, and a broker (SQS, NATS, Kafka) when the event must travel between apps that do not share a client.
 
 | Guide | What it covers |
 |---|---|
-| [Publish and subscribe](publish-subscribe.md) | A `Bus` with subscriptions, publishing, deduplication by event ID, filters, building the job, delivering to waiting runs |
-| [Inbound webhooks](webhooks.md) | `NewWebhook`, a closed-by-default handler with its status codes, HMAC signatures (GitHub, Shopify) and rotating their secrets, Standard Webhooks, your own verifier |
-| [Datasets and lineage](datasets.md) | `Datasets.Updated`, any-of and all-of dataset triggers, the lineage store and its queries, `MemoryLineage` and the shared SQL and Redis stores |
+| [Publish and subscribe](publish-subscribe.md) | A [`Bus`](ds:block?id=events-bus-r886maq3) with subscriptions, publishing, deduplication by event ID, filters, building the job, delivering to waiting runs |
+| [Inbound webhooks](webhooks.md) | [`NewWebhook`](ds:block?id=events-newwebhook-gweyfedm), a closed-by-default handler with its status codes, HMAC signatures (GitHub, Shopify) and rotating their secrets, Standard Webhooks, your own verifier |
+| [Datasets and lineage](datasets.md) | [`Datasets.Updated`](ds:block?id=events-datasets-updated-tuf5ktvy), any-of and all-of dataset triggers, the lineage store and its queries, [`MemoryLineage`](ds:block?id=events-memorylineage-pejxzqwg) and the shared SQL and Redis stores |
 | [CloudEvents and payload versions](cloudevents.md) | The CloudEvents 1.0 envelope over HTTP, mapping to `Message`, valid extension names, upcasting old payload versions |
 | [Event log, replay and cancel on event](replay-and-cancel.md) | `EventLog`, `Replay` under a replay ID and its `ReplayResult`, cancel subscriptions and their `Cancellation`, divert |
-| [Choreography and saga choreography](choreography.md) | `WithCorrelation`, correlation and causation labels, `Trail` to list one chain's runs, compensation by events compared with `Saga` |
+| [Choreography and saga choreography](choreography.md) | [`WithCorrelation`](ds:block?id=events-withcorrelation-tnjs2y7e), correlation and causation labels, [`Trail`](ds:block?id=events-trail-pyxgkv3b) to list one chain's runs, compensation by events compared with `Saga` |
 
 Every guide has a runnable program on the in-memory driver: [examples/events-webhooks](../../examples/events-webhooks/) (the bus and webhooks), [examples/events-signal](../../examples/events-signal/) (delivering to waiting runs, replay and cancel results, extension names), [examples/events-more](../../examples/events-more/) (CloudEvents, versions, the log, replay, cancel and divert), [examples/datasets](../../examples/datasets/) and [examples/datasets-shared](../../examples/datasets-shared/) (dataset triggers, lineage and its stores) and [examples/saga-choreography](../../examples/saga-choreography/) (choreography).
 
 ## Before you start
 
-- The package is part of the core module: `import "github.com/ubgo/workflow/events"`. It needs nothing but a `workflow.Client`; every driver works.
-- The bus deduplicates by event ID through idempotency keys, so `events.New` refuses a client without `workflow.CapIdempotencyKey` (every driver declares it) unless you pass `events.AllowDuplicates()`.
-- Register the workflows the subscriptions start, and the subscriptions themselves, at boot in every process that publishes, as you register workflows.
+- The package is part of the core module: `import "github.com/ubgo/workflow/events"`. It needs nothing but a `workflow.Client` ([`events.New`](ds:block?id=events-new-k66keudp)); every driver works.
+- The bus deduplicates by event ID through idempotency keys, so [`events.New`](ds:block?id=events-new-k66keudp) refuses a client without `workflow.CapIdempotencyKey` (every driver declares it: [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)) unless you pass [`events.AllowDuplicates()`](ds:block?id=events-allowduplicates-cv3prm2t).
+- Register the workflows the subscriptions start, and the subscriptions themselves, at boot in every process that publishes, as you register workflows: a [`Bus`](ds:block?id=events-bus-r886maq3) keeps its subscriptions in memory.
 
 ## Step 1: subscribe and publish
 
-`events.New(client)` returns a bus. Each `Subscription` names an event and the workflow to run for it; `Publish` enqueues one run per matching subscription, with the message's payload, and returns what it did:
+`events.New(client)` returns a bus. Each [`Subscription`](ds:block?id=events-subscription-fyyhdwra) names an event and the workflow to run for it; [`Publish`](ds:block?id=events-bus-publish-k8u3yru9) enqueues one run per matching subscription, with the message's payload, and returns what it did:
 
 <!-- snippet: examples/events-webhooks/main.go#bus -->
 ```go
@@ -47,11 +47,11 @@ if err != nil {
 }
 ```
 
-Give every message the ID it already has in the world (the payment provider's event ID, your outbox row ID): publishing the same ID again while the first runs are unfinished starts nothing new. The full rules, filters and building the job yourself are on [Publish and subscribe](publish-subscribe.md).
+Give every message the ID it already has in the world (the payment provider's event ID, your outbox row ID): publishing the same ID again while the first runs are unfinished starts nothing new ([`deliver`](ds:block?id=events-bus-deliver-zntu7tc7)). The full rules, filters and building the job yourself are on [Publish and subscribe](publish-subscribe.md).
 
 ## Step 2: turn a webhook into a run
 
-`events.NewWebhook` is an `http.Handler` that verifies the sender's signature, stores a run per delivery and answers 200 once it is stored. It refuses to be built without a verifier:
+[`events.NewWebhook`](ds:block?id=events-newwebhook-gweyfedm) is an `http.Handler` that verifies the sender's signature, stores a run per delivery and answers 200 once it is stored ([`ServeHTTP`](ds:block?id=events-webhook-servehttp-vwuu8jtt)). It refuses to be built without a verifier:
 
 <!-- snippet: examples/events-webhooks/main.go#webhook -->
 ```go
@@ -76,7 +76,7 @@ Mount `h` on your router. Status codes, Standard Webhooks and your own verifier 
 
 ## Step 3: wake runs that wait for the event
 
-A run parked on a wait step for the same event continues when the bus also signals it. Add `events.WithSignal()`:
+A run parked on a wait step for the same event continues when the bus also signals it. Add [`events.WithSignal()`](ds:block?id=events-withsignal-h9xdtvt4):
 
 <!-- snippet: examples/events-signal/main.go#signal-bus -->
 ```go
@@ -90,7 +90,7 @@ if err != nil {
 }
 ```
 
-Set `Message.Key` to the key the wait step resolves; see [Deliver to waiting runs](publish-subscribe.md#deliver-to-waiting-runs).
+Set [`Message.Key`](ds:block?id=events-message-egxsxxf5) to the key the wait step resolves; see [Deliver to waiting runs](publish-subscribe.md#deliver-to-waiting-runs).
 
 ## Try it
 
@@ -133,20 +133,20 @@ The republish returned the first runs, the `pos` message skipped the subscriptio
 
 | If you need | Use | Read |
 |---|---|---|
-| Several independent reactions to one thing that happened (send a receipt, update the CRM) | A `Bus` with one subscription per reaction | [Publish and subscribe](publish-subscribe.md#publish-an-event) |
-| A run that is already waiting for the event to continue as well | `events.WithSignal()` on the bus | [Publish and subscribe › Deliver to waiting runs](publish-subscribe.md#deliver-to-waiting-runs) |
-| Accept a webhook from GitHub, Shopify or a payment provider and process it once | `events.NewWebhook` with an `events.HMAC` verifier | [Inbound webhooks](webhooks.md#accept-a-signed-webhook) |
-| Sign your own outgoing webhooks so receivers can refuse replays | `events.NewStandardWebhooks` | [Inbound webhooks › Standard Webhooks](webhooks.md#standard-webhooks) |
-| Services that each react to events and publish their own, compensation included, with one place to see the whole chain | `events.WithCorrelation()` and `events.Trail` | [Choreography](choreography.md#list-a-chain) |
-| A durable broker between services (SQS, NATS, Kafka) | Not this package: it delivers within one app's client | [Choose a driver](../choosing/drivers.md) |
+| Several independent reactions to one thing that happened (send a receipt, update the CRM) | A [`Bus`](ds:block?id=events-bus-r886maq3) with one subscription per reaction | [Publish and subscribe](publish-subscribe.md#publish-an-event) |
+| A run that is already waiting for the event to continue as well | [`events.WithSignal()`](ds:block?id=events-withsignal-h9xdtvt4) on the bus | [Publish and subscribe › Deliver to waiting runs](publish-subscribe.md#deliver-to-waiting-runs) |
+| Accept a webhook from GitHub, Shopify or a payment provider and process it once | [`events.NewWebhook`](ds:block?id=events-newwebhook-gweyfedm) with an [`events.HMAC`](ds:block?id=events-hmac-5mvsrx94) verifier | [Inbound webhooks](webhooks.md#accept-a-signed-webhook) |
+| Sign your own outgoing webhooks so receivers can refuse replays | [`events.NewStandardWebhooks`](ds:block?id=events-newstandardwebhooks-nchrkphq) | [Inbound webhooks › Standard Webhooks](webhooks.md#standard-webhooks) |
+| Services that each react to events and publish their own, compensation included, with one place to see the whole chain | [`events.WithCorrelation()`](ds:block?id=events-withcorrelation-tnjs2y7e) and [`events.Trail`](ds:block?id=events-trail-pyxgkv3b) | [Choreography](choreography.md#list-a-chain) |
+| A durable broker between services (SQS, NATS, Kafka) | Not this package: it delivers within one app's client ([`Bus`](ds:block?id=events-bus-r886maq3)) | [Choose a driver](../choosing/drivers.md) |
 
 ## Pitfalls
 
-- **It is not a broker.** An event becomes runs on your client and is exactly as durable as they are: on the memory driver it dies with the process, and `Publish` is not part of your database transaction. Use [transactional enqueue](../reliability/transactional-enqueue.md) or the [outbox](../reliability/outbox.md) when the event must not be lost between your commit and the publish.
-- **Deduplication lasts while the run is unfinished.** The key is the client's idempotency key; a republish after the run ended starts a new run, and a message without an `ID` is never deduplicated.
-- **Subscriptions and triggers live in each process.** A process that publishes before it registers a subscription starts no run for it.
-- **Several processes need shared stores.** The event log (`MemoryLog`) and dataset lineage (`MemoryLineage`) default to one process; a fleet needs one durable store per kind, or each replica decides alone.
-- **Labels under `ubgo.workflow/` are the bus's.** `Publish` refuses them in a message, so untrusted input cannot pose as an event's labels.
+- **It is not a broker.** An event becomes runs on your client and is exactly as durable as they are: on the memory driver it dies with the process ([no `CapDurable`](ds:block?id=memory-caps-yxkuq583)), and [`Publish`](ds:block?id=events-bus-publish-k8u3yru9) is not part of your database transaction. Use [transactional enqueue](../reliability/transactional-enqueue.md) or the [outbox](../reliability/outbox.md) when the event must not be lost between your commit and the publish.
+- **Deduplication lasts while the run is unfinished.** The key is the client's idempotency key ([`deliver`](ds:block?id=events-bus-deliver-zntu7tc7)); a republish after the run ended starts a new run, and a message without an `ID` is never deduplicated ([`Publish`](ds:block?id=events-bus-publish-k8u3yru9) makes a fresh one).
+- **Subscriptions and triggers live in each process.** A [`Bus`](ds:block?id=events-bus-r886maq3) holds them in memory. A process that publishes before it registers a subscription starts no run for it.
+- **Several processes need shared stores.** The event log ([`MemoryLog`](ds:block?id=events-memorylog-cmrq93ya)) and dataset lineage ([`MemoryLineage`](ds:block?id=events-memorylineage-pejxzqwg)) default to one process; a fleet needs one durable store per kind, or each replica decides alone.
+- **Labels under `ubgo.workflow/` are the bus's.** [`Publish`](ds:block?id=events-bus-publish-k8u3yru9) refuses them in a message ([`ValidateLabels`](ds:block?id=validatelabels-henfu882)), so untrusted input cannot pose as an event's labels.
 
 ## Related
 

@@ -1,0 +1,9 @@
+func (c *Client) consumeLocked(r *run, k eventKey) ([]byte, bool) {
+	for _, sg := range c.signals[k] {
+		if sg.seq > r.seq && !r.consumed[sg.seq] {
+			r.markConsumedLocked(sg.seq)
+			return sg.payload, true
+		}
+	}
+	return nil, false
+}

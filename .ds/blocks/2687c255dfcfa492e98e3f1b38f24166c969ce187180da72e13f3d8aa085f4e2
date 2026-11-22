@@ -1,0 +1,1 @@
+	ErrUnavailable = errors.New("workflow: backend unavailable")

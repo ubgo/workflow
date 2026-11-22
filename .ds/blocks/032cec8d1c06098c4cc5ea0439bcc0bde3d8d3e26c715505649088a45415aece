@@ -1,0 +1,1 @@
+"the Hatchet engine stores a pause per workflow (and per cron trigger), with no pause of everything that would also hold workflows and triggers made later; pause each one"

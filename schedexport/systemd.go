@@ -36,6 +36,8 @@ var unitName = regexp.MustCompile(`^[A-Za-z0-9:_.\-]{1,240}$`)
 //   - Active and Windows are refused.
 //
 // The service runs Target.Command and Target.Args, quoted for ExecStart=.
+//
+//ds:def id=schedexport-systemdtimer-527u7nzp owner=@khanakia stability=stable
 func SystemdTimer(s workflow.Schedule, t Target) ([]File, error) {
 	const f = FormatSystemd
 	j, err := systemdPrepare(s, t)
@@ -73,6 +75,8 @@ func SystemdTimer(s workflow.Schedule, t Target) ([]File, error) {
 // misfire policy as for SystemdTimer; overlap is not checked, since one
 // fire has no previous run of its own. It returns ErrNoNextFire when the
 // schedule never fires again.
+//
+//ds:def id=schedexport-systemdtimernextfire-bbkt6p5a owner=@khanakia stability=stable
 func SystemdTimerNextFire(s workflow.Schedule, t Target, clk clock.Clock) ([]File, error) {
 	j, err := systemdPrepare(s, t)
 	if err != nil {
@@ -85,6 +89,7 @@ func SystemdTimerNextFire(s workflow.Schedule, t Target, clk clock.Clock) ([]Fil
 	return j.systemdUnits([]string{next.UTC().Format("2006-01-02 15:04:05") + " UTC"})
 }
 
+//ds:def id=schedexport-systemdprepare-qtrfbgra owner=@khanakia stability=stable
 func systemdPrepare(s workflow.Schedule, t Target) (job, error) {
 	const f = FormatSystemd
 	j, err := prepare(f, s, t)
@@ -108,6 +113,8 @@ func systemdPrepare(s workflow.Schedule, t Target) (job, error) {
 
 // systemdUnits writes the timer with the given OnCalendar= values and the
 // service.
+//
+//ds:def id=schedexport-job-systemdunits-5b3buk4u owner=@khanakia stability=stable
 func (j job) systemdUnits(calendars []string) ([]File, error) {
 	m, err := classify(FormatSystemd, j.s.Misfire)
 	if err != nil {
@@ -139,6 +146,8 @@ func (j job) systemdUnits(calendars []string) ([]File, error) {
 // and "$" doubled (specifier and variable expansion), and double-quoted
 // with backslash escapes when it is empty or holds a space, a quote, a
 // backslash or a ";".
+//
+//ds:def id=schedexport-job-argvquoted-9n89ub9y owner=@khanakia stability=stable
 func (j job) argvQuoted() string {
 	var out []string
 	for _, a := range j.target.argv() {
@@ -153,6 +162,8 @@ func (j job) argvQuoted() string {
 
 // onCalendar writes fl as OnCalendar= values ("Mon..Fri *-*-* 09:00:00
 // Europe/Berlin"): one, or two when either day field alone selects a day.
+//
+//ds:def id=schedexport-oncalendar-39zvsdns owner=@khanakia stability=stable
 func onCalendar(fl cron.Fields, zone string) []string {
 	date := func(dom []int) string {
 		year := "*"

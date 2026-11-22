@@ -1,0 +1,19 @@
+func (a *Admin) ResetRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
+	op := OpResetRun
+	if opts.Succeeded {
+		op = OpResetSucceeded
+	}
+	if err := a.check(op); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if ref.IsZero() {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if step == "" {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: reset needs a step", workflow.ErrInvalid)
+	}
+	if opts.Succeeded {
+		return a.c.(workflow.RunResetterWith).ResetRunWith(ctx, ref, step, opts)
+	}
+	return a.c.(workflow.RunResetter).ResetRun(ctx, ref, step)
+}

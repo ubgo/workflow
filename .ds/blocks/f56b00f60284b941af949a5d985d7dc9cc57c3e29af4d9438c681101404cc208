@@ -1,0 +1,17 @@
+func CallObject(ctx context.Context, client Client, object, key, method string, args []byte, job Job) (RunRef, error) {
+	if client == nil || object == "" || key == "" || method == "" {
+		return RunRef{}, invalidf("CallObject needs a client, an object, a key and a method")
+	}
+	payload, err := json.Marshal(objectCall{Method: method, Args: args})
+	if err != nil {
+		return RunRef{}, fmt.Errorf("workflow: call object %q: %w", object, err)
+	}
+	job.Workflow, job.Payload = object, payload
+	labels := make(map[string]string, len(job.Labels)+1)
+	for k, v := range job.Labels {
+		labels[k] = v
+	}
+	labels[LabelObjectKey] = key
+	job.Labels = labels
+	return client.Enqueue(AllowReservedLabels(ctx, LabelObjectKey), job)
+}

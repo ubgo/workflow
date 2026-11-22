@@ -1,0 +1,46 @@
+func TestRetryAndDelete_RouteByPrefix(t *testing.T) {
+	fx := newFixture(t)
+	var healed atomic.Bool
+	flaky := workflow.Workflow{Name: "wait", Steps: []workflow.Step{{Name: "s", Run: func(context.Context, []byte) ([]byte, error) {
+		if healed.Load() {
+			return nil, nil
+		}
+		return nil, workflow.Permanent(errors.New("boom"))
+	}}}}
+	fx.up(flaky)
+	onP := fx.enqueue("p")
+	fx.p.down.Store(true)
+	onS := fx.enqueue("s")
+	fx.p.down.Store(false)
+	fx.waitStatus(onP, workflow.StatusFailed)
+	fx.waitStatus(onS, workflow.StatusFailed)
+
+	healed.Store(true)
+	ref, err := fx.c.Retry(fx.ctx, onS)
+	if err != nil || !strings.HasPrefix(string(ref.RunID), "secondary:") {
+		t.Fatalf("Retry(secondary run) = %+v, %v", ref, err)
+	}
+	fx.waitStatus(onS, workflow.StatusSucceeded)
+	fx.waitStatus(onP, workflow.StatusFailed) // untouched
+
+	if err := fx.c.Delete(fx.ctx, onP); err != nil {
+		t.Fatalf("Delete(primary run): %v", err)
+	}
+	if _, err := fx.c.Status(fx.ctx, onP); !errors.Is(err, workflow.ErrNotFound) {
+		t.Fatalf("deleted run: %v, want ErrNotFound", err)
+	}
+	fx.waitStatus(onS, workflow.StatusSucceeded) // the secondary's run with the same ID stays
+
+	// An unprefixed ref is found on the backend that knows it, and Retry
+	// answers with that backend's prefix.
+	healed.Store(false)
+	fx.p.down.Store(true)
+	onS2 := fx.enqueue("s2")
+	fx.p.down.Store(false)
+	fx.waitStatus(onS2, workflow.StatusFailed)
+	healed.Store(true)
+	raw := workflow.RunRef{RunID: workflow.RunID(strings.TrimPrefix(string(onS2.RunID), "secondary:"))}
+	if ref, err := fx.c.Retry(fx.ctx, raw); err != nil || ref.RunID != onS2.RunID {
+		t.Fatalf("Retry(unprefixed) = %+v, %v; want %v", ref, err, onS2.RunID)
+	}
+}

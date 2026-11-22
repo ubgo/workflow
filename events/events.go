@@ -44,16 +44,21 @@ import (
 // they are a guard, not a sandbox.
 const (
 	// LabelEvent is the event's Name.
+	//ds:def id=events-labelevent-uazmzegg owner=@khanakia stability=stable
 	LabelEvent = workflow.LabelPrefixInternal + "event"
 
 	// LabelEventID is the event's ID.
+	//ds:def id=events-labeleventid-wj93sjzr owner=@khanakia stability=stable
 	LabelEventID = workflow.LabelPrefixInternal + "event-id"
 
 	// LabelSubscription is the subscription that started the run.
+	//ds:def id=events-labelsubscription-h66npjtz owner=@khanakia stability=stable
 	LabelSubscription = workflow.LabelPrefixInternal + "subscription"
 )
 
 // Message is one event.
+//
+//ds:def id=events-message-egxsxxf5 owner=@khanakia stability=stable
 type Message struct {
 	// ID identifies the event for deduplication; publish the same event
 	// again with the same ID. Empty means the Bus makes a new one, so
@@ -100,6 +105,8 @@ type Message struct {
 
 // Subscription starts a run of Workflow for every published message
 // whose Name is Event and that Filter accepts.
+//
+//ds:def id=events-subscription-fyyhdwra owner=@khanakia stability=stable
 type Subscription struct {
 	// Name identifies the subscription; unique within a Bus and stable
 	// across deploys, because it is part of every run's idempotency key.
@@ -123,6 +130,8 @@ type Subscription struct {
 }
 
 // Delivery is what one subscription did with one message.
+//
+//ds:def id=events-delivery-9sgr6u6u owner=@khanakia stability=stable
 type Delivery struct {
 	Subscription string
 	Ref          workflow.RunRef
@@ -130,6 +139,8 @@ type Delivery struct {
 }
 
 // Published is the outcome of Publish.
+//
+//ds:def id=events-published-p4vqqdu7 owner=@khanakia stability=stable
 type Published struct {
 	// ID is the message's ID, the one given or the one the bus made.
 	ID string
@@ -153,19 +164,27 @@ type Option func(*Bus)
 // WithSignal makes Publish also deliver each message to runs waiting on
 // it, as client.Signal(Event{Name, Key, Payload}) would, so a run's wait
 // step and a new subscriber's run see the same event.
+//
+//ds:def id=events-withsignal-h9xdtvt4 owner=@khanakia stability=stable
 func WithSignal() Option { return func(b *Bus) { b.signal = true } }
 
 // WithIDFunc sets how the bus makes an ID for a message published
 // without one (a UUIDv7 or ULID generator). The default is 16 random
 // bytes in hex.
+//
+//ds:def id=events-withidfunc-3kfzh5x7 owner=@khanakia stability=stable
 func WithIDFunc(f func() (string, error)) Option { return func(b *Bus) { b.newID = f } }
 
 // AllowDuplicates lets New accept a client without
 // CapIdempotencyKey; on it, publishing an ID twice starts its runs twice.
+//
+//ds:def id=events-allowduplicates-cv3prm2t owner=@khanakia stability=stable
 func AllowDuplicates() Option { return func(b *Bus) { b.allowDup = true } }
 
 // Bus routes published messages to subscriptions. It is safe for
 // concurrent use; Subscribe may be called at any time.
+//
+//ds:def id=events-bus-r886maq3 owner=@khanakia stability=stable
 type Bus struct {
 	client    workflow.Client
 	signal    bool
@@ -185,6 +204,8 @@ type Bus struct {
 // New returns a bus that enqueues on client. It refuses a client without
 // CapIdempotencyKey with an UnsupportedError, unless AllowDuplicates is
 // given, because deduplication by ID is what makes a republish safe.
+//
+//ds:def id=events-new-k66keudp owner=@khanakia stability=stable
 func New(client workflow.Client, opts ...Option) (*Bus, error) {
 	if client == nil {
 		return nil, fmt.Errorf("%w: events: client is nil", workflow.ErrInvalid)
@@ -210,6 +231,8 @@ func New(client workflow.Client, opts ...Option) (*Bus, error) {
 }
 
 // randomID returns 16 random bytes in hex.
+//
+//ds:def id=events-randomid-d72gyvx6 owner=@khanakia stability=stable
 func randomID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -221,6 +244,8 @@ func randomID() (string, error) {
 // Subscribe adds s. It returns an error wrapping ErrInvalid when s has no
 // Name or Event, has neither Workflow nor Job, or reuses a Name (of a
 // subscription or a cancel subscription).
+//
+//ds:def id=events-bus-subscribe-7fpvhncr owner=@khanakia stability=stable
 func (b *Bus) Subscribe(s Subscription) error {
 	if s.Name == "" || s.Event == "" {
 		return fmt.Errorf("%w: events: subscription needs a Name and an Event", workflow.ErrInvalid)
@@ -245,6 +270,8 @@ func (b *Bus) nameTakenLocked(name string) bool {
 }
 
 // Subscriptions returns the names of the subscriptions, in order.
+//
+//ds:def id=events-bus-subscriptions-c6u993h6 owner=@khanakia stability=stable
 func (b *Bus) Subscriptions() []string {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -273,6 +300,8 @@ func (b *Bus) Subscriptions() []string {
 // (SubscribeCancel), then every divert, then starts the subscriptions'
 // runs, so the runs a message starts are never cancelled by the same
 // message; and finally signals under WithSignal.
+//
+//ds:def id=events-bus-publish-k8u3yru9 owner=@khanakia stability=stable
 func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 	if m.Name == "" {
 		return Published{}, fmt.Errorf("%w: events: message has no Name", workflow.ErrInvalid)
@@ -338,6 +367,8 @@ func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
 // non-empty replayID (Replay) adds LabelReplay and suffixes the
 // idempotency key with "/replay/<replayID>", so the original delivery's
 // key does not swallow the replayed run.
+//
+//ds:def id=events-bus-deliver-zntu7tc7 owner=@khanakia stability=stable
 func (b *Bus) deliver(ctx context.Context, s Subscription, m Message, replayID string) (workflow.RunRef, error) {
 	job := workflow.Job{Workflow: s.Workflow, Payload: m.Payload}
 	if s.Job != nil {

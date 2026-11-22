@@ -18,6 +18,8 @@ import (
 // LabelEvent, LabelEventID and LabelSubscription. Like them it is under
 // the reserved internal prefix: Publish refuses it in Message.Labels and
 // the bus alone sets it.
+//
+//ds:def id=events-labelreplay-49dxzaum owner=@khanakia stability=stable
 const LabelReplay = workflow.LabelPrefixInternal + "replay"
 
 // EventLog keeps every message a Bus publishes, for Replay (EV-04). It is
@@ -30,6 +32,8 @@ const LabelReplay = workflow.LabelPrefixInternal + "replay"
 // in append order; it stops at and returns fn's first error, and returns
 // ctx's error when ctx ends. A message may be stored more than once (a
 // publish retried with the same ID); Replay delivers each ID once.
+//
+//ds:def id=events-eventlog-qhc9zkht owner=@khanakia stability=stable
 type EventLog interface {
 	Append(ctx context.Context, m Message, at time.Time) error
 	Range(ctx context.Context, from, to time.Time, fn func(m Message, at time.Time) error) error
@@ -40,10 +44,14 @@ type EventLog interface {
 // can deliver it again later. Messages Publish refuses (no Name, reserved
 // labels, a version newer than current) are not logged. An Append error
 // fails the Publish before anything is delivered.
+//
+//ds:def id=events-withlog-dwyx7ymc owner=@khanakia stability=stable
 func WithLog(log EventLog) Option { return func(b *Bus) { b.log = log } }
 
 // WithClock sets the clock that stamps log entries. The default is
 // clock.Real.
+//
+//ds:def id=events-withclock-jm3ye43j owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option { return func(b *Bus) { b.clk = c } }
 
 // MemoryLog is the in-process EventLog: entries in a slice in one
@@ -51,6 +59,8 @@ func WithClock(c clock.Clock) Option { return func(b *Bus) { b.clk = c } }
 // suits tests and single-process apps that replay within a run; a fleet
 // or a replay after a restart needs a durable EventLog. Safe for
 // concurrent use.
+//
+//ds:def id=events-memorylog-cmrq93ya owner=@khanakia stability=stable
 type MemoryLog struct {
 	mu      sync.Mutex
 	entries []logEntry
@@ -64,6 +74,8 @@ type logEntry struct {
 var _ EventLog = (*MemoryLog)(nil)
 
 // NewMemoryLog returns an empty MemoryLog.
+//
+//ds:def id=events-newmemorylog-ejg663z5 owner=@khanakia stability=stable
 func NewMemoryLog() *MemoryLog { return &MemoryLog{} }
 
 // cloneMessage copies m's payload and labels, so a stored message is not
@@ -119,6 +131,8 @@ func (l *MemoryLog) Len() int {
 
 // Prune drops the entries stored before before and returns how many it
 // dropped: retention for a long-lived process.
+//
+//ds:def id=events-memorylog-prune-rapr8x3v owner=@khanakia stability=stable
 func (l *MemoryLog) Prune(before time.Time) int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -128,6 +142,8 @@ func (l *MemoryLog) Prune(before time.Time) int {
 }
 
 // ReplayOptions selects what Replay delivers again.
+//
+//ds:def id=events-replayoptions-gqq7vh9d owner=@khanakia stability=stable
 type ReplayOptions struct {
 	// From and To bound the log time to [From, To); a zero bound is
 	// open.
@@ -152,6 +168,8 @@ type ReplayOptions struct {
 }
 
 // ReplayDelivery is what one subscription did with one replayed message.
+//
+//ds:def id=events-replaydelivery-9ww3w5f4 owner=@khanakia stability=stable
 type ReplayDelivery struct {
 	MessageID    string
 	Subscription string
@@ -165,6 +183,8 @@ type ReplayDelivery struct {
 }
 
 // ReplayResult is the outcome of Replay.
+//
+//ds:def id=events-replayresult-6pdnbqpp owner=@khanakia stability=stable
 type ReplayResult struct {
 	// ID is the replay ID, the one given or the one the bus made.
 	ID string
@@ -201,6 +221,8 @@ type ReplayResult struct {
 // per delivery: in its Err and joined into the returned error, and the
 // replay goes on, so calling it again with the same ID retries only the
 // failures.
+//
+//ds:def id=events-bus-replay-r7vbdtbv owner=@khanakia stability=stable
 func (b *Bus) Replay(ctx context.Context, o ReplayOptions) (ReplayResult, error) {
 	if b.log == nil {
 		return ReplayResult{}, fmt.Errorf("%w: events: Replay needs an EventLog (WithLog)", workflow.ErrInvalid)
@@ -277,6 +299,8 @@ func (b *Bus) Replay(ctx context.Context, o ReplayOptions) (ReplayResult, error)
 
 // replayOne delivers m to s under replayID, after looking for a run an
 // earlier replay with this ID started when querier is set.
+//
+//ds:def id=events-bus-replayone-fvpqjh34 owner=@khanakia stability=stable
 func (b *Bus) replayOne(ctx context.Context, querier workflow.RunQuerier, s Subscription, m Message, replayID string) ReplayDelivery {
 	d := ReplayDelivery{MessageID: m.ID, Subscription: s.Name}
 	if querier != nil {

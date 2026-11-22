@@ -1,0 +1,4 @@
+type SchedulePauser interface {
+	PauseSchedule(ctx context.Context, t ScheduleTarget) error
+	ResumeSchedule(ctx context.Context, t ScheduleTarget) error
+}

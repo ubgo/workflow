@@ -1,0 +1,1 @@
+var ErrUnhandledEvent = fmt.Errorf("%w: event not handled in the machine's current state", ErrInvalid)

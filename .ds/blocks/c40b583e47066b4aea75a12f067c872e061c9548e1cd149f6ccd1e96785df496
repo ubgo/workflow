@@ -1,0 +1,18 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	all, err := c.rdb.HGetAll(ctx, c.base+":nodes").Result()
+	if err != nil {
+		return nil, fmt.Errorf("redis: list nodes: %w", classify(err))
+	}
+	cutoff := c.leaseClk.Now().Add(-3 * c.lease)
+	var out []workflow.NodeInfo
+	for id, v := range all {
+		var n workflow.NodeInfo
+		if err := json.Unmarshal([]byte(v), &n); err != nil || n.LastSeen.Before(cutoff) {
+			c.rdb.HDel(ctx, c.base+":nodes", id)
+			continue
+		}
+		out = append(out, n)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}

@@ -1,0 +1,29 @@
+func validateMisfire(m Misfire) error {
+	if m.Within < 0 {
+		return errors.New("Misfire.Within is negative")
+	}
+	switch m.Policy {
+	case "":
+		if !m.IsZero() {
+			return errors.New("Misfire sets Within or Max without a Policy")
+		}
+	case MisfireSkip:
+		if m.Within != 0 {
+			return errors.New("Misfire.Within is not used by MisfireSkip, which fires only within MisfireGrace")
+		}
+		if m.Max != 0 {
+			return errors.New("Misfire.Max is only for MisfireFireAll")
+		}
+	case MisfireFireOnce:
+		if m.Max != 0 {
+			return errors.New("Misfire.Max is only for MisfireFireAll")
+		}
+	case MisfireFireAll:
+		if m.Max < 1 {
+			return errors.New("MisfireFireAll needs Misfire.Max of at least 1")
+		}
+	default:
+		return fmt.Errorf("unknown Misfire.Policy %q", m.Policy)
+	}
+	return nil
+}

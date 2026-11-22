@@ -1,0 +1,35 @@
+func (f *Fake) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !f.caps.Has(workflow.CapScheduleTrigger) {
+		return workflow.RunRef{}, &workflow.UnsupportedError{Field: "TriggerSchedule", Missing: workflow.CapScheduleTrigger}
+	}
+	f.mu.Lock()
+	i := f.scheduleIndexLocked(id)
+	if i < 0 {
+		f.mu.Unlock()
+		if t, ok := f.inner.(workflow.ScheduleTriggerer); ok {
+			return t.TriggerSchedule(ctx, id)
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	}
+	fs := f.scheds[i]
+	if r, ok := f.byRef[fs.LastRun]; ok && fs.Schedule.Overlap.Blocks(r.status) {
+		f.mu.Unlock()
+		return workflow.RunRef{}, workflow.OverlapRefusal(id, fs.LastRun, r.status)
+	}
+	f.mu.Unlock()
+	ref, err := f.Enqueue(workflow.AllowReservedLabels(ctx, workflow.LabelSchedule, workflow.LabelScheduleName, workflow.LabelTrigger), workflow.Job{Workflow: fs.Schedule.Workflow, Payload: fs.Schedule.Input,
+		Labels: workflow.TriggeredLabels(fs.Schedule.Labels, id, fs.Schedule.Name), Tenant: fs.Schedule.Tenant})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if i := f.scheduleIndexLocked(id); i >= 0 {
+		f.scheds[i].LastRun = ref
+	}
+	f.triggers = append(f.triggers, id)
+	return ref, nil
+}

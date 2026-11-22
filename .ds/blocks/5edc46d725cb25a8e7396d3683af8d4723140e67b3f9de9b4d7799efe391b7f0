@@ -1,0 +1,13 @@
+func ExcludeWeekdays(loc *time.Location, days ...time.Weekday) (ExclusionCalendar, error) {
+	if err := calendarZone("ExcludeWeekdays", loc); err != nil {
+		return nil, err
+	}
+	w := weekdaySet{loc: loc}
+	for _, d := range days {
+		if d < time.Sunday || d > time.Saturday {
+			return nil, invalidf("ExcludeWeekdays: %d is not a weekday", d)
+		}
+		w.days[d] = true
+	}
+	return w, nil
+}

@@ -1,0 +1,12 @@
+func (a *Admin) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	if err := a.check(OpReschedule); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if ref.IsZero() {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if at.IsZero() {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: reschedule needs a time", workflow.ErrInvalid)
+	}
+	return a.c.(workflow.RunRescheduler).Reschedule(ctx, ref, at)
+}

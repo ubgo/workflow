@@ -1,0 +1,17 @@
+func SecretGuard(d SecretDetector) EnqueueMiddleware {
+	if d == nil {
+		d = NewSecretDetector(SecretRules{})
+	}
+	return func(next EnqueueFunc) EnqueueFunc {
+		return func(ctx context.Context, job Job) (RunRef, error) {
+			if found := d.Detect(job); len(found) > 0 {
+				parts := make([]string, len(found))
+				for i, f := range found {
+					parts[i] = f.Where + " (" + f.Rule + ")"
+				}
+				return RunRef{}, fmt.Errorf("%w: %s", ErrSecretInPayload, strings.Join(parts, ", "))
+			}
+			return next(ctx, job)
+		}
+	}
+}

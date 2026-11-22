@@ -1,0 +1,12 @@
+func TestDebounce_RefusesWithoutCapabilities(t *testing.T) {
+	key := func(workflow.Job) string { return "k" }
+	_, err := middleware.Debounce(&stubClient{caps: workflow.CapDelayedStart}, nil, key, time.Second, 0)
+	var ue *workflow.UnsupportedError
+	if !errors.Is(err, workflow.ErrUnsupported) || !errors.As(err, &ue) || ue.Missing != workflow.CapCancel {
+		t.Fatalf("err = %v", err)
+	}
+	full := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
+	if _, err := middleware.Debounce(full, nil, key, time.Second, time.Millisecond); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("maxWait below window accepted: %v", err)
+	}
+}

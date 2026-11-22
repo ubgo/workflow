@@ -1,0 +1,17 @@
+func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
+	if err := workflow.CheckPause(caps, t); err != nil {
+		return err
+	}
+	var err error
+	if t.All {
+		_, err = c.st.exec(ctx, c.st.db, "DELETE FROM {pauses} WHERE kind IN (?, ?, ?)", pauseAll, pauseWorkflow, pauseQueue)
+	} else {
+		kind, name := pauseRow(t)
+		_, err = c.st.exec(ctx, c.st.db, "DELETE FROM {pauses} WHERE kind = ? AND name = ?", kind, name)
+	}
+	if err != nil {
+		return err
+	}
+	c.nudge()
+	return nil
+}

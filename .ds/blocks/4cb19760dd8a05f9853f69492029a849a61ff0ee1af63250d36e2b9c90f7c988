@@ -1,0 +1,1 @@
+var ErrNoDataStore = errors.New("workflow: no data store on this context (use the Data plugin)")

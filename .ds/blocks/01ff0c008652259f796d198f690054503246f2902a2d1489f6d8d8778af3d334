@@ -1,0 +1,3 @@
+func Where(desc string, fn func(workflow.Job) bool) JobMatcher {
+	return JobMatcher{desc: desc, match: fn}
+}

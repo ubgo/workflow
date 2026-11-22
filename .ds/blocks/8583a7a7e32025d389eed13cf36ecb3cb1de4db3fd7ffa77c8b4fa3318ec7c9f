@@ -1,0 +1,17 @@
+func (a *Admin) PreviewCancelAll(ctx context.Context, q workflow.RunQuery) (BulkResult, error) {
+	if err := a.check(OpCancelAll); err != nil {
+		return BulkResult{}, err
+	}
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return BulkResult{}, err
+	}
+	if err := a.check(OpRuns); err != nil {
+		return BulkResult{}, err
+	}
+	q.Statuses = workflow.CancelStatuses(q)
+	refs, truncated, err := a.collect(ctx, q, a.maxScan)
+	if err != nil {
+		return BulkResult{}, err
+	}
+	return BulkResult{Matched: len(refs), Truncated: truncated, Sample: sample(refs)}, nil
+}

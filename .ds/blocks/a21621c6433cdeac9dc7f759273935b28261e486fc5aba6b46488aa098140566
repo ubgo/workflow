@@ -1,0 +1,1 @@
+func WithRetryableJobs() Option { return func(m *Manager) { m.retainSpecs = true } }

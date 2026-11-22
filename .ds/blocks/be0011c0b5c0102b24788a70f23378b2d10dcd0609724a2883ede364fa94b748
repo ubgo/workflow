@@ -1,0 +1,9 @@
+func checkCron(expr string, seconds bool) error {
+	if _, err := workflow.ParseCron(expr, seconds, nil); err != nil {
+		return fmt.Errorf("%w: %v", workflow.ErrInvalid, err)
+	}
+	if strings.HasPrefix(strings.TrimSpace(expr), "@") {
+		return workflow.Unsupported("Cron", "Hatchet takes plain five-field expressions, not "+strconv.Quote(expr))
+	}
+	return nil
+}

@@ -1,0 +1,6 @@
+type Saga struct {
+	name string
+
+	mu   sync.Mutex
+	done []sagaAction
+}

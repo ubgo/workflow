@@ -1,0 +1,46 @@
+func (m *Manager) dispatch(ctx context.Context, b Batch, id ID) (ID, error) {
+	if id == "" {
+		return "", fmt.Errorf("%w: batch %q: the ID function returned an empty ID", workflow.ErrInvalid, b.Name)
+	}
+	// The dispatch owner is a lease token, not an ID: it stays random
+	// whatever WithIDFunc says, so no other process can guess it.
+	owner, err := newID()
+	if err != nil {
+		return "", err
+	}
+	jobs := labelJobs(id, 0, b.Jobs)
+	now := m.clk.Now()
+	st := State{
+		ID: id, Name: b.Name, Labels: callbackLabels(b.Labels), Then: b.Then, Catch: b.Catch, Finally: b.Finally,
+		Before: b.Before, Progress: b.Progress,
+		AllowFailures: b.AllowFailures, DiscardedAs: b.DiscardedAs, Jobs: make([]JobState, len(b.Jobs)), CreatedAt: now,
+		DispatchOwner: string(owner), DispatchUntil: now.Add(m.dispatchLease),
+	}
+	if b.Before != "" {
+		st.Pending = []PendingCallback{{Kind: CallbackBefore, Workflow: b.Before}}
+	}
+	sp, spawns := m.client.(GroupSpawner)
+	spawns = spawns && sp.SpawnsGroups() && groupEligible(jobs)
+	if spawns && !m.byLabel {
+		return "", fmt.Errorf("%w: batch %q: a coordinated batch (GroupSpawner) learns its jobs' ends only by label; attach a LabelSource such as the Hatchet BatchSource", workflow.ErrInvalid, b.Name)
+	}
+	if _, ok := m.client.(GroupRunner); (ok && groupEligible(jobs)) || spawns || m.resumable || m.retainSpecs {
+		st.Spec = jobs
+	}
+	if err := m.store.Create(ctx, st); err != nil {
+		return "", err
+	}
+	if b.Before != "" {
+		// A Before that fails to enqueue stays pending and is retried like
+		// any callback; it does not fail the dispatch.
+		if err := m.retryBatch(ctx, id); err != nil {
+			m.log.ErrorContext(ctx, "batch: enqueue before callback", "batch", string(id), "error", err)
+		}
+	}
+	if spawns {
+		if handled, err := m.dispatchSpawn(ctx, sp, id, string(owner), jobs); handled {
+			return id, err
+		}
+	}
+	return id, m.start(ctx, id, string(owner), jobs, allIndexes(len(jobs)))
+}

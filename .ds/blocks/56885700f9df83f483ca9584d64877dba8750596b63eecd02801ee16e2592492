@@ -1,0 +1,9 @@
+func (m *MemoryBuckets) Observe(_ context.Context, key string, spec BucketSpec, level float64, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.buckets == nil {
+		m.buckets = map[string]bucketLevel{}
+	}
+	m.buckets[key] = bucketLevel{level: min(max(level, 0), spec.Capacity), at: now}
+	return nil
+}

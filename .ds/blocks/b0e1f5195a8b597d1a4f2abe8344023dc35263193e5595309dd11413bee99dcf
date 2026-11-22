@@ -1,0 +1,9 @@
+func stepTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration) time.Duration {
+	switch {
+	case s.Timeout > 0:
+		return s.Timeout
+	case wf.Timeout > 0:
+		return wf.Timeout
+	}
+	return fallback
+}

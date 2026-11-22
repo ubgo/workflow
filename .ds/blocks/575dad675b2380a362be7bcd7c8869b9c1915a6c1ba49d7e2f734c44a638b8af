@@ -1,0 +1,31 @@
+func (c Calendar) Expr() (string, error) {
+	if len(c.DayOfMonth) > 0 && len(c.DayOfWeek) > 0 {
+		return "", fmt.Errorf("%w: DayOfMonth and DayOfWeek both set: cron would fire on either, not on both; use one and check the other in the job", ErrCalendar)
+	}
+	minute := c.Minute
+	if len(minute) == 0 {
+		minute = []int{0}
+	}
+	months := make([]int, len(c.Month))
+	for i, m := range c.Month {
+		months[i] = int(m)
+	}
+	days := make([]int, len(c.DayOfWeek))
+	for i, d := range c.DayOfWeek {
+		days[i] = int(d)
+	}
+	parts := make([]string, 0, len(fields))
+	for i, vals := range [][]int{minute, c.Hour, c.DayOfMonth, months, days} {
+		f := fields[i]
+		hi := f.max
+		if hi == 7 { // day-of-week: time.Weekday is 0-6
+			hi = 6
+		}
+		text, err := listExpr(vals, f.min, hi)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s: %w", ErrCalendar, f.name, err)
+		}
+		parts = append(parts, text)
+	}
+	return strings.Join(parts, " "), nil
+}

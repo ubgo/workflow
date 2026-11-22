@@ -63,6 +63,8 @@ func (f *Fake) EnqueueClosure(ctx context.Context, c workflow.ClosureJob) (workf
 
 // Closures returns the recorded closures, in enqueue order, optionally
 // only those with one of names.
+//
+//ds:def id=workflowtest-fake-closures-sn9dakzp owner=@khanakia stability=stable
 func (f *Fake) Closures(names ...string) []workflow.ClosureJob {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -76,6 +78,8 @@ func (f *Fake) Closures(names ...string) []workflow.ClosureJob {
 }
 
 // AssertClosureEnqueued fails t unless a closure named name was enqueued.
+//
+//ds:def id=workflowtest-fake-assertclosureenqueued-s92f8qd5 owner=@khanakia stability=stable
 func (f *Fake) AssertClosureEnqueued(t testing.TB, name string) {
 	t.Helper()
 	if len(f.Closures(name)) > 0 {
@@ -92,6 +96,8 @@ func (f *Fake) AssertClosureEnqueued(t testing.TB, name string) {
 // with ctx, and returns their errors joined (each naming its closure).
 // It runs no retries and does not change the recorded runs' statuses; it
 // is for a test that asserts on what the closures do.
+//
+//ds:def id=workflowtest-fake-runclosures-4deynsjf owner=@khanakia stability=stable
 func (f *Fake) RunClosures(ctx context.Context) error {
 	var errs []error
 	for _, c := range f.Closures() {

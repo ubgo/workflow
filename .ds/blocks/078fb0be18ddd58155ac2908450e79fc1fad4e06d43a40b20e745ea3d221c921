@@ -1,0 +1,12 @@
+func (a *Admin) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
+	if err := a.check(OpEditRun); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if ref.IsZero() {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if err := workflow.CheckJobEdit(edit); err != nil {
+		return workflow.RunRef{}, err
+	}
+	return a.c.(workflow.RunEditor).EditRun(ctx, ref, edit)
+}

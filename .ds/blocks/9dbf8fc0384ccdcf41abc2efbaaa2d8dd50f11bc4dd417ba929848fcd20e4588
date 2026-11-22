@@ -1,0 +1,1 @@
+var ErrQueueFull = errors.New("workflow/middleware: queue is full")

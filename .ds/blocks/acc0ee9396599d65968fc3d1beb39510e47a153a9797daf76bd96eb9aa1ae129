@@ -1,0 +1,1 @@
+var ErrPanic = errors.New("workflow/middleware: step panicked")

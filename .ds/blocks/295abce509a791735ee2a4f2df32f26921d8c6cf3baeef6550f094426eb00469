@@ -1,0 +1,48 @@
+func resetCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	step := fs.String("step", "", "the step to run again from; it and every step after it run again (required)")
+	succeeded := fs.Bool("succeeded", false, "also reset a run that succeeded (redo work that already succeeded)")
+	dry := fs.Bool("dry-run", false, "check the run can be reset and change nothing")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) != 1 {
+			return usagef("reset takes one run ID")
+		}
+		if *step == "" {
+			return usagef("reset needs --step")
+		}
+		id := args[0]
+		if *dry {
+			var r runJSON
+			raw, err := e.api.get(ctx, runPath(id, false, ""), &r)
+			if err != nil {
+				return err
+			}
+			switch {
+			case r.Status == "failed":
+			case r.Status == "succeeded" && !*succeeded:
+				return fmt.Errorf("dry run: reset would be refused: run %s succeeded; pass --succeeded to redo it", r.Ref)
+			case r.Status != "succeeded":
+				return fmt.Errorf("dry run: reset would be refused: run %s is %s; reset needs a failed run (or a succeeded one with --succeeded)", r.Ref, r.Status)
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would reset run %s (%s, %s) from step %s; nothing changed\n", r.Ref, r.Workflow, r.Status, *step)
+			return nil
+		}
+		var out struct {
+			Ref refJSON `json:"ref"`
+		}
+		raw, err := e.api.do(ctx, "POST", runPath(id, false, "/reset"), struct {
+			Step      string `json:"step"`
+			Succeeded bool   `json:"succeeded,omitempty"`
+		}{*step, *succeeded}, &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		fprintf(e.out, "reset %s from step %s\n", out.Ref, *step)
+		return nil
+	}
+}

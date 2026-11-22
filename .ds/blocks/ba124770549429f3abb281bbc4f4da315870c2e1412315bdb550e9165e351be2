@@ -1,0 +1,256 @@
+func RunChildFlows(t *testing.T, h FlowHarness) {
+	t.Run("discriminator", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "join", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			res, err := workflow.JoinChildren(ctx, c, "kids", g.jobs("hold", "ok", "hold"), workflow.JoinSpec{Need: 1, Poll: 5 * time.Millisecond})
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(res)
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := flowAwait(t, c, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res workflow.JoinResult
+		if err := json.Unmarshal(out, &res); err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Winners) != 1 || res.Winners[0] != 1 || string(res.Outputs[0]) != `"done ok"` {
+			t.Fatalf("winners %v outputs %q", res.Winners, res.Outputs)
+		}
+		for _, i := range []int{0, 2} {
+			if st, err := c.Status(context.Background(), res.Refs[i]); err != nil || st.IsTerminal() {
+				t.Fatalf("loser %d is %s (%v), want still running", i, st, err)
+			}
+		}
+		g.release()
+		flowStatus(t, c, res.Refs[0], workflow.StatusSucceeded)
+	})
+
+	t.Run("cancelling-partial", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "join", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			res, err := workflow.JoinChildren(ctx, c, "kids", g.jobs("ok", "hold", "ok"), workflow.JoinSpec{Need: 2, Rest: workflow.JoinCancelRest, Poll: 5 * time.Millisecond})
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(res)
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult, workflow.CapCancel)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := flowAwait(t, c, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res workflow.JoinResult
+		if err := json.Unmarshal(out, &res); err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprint(res.Winners) != "[0 2]" {
+			t.Fatalf("winners %v", res.Winners)
+		}
+		flowStatus(t, c, res.Refs[1], workflow.StatusCancelled)
+	})
+
+	t.Run("complete-rest", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "join", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			res, err := workflow.JoinChildren(ctx, c, "kids", g.jobs("hold", "ok"), workflow.JoinSpec{Need: 1, Rest: workflow.JoinCompleteRest, Poll: 5 * time.Millisecond})
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(res)
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapResult, workflow.CapForceRun, workflow.CapCancel)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := flowAwait(t, c, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res workflow.JoinResult
+		if err := json.Unmarshal(out, &res); err != nil {
+			t.Fatal(err)
+		}
+		flowStatus(t, c, res.Refs[0], workflow.StatusSucceeded)
+	})
+
+	t.Run("failed-join", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "join", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			_, err := workflow.JoinChildren(ctx, c, "kids", g.jobs("fail", "hold", "fail"), workflow.JoinSpec{Need: 2, Rest: workflow.JoinCancelRest, Poll: 5 * time.Millisecond})
+			return nil, err
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey, workflow.CapCancel, workflow.CapRunQuery)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := flowAwait(t, c, ref); err == nil {
+			t.Fatal("a join that cannot pass must fail its step")
+		}
+		page, err := c.(workflow.RunQuerier).Runs(context.Background(), workflow.RunQuery{Workflow: g.name, Statuses: []workflow.Status{workflow.StatusCancelled}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Runs) != 1 {
+			t.Fatalf("%d children cancelled, want the one still running", len(page.Runs))
+		}
+	})
+
+	t.Run("cancel-children", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		ids := make(chan workflow.RunID, 1)
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			if _, err := workflow.Spawn(ctx, c, "kids", g.jobs("hold", "hold")); err != nil {
+				return nil, err
+			}
+			info, _ := workflow.StepInfoFrom(ctx)
+			select {
+			case ids <- info.RunID:
+			default:
+			}
+			return nil, nil
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapCancelAll, workflow.CapRunQuery)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		flowStatus(t, c, ref, workflow.StatusSucceeded)
+		n, err := workflow.CancelChildren(context.Background(), c, <-ids, "fan")
+		if err != nil || n != 2 {
+			t.Fatalf("CancelChildren = %d, %v; want 2", n, err)
+		}
+	})
+
+	// A child spawned with a later RunAt is StatusScheduled, which is
+	// unfinished: CancelChildren cancels it with the running ones. Spawn
+	// always gives a child an idempotency key, so a driver with
+	// CapDelayedStart and CapIdempotencyKey must take the pair: the key
+	// holds while the child waits for its RunAt (a second Enqueue with it
+	// returns the same child), and the waiting child reads scheduled.
+	t.Run("cancel-children-delayed", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		key := fmt.Sprintf("flow-delayed-%d", time.Now().UnixNano())
+		runAt := time.Now().Add(time.Hour)
+		type spawnResult struct {
+			parent workflow.RunID
+			refs   []workflow.RunRef
+			err    error
+		}
+		spawned := make(chan spawnResult, 1)
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			jobs := g.jobs("hold", "ok")
+			jobs[1].RunAt = runAt
+			jobs[1].IdempotencyKey = key
+			refs, err := workflow.Spawn(ctx, c, "kids", jobs)
+			info, _ := workflow.StepInfoFrom(ctx)
+			select {
+			case spawned <- spawnResult{parent: info.RunID, refs: refs, err: err}:
+			default:
+			}
+			return nil, err
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapCancelAll, workflow.CapRunQuery, workflow.CapDelayedStart)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res spawnResult
+		select {
+		case res = <-spawned:
+			if res.err != nil {
+				t.Fatalf("Spawn of a delayed child = %v; a driver with CapDelayedStart and CapIdempotencyKey must take Job.RunAt with a key", res.err)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("the parent step never ran")
+		}
+		flowStatus(t, c, ref, workflow.StatusSucceeded)
+		delayed := res.refs[1]
+		flowStatus(t, c, delayed, workflow.StatusScheduled)
+		again, err := c.Enqueue(context.Background(), workflow.Job{Workflow: g.name, Payload: []byte(`"ok"`), RunAt: runAt, IdempotencyKey: key})
+		if err != nil {
+			t.Fatalf("a second Enqueue with the delayed child's key = %v", err)
+		}
+		if again != delayed {
+			t.Fatalf("a second Enqueue with the delayed child's key = %+v, want the child %+v", again, delayed)
+		}
+		n, err := workflow.CancelChildren(context.Background(), c, res.parent, "")
+		if err != nil || n != 2 {
+			t.Fatalf("CancelChildren = %d, %v; want 2 (one running, one scheduled)", n, err)
+		}
+		flowStatus(t, c, delayed, workflow.StatusCancelled)
+	})
+
+	t.Run("map-runs", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		modes := []string{"ok", "fail", "ok", "ok", "ok", "fail", "ok"}
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "map", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			res, err := workflow.MapRuns(ctx, c, "items", func(_ context.Context, cursor string) (workflow.MapPage[string], error) {
+				start := 0
+				if cursor != "" {
+					if _, err := fmt.Sscan(cursor, &start); err != nil {
+						return workflow.MapPage[string]{}, err
+					}
+				}
+				end := min(start+3, len(modes))
+				return workflow.MapPage[string]{Items: modes[start:end], Next: fmt.Sprint(end), Done: end == len(modes)}, nil
+			}, func(_ int, m string) (workflow.Job, error) {
+				return g.jobs(m)[0], nil
+			}, workflow.MapRunsOptions{InFlight: 2, MaxFailures: 2, Poll: 5 * time.Millisecond})
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(res)
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapSnooze, workflow.CapIdempotencyKey)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := flowAwait(t, c, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res workflow.MapRunsResult
+		if err := json.Unmarshal(out, &res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Started != 7 || res.Succeeded != 5 || res.Failed != 2 {
+			t.Fatalf("map result %+v", res)
+		}
+	})
+}

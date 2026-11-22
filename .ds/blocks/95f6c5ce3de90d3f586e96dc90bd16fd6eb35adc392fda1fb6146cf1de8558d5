@@ -1,0 +1,45 @@
+func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := c.usable(); err != nil {
+		return false, err
+	}
+	sigID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return false, fmt.Errorf("%w: signal %q", workflow.ErrNotFound, id)
+	}
+	took := false
+	err = c.st.tx(ctx, func(tx *sql.Tx) error {
+		took = false
+		row, err := c.touch(ctx, tx, string(run))
+		if err != nil {
+			return err
+		}
+		var n int64
+		err = c.st.one(ctx, tx, "SELECT COUNT(*) FROM {signals} WHERE id = ? AND ev_key = ? AND id > ?",
+			[]any{sigID, workflow.RunKey(run), row.sigFloor}, &n)
+		if err != nil {
+			return err
+		}
+		if n == 0 || !openRun(row.status) {
+			return fmt.Errorf("%w: signal %q for run %s", workflow.ErrNotFound, id, run)
+		}
+		err = c.st.one(ctx, tx, "SELECT COUNT(*) FROM {consumed} WHERE run_id = ? AND signal_id = ?", []any{row.id, sigID}, &n)
+		if err != nil || n > 0 {
+			return err
+		}
+		if _, err := c.st.exec(ctx, tx, "INSERT INTO {consumed} (run_id, signal_id) VALUES (?, ?)", row.id, sigID); err != nil {
+			return err
+		}
+		took = true
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, workflow.ErrNotFound) {
+			return false, err
+		}
+		return false, fmt.Errorf("sqlstore: take signal: %w", err)
+	}
+	return took, nil
+}

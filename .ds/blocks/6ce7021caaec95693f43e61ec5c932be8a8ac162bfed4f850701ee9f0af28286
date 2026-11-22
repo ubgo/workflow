@@ -1,0 +1,6 @@
+func ResumeRun(ctx context.Context, store JournalStore, ref RunRef) error {
+	if ref.RunID.IsZero() {
+		return invalidf("ResumeRun needs a RunID")
+	}
+	return store.Save(ctx, ref.RunID, suspendKey, []byte("0"))
+}

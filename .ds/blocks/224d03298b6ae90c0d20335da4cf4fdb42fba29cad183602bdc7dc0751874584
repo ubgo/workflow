@@ -1,0 +1,28 @@
+func (f *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	backends, err := scheduleBackends[workflow.ScheduleLister](f, "Schedules", workflow.CapScheduleList)
+	if err != nil {
+		return nil, err
+	}
+	var out []workflow.ScheduleInfo
+	for _, sd := range []side{primarySide, secondarySide} {
+		l, ok := backends[sd]
+		if !ok {
+			continue
+		}
+		infos, err := l.Schedules(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failover: %s: %w", sd, err)
+		}
+		for _, info := range infos {
+			info.ID = encodeScheduleID(sd, info.ID)
+			if !info.Last.Run.IsZero() {
+				info.Last.Run = encodeRef(sd, info.Last.Run)
+			}
+			out = append(out, info)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b workflow.ScheduleInfo) int {
+		return cmp.Or(cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Name, b.Name))
+	})
+	return out, nil
+}

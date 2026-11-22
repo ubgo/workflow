@@ -1,0 +1,10 @@
+func (f *Client) Signal(ctx context.Context, ev workflow.Event) error {
+	var errs []error
+	if err := f.primary.Signal(ctx, ev); err != nil {
+		errs = append(errs, fmt.Errorf("failover: signal primary: %w", err))
+	}
+	if err := f.secondary.Signal(ctx, ev); err != nil {
+		errs = append(errs, fmt.Errorf("failover: signal secondary: %w", err))
+	}
+	return errors.Join(errs...)
+}

@@ -80,6 +80,8 @@ func earliest(a, b time.Time) time.Time {
 
 // ApplyRunWrite merges w into r. isNew says r came from NewRecord, so its
 // status is set from w.
+//
+//ds:def id=rec-applyrunwrite-f6w7phc8 owner=@khanakia stability=stable
 func ApplyRunWrite(r *RunRecord, isNew bool, w RunWrite) {
 	fillRef(r, w.Ref)
 	fillIdentity(r, w.Workflow, w.Queue, w.Tenant, w.Labels, w.Source, w.SourceRef)
@@ -215,6 +217,8 @@ func ApplyEvent(r *RunRecord, e EventWrite) {
 }
 
 // ApplyOutcome records a set outcome; the last one set wins.
+//
+//ds:def id=rec-applyoutcome-vhkqwwce owner=@khanakia stability=stable
 func ApplyOutcome(r *RunRecord, o OutcomeWrite) {
 	fillRef(r, o.Ref)
 	r.Outcome, r.OutcomeNote, r.OutcomeSet = o.Outcome, o.Note, true
@@ -227,6 +231,8 @@ func ApplyOutcome(r *RunRecord, o OutcomeWrite) {
 // end the run has since been retried out of. Otherwise the status, error,
 // end time and result are f's (a repeated finish rewrites the same values),
 // and the outcome defaults from the status unless a step set one.
+//
+//ds:def id=rec-applyfinish-z5xnm5zs owner=@khanakia stability=stable
 func ApplyFinish(r *RunRecord, f Finish, latestStart time.Time) bool {
 	if !f.FinishedAt.IsZero() && latestStart.After(f.FinishedAt) {
 		return false
@@ -267,6 +273,8 @@ func ApplyCheck(r *RunRecord, c Check) {
 // the record of the same run kept under its RunID, when a write reveals
 // both IDs. run's fields win; sched fills what run lacks, the enqueue time
 // is the earliest, and the steps of both are kept.
+//
+//ds:def id=rec-mergerecords-d5syda8z owner=@khanakia stability=stable
 func MergeRecords(run, sched RunRecord) RunRecord {
 	out := run.Clone()
 	fillRef(&out, sched.Ref)

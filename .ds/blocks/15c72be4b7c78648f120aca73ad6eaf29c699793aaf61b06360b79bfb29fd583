@@ -1,0 +1,1 @@
+func NewRegistry() *Registry { return &Registry{} }

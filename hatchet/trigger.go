@@ -30,9 +30,13 @@ var (
 // engine lists runs only from a start time, so a trigger whose last fire
 // is older than the window reads as never fired; a week covers every
 // cron that fires at least weekly.
+//
+//ds:def id=hatchet-defaultschedulehistorywindow-sspufpjq owner=@khanakia stability=stable
 const DefaultScheduleHistoryWindow = 7 * 24 * time.Hour
 
 // overlapReason is why OverlapSkip is refused.
+//
+//ds:def id=hatchet-overlapreason-4xfzeess owner=@khanakia stability=stable
 const overlapReason = "the Hatchet engine fires a cron tick without asking any worker first and has no setting that skips a tick while the previous run is unfinished"
 
 var _ workflow.ScheduleTriggerer = (*Client)(nil)
@@ -46,6 +50,8 @@ var _ workflow.ScheduleTriggerer = (*Client)(nil)
 // overlap policy needs no check: OverlapSkip is refused at Register and
 // Schedule. An unknown ID, or one of another namespace, returns
 // workflow.ErrNotFound.
+//
+//ds:def id=hatchet-client-triggerschedule-yt9g9ejr owner=@khanakia stability=stable
 func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -94,6 +100,8 @@ func cronName(row rest.CronWorkflows) string {
 // by workflow.LabelSchedule), within Config.ScheduleHistoryWindow. Status
 // is judged as Status judges it. It costs two run-list calls and one run
 // read per trigger.
+//
+//ds:def id=hatchet-client-schedulelast-ag8zzmyn owner=@khanakia stability=stable
 func (c *Client) scheduleLast(ctx context.Context, sdk *hatchetsdk.Client, row rest.CronWorkflows) (workflow.ScheduleLast, error) {
 	since := time.Now().Add(-c.cfg.ScheduleHistoryWindow)
 	var filter string
@@ -179,6 +187,8 @@ func (c *Client) newestRun(ctx context.Context, sdk *hatchetsdk.Client, row rest
 // fireTime is when a fire happened: the tick time the engine stamps on a
 // cron run, the enqueue time the driver stamps on a triggered one, else
 // the run's creation.
+//
+//ds:def id=hatchet-firetime-mu3jaxcd owner=@khanakia stability=stable
 func fireTime(md map[string]string, created time.Time) time.Time {
 	if t, err := time.Parse(time.RFC3339, md[metaCronScheduledAt]); err == nil {
 		return t

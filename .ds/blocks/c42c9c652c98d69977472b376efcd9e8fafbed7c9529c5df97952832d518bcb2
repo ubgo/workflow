@@ -1,0 +1,48 @@
+func (s *MemoryStore) Prune(ctx context.Context) (PruneResult, error) {
+	var res PruneResult
+	if s.retention.IsZero() {
+		return res, nil
+	}
+	s.pruneMu.Lock()
+	defer s.pruneMu.Unlock()
+	now := s.clk.Now()
+	s.mu.Lock()
+	var doomed []RunRecord
+	for _, r := range s.runs {
+		if !r.Status.IsTerminal() || r.FinishedAt.IsZero() {
+			continue
+		}
+		rule := s.retention.Rule(r.Workflow)
+		age := now.Sub(r.FinishedAt)
+		if rule.Runs > 0 && age >= rule.Runs {
+			doomed = append(doomed, r.Clone())
+			continue
+		}
+		if rule.Steps > 0 && age >= rule.Steps && r.Steps != nil {
+			r.Steps = nil
+			res.StepsCleared++
+		}
+	}
+	s.mu.Unlock()
+	SortRecords(doomed)
+	batch := s.retention.BatchSize()
+	for start := 0; start < len(doomed); start += batch {
+		chunk := doomed[start:min(start+batch, len(doomed))]
+		if s.retention.Archive != nil {
+			if err := s.retention.Archive(ctx, chunk); err != nil {
+				return res, fmt.Errorf("recorder: archive: %w", err)
+			}
+			res.Archived += len(chunk)
+		}
+		s.mu.Lock()
+		for _, r := range chunk {
+			delete(s.runs, r.Key())
+			if !r.Ref.ScheduledID.IsZero() {
+				delete(s.bySched, r.Ref.ScheduledID)
+			}
+			res.RunsDeleted++
+		}
+		s.mu.Unlock()
+	}
+	return res, nil
+}

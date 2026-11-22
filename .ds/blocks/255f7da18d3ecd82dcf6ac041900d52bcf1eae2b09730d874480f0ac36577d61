@@ -1,0 +1,16 @@
+func dispatchRun(ctx context.Context, hs []ScheduleHooks, ev RunEvent) {
+	for _, h := range hs {
+		if !h.matchesRun(ev) {
+			continue
+		}
+		switch {
+		case ev.Status == StatusSucceeded && h.OnSuccess != nil:
+			h.OnSuccess(ctx, ev)
+		case ev.Status == StatusFailed && h.OnFailure != nil:
+			h.OnFailure(ctx, ev)
+		}
+		if h.After != nil {
+			h.After(ctx, ev)
+		}
+	}
+}

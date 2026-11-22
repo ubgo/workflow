@@ -1,0 +1,1 @@
+var ErrOutputNoRun = errors.New("sqlstore: output has no run (captured outside a driver)")

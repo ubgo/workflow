@@ -1,0 +1,8 @@
+func (w wakeClock) NewTimer(d time.Duration) Timer {
+	// Round(0) drops the monotonic reading, so Sub compares wall clocks:
+	// the point of this clock is that wall time includes a suspend.
+	deadline := w.inner.Now().Round(0).Add(d)
+	t := &wakeTimer{c: make(chan time.Time, 1), stop: make(chan struct{})}
+	go t.run(w, deadline)
+	return t
+}

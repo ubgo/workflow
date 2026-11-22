@@ -32,12 +32,16 @@ var _ workflow.PromiseStore = (*PromiseStore)(nil)
 // promiseRun is the journal run id promises are kept under. It starts with
 // the reserved internal prefix, which no driver's run id does, so
 // JournalStore's Forget of a real run never deletes a promise.
+//
+//ds:def id=sql-promiserun-z394qrzs owner=@khanakia stability=stable
 const promiseRun = "ubgo.workflow/promises"
 
 // NewPromiseStore returns the promise store over db for dialect d. Of the
 // Options, WithTablePrefix, WithSchema and WithErrorClassifier apply; the
 // others configure a Client and are ignored. Call Migrate before the first
 // Settle.
+//
+//ds:def id=sql-newpromisestore-cpmkmayx owner=@khanakia stability=stable
 func NewPromiseStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*PromiseStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -48,10 +52,14 @@ func NewPromiseStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*PromiseStore,
 
 // PromiseStore returns the promise store in this client's database and
 // prefix. Client.Migrate creates its table (the journal's).
+//
+//ds:def id=sql-client-promisestore-fw6wxfdm owner=@khanakia stability=stable
 func (c *Client) PromiseStore() *PromiseStore { return &PromiseStore{st: c.st} }
 
 // Migrate creates the journal table the promises live in (JournalStore's
 // migration list), and nothing else.
+//
+//ds:def id=sql-promisestore-migrate-vbtntpgy owner=@khanakia stability=stable
 func (s *PromiseStore) Migrate(ctx context.Context) error {
 	return s.st.migrate(ctx, s.st.journalMigrations())
 }

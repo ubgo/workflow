@@ -1,0 +1,11 @@
+type RateLimit struct {
+	// Key derives the limited bucket. Zero means one bucket for the
+	// workflow.
+	Key ConcurrencyKey
+
+	// Limit is the number of starts allowed per window; at least 1.
+	Limit int
+
+	// Per is the window length; positive.
+	Per time.Duration
+}

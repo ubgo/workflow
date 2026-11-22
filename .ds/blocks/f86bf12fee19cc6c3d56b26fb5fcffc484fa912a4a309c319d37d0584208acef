@@ -1,0 +1,22 @@
+func ValidateClosure(c ClosureJob) error {
+	if c.Name == "" {
+		return invalidf("closure has no Name")
+	}
+	if c.Fn == nil {
+		return invalidf("closure %q has no Fn", c.Name)
+	}
+	if c.Queue != "" {
+		if err := ValidateQueueName(c.Queue); err != nil {
+			return err
+		}
+	}
+	if c.Retry != nil {
+		if err := validateRetry(*c.Retry); err != nil {
+			return invalidf("closure %q: %v", c.Name, err)
+		}
+	}
+	if c.Timeout < 0 {
+		return invalidf("closure %q: Timeout is negative", c.Name)
+	}
+	return ValidateLabels(c.Labels)
+}

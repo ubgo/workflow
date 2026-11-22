@@ -1,0 +1,6 @@
+func (s *statusWriter) Status() int {
+	if s.status == 0 {
+		return http.StatusOK
+	}
+	return s.status
+}

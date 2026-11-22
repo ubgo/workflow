@@ -1,0 +1,6 @@
+func Update(ctx context.Context, client Client, store PromiseStore, ev Event, opts AwaitOptions) ([]byte, error) {
+	if client == nil || store == nil || ev.Name == "" {
+		return nil, invalidf("Update needs a client, a promise store and an event name")
+	}
+	return update(ctx, client, store, ev, opts, func(ev Event) error { return client.Signal(ctx, ev) })
+}

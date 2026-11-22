@@ -1,0 +1,26 @@
+func (c *Client) onSchedule(ctx context.Context, field string, t workflow.ScheduleTarget, fn func(context.Context, workflow.SchedulePauser, workflow.ScheduleTarget) error) error {
+	if err := c.need(field, workflow.CapSchedulePause); err != nil {
+		return err
+	}
+	if err := workflow.ValidateScheduleTarget(t); err != nil {
+		return err
+	}
+	if t.All {
+		errs := map[Side]error{}
+		for _, s := range []Side{SideOld, SideNew} {
+			if sp, ok := c.backend(s).(workflow.SchedulePauser); ok {
+				errs[s] = fn(ctx, sp, t)
+			}
+		}
+		return joinSides(field, errs[SideOld], errs[SideNew])
+	}
+	s, inner := splitID(string(t.ID))
+	if s == "" {
+		s = SideOld
+	}
+	sp, ok := c.backend(s).(workflow.SchedulePauser)
+	if !ok {
+		return &workflow.UnsupportedError{Field: field, Missing: workflow.CapSchedulePause, Reason: "the " + string(s) + " backend does not implement it"}
+	}
+	return fn(ctx, sp, workflow.ScheduleTarget{ID: workflow.ScheduleID(inner)})
+}

@@ -1,0 +1,22 @@
+func Milestone[T any](name string, want T, h Handler, opts MilestoneOptions) Handler {
+	poll := opts.Poll
+	if poll <= 0 {
+		poll = DefaultMilestonePoll
+	}
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		if name == "" || h == nil {
+			return nil, Permanent(invalidf("Milestone needs a run data name and a handler"))
+		}
+		got, ok, err := RunData[T](ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf("workflow: milestone %q: %w", name, err)
+		}
+		if ok && reflect.DeepEqual(got, want) {
+			return h(ctx, in)
+		}
+		if opts.Skip {
+			return in, nil
+		}
+		return nil, Snooze(poll)
+	}
+}

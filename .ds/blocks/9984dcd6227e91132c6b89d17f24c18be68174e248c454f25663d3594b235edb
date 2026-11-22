@@ -1,0 +1,16 @@
+func (f *Client) PayloadLimit() int {
+	limit := func(c workflow.Client) int {
+		if l, ok := c.(workflow.PayloadLimiter); ok {
+			return l.PayloadLimit()
+		}
+		return 0
+	}
+	p, s := limit(f.primary), limit(f.secondary)
+	switch {
+	case p == 0:
+		return s
+	case s == 0:
+		return p
+	}
+	return min(p, s)
+}

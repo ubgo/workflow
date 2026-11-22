@@ -1,0 +1,9 @@
+var parityCaps = workflow.CapsOf(
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard, workflow.CapDiscardExhausted,
+	workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapCancelAll,
+	workflow.CapPauseWorkflow, workflow.CapPauseQueue, workflow.CapSchedulePause,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapTickEvents,
+	workflow.CapScheduleList, workflow.CapDrain, workflow.CapDrainReport, workflow.CapPayloadSearch, batch2Caps,
+	workflow.CapSlotCost,
+)

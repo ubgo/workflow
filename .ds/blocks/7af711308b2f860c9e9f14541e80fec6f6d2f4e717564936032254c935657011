@@ -1,0 +1,6 @@
+func (h HMAC) Sign(body []byte) (string, error) {
+	if len(h.Secrets) == 0 || len(h.Secrets[0]) == 0 {
+		return "", fmt.Errorf("events: HMAC has no secret")
+	}
+	return h.Prefix + h.encode(h.mac(h.Secrets[0], body)), nil
+}

@@ -1,0 +1,1 @@
+func WithDatasetClock(c clock.Clock) DatasetOption { return func(d *Datasets) { d.clock = c } }

@@ -1,0 +1,163 @@
+func MapRuns[T any](ctx context.Context, client Client, name string,
+	page func(ctx context.Context, cursor string) (MapPage[T], error),
+	job func(index int, item T) (Job, error), opts MapRunsOptions) (MapRunsResult, error) {
+	if client == nil || page == nil || job == nil || name == "" {
+		return MapRunsResult{}, Permanent(invalidf("MapRuns needs a client, a name, a page source and a job builder"))
+	}
+	parent := opts.Parent
+	if parent == nil {
+		parent = client
+	}
+	if !parent.Capabilities().Has(CapSnooze) {
+		return MapRunsResult{}, Permanent(&UnsupportedError{Field: "MapRuns", Missing: CapSnooze,
+			Reason: "the parent's driver would spend an attempt on every look at unfinished children"})
+	}
+	if !client.Capabilities().Has(CapIdempotencyKey) {
+		return MapRunsResult{}, Permanent(&UnsupportedError{Field: "MapRuns", Missing: CapIdempotencyKey,
+			Reason: "a look after a crash could start an item twice"})
+	}
+	info, ok := StepInfoFrom(ctx)
+	if !ok {
+		return MapRunsResult{}, Permanent(invalidf("map %q: not called from a step", name))
+	}
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return MapRunsResult{}, err
+	}
+	inFlight := opts.InFlight
+	if inFlight <= 0 {
+		inFlight = DefaultMapInFlight
+	}
+	keepFailed := opts.KeepFailed
+	if keepFailed <= 0 {
+		keepFailed = DefaultMapKeepFailed
+	}
+	key := j.helperKey("map", name)
+	var st mapState
+	if raw, ok, err := j.store.Load(ctx, j.run, key); err != nil {
+		return MapRunsResult{}, fmt.Errorf("workflow: map %q: load: %w", name, err)
+	} else if ok {
+		if err := json.Unmarshal(raw, &st); err != nil {
+			return MapRunsResult{}, Permanent(fmt.Errorf("workflow: map %q: stored progress: %w", name, err))
+		}
+	}
+	save := func() error {
+		raw, err := encodeJSON("map "+name, st)
+		if err != nil {
+			return err
+		}
+		if err := j.store.Save(ctx, j.run, key, raw); err != nil {
+			return fmt.Errorf("workflow: map %q: save: %w", name, err)
+		}
+		return nil
+	}
+	result := func() MapRunsResult {
+		return MapRunsResult{Started: st.Next, Succeeded: st.Succeeded, Failed: st.Failed, FailedRefs: st.FailedAt}
+	}
+	if st.Finished {
+		return result(), nil
+	}
+
+	// Retire the children that ended since the last look.
+	still := st.InFlight[:0:0]
+	for _, ch := range st.InFlight {
+		s, err := client.Status(ctx, ch.Ref)
+		if err != nil {
+			return MapRunsResult{}, fmt.Errorf("workflow: map %q: item %d: %w", name, ch.Index, err)
+		}
+		switch {
+		case s == StatusSucceeded:
+			st.Succeeded++
+		case s.IsTerminal():
+			st.Failed++
+			if len(st.FailedAt) < keepFailed {
+				st.FailedAt = append(st.FailedAt, MapFailure{Index: ch.Index, Ref: ch.Ref, Status: s})
+			}
+		default:
+			still = append(still, ch)
+		}
+	}
+	st.InFlight = still
+	if opts.MaxFailures != MapUnlimitedFailures && st.Failed > opts.MaxFailures {
+		if client.Capabilities().Has(CapCancel) {
+			for _, ch := range st.InFlight {
+				if err := client.Cancel(ctx, ch.Ref); err != nil {
+					return MapRunsResult{}, fmt.Errorf("workflow: map %q: cancel item %d: %w", name, ch.Index, err)
+				}
+			}
+		}
+		st.InFlight = nil
+		if err := save(); err != nil {
+			return MapRunsResult{}, err
+		}
+		return MapRunsResult{}, Permanent(&MapRunsError{Name: name, Result: result()})
+	}
+
+	// Start children up to InFlight, fetching pages as needed.
+	for len(st.InFlight) < inFlight {
+		if len(st.Pending) == 0 {
+			if st.Done {
+				break
+			}
+			p, err := page(ctx, st.Cursor)
+			if err != nil {
+				return MapRunsResult{}, fmt.Errorf("workflow: map %q: page %q: %w", name, st.Cursor, err)
+			}
+			for _, it := range p.Items {
+				raw, err := encodeJSON("map "+name+" item", it)
+				if err != nil {
+					return MapRunsResult{}, err
+				}
+				st.Pending = append(st.Pending, raw)
+			}
+			st.Cursor, st.Done = p.Next, p.Done
+			if err := save(); err != nil {
+				return MapRunsResult{}, err
+			}
+			if len(p.Items) == 0 && !p.Done {
+				break // an empty page that is not the last: look again later
+			}
+			continue
+		}
+		var item T
+		if err := json.Unmarshal(st.Pending[0], &item); err != nil {
+			return MapRunsResult{}, Permanent(fmt.Errorf("workflow: map %q: stored item: %w", name, err))
+		}
+		idx := st.Next
+		jb, err := job(idx, item)
+		if err != nil {
+			return MapRunsResult{}, fmt.Errorf("workflow: map %q: job for item %d: %w", name, idx, err)
+		}
+		jb.Labels = maps.Clone(jb.Labels)
+		if jb.Labels == nil {
+			jb.Labels = map[string]string{}
+		}
+		jb.Labels[LabelParentRun] = info.RunID.String()
+		jb.Labels[LabelParentStep] = info.Step
+		if jb.IdempotencyKey == "" {
+			jb.IdempotencyKey = "map/" + info.RunID.String() + "/" + key + "/" + strconv.Itoa(idx)
+		}
+		ref, err := client.Enqueue(AllowReservedLabels(ctx, LabelParentRun, LabelParentStep), jb)
+		if err != nil {
+			return MapRunsResult{}, fmt.Errorf("workflow: map %q: start item %d: %w", name, idx, err)
+		}
+		st.Pending = st.Pending[1:]
+		st.Next++
+		st.InFlight = append(st.InFlight, mapChild{Index: idx, Ref: ref})
+		if err := save(); err != nil {
+			return MapRunsResult{}, err
+		}
+	}
+	if st.Done && len(st.Pending) == 0 && len(st.InFlight) == 0 {
+		st.Finished = true
+		if err := save(); err != nil {
+			return MapRunsResult{}, err
+		}
+		return result(), nil
+	}
+	poll := opts.Poll
+	if poll <= 0 {
+		poll = DefaultChildPoll
+	}
+	return MapRunsResult{}, Snooze(poll)
+}

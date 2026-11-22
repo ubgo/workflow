@@ -1,0 +1,64 @@
+func BuildMachine[D any](def MachineDefinition, reg *MachineRegistry[D], env MachineEnv) (workflow.Workflow, error) {
+	if err := def.Validate(); err != nil {
+		return workflow.Workflow{}, err
+	}
+	spec := workflow.MachineSpec[D]{
+		Name: def.Name, Initial: def.Initial, Ordered: def.Ordered, KeepLog: def.KeepLog,
+		Store: env.Store, Client: env.Client, Clock: env.Clock,
+	}
+	if def.Unhandled == "reject" {
+		spec.Unhandled = workflow.MachineReject
+	}
+	if def.Retry != nil {
+		spec.Retry, _ = def.Retry.policy("retry")
+	}
+	actions := func(path string, names []string) ([]workflow.MachineAction[D], error) {
+		var out []workflow.MachineAction[D]
+		for i, n := range names {
+			a, err := reg.action(index(path, i), n)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, a)
+		}
+		return out, nil
+	}
+	for i, s := range def.States {
+		p := index("states", i)
+		st := workflow.MachineState[D]{Name: s.Name, Parent: s.Parent, Initial: s.Initial, Parallel: s.Parallel, Final: s.Final}
+		var err error
+		if st.Entry, err = actions(at(p, "entry"), s.Entry); err != nil {
+			return workflow.Workflow{}, err
+		}
+		if st.Exit, err = actions(at(p, "exit"), s.Exit); err != nil {
+			return workflow.Workflow{}, err
+		}
+		for _, tm := range s.After {
+			d, _ := duration("", tm.Delay) // Validate parsed it
+			st.After = append(st.After, workflow.StateTimer{Delay: d, Event: tm.Event})
+		}
+		spec.States = append(spec.States, st)
+	}
+	for i, t := range def.Transitions {
+		p := index("transitions", i)
+		tr := workflow.MachineTransition[D]{From: t.From, Event: t.Event, To: t.To, Reenter: t.Reenter}
+		tr.History, _ = historyMode("", t.History)
+		if t.Guard != "" {
+			g, err := reg.guard(at(p, "guard"), t.Guard)
+			if err != nil {
+				return workflow.Workflow{}, err
+			}
+			tr.Guard = g
+		}
+		var err error
+		if tr.Actions, err = actions(at(p, "actions"), t.Actions); err != nil {
+			return workflow.Workflow{}, err
+		}
+		spec.Transitions = append(spec.Transitions, tr)
+	}
+	wf, err := workflow.DefineMachine(spec)
+	if err != nil {
+		return workflow.Workflow{}, fmt.Errorf("dsl: machine %q: %w", def.Name, err)
+	}
+	return wf, nil
+}

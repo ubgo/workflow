@@ -1,0 +1,23 @@
+func (s *StandardWebhooks) Verify(r *http.Request, body []byte) (string, error) {
+	id := r.Header.Get(HeaderWebhookID)
+	ts, err := strconv.ParseInt(r.Header.Get(HeaderWebhookTimestamp), 10, 64)
+	if id == "" || err != nil {
+		return "", ErrSignature
+	}
+	at := time.Unix(ts, 0)
+	if d := s.clk.Now().Sub(at); d > s.tolerance || d < -s.tolerance {
+		return "", ErrSignature
+	}
+	for _, sig := range strings.Fields(r.Header.Get(HeaderWebhookSignature)) {
+		v, ok := strings.CutPrefix(sig, "v1,")
+		if !ok {
+			continue
+		}
+		for _, key := range s.secrets {
+			if hmac.Equal([]byte(v), []byte(standardSign(key, id, ts, body))) {
+				return id, nil
+			}
+		}
+	}
+	return "", ErrSignature
+}

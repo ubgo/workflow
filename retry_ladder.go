@@ -19,6 +19,8 @@ import (
 // It needs CapRetryDelay (memory, sqlstore and Redis declare it); a
 // driver without it (Hatchet) refuses a policy with DelayFor set, never
 // ignoring it. LadderPolicy builds the whole policy.
+//
+//ds:def id=retryladder-ruyeej39 owner=@khanakia stability=stable
 func RetryLadder(delays ...time.Duration) func(err error, retry int) (time.Duration, bool) {
 	ladder := slices.Clone(delays)
 	return func(_ error, retry int) (time.Duration, bool) {
@@ -36,6 +38,8 @@ func RetryLadder(delays ...time.Duration) func(err error, retry int) (time.Durat
 // Max higher on the returned policy to keep retrying at the last delay;
 // the other fields (NoRetryOn, Until, MaxErrors, DiscardOnExhaust) are
 // zero and may be set too. Needs CapRetryDelay, like RetryLadder.
+//
+//ds:def id=ladderpolicy-4gm2525v owner=@khanakia stability=stable
 func LadderPolicy(delays ...time.Duration) RetryPolicy {
 	return RetryPolicy{Max: len(delays), DelayFor: RetryLadder(delays...)}
 }

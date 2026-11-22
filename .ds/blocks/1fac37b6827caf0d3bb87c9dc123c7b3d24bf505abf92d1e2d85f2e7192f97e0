@@ -1,0 +1,8 @@
+func RunIDJitter(info workflow.StepInfo, window time.Duration) time.Duration {
+	h := fnv.New64a()
+	h.Write([]byte(info.RunID))
+	if window <= 0 {
+		return 0
+	}
+	return time.Duration(h.Sum64() % uint64(window))
+}

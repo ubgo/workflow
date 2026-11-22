@@ -1,0 +1,1 @@
+func WithTablePrefix(p string) Option { return func(o *Outbox) { o.prefix = p } }

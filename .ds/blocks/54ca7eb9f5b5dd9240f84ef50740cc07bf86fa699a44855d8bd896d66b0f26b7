@@ -1,0 +1,5 @@
+type DisableStore struct {
+	st    *store
+	clk   clock.Clock
+	names *strings.Replacer // {disabled_endpoints} -> quoted name
+}

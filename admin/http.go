@@ -21,6 +21,8 @@ import (
 type Action string
 
 // The actions, one per route.
+//
+//ds:def id=admin-actions-fvf66fmr owner=@khanakia stability=stable
 const (
 	ActionCapabilities  Action = "capabilities.read" // GET  /capabilities
 	ActionListRuns      Action = "runs.list"         // GET  /runs
@@ -65,6 +67,7 @@ const (
 	ActionRescheduleRun Action = "runs.reschedule"  // POST /runs/{id}/reschedule
 	ActionCancelStep    Action = "runs.cancel_step" // POST /runs/{id}/steps/{step}/cancel
 	// ActionEditRun changes a scheduled run's payload, priority or start.
+	//ds:def id=admin-actioneditrun-rzvgr253 owner=@khanakia stability=stable
 	ActionEditRun Action = "runs.edit" // POST /runs/{id}/edit
 	// ActionResetRun re-runs a finished run in place from a step;
 	// ActionForkRun starts a new run from a finished one at a step.
@@ -81,6 +84,8 @@ const (
 
 // Actions lists every action, so a test or a permission screen can walk
 // them.
+//
+//ds:def id=admin-actions-3pefsteu owner=@khanakia stability=stable
 var Actions = []Action{
 	ActionCapabilities, ActionListRuns, ActionShowRun, ActionListFailures, ActionListDiscarded,
 	ActionRetryRun, ActionCancelRun, ActionDeleteRun, ActionCancelRuns,
@@ -94,6 +99,8 @@ var Actions = []Action{
 
 // ReadOnly reports whether the action only reads. An Authorizer that gives
 // some users a read-only view allows exactly these.
+//
+//ds:def id=admin-action-readonly-fgxr6xzq owner=@khanakia stability=stable
 func (a Action) ReadOnly() bool {
 	switch a {
 	case ActionCapabilities, ActionListRuns, ActionShowRun, ActionListFailures, ActionListDiscarded,
@@ -106,6 +113,8 @@ func (a Action) ReadOnly() bool {
 
 // Resource is what an action is about. The field the action uses is set;
 // the others are zero.
+//
+//ds:def id=admin-resource-6fktgbm8 owner=@khanakia stability=stable
 type Resource struct {
 	// Run is the run for ActionShowRun, ActionRetryRun, ActionCancelRun,
 	// ActionDeleteRun, ActionForceComplete, ActionForceFail,
@@ -153,6 +162,8 @@ type Resource struct {
 // Request is one HTTP call as the Authorizer sees it: who, which action,
 // which resource. P is the app's own principal type, whatever Identify
 // returns.
+//
+//ds:def id=admin-request-4dc2jxur owner=@khanakia stability=stable
 type Request[P any] struct {
 	Who      P
 	Action   Action
@@ -165,6 +176,8 @@ type Request[P any] struct {
 // Auth is how the handler decides who may do what. Both functions are
 // required: a handler with either one nil refuses every request, so the
 // zero Auth is closed.
+//
+//ds:def id=admin-auth-sq9pywcz owner=@khanakia stability=stable
 type Auth[P any] struct {
 	// Identify returns the caller of r, from a session cookie or a bearer
 	// token. An error means anonymous: the request is refused with 401
@@ -191,19 +204,27 @@ type handlerConfig struct {
 // WithPayloads includes each run's payload (base64) in run responses. By
 // default it is left out, because payloads can carry personal data and an
 // admin screen is seen by more people than the code that wrote them.
+//
+//ds:def id=admin-withpayloads-zq6ghfjc owner=@khanakia stability=stable
 func WithPayloads() HandlerOption { return func(c *handlerConfig) { c.payloads = true } }
 
 // WithStacks includes the stack trace of each attempt error
 // (workflow.AttemptError.Stack) in run responses. By default it is left
 // out: a stack names source files and functions, which an admin screen
 // does not need to show to everyone who can read run errors.
+//
+//ds:def id=admin-withstacks-p2zf9mau owner=@khanakia stability=stable
 func WithStacks() HandlerOption { return func(c *handlerConfig) { c.stacks = true } }
 
 // WithLogger logs internal errors (the ones answered with a bare 500) and
 // authorization panics. Nil, the default, discards them.
+//
+//ds:def id=admin-withlogger-dy7a7bwx owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) HandlerOption { return func(c *handlerConfig) { c.logger = l } }
 
 // DefaultMaxBody is the largest request body the handler reads.
+//
+//ds:def id=admin-defaultmaxbody-wnrmhxza owner=@khanakia stability=stable
 const DefaultMaxBody = 64 << 10
 
 // mediaTypeJSON is the only request and response body type the API speaks.
@@ -212,6 +233,8 @@ const DefaultMaxBody = 64 << 10
 const mediaTypeJSON = "application/json"
 
 // The error codes in an error response's "code" field.
+//
+//ds:def id=admin-codes-95dffahc owner=@khanakia stability=stable
 const (
 	CodeUnauthorized = "unauthorized"           // 401: Identify failed
 	CodeForbidden    = "forbidden"              // 403: no Auth configured, or Authorize refused
@@ -304,6 +327,8 @@ type handler[P any] struct {
 // it loads a page, so Identify must accept the app's session cookie for
 // the UI to open. Pages are sent with a Content-Security-Policy that
 // allows only these files and same-origin requests.
+//
+//ds:def id=admin-newhandler-np68g63j owner=@khanakia stability=stable
 func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handler {
 	h := &handler[P]{a: a, auth: auth, cfg: handlerConfig{maxBody: DefaultMaxBody}}
 	for _, o := range opts {
@@ -357,6 +382,8 @@ func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handl
 
 // ServeHTTP is the gate: closed without Auth, 401 without an identity,
 // 415 for a write without a JSON content type; then the routes.
+//
+//ds:def id=admin-handler-servehttp-zmec7tcc owner=@khanakia stability=stable
 func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.auth.Identify == nil || h.auth.Authorize == nil {
 		writeError(w, http.StatusForbidden, CodeForbidden, "admin API is closed: no Auth.Identify and Auth.Authorize configured")
@@ -383,6 +410,8 @@ func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // identify calls Identify, turning a panic into an error so it fails
 // closed.
+//
+//ds:def id=admin-handler-identify-f3xep7c4 owner=@khanakia stability=stable
 func (h *handler[P]) identify(r *http.Request) (who P, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -395,6 +424,8 @@ func (h *handler[P]) identify(r *http.Request) (who P, err error) {
 
 // authorize asks Authorize about action and res, writing 403 and returning
 // false on refusal. A panic refuses too.
+//
+//ds:def id=admin-handler-authorize-yub6n963 owner=@khanakia stability=stable
 func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Action, res Resource) (ok bool) {
 	who, _ := r.Context().Value(principalKey[P]{}).(P)
 	err := func() (err error) {
@@ -418,6 +449,8 @@ func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Ac
 // sentinel are sent with their message, which names only the run, the
 // filter field or the capability; anything else is logged and answered
 // with a bare 500, so a database error never reaches the browser.
+//
+//ds:def id=admin-handler-fail-nf9d8sqp owner=@khanakia stability=stable
 func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
 	noteError(w, err)
 	switch {
@@ -437,6 +470,7 @@ func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
 
 // --- routes ---
 
+//ds:def id=admin-handler-capabilities-x9rsrpru owner=@khanakia stability=stable
 func (h *handler[P]) capabilities(w http.ResponseWriter, r *http.Request) {
 	if !h.authorize(w, r, ActionCapabilities, Resource{}) {
 		return
@@ -687,11 +721,14 @@ func (h *handler[P]) listPauses(w http.ResponseWriter, r *http.Request) {
 
 // DefaultSchedulesLimit and MaxSchedulesLimit bound a page of GET
 // /schedules.
+//
+//ds:def id=admin-scheduleslimit-4thht8bb owner=@khanakia stability=stable
 const (
 	DefaultSchedulesLimit = 100
 	MaxSchedulesLimit     = 1000
 )
 
+//ds:def id=admin-handler-listschedules-6esmjgnq owner=@khanakia stability=stable
 func (h *handler[P]) listSchedules(w http.ResponseWriter, r *http.Request) {
 	limit, offset, err := parsePage(r)
 	if err != nil {
@@ -942,6 +979,8 @@ type healthCheckJSON struct {
 // health answers 200 whatever the verdict: this is a screen's read of the
 // report, not a probe (a probe needs no auth and answers 503 when not
 // ready; that is the app's route, built on workflow.CheckHealth).
+//
+//ds:def id=admin-handler-health-czcfdgkm owner=@khanakia stability=stable
 func (h *handler[P]) health(w http.ResponseWriter, r *http.Request) {
 	if !h.authorize(w, r, ActionHealth, Resource{}) {
 		return
@@ -999,6 +1038,8 @@ func (h *handler[P]) cancelStep(w http.ResponseWriter, r *http.Request) {
 // DefaultMetricsWindow is the span GET /metrics covers without from or
 // window, and DefaultMetricsPoints how many steps it splits a span into
 // without step.
+//
+//ds:def id=admin-defaultmetricswindow-s97e4m2j owner=@khanakia stability=stable
 const (
 	DefaultMetricsWindow = time.Hour
 	DefaultMetricsPoints = 60
@@ -1042,6 +1083,8 @@ func (h *handler[P]) showMetrics(w http.ResponseWriter, r *http.Request) {
 // parseMetricsQuery reads from, to, window, step and workflow. Without to
 // the span ends now; without from it starts window (DefaultMetricsWindow)
 // before to; without step it is split into DefaultMetricsPoints steps.
+//
+//ds:def id=admin-parsemetricsquery-jxuy4y5r owner=@khanakia stability=stable
 func parseMetricsQuery(r *http.Request, now time.Time) (MetricsQuery, error) {
 	v := r.URL.Query()
 	q := MetricsQuery{Workflow: v.Get("workflow")}
@@ -1090,6 +1133,8 @@ func pathRef(r *http.Request) workflow.RunRef {
 
 // parseRunQuery reads run filters from the query string. withStatus is
 // false for /failures, which refuses a status filter.
+//
+//ds:def id=admin-parserunquery-6qprr62n owner=@khanakia stability=stable
 func parseRunQuery(r *http.Request, withStatus bool) (workflow.RunQuery, error) {
 	v := r.URL.Query()
 	q := workflow.RunQuery{Workflow: v.Get("workflow"), Queue: v.Get("queue"), Tenant: v.Get("tenant"), Cursor: v.Get("cursor")}
@@ -1177,6 +1222,8 @@ func parsePage(r *http.Request) (limit, offset int, err error) {
 
 // decodeBody reads one JSON object, refusing unknown fields and trailing
 // data, so a typo in a filter is an error rather than a wider cancel.
+//
+//ds:def id=admin-decodebody-vz6fvar2 owner=@khanakia stability=stable
 func decodeBody(r *http.Request, v any) error {
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
@@ -1206,6 +1253,8 @@ func toRefJSON(r workflow.RunRef) refJSON {
 
 // filterJSON is the run filter in the body of POST /runs/cancel,
 // /runs/retry and /runs/delete.
+//
+//ds:def id=admin-filterjson-bzv46dqr owner=@khanakia stability=stable
 type filterJSON struct {
 	Workflow string            `json:"workflow,omitempty"`
 	Queue    string            `json:"queue,omitempty"`
@@ -1255,6 +1304,7 @@ type bulkJSON struct {
 	Sample    []refJSON `json:"sample"`
 }
 
+//ds:def id=admin-tobulkjson-s3d6vea4 owner=@khanakia stability=stable
 func toBulkJSON(r BulkResult, dry bool) bulkJSON {
 	out := bulkJSON{Matched: r.Matched, Done: r.Done, Skipped: r.Skipped, Truncated: r.Truncated, DryRun: dry, Sample: make([]refJSON, 0, len(r.Sample))}
 	for _, ref := range r.Sample {
@@ -1326,6 +1376,7 @@ type attemptErrorJSON struct {
 	Node    string    `json:"node,omitempty"`
 }
 
+//ds:def id=admin-handler-runjson-3xmkf4pw owner=@khanakia stability=stable
 func (h *handler[P]) runJSON(r workflow.RunInfo) runJSON {
 	out := runJSON{
 		Ref: toRefJSON(r.Ref), Workflow: r.Workflow, Queue: r.Queue, Status: r.Status,
@@ -1424,6 +1475,7 @@ func toScheduleJSON(s workflow.ScheduleInfo) scheduleJSON {
 	return out
 }
 
+//ds:def id=admin-writejson-gpfs6kq4 owner=@khanakia stability=stable
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", mediaTypeJSON)
 	w.Header().Set("Cache-Control", "no-store")

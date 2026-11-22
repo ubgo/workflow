@@ -1,0 +1,24 @@
+func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	cs, err := every[workflow.BulkCanceller](c, "CancelAll", workflow.CapCancelAll)
+	if err != nil {
+		return 0, err
+	}
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return 0, err
+	}
+	if err := workflow.CheckRunQuery(c.Capabilities(), q); err != nil {
+		return 0, err
+	}
+	total := 0
+	errs := map[string]error{}
+	for _, name := range c.names {
+		rq, ok := regionQuery(q, name)
+		if !ok {
+			continue
+		}
+		n, err := cs[name].CancelAll(ctx, rq)
+		total += n
+		errs[name] = err
+	}
+	return total, joinRegions("CancelAll", c.names, errs)
+}

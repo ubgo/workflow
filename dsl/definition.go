@@ -22,6 +22,8 @@ import (
 // DelayFor, KeyExpr, OnTimeout, rate limits) have no form here: a workflow
 // that needs them is written in Go, or built from a Definition and then
 // edited in Go before Register.
+//
+//ds:def id=dsl-definition-m3et9n3c owner=@khanakia stability=stable
 type Definition struct {
 	// Name is Workflow.Name: the key Job.Workflow refers to.
 	Name string `json:"name"`
@@ -74,6 +76,8 @@ type Definition struct {
 
 // StepDef is one step of a Definition. Exactly one of Handler, Wait and
 // Sleep is set, as exactly one of Step.Run, Step.Wait and Step.Sleep is.
+//
+//ds:def id=dsl-stepdef-uta5kgvn owner=@khanakia stability=stable
 type StepDef struct {
 	// Name is Step.Name, unique within the definition.
 	Name string `json:"name"`
@@ -102,6 +106,8 @@ type StepDef struct {
 
 // WaitDef is a StepDef's wait (workflow.WaitSpec). At most one of Key and
 // KeyLabel is set.
+//
+//ds:def id=dsl-waitdef-4pcz226d owner=@khanakia stability=stable
 type WaitDef struct {
 	// Event is the event name to wait for.
 	Event string `json:"event"`
@@ -123,6 +129,8 @@ type WaitDef struct {
 // RetryDef is a workflow.RetryPolicy with its durations as strings. The
 // core's RetryPolicy encodes durations as integer nanoseconds, which no
 // person writes by hand, so a definition has its own shape.
+//
+//ds:def id=dsl-retrydef-v8rg24uk owner=@khanakia stability=stable
 type RetryDef struct {
 	// Max is RetryPolicy.Max: retries after the first attempt.
 	Max int `json:"max"`
@@ -144,6 +152,8 @@ type RetryDef struct {
 }
 
 // BackoffDef is a workflow.Backoff with its durations as strings.
+//
+//ds:def id=dsl-backoffdef-v5y23xnr owner=@khanakia stability=stable
 type BackoffDef struct {
 	// Initial is the first retry's wait, as a duration string.
 	Initial string `json:"initial,omitempty"`
@@ -161,6 +171,8 @@ type BackoffDef struct {
 
 // ConcurrencyDef is a workflow.Concurrency whose key is read from a job
 // label.
+//
+//ds:def id=dsl-concurrencydef-c824mmdq owner=@khanakia stability=stable
 type ConcurrencyDef struct {
 	// KeyLabel names the job label whose value is the run's concurrency
 	// key: Build turns it into a workflow.KeyFunc reading
@@ -186,6 +198,8 @@ type ConcurrencyDef struct {
 // workflow.ErrInvalid under errors.Is, so a caller that treats every
 // refused spec alike needs no type switch, and one that shows the error
 // next to a form field reads Path with errors.As.
+//
+//ds:def id=dsl-fielderror-zst5dca3 owner=@khanakia stability=stable
 type FieldError struct {
 	// Path is the JSON path of the refused value; empty for the document.
 	Path string
@@ -231,6 +245,8 @@ func index(path string, i int) string { return path + "[" + strconv.Itoa(i) + "]
 // workflow is checked for (step names, After naming existing steps, cycles,
 // ranges, strategies), so a definition is refused where the same workflow
 // written in Go would be.
+//
+//ds:def id=dsl-definition-validate-3tczvf3z owner=@khanakia stability=stable
 func (d Definition) Validate() error {
 	if d.Name == "" {
 		return fieldErr("name", "is empty")
@@ -260,6 +276,8 @@ func (d Definition) Validate() error {
 }
 
 // validate checks one step at path.
+//
+//ds:def id=dsl-stepdef-validate-28zs3f25 owner=@khanakia stability=stable
 func (s StepDef) validate(path string) error {
 	if s.Name == "" {
 		return fieldErr(at(path, "name"), "is empty")
@@ -310,6 +328,8 @@ func (s StepDef) validate(path string) error {
 }
 
 // duration parses a duration string; empty is zero.
+//
+//ds:def id=dsl-duration-qep8j5u5 owner=@khanakia stability=stable
 func duration(path, s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil
@@ -322,6 +342,8 @@ func duration(path, s string) (time.Duration, error) {
 }
 
 // location loads a cron zone; empty is nil (UTC).
+//
+//ds:def id=dsl-location-bhcn5hdh owner=@khanakia stability=stable
 func location(name string) (*time.Location, error) {
 	if name == "" {
 		return nil, nil
@@ -358,6 +380,8 @@ func (r RetryDef) policy(path string) (workflow.RetryPolicy, error) {
 // Marshal writes def as indented JSON, the form Parse reads back to an
 // equal Definition, for storing definitions in a file, a DataStore or a
 // database row. It does not validate; Validate and Build do.
+//
+//ds:def id=dsl-marshal-h2h9vs2c owner=@khanakia stability=stable
 func Marshal(def Definition) ([]byte, error) {
 	b, err := json.MarshalIndent(def, "", "  ")
 	if err != nil {

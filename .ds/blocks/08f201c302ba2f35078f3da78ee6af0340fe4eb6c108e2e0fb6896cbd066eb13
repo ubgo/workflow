@@ -1,0 +1,14 @@
+type PruneFilter struct {
+	// FinishedBefore deletes closed batches (every job finished and no
+	// callback pending) that finished before it.
+	FinishedBefore time.Time
+
+	// UnfinishedBefore deletes open batches (State.Open: a job still
+	// running or a callback still pending) created before it. Their jobs'
+	// later ends are then ignored, since the batch is gone.
+	UnfinishedBefore time.Time
+
+	// CancelledBefore deletes cancelled batches cancelled before it,
+	// whether or not their jobs have finished.
+	CancelledBefore time.Time
+}

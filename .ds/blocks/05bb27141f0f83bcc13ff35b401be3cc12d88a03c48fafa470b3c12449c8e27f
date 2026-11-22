@@ -1,0 +1,63 @@
+func TestCompleteTxCommit(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			var completeErr atomic.Value
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				if err := chargeInTx(f, ctx, `"charged-in-tx"`, func(tx *sql.Tx) error { return tx.Commit() }); err != nil {
+					completeErr.Store(err)
+					return nil, err
+				}
+				// After the commit the step is done: this error must not
+				// fail or retry it, and this output must not replace it.
+				return []byte(`"returned"`), errors.New("boom after the commit")
+			})
+			ref, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			st := f.awaitEnd(t, ref)
+			if v := completeErr.Load(); v != nil {
+				t.Fatalf("CompleteTx: %v", v)
+			}
+			if st != workflow.StatusSucceeded {
+				t.Fatalf("run %s, want succeeded", st)
+			}
+			if n := f.attempts.Load(); n != 1 {
+				t.Fatalf("charge ran %d times, want 1 (a retry after the commit)", n)
+			}
+			f.mu.Lock()
+			got := string(f.receipt)
+			f.mu.Unlock()
+			if got != `"charged-in-tx"` {
+				t.Fatalf("receipt input %q, want the output CompleteTx wrote", got)
+			}
+			if n := f.orderRows(t); n != 1 {
+				t.Fatalf("%d app rows, want 1", n)
+			}
+			waitFor(t, 5*time.Second, "the run-finished hook", func() bool { return f.finished.Load() >= 1 })
+			time.Sleep(10 * testPoll) // a second delivery would land here
+			if n := f.finished.Load(); n != 1 {
+				t.Fatalf("run-finished hook fired %d times, want 1", n)
+			}
+
+			// The run's last step: the run ends in the app's transaction,
+			// and its Finished event comes from the after-commit work.
+			solo, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "solo"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := f.awaitEnd(t, solo); st != workflow.StatusSucceeded {
+				t.Fatalf("solo run %s, want succeeded", st)
+			}
+			out, err := f.c.Result(context.Background(), solo)
+			if err != nil || string(out) != `"charged-in-tx"` {
+				t.Fatalf("solo result %q, %v, want the output CompleteTx wrote", out, err)
+			}
+			waitFor(t, 5*time.Second, "the solo run's Finished event", func() bool { return f.soloEnds.Load() >= 1 })
+			time.Sleep(10 * testPoll)
+			if n, m := f.solo.Load(), f.soloEnds.Load(); n != 1 || m != 1 {
+				t.Fatalf("solo step ran %d times with %d Finished events, want 1 and 1", n, m)
+			}
+		})
+	}
+}

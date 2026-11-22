@@ -1,0 +1,12 @@
+func validRegion(name string) error {
+	if name == "" || len(name) > maxRegion {
+		return fmt.Errorf("%w: regional: region name %q must be 1 to %d characters", workflow.ErrInvalid, name, maxRegion)
+	}
+	for _, r := range name {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-'
+		if !ok {
+			return fmt.Errorf("%w: regional: region name %q has the character %q; use letters, digits and . _ -", workflow.ErrInvalid, name, r)
+		}
+	}
+	return nil
+}

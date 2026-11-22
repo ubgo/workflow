@@ -1,0 +1,7 @@
+type FieldError struct {
+	// Path is the JSON path of the refused value; empty for the document.
+	Path string
+
+	// Reason says what is wrong, without the path.
+	Reason string
+}

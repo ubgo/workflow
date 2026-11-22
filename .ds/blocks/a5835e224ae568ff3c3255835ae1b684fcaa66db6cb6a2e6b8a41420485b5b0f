@@ -1,0 +1,39 @@
+func Logging(l *slog.Logger, clk clock.Clock, opts ...LoggingOption) workflow.Middleware {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	cfg := loggingConfig{level: defaultLogLevel}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		if l == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			l := l
+			info, hasInfo := workflow.StepInfoFrom(ctx)
+			if hasInfo {
+				l = l.With(slog.String("workflow", info.Workflow), slog.String("step", info.Step),
+					slog.String("run_id", info.RunID.String()), slog.Int("attempt", info.Attempt))
+			}
+			ev := StepLogEvent{Phase: StepStarted, Info: info, HasInfo: hasInfo}
+			start := clk.Now()
+			l.Log(ctx, cfg.level(ctx, ev), "workflow step started", slog.Int("in_bytes", len(in)))
+			out, err := next(ctx, in)
+			dur := clk.Now().Sub(start)
+			if err != nil {
+				ev.Phase, ev.Err = StepFailed, err
+				l.Log(ctx, cfg.level(ctx, ev), "workflow step failed",
+					slog.Duration("duration", dur),
+					slog.Bool("permanent", workflow.IsPermanent(err)),
+					slog.String("error", err.Error()))
+				return out, err
+			}
+			ev.Phase = StepFinished
+			l.Log(ctx, cfg.level(ctx, ev), "workflow step finished",
+				slog.Duration("duration", dur), slog.Int("out_bytes", len(out)))
+			return out, nil
+		}
+	}
+}

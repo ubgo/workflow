@@ -23,6 +23,11 @@ const (
 	tableEvents = "events"
 	tableLabels = "labels"
 	tableSchema = "schema"
+	// tableArchive is WithArchiveTable's table. It is opt-in and not part
+	// of SchemaVersion: Migrate creates it, idempotently, only for a store
+	// with that option, so the default schema and its version stay as
+	// they were.
+	tableArchive = "archive"
 )
 
 // Column widths of the identifier columns. Identifiers longer than these
@@ -181,16 +186,25 @@ func (s *Store) ddl() []string {
 // MigrationScripts returns the statements Migrate runs, for an app that
 // applies schema changes with its own migration tool instead. After running
 // them, the app inserts SchemaVersion into the <prefix>schema table, or
-// calls Migrate once, which then only records the version.
+// calls Migrate once, which then only records the version. With
+// WithArchiveTable they end with the archive table's statements, which are
+// idempotent and recorded by no version.
 //
 //ds:def id=sqlrec-store-migrationscripts-xbepgg67 owner=@khanakia stability=stable
-func (s *Store) MigrationScripts() []string { return s.ddl() }
+func (s *Store) MigrationScripts() []string {
+	if s.archiveTable {
+		return append(s.ddl(), s.archiveDDL()...)
+	}
+	return s.ddl()
+}
 
 // Migrate creates the store's tables and indexes when they are missing and
 // records SchemaVersion. It is idempotent and safe to run on every start;
 // two processes running it at once both succeed. It refuses a database
 // whose recorded version is newer than this release knows (an older binary
-// against a newer schema), with an error naming both versions.
+// against a newer schema), with an error naming both versions. With
+// WithArchiveTable it also creates the archive table and its indexes when
+// missing, on every call (they are idempotent and outside SchemaVersion).
 //
 //ds:def id=sqlrec-store-migrate-63gjrdbn owner=@khanakia stability=stable
 func (s *Store) Migrate(ctx context.Context) error {
@@ -201,9 +215,23 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if have > SchemaVersion {
 		return fmt.Errorf("sqlrecorder: the database schema is version %d, newer than this release's %d", have, SchemaVersion)
 	}
-	if have == SchemaVersion {
-		return nil
+	if have < SchemaVersion {
+		if err := s.migrateSchema(ctx); err != nil {
+			return err
+		}
 	}
+	if s.archiveTable {
+		for _, stmt := range s.archiveDDL() {
+			if err := s.execRetry(ctx, stmt); err != nil {
+				return fmt.Errorf("sqlrecorder: migrate the archive table: %w\n%s", err, stmt)
+			}
+		}
+	}
+	return nil
+}
+
+// migrateSchema creates the version-1 schema and records SchemaVersion.
+func (s *Store) migrateSchema(ctx context.Context) error {
 	for _, stmt := range s.ddl() {
 		if err := s.execRetry(ctx, stmt); err != nil {
 			return fmt.Errorf("sqlrecorder: migrate: %w\n%s", err, stmt)
@@ -224,23 +252,54 @@ func (s *Store) Migrate(ctx context.Context) error {
 }
 
 // execRetry runs one idempotent migration statement, again on a
-// contention error: two processes creating the same table at once can
-// collide inside the engine's catalog (Postgres reports a duplicate type)
-// even with IF NOT EXISTS, and the retry then finds the table.
+// contention error or a catalog race: two processes creating the same
+// table or index at once can collide inside the engine's catalog even
+// with IF NOT EXISTS (Postgres reports the relation or its row type as
+// already existing, 42P07 or 42710, or a unique violation in pg_type),
+// and the retry then finds the object and skips it.
 func (s *Store) execRetry(ctx context.Context, stmt string, vals ...any) error {
-	return s.retry(ctx, func() error {
+	again := func(err error) bool { return s.retryable(err) || catalogRace(err) }
+	return s.retryOn(ctx, again, func() error {
 		_, err := s.db.ExecContext(ctx, stmt, vals...)
 		return err
 	})
+}
+
+// catalogRaceMarkers are the errors of an IF NOT EXISTS statement that
+// lost a race with the same statement of another process: Postgres
+// duplicate_table (42P07, also for an index) and duplicate_object (42710,
+// the table's row type), MySQL ER_TABLE_EXISTS_ERROR (1050). They are
+// migration-only: a write never creates a catalog object, so they are not
+// part of DefaultRetryable.
+var catalogRaceMarkers = []string{"42P07", "42710", "Error 1050"}
+
+// catalogRace reports whether err is a lost IF NOT EXISTS race (see
+// catalogRaceMarkers).
+func catalogRace(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, m := range catalogRaceMarkers {
+		if strings.Contains(msg, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // retry runs fn up to the store's attempts while it fails with a
 // contention error, with a short growing pause between tries, and returns
 // its last error.
 func (s *Store) retry(ctx context.Context, fn func() error) error {
+	return s.retryOn(ctx, s.retryable, fn)
+}
+
+// retryOn is retry with its own test of which errors are worth a retry.
+func (s *Store) retryOn(ctx context.Context, again func(error) bool, fn func() error) error {
 	var err error
 	for attempt := 1; attempt <= s.attempts; attempt++ {
-		if err = fn(); err == nil || !s.retryable(err) {
+		if err = fn(); err == nil || !again(err) {
 			return err
 		}
 		select {

@@ -1,0 +1,14 @@
+func (rc *ReplayCtx) load(pos int) (replayEntry, bool, error) {
+	var e replayEntry
+	raw, ok, err := rc.j.store.Load(rc.ctx, rc.j.run, rc.key(pos))
+	if err != nil || !ok {
+		if err != nil {
+			err = fmt.Errorf("workflow: replay: load call %d: %w", pos, err)
+		}
+		return e, false, err
+	}
+	if err := json.Unmarshal(raw, &e); err != nil {
+		return e, false, Permanent(fmt.Errorf("workflow: replay: recorded call %d does not decode: %w", pos, err))
+	}
+	return e, true, nil
+}

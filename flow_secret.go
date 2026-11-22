@@ -15,9 +15,13 @@ import (
 // ErrSecretInPayload means SecretGuard found what looks like a credential
 // in a job's payload or labels. It wraps ErrInvalid, so errors.Is matches
 // both. The error names where and which rule, never the value.
+//
+//ds:def id=errsecretinpayload-nzpdde34 owner=@khanakia stability=stable
 var ErrSecretInPayload = fmt.Errorf("%w: job carries a secret; pass a SecretRef instead", ErrInvalid)
 
 // SecretFinding is one place a detector believes holds a credential.
+//
+//ds:def id=secretfinding-pkmsg7tw owner=@khanakia stability=stable
 type SecretFinding struct {
 	// Where locates it: "payload" plus a JSON path ("payload.user.password"),
 	// "label <key>", or "chain[2].payload...".
@@ -31,11 +35,15 @@ type SecretFinding struct {
 // SecretDetector decides whether a job carries credentials (MS-05). The
 // stock one is NewSecretDetector; an app with its own rules (a vault's
 // token format, an entropy check) supplies its own.
+//
+//ds:def id=secretdetector-fn6kdnj9 owner=@khanakia stability=stable
 type SecretDetector interface {
 	Detect(job Job) []SecretFinding
 }
 
 // SecretRules tunes the stock detector.
+//
+//ds:def id=secretrules-zqms9kak owner=@khanakia stability=stable
 type SecretRules struct {
 	// AllowKeys are JSON object keys and label keys never reported by the
 	// key rule, compared after the same folding the rule applies
@@ -51,12 +59,16 @@ type SecretRules struct {
 // secretKeyParts are fragments that make any key containing them one.
 // Keys are folded first (foldKey).
 var (
+	//ds:def id=secretkeyexact-e3nqvje3 owner=@khanakia stability=stable
 	secretKeyExact = []string{"token", "pass", "pwd", "auth", "apikey", "secret"}
+	//ds:def id=secretkeyparts-6mvqvtx5 owner=@khanakia stability=stable
 	secretKeyParts = []string{"password", "passwd", "secret", "apikey", "privatekey", "accesstoken",
 		"refreshtoken", "authtoken", "bearertoken", "clientsecret", "authorization", "credential", "sessiontoken"}
 )
 
 // secretValueRules match credential formats inside any string value.
+//
+//ds:def id=secretvaluerules-am67pun5 owner=@khanakia stability=stable
 var secretValueRules = []struct {
 	name string
 	re   *regexp.Regexp
@@ -82,6 +94,8 @@ type stockDetector struct {
 // AWS access key ID, a Stripe live key, a GitHub or Slack token, a JWT.
 // A value that is an object (a SecretRef) is never reported. A payload
 // that is not JSON is scanned whole by the value rules only.
+//
+//ds:def id=newsecretdetector-fxr7ftrt owner=@khanakia stability=stable
 func NewSecretDetector(r SecretRules) SecretDetector {
 	d := stockDetector{allowKeys: map[string]bool{}, allowRules: map[string]bool{}}
 	for _, k := range r.AllowKeys {
@@ -95,6 +109,8 @@ func NewSecretDetector(r SecretRules) SecretDetector {
 
 // foldKey lowers k and drops "_", "-" and ".", so "API_Key", "api-key"
 // and "apiKey" fold to one name.
+//
+//ds:def id=foldkey-ff7k2uxa owner=@khanakia stability=stable
 func foldKey(k string) string {
 	return strings.Map(func(r rune) rune {
 		switch r {
@@ -110,6 +126,7 @@ func (d stockDetector) Detect(job Job) []SecretFinding {
 	return d.detect("", job)
 }
 
+//ds:def id=stockdetector-detect-bsxzsdv2 owner=@khanakia stability=stable
 func (d stockDetector) detect(prefix string, job Job) []SecretFinding {
 	var out []SecretFinding
 	var v any
@@ -129,6 +146,7 @@ func (d stockDetector) detect(prefix string, job Job) []SecretFinding {
 	return out
 }
 
+//ds:def id=stockdetector-walk-6jccu3xm owner=@khanakia stability=stable
 func (d stockDetector) walk(out []SecretFinding, where string, v any) []SecretFinding {
 	switch x := v.(type) {
 	case map[string]any:
@@ -194,6 +212,8 @@ func (d stockDetector) value(out []SecretFinding, where, s string) []SecretFindi
 // a secret in it outlives its rotation. Pass a SecretRef naming the secret
 // and resolve it inside the step instead. A nil detector means
 // NewSecretDetector(SecretRules{}).
+//
+//ds:def id=secretguard-r5z473u8 owner=@khanakia stability=stable
 func SecretGuard(d SecretDetector) EnqueueMiddleware {
 	if d == nil {
 		d = NewSecretDetector(SecretRules{})
@@ -216,6 +236,8 @@ func SecretGuard(d SecretDetector) EnqueueMiddleware {
 // where the credential would go, and resolve it in the step with
 // ResolveSecret. Its JSON form is {"secret_ref": "<name>"}, an object, so
 // SecretGuard never reports it.
+//
+//ds:def id=secretref-b6xpzmb7 owner=@khanakia stability=stable
 type SecretRef struct {
 	Ref string `json:"secret_ref"`
 }
@@ -225,16 +247,22 @@ const secretRefKey = "secret_ref"
 
 // SecretResolver turns a secret's name into its value at the moment a
 // step needs it: a vault, a cloud secret manager, environment variables.
+//
+//ds:def id=secretresolver-rygjyhdf owner=@khanakia stability=stable
 type SecretResolver interface {
 	ResolveSecret(ctx context.Context, name string) ([]byte, error)
 }
 
 // ErrNoSecretRef means ResolveSecret got a SecretRef with no name.
+//
+//ds:def id=errnosecretref-xkcq7und owner=@khanakia stability=stable
 var ErrNoSecretRef = errors.New("workflow: secret reference has no name")
 
 // ResolveSecret returns the value ref names, from r. An empty ref is a
 // Permanent ErrNoSecretRef; r's own errors are returned as they are, so a
 // vault outage retries the step.
+//
+//ds:def id=resolvesecret-bxbe3t42 owner=@khanakia stability=stable
 func ResolveSecret(ctx context.Context, r SecretResolver, ref SecretRef) ([]byte, error) {
 	if ref.Ref == "" {
 		return nil, Permanent(ErrNoSecretRef)

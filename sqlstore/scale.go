@@ -20,6 +20,8 @@ import (
 // client's own: its cap (the pool size, WithWorkers, for a queue without
 // one) and the attempts executing here. Without WithQueues the list is
 // empty.
+//
+//ds:def id=sql-client-queueloads-aqfyk7w8 owner=@khanakia stability=stable
 func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -69,6 +71,8 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 // attempts finish; raising it wakes idle workers at once. The cap is this
 // client's alone and is not stored: another client keeps its own, and a
 // restart starts from WithQueues again.
+//
+//ds:def id=sql-client-setworkers-ybeypsd4 owner=@khanakia stability=stable
 func (c *Client) SetWorkers(ctx context.Context, queue string, n int) error {
 	if err := ctx.Err(); err != nil {
 		return err

@@ -1,0 +1,24 @@
+var fireScript = goredis.NewScript(luaPrelude + `
+local b, sid = ARGV[1], ARGV[2]
+local sk = b .. ':sched:' .. sid
+local last = redis.call('HGET', sk, 'last')
+if last ~= ARGV[3] then return {0, 0} end
+redis.call('HSET', sk, 'last', ARGV[4], 'next', ARGV[5])
+redis.call('ZADD', b .. ':scheds', ARGV[5], sid)
+local n = tonumber(ARGV[6])
+if n == 0 or overlapped(b, sk) then return {1, 0} end
+local skip = redis.call('HGET', sk, 'overlap') == 'skip'
+local keep = tonumber(redis.call('HGET', sk, 'keep') or '0') or 0
+local made, id, at = 0, nil, nil
+for j = 0, n - 1 do
+  if skip and made == 1 then break end
+  local i = 8 + j * 21 -- a tick time, then createArity (20) values
+  create(b, ARGV, i)
+  id, at = ARGV[i], ARGV[i - 1]
+  if keep > 0 then redis.call('ZADD', b .. ':sruns:' .. sid, ARGV[i + 7], id) end
+  made = made + 1
+end
+redis.call('HSET', sk, 'lfire', at, 'lrun', id)
+redis.call('PUBLISH', b .. ':wake', 'e')
+return {1, made}
+`)

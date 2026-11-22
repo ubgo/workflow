@@ -16,10 +16,14 @@ import (
 )
 
 // ApprovalEvent is the event name approvals travel under (DE-05).
+//
+//ds:def id=approvalevent-hd4dmmps owner=@khanakia stability=stable
 const ApprovalEvent = "ubgo.workflow.approval"
 
 // ErrApprovalToken matches a signed approval token that is malformed,
 // forged or expired.
+//
+//ds:def id=errapprovaltoken-ac4jv84z owner=@khanakia stability=stable
 var ErrApprovalToken = errors.New("workflow: invalid approval token")
 
 // Decision is a person's answer to an approval request; it is the
@@ -32,6 +36,8 @@ type Decision struct {
 
 // ApprovalSpec describes an approval step: a run suspends there, holding
 // no worker, until Approve or Reject is called with its key.
+//
+//ds:def id=approvalspec-n28mq3pn owner=@khanakia stability=stable
 type ApprovalSpec struct {
 	// Name is the step name.
 	Name string
@@ -55,6 +61,8 @@ type ApprovalSpec struct {
 // ApprovalEvent keyed by the request. It needs CapWaitForEvent (memory,
 // sqlstore, Redis, Hatchet). Approve and Reject resume it; an answer sent
 // before the run reaches the step is kept, as every Signal is.
+//
+//ds:def id=approvalstep-2yvb5vyr owner=@khanakia stability=stable
 func ApprovalStep(a ApprovalSpec) (Step, error) {
 	if a.Name == "" {
 		return Step{}, invalidf("approval step has no Name")
@@ -72,18 +80,24 @@ func ApprovalStep(a ApprovalSpec) (Step, error) {
 }
 
 // Approve resumes the runs waiting for approval key with an approval.
+//
+//ds:def id=approve-y7nybmbq owner=@khanakia stability=stable
 func Approve(ctx context.Context, c Client, key, by, note string) error {
 	return answerApproval(ctx, c, key, Decision{Approved: true, By: by, Note: note})
 }
 
 // ApproveRun answers the approval step of the run ref names
 // (ApprovalSpec.OwnRun) with an approval, through SignalRun.
+//
+//ds:def id=approverun-nseec3ru owner=@khanakia stability=stable
 func ApproveRun(ctx context.Context, c Client, ref RunRef, by, note string) error {
 	return answerRun(ctx, c, ref, Decision{Approved: true, By: by, Note: note})
 }
 
 // RejectRun answers the approval step of the run ref names
 // (ApprovalSpec.OwnRun) with a rejection, through SignalRun.
+//
+//ds:def id=rejectrun-9eznrn6w owner=@khanakia stability=stable
 func RejectRun(ctx context.Context, c Client, ref RunRef, by, note string) error {
 	return answerRun(ctx, c, ref, Decision{Approved: false, By: by, Note: note})
 }
@@ -97,10 +111,13 @@ func answerRun(ctx context.Context, c Client, ref RunRef, d Decision) error {
 }
 
 // Reject resumes the runs waiting for approval key with a rejection.
+//
+//ds:def id=reject-x4n6u9kz owner=@khanakia stability=stable
 func Reject(ctx context.Context, c Client, key, by, note string) error {
 	return answerApproval(ctx, c, key, Decision{Approved: false, By: by, Note: note})
 }
 
+//ds:def id=answerapproval-ft2r3974 owner=@khanakia stability=stable
 func answerApproval(ctx context.Context, c Client, key string, d Decision) error {
 	if key == "" {
 		return invalidf("approval key is empty")
@@ -114,6 +131,8 @@ func answerApproval(ctx context.Context, c Client, key string, d Decision) error
 
 // DecisionOf decodes the approval step's output, the input of the step
 // after it.
+//
+//ds:def id=decisionof-jftveqah owner=@khanakia stability=stable
 func DecisionOf(in []byte) (Decision, error) {
 	var d Decision
 	if err := json.Unmarshal(in, &d); err != nil {
@@ -124,6 +143,8 @@ func DecisionOf(in []byte) (Decision, error) {
 
 // NewApprovalToken returns a fresh random key (128 bits, hex) for an
 // approval request that has no natural ID.
+//
+//ds:def id=newapprovaltoken-k4r4eb84 owner=@khanakia stability=stable
 func NewApprovalToken() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -137,6 +158,8 @@ func NewApprovalToken() (string, error) {
 // link from a forged one and an expired one, without storing anything.
 // The token is "<key>.<unix expiry>.<HMAC-SHA256>" in URL-safe base64.
 // Keys rotate: Sign uses Keys[0], Verify accepts any of Keys.
+//
+//ds:def id=approvalsigner-76cy8uh3 owner=@khanakia stability=stable
 type ApprovalSigner struct {
 	Keys [][]byte
 }
@@ -155,6 +178,8 @@ func (s ApprovalSigner) Sign(key string, expires time.Time) (string, error) {
 
 // Verify checks token at now and returns the approval key it carries. A
 // bad or expired token matches ErrApprovalToken.
+//
+//ds:def id=approvalsigner-verify-7emh3ft6 owner=@khanakia stability=stable
 func (s ApprovalSigner) Verify(token string, now time.Time) (string, error) {
 	enc, mac, ok := strings.Cut(token, ".")
 	if !ok {

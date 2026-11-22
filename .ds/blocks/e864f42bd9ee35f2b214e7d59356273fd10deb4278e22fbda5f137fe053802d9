@@ -1,0 +1,18 @@
+type TransitionDef struct {
+	From  string `json:"from"`
+	Event string `json:"event"`
+	To    string `json:"to,omitempty"`
+
+	// Guard names a registered guard; empty means always taken.
+	Guard string `json:"guard,omitempty"`
+
+	// Actions name registered actions, run in order.
+	Actions []string `json:"actions,omitempty"`
+
+	// History is "", "shallow" or "deep".
+	History string `json:"history,omitempty"`
+
+	// Reenter leaves and enters the source again on a self-transition
+	// or a transition to a descendant.
+	Reenter bool `json:"reenter,omitempty"`
+}

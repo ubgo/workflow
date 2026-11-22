@@ -1,0 +1,16 @@
+func ValidateTenant(tenant string) error {
+	if tenant == "" {
+		return invalidf("tenant is empty")
+	}
+	if len(tenant) > maxTenant {
+		return invalidf("tenant %q is longer than %d characters", tenant, maxTenant)
+	}
+	for _, r := range tenant {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == ':' || r == '-' || r == '@'
+		if !ok {
+			return invalidf("tenant %q has the character %q; use letters, digits and . _ : - @", tenant, r)
+		}
+	}
+	return nil
+}

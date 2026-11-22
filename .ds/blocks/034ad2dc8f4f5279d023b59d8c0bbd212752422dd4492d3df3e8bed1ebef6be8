@@ -1,0 +1,3 @@
+func WithMiddleware(mw ...workflow.Middleware) Option {
+	return func(c *Client) { c.mw = append(c.mw, mw...) }
+}

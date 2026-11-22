@@ -12,6 +12,7 @@ import (
 // network access beyond the app itself.
 //
 //go:embed ui/index.html ui/app.css ui/app.js
+//ds:def id=admin-uifiles-r5cepbub owner=@khanakia stability=stable
 var uiFiles embed.FS
 
 // uiTypes is every file the UI serves and its media type. A path outside
@@ -26,14 +27,20 @@ var uiTypes = map[string]string{
 // uiCSP lets a UI page load only its own script and style sheet and talk
 // only to its own origin: no inline script, no third-party host, no
 // framing (clickjacking), no form posts anywhere.
+//
+//ds:def id=admin-uicsp-jbxyk6qc owner=@khanakia stability=stable
 const uiCSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 // uiRedirectTarget is where GET / and GET /ui send the browser.
+//
+//ds:def id=admin-uiredirecttarget-wxganz64 owner=@khanakia stability=stable
 const uiRedirectTarget = "ui/"
 
 // uiRedirect sends GET / and GET /ui to the UI page. The Location is
 // relative, so it lands under whatever prefix the handler is mounted at
 // (an absolute "/ui/" would lose a prefix that http.StripPrefix removed).
+//
+//ds:def id=admin-handler-uiredirect-8c8s8gay owner=@khanakia stability=stable
 func (h *handler[P]) uiRedirect(w http.ResponseWriter, r *http.Request) {
 	if !h.authorize(w, r, ActionUI, Resource{File: "index.html"}) {
 		return
@@ -51,6 +58,8 @@ func (h *handler[P]) uiRedirect(w http.ResponseWriter, r *http.Request) {
 // they are still served only after Identify and Authorize (ActionUI): the
 // gate in ServeHTTP runs before routing for every path, so an anonymous
 // caller cannot even learn that the UI exists or which version it is.
+//
+//ds:def id=admin-handler-uifile-f5sjqcca owner=@khanakia stability=stable
 func (h *handler[P]) uiFile(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	if name == "" {

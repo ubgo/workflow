@@ -1,0 +1,23 @@
+func ReportAttempts(r workflow.Reporter, cfg ReportConfig) workflow.Middleware {
+	clk := reportClock(cfg)
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			out, err := next(ctx, in)
+			if err == nil || errors.Is(err, ErrReleased) {
+				return out, err
+			}
+			info, _ := workflow.StepInfoFrom(ctx)
+			r.Report(ctx, workflow.Failure{
+				Ref:      workflow.RunRef{RunID: info.RunID},
+				Workflow: info.Workflow,
+				Status:   workflow.StatusRetrying,
+				Step:     info.Step,
+				Attempt:  info.Attempt,
+				Err:      err,
+				Labels:   info.Labels,
+				At:       clk.Now(),
+			})
+			return out, err
+		}
+	}
+}

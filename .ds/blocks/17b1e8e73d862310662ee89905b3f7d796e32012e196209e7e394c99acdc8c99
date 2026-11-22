@@ -1,0 +1,37 @@
+func (d MachineDefinition) Validate() error {
+	if d.Name == "" {
+		return fieldErr("name", "is empty")
+	}
+	if d.Unhandled != "" && d.Unhandled != "ignore" && d.Unhandled != "reject" {
+		return fieldErr("unhandled", "%q is not \"ignore\" or \"reject\"", d.Unhandled)
+	}
+	if d.Retry != nil {
+		if _, err := d.Retry.policy("retry"); err != nil {
+			return err
+		}
+	}
+	if len(d.States) == 0 {
+		return fieldErr("states", "a machine needs at least one state")
+	}
+	for i, s := range d.States {
+		for j, tm := range s.After {
+			p := index(at(index("states", i), "after"), j)
+			dl, err := duration(at(p, "delay"), tm.Delay)
+			if err != nil {
+				return err
+			}
+			if dl <= 0 {
+				return fieldErr(at(p, "delay"), "must be positive")
+			}
+			if tm.Event == "" {
+				return fieldErr(at(p, "event"), "is empty")
+			}
+		}
+	}
+	for i, t := range d.Transitions {
+		if _, err := historyMode(at(index("transitions", i), "history"), t.History); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -1,0 +1,9 @@
+func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
+	if err := workflow.CheckPause(caps, t); err != nil {
+		return err
+	}
+	if err := c.rdb.HSet(ctx, c.base+":paused", pauseField(t), "1").Err(); err != nil {
+		return fmt.Errorf("redis: pause: %w", classify(err))
+	}
+	return nil
+}

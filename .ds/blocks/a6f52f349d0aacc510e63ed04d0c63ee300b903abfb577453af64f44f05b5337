@@ -1,0 +1,36 @@
+func (p *SlotPool) Acquire(ctx context.Context, n int) error {
+	n = max(n, 1)
+	if n > p.size {
+		return invalidf("slot pool: %d slots asked of %d", n, p.size)
+	}
+	p.mu.Lock()
+	if len(p.waiting) == 0 && p.used+n <= p.size {
+		p.used += n
+		p.mu.Unlock()
+		return nil
+	}
+	w := &slotWaiter{n: n, ready: make(chan struct{})}
+	p.waiting = append(p.waiting, w)
+	p.mu.Unlock()
+	select {
+	case <-w.ready:
+		return nil
+	case <-ctx.Done():
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		select {
+		case <-w.ready: // granted while ctx ended: give the slots back
+			p.used -= w.n
+			p.grantLocked()
+		default:
+			for i, x := range p.waiting {
+				if x == w {
+					p.waiting = append(p.waiting[:i], p.waiting[i+1:]...)
+					break
+				}
+			}
+			p.grantLocked() // the head may have changed
+		}
+		return fmt.Errorf("slot pool: %w", context.Cause(ctx))
+	}
+}

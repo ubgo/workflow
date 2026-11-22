@@ -1,0 +1,1 @@
+	defaultNodesTTL = time.Hour // how long a silent node stays listed

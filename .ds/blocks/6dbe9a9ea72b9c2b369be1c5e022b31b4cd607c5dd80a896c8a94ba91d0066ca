@@ -1,0 +1,11 @@
+func (c *Client) PayloadLimit() int {
+	limit := 0
+	for _, name := range c.names {
+		if l, ok := c.regions[name].(workflow.PayloadLimiter); ok {
+			if n := l.PayloadLimit(); n > 0 && (limit == 0 || n < limit) {
+				limit = n
+			}
+		}
+	}
+	return limit
+}

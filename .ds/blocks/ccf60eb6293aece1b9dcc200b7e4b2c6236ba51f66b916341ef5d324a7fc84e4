@@ -1,0 +1,19 @@
+type BalanceLoop struct {
+	// Scaler is the client to balance (a client declaring
+	// CapWorkerScale).
+	Scaler WorkerScaler
+
+	// Balancer decides the counts.
+	Balancer Balancer
+
+	// Every is the interval; zero means DefaultBalanceEvery.
+	Every time.Duration
+
+	// Clock drives the interval; nil means clock.Real.
+	Clock clock.Clock
+
+	// OnError receives an error of one round; the loop goes on. Nil logs
+	// it with Logger (nil: slog.Default()).
+	OnError func(error)
+	Logger  *slog.Logger
+}

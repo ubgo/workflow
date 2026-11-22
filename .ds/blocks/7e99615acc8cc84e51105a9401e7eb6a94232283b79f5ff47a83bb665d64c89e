@@ -1,0 +1,3 @@
+func unknownRegion(name, from string) error {
+	return fmt.Errorf("%w: %q from %s (%w)", ErrUnknownRegion, name, from, workflow.ErrInvalid)
+}

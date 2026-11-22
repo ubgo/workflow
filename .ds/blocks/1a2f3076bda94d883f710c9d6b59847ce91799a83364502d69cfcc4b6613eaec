@@ -1,0 +1,23 @@
+type DatasetTrigger struct {
+	// Name identifies the trigger; unique within a Datasets and stable
+	// across deploys, because its consumed versions and every run's
+	// idempotency key are kept under it.
+	Name string
+
+	// Datasets are the dataset names the trigger watches.
+	Datasets []string
+
+	// All makes the trigger wait for every dataset instead of any one.
+	All bool
+
+	// Workflow is the workflow to run. Ignored when Job is set and
+	// returns a job naming its own workflow.
+	Workflow string
+
+	// Job, when set, builds the job from the versions the run consumes
+	// (dataset name to version). Reserved label keys in it are refused
+	// (ErrInvalid). Datasets still adds LabelDatasetTrigger and, when the
+	// job has none, its idempotency key. Nil means Job{Workflow: Workflow,
+	// Payload: the versions as a JSON object}.
+	Job func(versions map[string]string) (workflow.Job, error)
+}

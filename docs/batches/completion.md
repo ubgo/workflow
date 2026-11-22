@@ -4,28 +4,28 @@ A batch decides its callbacks from its jobs' ends, so it needs to hear about eve
 
 ## Before you start
 
-- A batch `Manager` ([batches](batches.md)).
+- A batch `Manager` ([`batch.New`](ds:block?id=batch-new-geazwpek), [batches](batches.md)).
 - The runnable programs for this page are [examples/batch-completion](../../examples/batch-completion/) (the poller, an app's own source, `RunFinished`; in memory, no service) and [examples/batches](../../examples/batches/) (callback retries; its Hatchet part runs when `HATCHET_CLIENT_TOKEN` is set).
 
 ## How a batch learns a job ended
 
-A `batch.Source` tells a `Manager` that batch jobs ended; `Manager.Attach(ctx)` connects the Manager's sources, once, before `client.Start`. A source reports through `Manager.RunFinished(ctx, labels, status)`, which ignores repeats, so several sources may report the same job: the first terminal status recorded wins. Unless `batch.WithCompletionSource(srcs...)` names them, `Attach` picks the sources by what the client can do:
+A [`batch.Source`](ds:block?id=batch-source-2g3gyra2) tells a `Manager` that batch jobs ended; [`Manager.Attach(ctx)`](ds:block?id=batch-manager-attach-xnchrce9) connects the Manager's sources, once, before `client.Start`. A source reports through [`Manager.RunFinished(ctx, labels, status)`](ds:block?id=batch-manager-runfinished-cfkbj5us), which ignores repeats, so several sources may report the same job: the first terminal status recorded wins. Unless [`batch.WithCompletionSource(srcs...)`](ds:block?id=batch-withcompletionsource-fedeg25x) names them, `Attach` picks the sources by what the client can do ([`defaultSources`](ds:block?id=batch-manager-defaultsources-cgw2pdqt)):
 
 | Client | Default sources | Why |
 |---|---|---|
-| a `workflow.RunNotifier` declaring `CapRunFinished` (memory, SQL, Redis) | `batch.HookSource()` | every run end is guaranteed to arrive |
-| a `RunNotifier` without it (Hatchet) | `HookSource()` plus `batch.PollSource(interval)` | the hook is fast; the poller is the safety net for an event the hook loses |
-| any other client | `PollSource(interval)` | `Client.Status` exists on every driver |
+| a `workflow.RunNotifier` declaring `CapRunFinished` ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t)) | [`batch.HookSource()`](ds:block?id=batch-hooksource-4vdc7c8r) | every run end is guaranteed to arrive |
+| a `RunNotifier` without it ([Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)) | `HookSource()` plus [`batch.PollSource(interval)`](ds:block?id=batch-pollsource-kr85dvdk) | the hook is fast; the poller is the safety net for an event the hook loses |
+| any other client | [`PollSource(interval)`](ds:block?id=batch-manager-defaultsources-cgw2pdqt) | `Client.Status` exists on every driver |
 
-- `HookSource()` registers the batch on the client's run-finished hook. Its `Attach` fails with an `UnsupportedError` when the client is not a `RunNotifier`.
-- `PollSource(interval)` calls `Client.Status` for every unfinished job of every open batch each interval, on the Manager's clock, and also retries pending callbacks and resumes dead dispatches. A `Status` error for one job is logged and retried next tick, never guessed into a status. Its `Attach` fails with `workflow.ErrInvalid` for an interval that is not positive.
-- `batch.WithStatusPoll(interval)` changes the default poller's interval (`batch.DefaultPollInterval`, five seconds). Each tick costs one `Status` call per unfinished job, so it trades engine load against callback latency. It does not add a poller where the defaults would not; name `PollSource` in `WithCompletionSource` for that.
+- `HookSource()` registers the batch on the client's run-finished hook. Its [`Attach`](ds:block?id=batch-hooksource-attach-3ympu39g) fails with an `UnsupportedError` when the client is not a `RunNotifier`.
+- `PollSource(interval)` calls `Client.Status` for every unfinished job of every open batch each interval, on the Manager's clock, and also retries pending callbacks and resumes dead dispatches ([`poll`](ds:block?id=batch-manager-poll-q7znr3wp)). A `Status` error for one job is logged (to the Manager's [`WithLogger`](ds:block?id=batch-withlogger-nd8ayt7j) logger, which discards by default) and retried next tick, never guessed into a status. Its [`Attach`](ds:block?id=batch-pollsource-attach-2eyttg2p) fails with `workflow.ErrInvalid` for an interval that is not positive.
+- [`batch.WithStatusPoll(interval)`](ds:block?id=batch-withstatuspoll-yu9gvj3a) changes the default poller's interval ([`batch.DefaultPollInterval`](ds:block?id=batch-defaultpollinterval-a8rdxsaq), five seconds). Each tick costs one `Status` call per unfinished job, so it trades engine load against callback latency. It does not add a poller where the defaults would not; name `PollSource` in `WithCompletionSource` for that.
 
-`WithCompletionSource` replaces the defaults entirely, for a native engine feed (below), or `HookSource()` plus `PollSource` on a client whose hook is guaranteed but which the app wants double-checked. `Attach` returns the first source's error, and a `Manager` whose `Attach` failed must not be used.
+[`WithCompletionSource`](ds:block?id=batch-withcompletionsource-fedeg25x) replaces the defaults entirely, for a native engine feed (below), or `HookSource()` plus `PollSource` on a client whose hook is guaranteed but which the app wants double-checked. Name every source in one call: a second `WithCompletionSource` replaces the first. An empty `WithCompletionSource()` means no source at all, for an app that reports every run end itself through `Manager.RunFinished`; leave the option out to keep the defaults. [`Attach`](ds:block?id=batch-manager-attach-xnchrce9) returns the first source's error, and a `Manager` whose `Attach` failed must not be used.
 
 ### Step 1: let the poller find job ends
 
-A client without the run-finished hook gets the poller by default. The example hides the memory driver's hook behind a type that embeds only `workflow.Client`, so `Attach` picks `PollSource`, and sets its interval with `WithStatusPoll`. The poller ticks on the Manager's clock, here a fake one:
+A client without the run-finished hook gets the poller by default. The example hides the memory driver's hook behind a type that embeds only `workflow.Client`, so `Attach` picks `PollSource` ([`defaultSources`](ds:block?id=batch-manager-defaultsources-cgw2pdqt)), and sets its interval with `WithStatusPoll`. The poller ticks on the Manager's clock, here a fake one:
 
 <!-- snippet: examples/batch-completion/main.go#status-poll -->
 ```go
@@ -42,7 +42,7 @@ if err := polled.Attach(ctx); err != nil { // starts the poller
 }
 ```
 
-The job runs at once, but the batch hears of it only on the next tick. Moving the fake clock one interval makes the poller call `Status` for the unfinished job, record its end and enqueue `Finally`:
+The job runs at once, but the batch hears of it only on the next tick. Moving the fake clock one interval makes the [poller](ds:block?id=batch-manager-poll-q7znr3wp) call `Status` for the unfinished job, record its end and enqueue `Finally`:
 
 <!-- snippet: examples/batch-completion/main.go#poll-tick -->
 ```go
@@ -61,7 +61,7 @@ It prints `before the poll: 0 of 1 processed`, then the `Finally` line and `afte
 
 ### Step 2: feed the batch from your own source
 
-An app with its own feed of run ends (a message bus, an engine webhook) writes a `batch.Source`. Its `Attach(ctx, m)` is called once by `Manager.Attach`, before the client starts; a source that works in the background starts its goroutine there and stops it when `ctx` ends. It reports each end with `Manager.RunFinished(ctx, labels, status)`, passing the finished run's `Job.Labels`, which carry the batch labels:
+An app with its own feed of run ends (a message bus, an engine webhook) writes a [`batch.Source`](ds:block?id=batch-source-2g3gyra2). Its `Attach(ctx, m)` is called once by `Manager.Attach`, before the client starts; a source that works in the background starts its goroutine there and stops it when `ctx` ends. It reports each end with [`Manager.RunFinished(ctx, labels, status)`](ds:block?id=batch-manager-runfinished-cfkbj5us), passing the finished run's `Job.Labels`, which carry the batch labels:
 
 <!-- snippet: examples/batch-completion/main.go#source -->
 ```go
@@ -89,7 +89,7 @@ func (s busSource) Attach(ctx context.Context, m *batch.Manager) error {
 }
 ```
 
-`WithCompletionSource` puts it in place of the defaults, so this Manager has no hook and no poller of its own:
+[`WithCompletionSource`](ds:block?id=batch-withcompletionsource-fedeg25x) puts it in place of the defaults, so this Manager has no hook and no poller of its own:
 
 <!-- snippet: examples/batch-completion/main.go#own-source -->
 ```go
@@ -102,11 +102,11 @@ if err := fed.Attach(ctx); err != nil { // before Start, as for every Manager
 }
 ```
 
-The example fills the feed from the driver's run-finished hook, standing for a bus; the batch then runs to `Then` and `Finally` as with the hook. A source that knows a job only by its ref, not its labels, builds them with `batch.JobLabels(id, index, attempt)` (the attempt is `JobState.Attempt`).
+The example fills the feed from the driver's run-finished hook, standing for a bus; the batch then runs to `Then` and `Finally` as with the hook. A source that knows a job only by its ref, not its labels, builds them with [`batch.JobLabels(id, index, attempt)`](ds:block?id=batch-joblabels-48uy5r4y) (the attempt is [`JobState.Attempt`](ds:block?id=batch-jobstate-pbbfqagq)).
 
 ### Step 3: report every run, not only batch jobs
 
-`RunFinished` ignores a run that is not a batch job, a non-terminal status, an unknown batch and a repeat for a job already recorded, and returns nil for each, so a feed can carry every run of the app without filtering:
+[`RunFinished`](ds:block?id=batch-manager-runfinished-cfkbj5us) ignores a run that is not a batch job, a non-terminal status, an unknown batch and a repeat for a job already recorded ([`record`](ds:block?id=batch-manager-record-b8sf5qgn)), and returns nil for each, so a feed can carry every run of the app without filtering:
 
 <!-- snippet: examples/batch-completion/main.go#ignored -->
 ```go
@@ -118,11 +118,11 @@ err = fed.RunFinished(ctx, batch.JobLabels("unknown", 0, 0), workflow.StatusFail
 fmt.Fprintln(w, "unknown batch, error:", err)
 ```
 
-Both lines print `error: <nil>`. An app can also skip sources and `Attach` altogether and call `RunFinished` from its own handler; it then also owns calling `Manager.RetryCallbacks` and `Manager.ResumeDispatches`, which the poller and the retry loop would otherwise run.
+Both lines print `error: <nil>`. An app can also skip sources and `Attach` altogether and call `RunFinished` from its own handler; it then also owns calling [`Manager.RetryCallbacks`](ds:block?id=batch-manager-retrycallbacks-vg9kzc67) and [`Manager.ResumeDispatches`](ds:block?id=batch-manager-resumedispatches-w57mk3c5), which the poller and the retry loop would otherwise run.
 
 ## On Hatchet
 
-The default poller costs one `Status` call per unfinished job per tick. `hatchet.Client.BatchSource(store, interval, logger)` is a source of the Hatchet driver's own that makes one run-list call per unfinished batch each interval instead, filtered by the batch's `workflow.batch.id` label and the terminal statuses. `store` must be the `Store` the Manager uses, because the source reads the open batches from it. A job whose ref holds only a `ScheduledID` (a delayed start that has not fired) has no engine run to list, so the source asks `Status` for that one job. A list error is logged and retried next tick. Each tick also retries pending callbacks, as the poller does; a nil logger means `hatchet.Config.Logger`.
+The default poller costs one `Status` call per unfinished job per tick. [`hatchet.Client.BatchSource(store, interval, logger)`](ds:block?id=hatchet-client-batchsource-prb3q7d4) is a source of the Hatchet driver's own that makes one run-list call per unfinished batch each interval instead, filtered by the batch's `workflow.batch.id` label and the terminal statuses. `store` must be the `Store` the Manager uses, because the source reads the open batches from it. A job whose ref holds only a `ScheduledID` (a delayed start that has not fired) has no engine run to list, so the source asks `Status` for that one job. A list error is logged and retried next tick. Each tick also retries pending callbacks and resumes dead dispatches, as the poller does ([`poll`](ds:block?id=hatchet-batchsource-poll-7fkufb6p)); a nil logger means `hatchet.Config.Logger`.
 
 <!-- snippet: examples/batches/hatchet.go#coordinator -->
 ```go
@@ -140,18 +140,18 @@ if err := m.Attach(ctx); err != nil {
 }
 ```
 
-`BatchSource` is a `batch.LabelSource`: it finds jobs by label, without their refs. That is what a batch started by the Hatchet batch coordinator needs, whose jobs never get refs, and `Dispatch` refuses a coordinated batch on a Manager with no `LabelSource` attached ([the Hatchet batch coordinator](native-groups.md#the-hatchet-batch-coordinator)).
+`BatchSource` is a [`batch.LabelSource`](ds:block?id=batch-labelsource-rq5svjm2): it finds jobs by label, without their refs. That is what a batch started by the Hatchet batch coordinator needs, whose jobs never get refs, and [`Dispatch`](ds:block?id=batch-manager-dispatch-6uvrxrj7) refuses a coordinated batch on a Manager with no `LabelSource` attached ([the Hatchet batch coordinator](native-groups.md#the-hatchet-batch-coordinator)).
 
 ## Callbacks that fail to enqueue
 
-A decided callback is saved as pending (`State.Pending`, one `batch.PendingCallback` per callback) in the same `Store.Update` as the decision, then enqueued, then removed. One whose `Enqueue` fails stays pending, with its `Attempts`, `LastError` and a `RetryAt` when the current attempt's claim ends, and is retried after that claim on whichever comes first:
+A decided callback is saved as pending (`State.Pending`, one [`batch.PendingCallback`](ds:block?id=batch-pendingcallback-pyn7sbnr) per callback) in the same `Store.Update` as the decision ([`claimCallbacks`](ds:block?id=batch-manager-claimcallbacks-z2a8hfdx)), then enqueued, then removed ([`enqueueCallbacks`](ds:block?id=batch-manager-enqueuecallbacks-w9992uzd)). One whose `Enqueue` fails stays pending, with its `Attempts`, `LastError` and a `RetryAt` when the current attempt's claim ends, and is retried after that claim on whichever comes first:
 
-- the status poller's next tick (and the Hatchet `BatchSource`'s);
-- the next job end recorded for that batch;
-- the retry loop `Attach` starts when no source is a poller, which calls `Manager.RetryCallbacks` every claim length;
-- a call of `Manager.RetryCallbacks(ctx)` by the app, which retries every due pending callback across every batch in the store.
+- the status poller's next tick ([`poll`](ds:block?id=batch-manager-poll-q7znr3wp); and the Hatchet `BatchSource`'s);
+- the next job end recorded for that batch ([`record`](ds:block?id=batch-manager-record-b8sf5qgn));
+- the [retry loop](ds:block?id=batch-manager-retryloop-sxmdq5tv) `Attach` starts when no source is a poller, which calls `Manager.RetryCallbacks` every claim length;
+- a call of [`Manager.RetryCallbacks(ctx)`](ds:block?id=batch-manager-retrycallbacks-vg9kzc67) by the app, which retries every due pending callback across every batch in the store.
 
-`batch.WithCallbackRetry(d)` sets the claim length (`batch.DefaultCallbackRetry`, thirty seconds), which must outlast one `Enqueue` so two attempts never overlap. `batch.WithManualCallbackRetry()` stops `Attach` from starting the retry loop, for an app that calls `RetryCallbacks` on its own schedule. The example does that, with a client whose first `Finally` enqueue fails:
+[`batch.WithCallbackRetry(d)`](ds:block?id=batch-withcallbackretry-rctr3u5p) sets the claim length ([`batch.DefaultCallbackRetry`](ds:block?id=batch-defaultcallbackretry-tqjfsrq3), thirty seconds), which must outlast one `Enqueue` so two attempts never overlap. [`batch.WithManualCallbackRetry()`](ds:block?id=batch-withmanualcallbackretry-sxbps7w4) stops `Attach` from starting the retry loop, for an app that calls `RetryCallbacks` on its own schedule. The example does that, with a client whose first `Finally` enqueue fails:
 
 <!-- snippet: examples/batches/main.go#retry -->
 ```go
@@ -168,7 +168,7 @@ if err := m.RetryCallbacks(ctx); err != nil {
 }
 ```
 
-A batch stays open (`State.Open`, listed by `Store.Unfinished`) while a callback is pending, even after every job has finished. When the client declares `workflow.CapIdempotencyKey`, every callback carries the key `batch:<id>:<kind>`, so a retry after an enqueue that landed but was not recorded cannot double it.
+A batch stays open ([`State.Open`](ds:block?id=batch-state-open-v97c8cfq), listed by [`Store.Unfinished`](ds:block?id=batch-store-vp7qhnme)) while a callback is pending, even after every job has finished. When the client declares `workflow.CapIdempotencyKey`, every callback carries the key [`batch:<id>:<kind>`](ds:block?id=batch-callbackkey-agsg3nsq) ([`callback`](ds:block?id=batch-manager-callback-9sp5vupc)), so a retry after an enqueue that landed but was not recorded cannot double it.
 
 ## Try it
 
@@ -222,14 +222,14 @@ hatchet: coordinated batch without a LabelSource refused: true
 
 ## Pitfalls
 
-- **Manual retry means you must retry.** With `WithManualCallbackRetry` and no poller, a callback that fails after the batch's last job end is never retried unless the app calls `RetryCallbacks`.
-- **A retry waits for the claim.** `RetryCallbacks` skips a pending callback until its `RetryAt`; calling it right after a failure does nothing.
-- **The poller's cost grows with unfinished jobs.** A 10,000-job batch at the default interval is up to 2,000 `Status` calls a second; on Hatchet use `BatchSource`, elsewhere raise the interval.
-- **Two sources are fine, a missing one is not.** Repeats are ignored, so adding a poller beside the hook is always safe; a `WithCompletionSource` that names no source able to see the jobs leaves batches open forever.
-- **An empty `WithCompletionSource()` keeps the defaults.** The option appends its sources, and a Manager with none falls back to the defaults, so it cannot switch every source off; to feed the batch only by hand, leave `Attach` out instead. Two `WithCompletionSource` options add up rather than the second replacing the first.
-- **A source must not block `Attach`.** `Attach` runs before `client.Start`; a source that reads its feed inside `Attach` instead of in a goroutine stops the app from starting.
-- **A feed must carry the run's labels.** `RunFinished` finds the job by `workflow.batch.id`, `workflow.batch.index` and, after `RetryFailed`, `workflow.batch.attempt`. A feed that drops labels makes every end look like a run outside any batch, silently ignored.
-- **`Status` errors are not guesses.** An engine that pruned a run returns `workflow.ErrNotFound` for it; the poller logs and retries it every tick, so retention on the engine must outlast your batches.
+- **Manual retry means you must retry.** With [`WithManualCallbackRetry`](ds:block?id=batch-withmanualcallbackretry-sxbps7w4) and no poller, a callback that fails after the batch's last job end is never retried unless the app calls `RetryCallbacks`.
+- **A retry waits for the claim.** [`RetryCallbacks`](ds:block?id=batch-manager-retrycallbacks-vg9kzc67) skips a pending callback until its `RetryAt`; calling it right after a failure does nothing.
+- **The poller's cost grows with unfinished jobs.** A 10,000-job batch at the [default interval](ds:block?id=batch-defaultpollinterval-a8rdxsaq) is up to 2,000 `Status` calls a second; on Hatchet use `BatchSource`, elsewhere raise the interval.
+- **Two sources are fine, a missing one is not.** Repeats are ignored ([`recordFinish`](ds:block?id=batch-recordfinish-9b55fcjg)), so adding a poller beside the hook is always safe; a `WithCompletionSource` that names no source able to see the jobs leaves batches open forever.
+- **An empty `WithCompletionSource()` switches every source off.** Batches then end only when the app calls `Manager.RunFinished` for each job; a slice that turns out empty by mistake leaves them open forever. Two [`WithCompletionSource`](ds:block?id=batch-withcompletionsource-fedeg25x) options do not add up: the last one wins.
+- **A source must not block `Attach`.** [`Attach`](ds:block?id=batch-manager-attach-xnchrce9) runs before `client.Start`; a source that reads its feed inside `Attach` instead of in a goroutine stops the app from starting.
+- **A feed must carry the run's labels.** `RunFinished` finds the job by [`workflow.batch.id`](ds:block?id=batch-labelbatch-qsurvmc8), [`workflow.batch.index`](ds:block?id=batch-labelindex-jtskuw4z) ([`batchJob`](ds:block?id=batch-batchjob-znu5danh)) and, after `RetryFailed`, [`workflow.batch.attempt`](ds:block?id=batch-labelattempt-ppud3ep6). A feed that drops labels makes every end look like a run outside any batch, silently ignored.
+- **`Status` errors are not guesses.** An engine that pruned a run returns `workflow.ErrNotFound` for it; the [poller](ds:block?id=batch-manager-poll-q7znr3wp) logs and retries it every tick, so retention on the engine must outlast your batches.
 
 ## Related
 

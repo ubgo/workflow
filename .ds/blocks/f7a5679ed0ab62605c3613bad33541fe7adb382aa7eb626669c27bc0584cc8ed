@@ -1,0 +1,14 @@
+func (b Builder) At(hhmm string) Builder {
+	if b.err != nil {
+		return b
+	}
+	if !b.fixedTime {
+		return b.fail("At(%q): only a daily or coarser frequency has a time of day to set", hhmm)
+	}
+	h, m, err := parseHHMM(hhmm)
+	if err != nil {
+		return b.fail("At(%q): %v", hhmm, err)
+	}
+	b.hour, b.minute = strconv.Itoa(h), strconv.Itoa(m)
+	return b
+}

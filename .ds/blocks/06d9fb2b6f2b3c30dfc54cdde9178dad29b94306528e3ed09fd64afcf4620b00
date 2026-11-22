@@ -1,0 +1,11 @@
+func (w Window) contains(m int) bool {
+	from, err1 := parseHHMM(w.From)
+	to, err2 := parseHHMM(w.To)
+	if err1 != nil || err2 != nil || from == to {
+		return false
+	}
+	if from < to {
+		return m >= from && m < to
+	}
+	return m >= from || m < to // wraps midnight
+}

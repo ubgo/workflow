@@ -1,0 +1,123 @@
+func tableDefs(t sqlTypes) []tableDef {
+	return []tableDef{
+		{stem: tblRuns, lines: []string{
+			// seq orders runs first come, first served across nodes.
+			"seq " + t.serial,
+			"id " + t.id + " NOT NULL",
+			"scheduled_id " + t.id,
+			"workflow " + t.name + " NOT NULL",
+			"payload " + t.blob,
+			"labels " + t.text + " NOT NULL",
+			// idem_active holds the idempotency key while the run is not
+			// terminal and NULL after, so the unique constraint below holds a
+			// key exactly as long as Client.Enqueue documents.
+			"idem_active " + t.name,
+			"priority " + t.int + " NOT NULL",
+			"bucket " + t.name + " NOT NULL",
+			"rate_keys " + t.text + " NOT NULL",
+			// status is one of the run* constants (sqlstore.go).
+			"status " + t.short + " NOT NULL",
+			"run_at " + t.int + " NOT NULL",
+			// sig_floor is the highest signal id when the run was enqueued:
+			// the run takes only signals above it (the Signal look-back).
+			"sig_floor " + t.int + " NOT NULL",
+			"created_at " + t.int + " NOT NULL",
+			"finished_at " + t.int + " NOT NULL",
+			"err " + t.text,
+			"fail_step " + t.name,
+			"fail_input " + t.blob,
+			"fail_token " + t.id,
+			"fail_until " + t.int + " NOT NULL",
+			"notified " + t.int + " NOT NULL",
+			"notify_until " + t.int + " NOT NULL",
+			"ver " + t.int + " NOT NULL",
+			"UNIQUE (id)",
+			"UNIQUE (scheduled_id)",
+			"UNIQUE (workflow, idem_active)",
+		}, indexes: []index{{"status", "status, workflow"}}},
+		{stem: tblSteps, lines: []string{
+			"id " + t.id + " NOT NULL PRIMARY KEY",
+			"run_id " + t.id + " NOT NULL",
+			"run_seq " + t.int + " NOT NULL",
+			"workflow " + t.name + " NOT NULL",
+			"name " + t.name + " NOT NULL",
+			// status is one of the step* constants (sqlstore.go).
+			"status " + t.short + " NOT NULL",
+			"in_data " + t.blob,
+			"out_data " + t.blob,
+			// attempts counts executions started (StepInfo.Attempt);
+			// failures counts attempts that returned an error, which is what
+			// the retry policy is checked against.
+			"attempts " + t.int + " NOT NULL",
+			"failures " + t.int + " NOT NULL",
+			// reclaims counts how often this attempt's lease expired and
+			// another client took the step over (its worker died); past
+			// WithMaxReclaims the attempt fails instead of running again.
+			"reclaims " + t.int + " NOT NULL",
+			// due is when a ready step may be claimed, when a sleep ends, or
+			// when a wait expires (0: never).
+			"due " + t.int + " NOT NULL",
+			"lease_token " + t.id,
+			"lease_until " + t.int + " NOT NULL",
+			"priority " + t.int + " NOT NULL",
+			"wait_event " + t.name + " NOT NULL",
+			"wait_key " + t.name + " NOT NULL",
+			"UNIQUE (run_id, name)",
+		}, indexes: []index{{"claim", "status, due"}, {"lease", "lease_token"}}},
+		{stem: tblSignals, lines: []string{
+			"id " + t.serial,
+			"name " + t.name + " NOT NULL",
+			"ev_key " + t.name + " NOT NULL",
+			"payload " + t.blob,
+			"created_at " + t.int + " NOT NULL",
+		}, indexes: []index{{"match", "name, ev_key"}}},
+		{stem: tblConsumed, lines: []string{
+			"run_id " + t.id + " NOT NULL",
+			"signal_id " + t.int + " NOT NULL",
+			// One run never takes the same signal twice.
+			"PRIMARY KEY (run_id, signal_id)",
+		}},
+		{stem: tblSchedules, lines: []string{
+			"id " + t.id + " NOT NULL PRIMARY KEY",
+			"workflow " + t.name + " NOT NULL",
+			"name " + t.name + " NOT NULL",
+			"cron " + t.name + " NOT NULL",
+			"location " + t.name + " NOT NULL",
+			"in_data " + t.blob,
+			"labels " + t.text + " NOT NULL",
+			"next_fire " + t.int + " NOT NULL",
+			"active " + t.int + " NOT NULL",
+			"declared " + t.int + " NOT NULL",
+		}},
+		{stem: tblTicks, lines: []string{
+			"schedule_id " + t.id + " NOT NULL",
+			"fire_at " + t.int + " NOT NULL",
+			"run_id " + t.id + " NOT NULL",
+			// One row per tick: the node whose insert wins fires it, so a
+			// tick runs once however many nodes see it due.
+			"PRIMARY KEY (schedule_id, fire_at)",
+		}},
+		{stem: tblLocks, lines: []string{
+			"name " + t.name + " NOT NULL PRIMARY KEY",
+			"n " + t.int + " NOT NULL",
+		}},
+		{stem: tblStarts, lines: []string{
+			"id " + t.serial,
+			"workflow " + t.name + " NOT NULL",
+			"lim " + t.int + " NOT NULL",
+			"rkey " + t.name + " NOT NULL",
+			"started_at " + t.int + " NOT NULL",
+		}, indexes: []index{{"window", "workflow, lim, rkey, started_at"}}},
+		{stem: tblBatches, lines: []string{
+			"id " + t.name + " NOT NULL PRIMARY KEY",
+			// doc is the batch.State as JSON; ver is bumped first by every
+			// Update, which is how Update locks the row (BatchStore).
+			"doc " + t.text + " NOT NULL",
+			"ver " + t.int + " NOT NULL",
+			// finished is 1 once the batch is closed (!State.Open(): every job
+			// ended and no callback is pending), so Unfinished and the
+			// retention guard read an index, not every document.
+			"finished " + t.int + " NOT NULL",
+		}, indexes: []index{{"open", "finished"}}},
+	}
+}

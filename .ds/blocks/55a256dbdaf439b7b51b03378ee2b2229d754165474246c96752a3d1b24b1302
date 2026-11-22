@@ -1,0 +1,5 @@
+func SetHeader(h http.Header, attrs map[string]string) {
+	for k, v := range attrs {
+		h.Set(k, v)
+	}
+}

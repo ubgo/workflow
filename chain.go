@@ -13,11 +13,15 @@ import (
 // chain stored with a run (one database row on a durable driver) stays a
 // size a driver can load and copy on every step. A step that edits its
 // chain past it gets an ErrInvalid.
+//
+//ds:def id=maxchainjobs-sg4br535 owner=@khanakia stability=stable
 const MaxChainJobs = 1000
 
 // validateChain checks job.Chain: at most MaxChainJobs jobs in all, each
 // passing ValidateJob. Nested chains (a chained job with its own Chain)
 // count towards the same bound, because NextInChain flattens them.
+//
+//ds:def id=validatechain-yz5jdvbx owner=@khanakia stability=stable
 func validateChain(job Job) error {
 	if n := chainLen(job.Chain); n > MaxChainJobs {
 		return invalidf("job for %q: Job.Chain holds %d jobs, more than %d", job.Workflow, n, MaxChainJobs)
@@ -42,6 +46,8 @@ func chainLen(chain []Job) int {
 // CloneJob returns a deep copy of j (Payload, Labels, Retry and Chain), so
 // a driver or a recorder can keep a job without sharing the caller's
 // slices and maps.
+//
+//ds:def id=clonejob-hen2tqys owner=@khanakia stability=stable
 func CloneJob(j Job) Job {
 	j.Payload = bytes.Clone(j.Payload)
 	j.Labels = maps.Clone(j.Labels)
@@ -64,6 +70,8 @@ func CloneJob(j Job) Job {
 // the rest of the chain travels with it. It returns false for an empty
 // chain. Every driver calls it, so a chain flattens the same way
 // everywhere. The result shares nothing with chain.
+//
+//ds:def id=nextinchain-54sbhgpq owner=@khanakia stability=stable
 func NextInChain(chain []Job) (Job, bool) {
 	if len(chain) == 0 {
 		return Job{}, false
@@ -83,6 +91,8 @@ func NextInChain(chain []Job) (Job, bool) {
 // Edits belong to the attempt: a driver applies them only when the
 // attempt succeeds, so a step that fails and is retried does not add its
 // jobs twice. ChainEdits implements this for drivers.
+//
+//ds:def id=chaineditor-76qwdvb8 owner=@khanakia stability=stable
 type ChainEditor interface {
 	// Prepend puts jobs in front of the rest of the chain, in the order
 	// given, so jobs[0] runs next once this run succeeds.
@@ -96,6 +106,8 @@ type chainEditorKey struct{}
 
 // WithChainEditor returns a ctx carrying ed. Drivers call it before
 // invoking a step handler.
+//
+//ds:def id=withchaineditor-7k4ssxr9 owner=@khanakia stability=stable
 func WithChainEditor(ctx context.Context, ed ChainEditor) context.Context {
 	return context.WithValue(ctx, chainEditorKey{}, ed)
 }
@@ -117,6 +129,8 @@ func ChainEditorFrom(ctx context.Context) (ChainEditor, bool) {
 // so is one carrying a reserved label that ctx does not allow
 // (CheckJobLabels): a chained job reaches the driver's internal enqueue,
 // so this is where an app's labels are checked.
+//
+//ds:def id=prependtochain-emnak72a owner=@khanakia stability=stable
 func PrependToChain(ctx context.Context, jobs ...Job) error {
 	ed, ok := ChainEditorFrom(ctx)
 	if !ok {
@@ -142,6 +156,8 @@ func checkEditLabels(ctx context.Context, jobs []Job) error {
 // AppendToChain puts jobs at the end of the chain of the run whose step
 // ctx is, in the order given. It applies only if the step attempt
 // succeeds, and is refused as PrependToChain is.
+//
+//ds:def id=appendtochain-c4v6fktj owner=@khanakia stability=stable
 func AppendToChain(ctx context.Context, jobs ...Job) error {
 	ed, ok := ChainEditorFrom(ctx)
 	if !ok {
@@ -153,6 +169,7 @@ func AppendToChain(ctx context.Context, jobs ...Job) error {
 	return ed.Append(jobs...)
 }
 
+//ds:def id=nochain-q2kw9w9s owner=@khanakia stability=stable
 func noChain(field string) error {
 	return &UnsupportedError{Field: field, Missing: CapChain,
 		Reason: "ctx is not the ctx of a step on a driver that edits chains"}
@@ -174,6 +191,8 @@ type ChainEdits struct {
 // NewChainEdits returns the editor of one attempt of a run whose stored
 // chain is chain, checking each edit against have with CheckJob and the
 // edited chain against MaxChainJobs. chain is only counted, not kept.
+//
+//ds:def id=newchainedits-5sfrvcrs owner=@khanakia stability=stable
 func NewChainEdits(have Caps, chain []Job) *ChainEdits {
 	return &ChainEdits{have: have, base: chainLen(chain)}
 }
@@ -197,6 +216,8 @@ func (e *ChainEdits) check(jobs []Job) ([]Job, error) {
 }
 
 // Prepend implements ChainEditor.
+//
+//ds:def id=chainedits-prepend-vjmh7rtr owner=@khanakia stability=stable
 func (e *ChainEdits) Prepend(jobs ...Job) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -229,6 +250,8 @@ func (e *ChainEdits) Changed() bool {
 
 // Apply returns chain with the buffered edits applied: the prepended
 // jobs, then chain, then the appended jobs. chain is not modified.
+//
+//ds:def id=chainedits-apply-chcyg7d7 owner=@khanakia stability=stable
 func (e *ChainEdits) Apply(chain []Job) []Job {
 	e.mu.Lock()
 	defer e.mu.Unlock()

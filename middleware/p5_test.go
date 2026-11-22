@@ -179,6 +179,7 @@ func TestPayloadVersion(t *testing.T) {
 	}
 }
 
+//ds:def id=mw-teststuck-6c8ucg7d owner=@khanakia stability=stable
 func TestStuck(t *testing.T) {
 	clk := clock.NewFake(time.Unix(0, 0))
 	reported := make(chan middleware.StuckEvent, 1)

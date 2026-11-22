@@ -1,0 +1,1 @@
+type QueueDepthFunc func(ctx context.Context) (map[string]int64, error)

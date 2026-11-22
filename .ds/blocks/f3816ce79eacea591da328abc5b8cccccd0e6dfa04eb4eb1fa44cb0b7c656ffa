@@ -1,0 +1,13 @@
+func TestDebounce_SwapDecidesWhatIsCancelled(t *testing.T) {
+	clk := clock.NewFake(time.Unix(1000, 0))
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
+	other := workflow.RunRef{ScheduledID: "other-process"}
+	store := racedStore{other: middleware.DebounceBurst{First: clk.Now(), RunAt: clk.Now().Add(5 * time.Second), Ref: other}}
+	mw, _ := middleware.Debounce(stub, clk, func(workflow.Job) string { return "k" }, 10*time.Second, 0, middleware.WithDebounceStore(store))
+	if _, err := middleware.WrapClient(stub, mw).Enqueue(context.Background(), workflow.Job{Workflow: "w"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.cancelled) != 1 || stub.cancelled[0] != other {
+		t.Fatalf("cancelled = %+v, want the other process's run", stub.cancelled)
+	}
+}

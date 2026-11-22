@@ -1,0 +1,30 @@
+func (c *Client) heartbeat(h *held) (stop func()) {
+	quit := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		for {
+			t := c.leaseClk.NewTimer(c.lease / 3)
+			select {
+			case <-quit:
+				t.Stop()
+				return
+			case <-t.C():
+			}
+			if c.isCrashed() {
+				continue
+			}
+			res, err := renewScript.Run(context.WithoutCancel(h.ctx), c.rdb, c.keys(), c.base, h.id, h.token,
+				c.leaseClk.Now().Add(c.lease).UnixMilli()).Text()
+			switch {
+			case err != nil:
+				c.log.Error("redis: renew a run lease", "run", h.id, "error", err)
+			case res == "lost":
+				h.cancel(errLost)
+			case res != "ok":
+				h.cancel(workflow.ErrCancelled)
+			}
+		}
+	}()
+	return func() { close(quit); <-finished }
+}

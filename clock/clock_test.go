@@ -44,6 +44,7 @@ func TestFakeAdvanceFiresDueTimersInOrder(t *testing.T) {
 	}
 }
 
+//ds:def id=clock-testfakestopandimmediate-9dpsy628 owner=@khanakia stability=stable
 func TestFakeStopAndImmediate(t *testing.T) {
 	f := clock.NewFake(start)
 	tm := f.NewTimer(time.Minute)

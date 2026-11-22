@@ -1,0 +1,107 @@
+func WithRules(wf Workflow, spec RulesSpec) (Workflow, error) {
+	steps := slices.Clone(wf.Steps)
+	index := map[string]int{}
+	for i, s := range steps {
+		index[s.Name] = i
+	}
+	tolerated := map[string]bool{}
+	rules := map[string]TriggerRule{}
+	finally := map[string]bool{}
+	need := func(name, what string) (int, error) {
+		i, ok := index[name]
+		if !ok {
+			return 0, invalidf("rules: %s %q is not a step of workflow %q", what, name, wf.Name)
+		}
+		if steps[i].Run == nil {
+			return 0, invalidf("rules: %s %q is not a Run step", what, name)
+		}
+		return i, nil
+	}
+	for _, name := range spec.Tolerate {
+		if _, err := need(name, "tolerated step"); err != nil {
+			return wf, err
+		}
+		tolerated[name] = true
+	}
+	for name, routes := range spec.Catch {
+		if !tolerated[name] && !slices.Contains(spec.Finally, name) {
+			if _, err := need(name, "step with Catch routes"); err != nil {
+				return wf, err
+			}
+			tolerated[name] = true
+		}
+		for _, r := range routes {
+			if r.Kind == "" || r.Match == nil {
+				return wf, invalidf("rules: a Catch route of step %q needs a Kind and a Match", name)
+			}
+		}
+	}
+	for name, r := range spec.Rules {
+		if _, err := need(name, "ruled step"); err != nil {
+			return wf, err
+		}
+		if !validRule(r) {
+			return wf, invalidf("rules: step %q has unknown rule %q", name, r)
+		}
+		rules[name] = r
+	}
+	for _, name := range spec.Finally {
+		i, err := need(name, "Finally step")
+		if err != nil {
+			return wf, err
+		}
+		finally[name] = true
+		rules[name] = RuleAllDone
+		if len(steps[i].After) == 0 {
+			steps[i].After = leavesExcept(steps, name)
+		}
+	}
+	if len(finally) > 0 {
+		for _, s := range steps {
+			if s.Run != nil && !finally[s.Name] {
+				tolerated[s.Name] = true
+			}
+		}
+	}
+	// A child of a tolerated or ruled step gets RuleAllSucceeded unless it
+	// has a rule, repeated until no new step joins, so a skip reaches every
+	// step below it.
+	for changed := true; changed; {
+		changed = false
+		for _, s := range steps {
+			if _, ok := rules[s.Name]; ok || s.Run == nil {
+				continue
+			}
+			for _, p := range s.After {
+				if _, ruled := rules[p]; tolerated[p] || ruled {
+					rules[s.Name] = RuleAllSucceeded
+					changed = true
+					break
+				}
+			}
+		}
+	}
+	for _, s := range steps {
+		for _, p := range s.After {
+			if _, ruled := rules[p]; (tolerated[p] || ruled) && s.Run == nil {
+				return wf, invalidf("rules: step %q waits on %q, which may fail or skip, and is not a Run step", s.Name, p)
+			}
+		}
+	}
+	for i, s := range steps {
+		run := s.Run
+		if r, ok := rules[s.Name]; ok {
+			run = ruledHandler(s.Name, s.After, r, finally[s.Name], run)
+		}
+		if tolerated[s.Name] {
+			policy := s.Retry
+			if policy == nil {
+				policy = &wf.Retry
+			}
+			run = toleratedHandler(s.Name, *policy, spec.Catch[s.Name], run)
+		}
+		steps[i].Run = run
+	}
+	wf.Steps = steps
+	return wf, nil
+}

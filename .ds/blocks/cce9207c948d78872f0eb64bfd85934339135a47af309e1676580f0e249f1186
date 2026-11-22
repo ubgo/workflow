@@ -1,0 +1,11 @@
+func misfireCaps(m Misfire) Caps {
+	switch m.Policy {
+	case MisfireSkip:
+		return CapMisfireSkip
+	case MisfireFireOnce:
+		return CapMisfireFireOnce
+	case MisfireFireAll:
+		return CapMisfireFireAll
+	}
+	return Caps{}
+}

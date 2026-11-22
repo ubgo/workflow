@@ -1,0 +1,24 @@
+func TestTenantScope_FailsClosed(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
+	for _, who := range []string{"err", "empty", "panic", "bad"} {
+		rec := as(t, h, who, "GET", "/runs", "")
+		if rec.Code != http.StatusForbidden || strings.Contains(rec.Body.String(), "lookup failed") {
+			t.Errorf("%s: %d %s, want a bare 403", who, rec.Code, rec.Body)
+		}
+	}
+	if rec := as(t, h, "a", "GET", "/runs", ""); rec.Code != http.StatusOK {
+		t.Fatalf("a after the refusals: %d", rec.Code)
+	}
+	// Anonymous callers still get 401 before any scope runs.
+	req := httptest.NewRequest("GET", "/runs", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous = %d", rec.Code)
+	}
+	// Without Auth the handler is closed whatever the scope.
+	if rec := as(t, NewHandler(New(ts.c), Auth[user]{}, WithTenantScope(byName)), "a", "GET", "/runs", ""); rec.Code != http.StatusForbidden {
+		t.Fatalf("no Auth = %d", rec.Code)
+	}
+}

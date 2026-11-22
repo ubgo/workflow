@@ -1,0 +1,7 @@
+func JobLabels(id ID, idx, attempt int) map[string]string {
+	labels := map[string]string{LabelBatch: string(id), LabelIndex: strconv.Itoa(idx)}
+	if attempt > 0 {
+		labels[LabelAttempt] = strconv.Itoa(attempt)
+	}
+	return labels
+}

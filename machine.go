@@ -32,60 +32,79 @@ import (
 
 // HistoryMode says how a transition enters a compound or parallel target
 // (WP-26).
+//
+//ds:def id=historymode-r2hqm3cm owner=@khanakia stability=stable
 type HistoryMode int
 
 const (
 	// HistoryNone enters the target through its initial states.
+	//ds:def id=historynone-fnxs4w4g owner=@khanakia stability=stable
 	HistoryNone HistoryMode = iota
 
 	// HistoryShallow re-enters the target's child (or, for a parallel
 	// target, children) active when the target was last left, and that
 	// child through its own initial states. Nothing remembered (the
 	// target was never left) means the initial child.
+	//ds:def id=historyshallow-685x9736 owner=@khanakia stability=stable
 	HistoryShallow
 
 	// HistoryDeep re-enters the whole configuration below the target
 	// that was active when it was last left.
+	//ds:def id=historydeep-jduve6dh owner=@khanakia stability=stable
 	HistoryDeep
 )
 
 // UnhandledPolicy says what an event no active state handles does.
+//
+//ds:def id=unhandledpolicy-dzznvx2d owner=@khanakia stability=stable
 type UnhandledPolicy int
 
 const (
 	// MachineIgnore drops an unhandled event: the call succeeds with
 	// MachineResult.Handled false and nothing changes (statechart
 	// semantics).
+	//ds:def id=machineignore-ud9b526j owner=@khanakia stability=stable
 	MachineIgnore UnhandledPolicy = iota
 
 	// MachineReject fails the event's run with a Permanent
 	// ErrUnhandledEvent, so a sender awaiting the result learns that the
 	// event was not valid in the current state.
+	//ds:def id=machinereject-z7kxh7ka owner=@khanakia stability=stable
 	MachineReject
 )
 
 // ErrUnhandledEvent is the error of an event no active state handles,
 // under MachineReject, and of any event sent to a machine that reached a
 // top-level final state. It matches ErrInvalid.
+//
+//ds:def id=errunhandledevent-92z9ny89 owner=@khanakia stability=stable
 var ErrUnhandledEvent = fmt.Errorf("%w: event not handled in the machine's current state", ErrInvalid)
 
 // MachineStartEvent is the event name entry actions see when an instance
 // starts (StartMachine, or the first event sent to a new key).
+//
+//ds:def id=machinestartevent-xpyeh6q9 owner=@khanakia stability=stable
 const MachineStartEvent = LabelPrefixInternal + "start"
 
 // DefaultMachineLog is how many handled events MachineStatus keeps in the
 // log when MachineSpec.KeepLog is zero.
+//
+//ds:def id=defaultmachinelog-ujan3j33 owner=@khanakia stability=stable
 const DefaultMachineLog = 100
 
 // MaxMachineMicrosteps bounds the transitions one event may cause,
 // counting those of raised and done events, so a raise loop fails the
 // event (Permanent) instead of spinning forever.
+//
+//ds:def id=maxmachinemicrosteps-kxk4n8rh owner=@khanakia stability=stable
 const MaxMachineMicrosteps = 100
 
 // DoneEvent is the name of the event raised when compound state reaches
 // a final child, or parallel state has every region in a final state
 // (SCXML done.state.<id>). Handle it with a Transition whose Event is
 // DoneEvent("payment") and whose From is "payment" or an ancestor.
+//
+//ds:def id=doneevent-xdae986h owner=@khanakia stability=stable
 func DoneEvent(state string) string { return "done.state." + state }
 
 // MachineEvent is the event a guard or an action sees.
@@ -101,6 +120,8 @@ type MachineEvent struct {
 
 // MachineCtx is what guards and actions get: the instance, the event, the
 // state concerned and the instance's data.
+//
+//ds:def id=machinectx-23pfpah3 owner=@khanakia stability=stable
 type MachineCtx[D any] struct {
 	// Machine is the machine's name; Key is the instance.
 	Machine, Key string
@@ -130,6 +151,8 @@ type MachineCtx[D any] struct {
 // set and before the sent event's handling ends (SCXML raise). Raised
 // events that no state handles are dropped. Calling Raise from a guard
 // does nothing.
+//
+//ds:def id=machinectx-raise-qnr6t885 owner=@khanakia stability=stable
 func (m *MachineCtx[D]) Raise(event string, payload []byte) {
 	if m.run != nil && !m.run.inGuard && event != "" {
 		m.run.internal = append(m.run.internal, MachineEvent{Name: event, Payload: payload})
@@ -139,6 +162,8 @@ func (m *MachineCtx[D]) Raise(event string, payload []byte) {
 // In reports whether state is active now (for a guard: before the
 // transition; for an action: at the point of the microstep the action
 // runs in).
+//
+//ds:def id=machinectx-in-kbnwcsu9 owner=@khanakia stability=stable
 func (m MachineCtx[D]) In(state string) bool {
 	if m.run == nil {
 		return false
@@ -152,6 +177,8 @@ func (m MachineCtx[D]) In(state string) bool {
 // after a crash. Actions are at least once: give a job an action enqueues
 // this key (Job.IdempotencyKey), or pass it to the remote side, so a
 // repeat does nothing twice.
+//
+//ds:def id=machinectx-idempotencykey-ep456p4b owner=@khanakia stability=stable
 func (m MachineCtx[D]) IdempotencyKey(name string) string {
 	sum := sha256.Sum256([]byte(m.Machine + "\x00" + m.Key + "\x00" + strconv.FormatUint(m.Seq, 10) + "\x00" + m.State + "\x00" + name))
 	return "machine/" + hex.EncodeToString(sum[:16])
@@ -162,6 +189,8 @@ func (m MachineCtx[D]) IdempotencyKey(name string) string {
 // more than once per event. m.Data points to a shallow copy of the data,
 // so a change to a top-level field is dropped; maps and slices are shared,
 // so never change those from a guard.
+//
+//ds:def id=machineguard-yfjzyrtr owner=@khanakia stability=stable
 type MachineGuard[D any] func(m MachineCtx[D]) bool
 
 // MachineAction runs on entry to a state, on exit from it, or when a transition
@@ -169,18 +198,24 @@ type MachineGuard[D any] func(m MachineCtx[D]) bool
 // running the event's whole handling again; state is saved only when it
 // all succeeds), so actions are at least once: see
 // MachineCtx.IdempotencyKey.
+//
+//ds:def id=machineaction-tqyyjkvw owner=@khanakia stability=stable
 type MachineAction[D any] func(ctx context.Context, m *MachineCtx[D]) error
 
 // StateTimer sends Event to the instance after its state has been active for
 // Delay (a timeout per state, XState "after", a BPMN timer). A timer whose
 // state was left before it fires is ignored, even when the state was
 // entered again since (that entry has a timer of its own).
+//
+//ds:def id=statetimer-wwkknhcg owner=@khanakia stability=stable
 type StateTimer struct {
 	Delay time.Duration
 	Event string
 }
 
 // MachineState is one state of a machine.
+//
+//ds:def id=machinestate-y2nqpmrz owner=@khanakia stability=stable
 type MachineState[D any] struct {
 	// Name is unique within the machine.
 	Name string
@@ -213,6 +248,8 @@ type MachineState[D any] struct {
 }
 
 // MachineTransition moves the machine when Event arrives while From is active.
+//
+//ds:def id=machinetransition-rxp5bc6d owner=@khanakia stability=stable
 type MachineTransition[D any] struct {
 	// From is the source state. A transition of an ancestor applies to
 	// every descendant; the innermost active source with an enabled
@@ -246,6 +283,8 @@ type MachineTransition[D any] struct {
 }
 
 // MachineSpec defines a durable state machine.
+//
+//ds:def id=machinespec-wmxfjeh7 owner=@khanakia stability=stable
 type MachineSpec[D any] struct {
 	// Name is the machine's name and the name of the workflow
 	// DefineMachine returns.
@@ -297,6 +336,8 @@ type MachineSpec[D any] struct {
 
 // MachineResult is an event run's result: what AwaitResult returns as
 // JSON for a run of SendEvent or StartMachine.
+//
+//ds:def id=machineresult-2phczvcd owner=@khanakia stability=stable
 type MachineResult struct {
 	// Handled reports whether the event took a transition.
 	Handled bool `json:"handled"`
@@ -319,6 +360,8 @@ type MachineResult struct {
 }
 
 // MachineStep is one handled event in an instance's log.
+//
+//ds:def id=machinestep-raj2wu8k owner=@khanakia stability=stable
 type MachineStep struct {
 	Seq   uint64    `json:"seq"`
 	Event string    `json:"event"`
@@ -328,6 +371,8 @@ type MachineStep struct {
 }
 
 // MachineSnapshot is an instance as MachineStatus reads it.
+//
+//ds:def id=machinesnapshot-8w3cnx9s owner=@khanakia stability=stable
 type MachineSnapshot[D any] struct {
 	// Done reports a top-level final state reached.
 	Done bool
@@ -400,6 +445,8 @@ type machineRecord struct {
 // key function (memory, sqlstore, Redis; Hatchet refuses it at Register),
 // and CapKeyFIFO with Ordered. A machine with timers needs a Client with
 // CapDelayedStart and CapIdempotencyKey, checked here.
+//
+//ds:def id=definemachine-zgu9ppny owner=@khanakia stability=stable
 func DefineMachine[D any](spec MachineSpec[D]) (Workflow, error) {
 	m, err := compileMachine(spec)
 	if err != nil {
@@ -423,6 +470,8 @@ func DefineMachine[D any](spec MachineSpec[D]) (Workflow, error) {
 // with zero data, then handles the event. job may carry the other fields
 // of the run (IdempotencyKey, RunAt, Labels, Tenant); its Workflow and
 // Payload are set here.
+//
+//ds:def id=sendevent-ex33hwx5 owner=@khanakia stability=stable
 func SendEvent(ctx context.Context, client Client, machine, key, event string, payload []byte, job Job) (RunRef, error) {
 	if event == "" {
 		return RunRef{}, invalidf("SendEvent needs an event name")
@@ -434,6 +483,8 @@ func SendEvent(ctx context.Context, client Client, machine, key, event string, p
 // initial extended state, running the initial states' entry actions. A
 // key already started is left as it is (MachineResult.Started false), so
 // StartMachine is safe to repeat.
+//
+//ds:def id=startmachine-rwxg4f9d owner=@khanakia stability=stable
 func StartMachine[D any](ctx context.Context, client Client, machine, key string, data D, job Job) (RunRef, error) {
 	raw, err := json.Marshal(data)
 	if err != nil {
@@ -442,6 +493,7 @@ func StartMachine[D any](ctx context.Context, client Client, machine, key string
 	return sendMachine(ctx, client, machine, key, machineCall{Start: true, Data: raw}, job)
 }
 
+//ds:def id=sendmachine-sukmmbd8 owner=@khanakia stability=stable
 func sendMachine(ctx context.Context, client Client, machine, key string, call machineCall, job Job) (RunRef, error) {
 	if client == nil || machine == "" || key == "" {
 		return RunRef{}, invalidf("a machine event needs a client, a machine and a key")
@@ -464,6 +516,8 @@ func sendMachine(ctx context.Context, client Client, machine, key string, call m
 // event (a query endpoint, a test), and false for a key never started. It
 // reads the last saved record; an event being handled now may replace it
 // a moment later.
+//
+//ds:def id=machinestatus-dgbvwcmx owner=@khanakia stability=stable
 func MachineStatus[D any](ctx context.Context, store JournalStore, machine, key string) (MachineSnapshot[D], bool, error) {
 	var snap MachineSnapshot[D]
 	if store == nil || machine == "" || key == "" {
@@ -491,6 +545,8 @@ func MachineStatus[D any](ctx context.Context, store JournalStore, machine, key 
 // for instances that reached a final state (MachineSnapshot.Done) and are
 // no longer needed: records are never removed otherwise. It does not wait
 // for an event being handled now, which may write the record again.
+//
+//ds:def id=forgetmachine-t7tdwu6t owner=@khanakia stability=stable
 func ForgetMachine(ctx context.Context, store JournalStore, machine, key string) error {
 	if store == nil || machine == "" || key == "" {
 		return invalidf("ForgetMachine needs a store, a machine and a key")
@@ -505,6 +561,8 @@ func ForgetMachine(ctx context.Context, store JournalStore, machine, key string)
 // MachineReject: ErrUnhandledEvent itself, or the *RunFailedError that
 // AwaitResult returns for the event's run, which carries the step's error
 // as text only.
+//
+//ds:def id=isunhandledevent-rxg2hpts owner=@khanakia stability=stable
 func IsUnhandledEvent(err error) bool {
 	if errors.Is(err, ErrUnhandledEvent) {
 		return true

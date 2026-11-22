@@ -1,0 +1,1 @@
+var ErrFlushNotEnqueued = errors.New("workflow/middleware: aggregate: the item is stored but its flush run could not be enqueued")

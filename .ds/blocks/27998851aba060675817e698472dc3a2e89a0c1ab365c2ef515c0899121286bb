@@ -1,0 +1,1 @@
+func (p Progress) Processed() int { return p.Total - p.Pending }

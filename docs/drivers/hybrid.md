@@ -1,10 +1,10 @@
 # Hybrid placement
 
-A common shape: the crons live in the app's code and fire in its own process, while the jobs they start must survive a restart and run on whichever worker is free. Package `hybrid` builds that from two clients: `hybrid.New(scheduler, jobs)` is one `workflow.Client` whose schedules fire on `scheduler` (usually the in-process memory driver) and whose runs live on `jobs` (a durable driver). App code registers, schedules and enqueues on it as on any client.
+A common shape: the crons live in the app's code and fire in its own process, while the jobs they start must survive a restart and run on whichever worker is free. Package `hybrid` builds that from two clients: [`hybrid.New(scheduler, jobs)`](ds:block?id=hybrid-new-2d822hfp) is one `workflow.Client` whose schedules fire on `scheduler` (usually the in-process memory driver) and whose runs live on `jobs` (a durable driver). App code registers, schedules and enqueues on it as on any client.
 
 ## Before you start
 
-- Two clients, neither started. The jobs client is the one your runs need: durable, with the capabilities your workflows use. The scheduler client needs `CapCron`.
+- Two clients, neither started. The jobs client is the one your runs need: durable, with the capabilities your workflows use. The scheduler client needs `CapCron`: [`Register`](ds:block?id=hybrid-client-register-jx6a3asc) registers a forwarder on it with the workflow's schedule fields, and the scheduler checks them as any registration.
 - `hybrid` is in the core module: `import "github.com/ubgo/workflow/hybrid"`.
 - The example is [`examples/hybrid-placement`](../../examples/hybrid-placement). It uses two memory clients so it runs anywhere, the scheduler on a fake clock. Run it with `go run ./hybrid-placement` from `examples/`.
 
@@ -34,9 +34,9 @@ if err := c.Start(ctx); err != nil { // starts jobs, then the scheduler
 }
 ```
 
-`Register` registers the workflow twice. On the jobs client it goes without its schedule fields (`Cron`, `CronLocation`, `Misfire`, `CronWindows`, `ScheduleWhen`, `CronSeconds`, `CronActive`), so the jobs client never fires it. On the scheduler client it goes as a forwarder of the same name: one step that enqueues the real job onto the jobs client with the fired run's payload, labels (schedule ID, tick time) and tenant. `Start` starts the jobs client first, then the scheduler; cancelling the context stops both.
+[`Register`](ds:block?id=hybrid-client-register-jx6a3asc) registers the workflow twice. On the jobs client it goes without its schedule fields (`Cron`, `CronLocation`, `Misfire`, `CronWindows`, `ScheduleWhen`, `CronSeconds`, `CronActive`), so the jobs client never fires it. On the scheduler client it goes as a forwarder of the same name: one step ([`forward`](ds:block?id=hybrid-client-forward-7rk63s8a)) that enqueues the real job onto the jobs client with the fired run's payload, labels (schedule ID, tick time) and tenant. [`Start`](ds:block?id=hybrid-client-start-rh2jjawu) starts the jobs client first, then the scheduler; cancelling the context stops both.
 
-Everything else goes to the jobs client: `Enqueue`, `Cancel`, `Status`, `Signal`, `OnRunFinished`, and every optional interface (`Runs`, `Retry`, `Delete`, `Pause`, `EditRun`, `ResetRun`, `SignalWaiting`, lifecycle events and the rest; one the jobs client lacks is refused with an `*workflow.UnsupportedError`, and `workflow.Supports` answers for the jobs client). `Schedule`, `Unschedule`, `Schedules`, `PauseSchedule` and `ResumeSchedule` go to the scheduler client:
+Everything else goes to the jobs client ([`hybrid.Client`](ds:block?id=hybrid-client-spwwj95u) embeds a `workflow.Forward` over it): `Enqueue`, `Cancel`, `Status`, `Signal`, `OnRunFinished`, and every optional interface (`Runs`, `Retry`, `Delete`, `Pause`, `EditRun`, `ResetRun`, `SignalWaiting`, lifecycle events and the rest; one the jobs client lacks is refused with an `*workflow.UnsupportedError`, and `workflow.Supports` answers for the jobs client, as [`TestNewOps_RefusedWhenTheJobsClientLacksThem`](ds:block?id=hybrid-testnewops-refusedwhenthejobsclientlacksthem-mhnntuuh) checks). [`Schedule`](ds:block?id=hybrid-client-schedule-jhq7dbyv), `Unschedule`, [`Schedules`](ds:block?id=hybrid-client-schedules-6xqqz6j6), `PauseSchedule` and `ResumeSchedule` go to the scheduler client:
 
 <!-- snippet: examples/hybrid-placement/main.go#runs -->
 ```go
@@ -49,11 +49,11 @@ fmt.Println("runs on the jobs client:", len(page.Runs))
 
 ## What it can do
 
-`Capabilities()` is the jobs client's, with the schedule family taken from the scheduler client: `CapCron`, `CapCronZone`, the three misfire policies, `CapScheduleWhen`, `CapScheduleWindow`, `CapSchedulePause`, `CapScheduleList`, `CapCronSeconds`, `CapScheduleActive` and `CapTickTime`. Five schedule capabilities are declared by neither, because on the scheduler they would describe the forwarder runs, not the jobs: `CapOverlapSkip`, `CapScheduleKeep`, `CapScheduleHistory`, `CapScheduleTrigger` and `CapTickEvents`. So the split refuses, with an `*workflow.UnsupportedError`:
+[`Capabilities()`](ds:block?id=hybrid-client-capabilities-bvkxrkrc) is the jobs client's, with the schedule family taken from the scheduler client ([`scheduleCaps`](ds:block?id=hybrid-schedulecaps-zx4gtwq7)): `CapCron`, `CapCronZone`, the three misfire policies, `CapScheduleWhen`, `CapScheduleWindow`, `CapSchedulePause`, `CapScheduleList`, `CapCronSeconds`, `CapScheduleActive` and `CapTickTime`. Five schedule capabilities ([`notForwarded`](ds:block?id=hybrid-notforwarded-zhj5fjwv)) are declared by neither, because on the scheduler they would describe the forwarder runs, not the jobs: `CapOverlapSkip`, `CapScheduleKeep`, `CapScheduleHistory`, `CapScheduleTrigger` and `CapTickEvents`. So the split refuses, with an `*workflow.UnsupportedError`:
 
-- `Workflow.CronOverlap` and `Schedule.Overlap` set to `OverlapSkip` (the scheduler sees only its forwarder runs);
-- `Workflow.CronKeepRuns` and `Schedule.KeepRuns` (the jobs client keeps the runs: use its retention);
-- `TriggerSchedule` (it would return the forwarder's run) and `OnTick` (ticks would name forwarder runs).
+- `Workflow.CronOverlap` and `Schedule.Overlap` set to `OverlapSkip` (the scheduler sees only its forwarder runs), in [`Register`](ds:block?id=hybrid-client-register-jx6a3asc) and [`Schedule`](ds:block?id=hybrid-client-schedule-jhq7dbyv);
+- `Workflow.CronKeepRuns` and `Schedule.KeepRuns` (the jobs client keeps the runs: use its retention), in [`Register`](ds:block?id=hybrid-client-register-jx6a3asc) and [`Schedule`](ds:block?id=hybrid-client-schedule-jhq7dbyv);
+- [`TriggerSchedule`](ds:block?id=hybrid-client-triggerschedule-a3s2gemf) (it would return the forwarder's run) and [`OnTick`](ds:block?id=hybrid-client-ontick-mrgvs8ed) (ticks would name forwarder runs).
 
 <!-- snippet: examples/hybrid-placement/main.go#refused -->
 ```go
@@ -72,11 +72,11 @@ fmt.Println("TriggerSchedule refused:", errors.Is(err, workflow.ErrUnsupported))
 Each process runs its own scheduler client, so a schedule fires once per process, not once per cluster. Two ways to live with that:
 
 - **One process schedules.** Only one node builds the hybrid client; the others use the jobs client alone.
-- **Every node schedules, and the key absorbs the duplicates.** When the jobs client declares `CapIdempotencyKey`, the forwarder enqueues with the key `hybrid/<schedule ID>/<tick time>`, so every node firing the same tick makes one run while the first is unfinished. A tick fired after that run finished starts another one, so this fits jobs that end well before the next node's clock reaches the tick.
+- **Every node schedules, and the key absorbs the duplicates.** When the jobs client declares `CapIdempotencyKey`, the [forwarder](ds:block?id=hybrid-client-forward-7rk63s8a) enqueues with the key `hybrid/<schedule ID>/<tick time>` ([`forwardKey`](ds:block?id=hybrid-forwardkey-2cvbbqq2)), so every node firing the same tick makes one run while the first is unfinished. A tick fired after that run finished starts another one, so this fits jobs that end well before the next node's clock reaches the tick.
 
 For a schedule that must fire exactly once per cluster, schedule on the durable driver itself (its ticks are decided in the store), or give the scheduler role to one process ([Nodes and health › Scheduler-only and worker-only processes](../operations/nodes.md#scheduler-only-and-worker-only-processes)).
 
-The forwarder step retries up to five times with a backoff from one second to 30 seconds, so a jobs backend that is briefly unreachable does not lose a tick; the same key keeps a retried forwarder from starting the job twice.
+The forwarder step retries up to five times ([`forwardRetry`](ds:block?id=hybrid-forwardretry-pzb2buv4)) with a backoff from one second to 30 seconds, so a jobs backend that is briefly unreachable does not lose a tick; the same key keeps a retried forwarder from starting the job twice.
 
 ## Try it
 
@@ -99,20 +99,20 @@ The 02:00 tick fires on the scheduler client's fake clock and the step runs on t
 
 Apply a [run recorder](../observability/run-recorder.md) to the hybrid client, `workflow.Use(hybrid.New(scheduler, jobs), rec.Plugin())`, and register through the client `Use` returned. Its pieces land on the jobs side:
 
-- **Steps.** `Register` hands the jobs client the workflow with the recorder's step middleware already around each step; the forwarder the scheduler runs is the hybrid client's own step, so it is never recorded.
-- **Run ends.** `OnRunFinished` goes to the jobs client, so ends are delivered as that driver delivers them (every end on memory, the SQL driver and Redis).
-- **Enqueues.** A job the app enqueues on the hybrid client passes the recorder's enqueue middleware. A cron fire does not: the forwarder enqueues it on the jobs client directly, so the run is recorded from its first step, with source `schedule` and the schedule ID as reference (the forwarder passes the schedule labels on).
-- **The Reconciler.** Pass it the client `Use` returned: run queries go to the jobs client, so a pass backfills and checks the jobs, never the forwarder runs.
+- **Steps.** `Register` hands the jobs client the workflow with the recorder's step middleware already around each step; the forwarder the scheduler runs is the hybrid client's own step ([`Register`](ds:block?id=hybrid-client-register-jx6a3asc) builds it), so it is never recorded.
+- **Run ends.** [`OnRunFinished`](ds:block?id=hybrid-client-onrunfinished-7uaetk27) goes to the jobs client, so ends are delivered as that driver delivers them (every end on memory, the SQL driver and Redis).
+- **Enqueues.** A job the app enqueues on the hybrid client passes the recorder's enqueue middleware. A cron fire does not: the [forwarder](ds:block?id=hybrid-client-forward-7rk63s8a) enqueues it on the jobs client directly, so the run is recorded from its first step, with source `schedule` and the schedule ID as reference (the forwarder passes the schedule labels on).
+- **The Reconciler.** Pass it the client `Use` returned: run queries go to the jobs client ([`hybrid.Client`](ds:block?id=hybrid-client-spwwj95u) forwards `Runs`), so a pass backfills and checks the jobs, never the forwarder runs.
 
 The recorder's end-to-end suite does not run on the hybrid client itself; it runs on the drivers a jobs client is built from.
 
 ## Pitfalls
 
-- **An in-process scheduler forgets on restart.** Run-time schedules made with `Client.Schedule` on a memory scheduler are lost when the process stops; declare recurring work as `Workflow.Cron` so every boot restores it, or put the schedules on the durable driver.
-- **Missed ticks follow the scheduler's misfire policy.** Ticks due while the process was down are caught up (or not) by the memory driver's rules, and only from what it still knows: nothing survives a restart.
-- **Without `CapIdempotencyKey` on the jobs client, duplicates are yours.** The forwarder then sends no key, and a retried forwarder or a second node can start the job twice.
-- **Overlap control belongs to the jobs side.** Since `OverlapSkip` is refused, use a [unique job](../reliability/unique-jobs.md) or a concurrency key on the workflow to keep runs from overlapping.
-- **Two clients, two sets of options.** Middleware, loggers and queues are configured on each underlying client; the scheduler's middleware wraps only the forwarder step.
+- **An in-process scheduler forgets on restart.** Run-time schedules made with `Client.Schedule` on a memory scheduler (no `CapDurable` in its [capability list](ds:block?id=memory-caps-yxkuq583)) are lost when the process stops; declare recurring work as `Workflow.Cron` so every boot restores it, or put the schedules on the durable driver.
+- **Missed ticks follow the scheduler's misfire policy.** [`Register`](ds:block?id=hybrid-client-register-jx6a3asc) hands the workflow's `Misfire` to the forwarder, so ticks due while the process was down are caught up (or not) by the memory driver's rules, and only from what it still knows: nothing survives a restart.
+- **Without `CapIdempotencyKey` on the jobs client, duplicates are yours.** The [forwarder](ds:block?id=hybrid-client-forward-7rk63s8a) then sends no key, and a retried forwarder or a second node can start the job twice.
+- **Overlap control belongs to the jobs side.** Since `OverlapSkip` is refused ([`Register`](ds:block?id=hybrid-client-register-jx6a3asc), [`Schedule`](ds:block?id=hybrid-client-schedule-jhq7dbyv)), use a [unique job](../reliability/unique-jobs.md) or a concurrency key on the workflow to keep runs from overlapping.
+- **Two clients, two sets of options.** Middleware, loggers and queues are configured on each underlying client; the scheduler's middleware wraps only the forwarder step ([`forward`](ds:block?id=hybrid-client-forward-7rk63s8a)).
 
 ## Related
 

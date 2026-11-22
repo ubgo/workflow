@@ -1,0 +1,6 @@
+func (f *Fake) AssertNotEnqueued(t testing.TB, wf string, m ...JobMatcher) {
+	t.Helper()
+	if got := len(f.Enqueued(wf, m...)); got != 0 {
+		t.Errorf("workflow %q%s was enqueued %d times, want none; %s", wf, describe(m), got, f.recorded())
+	}
+}

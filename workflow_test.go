@@ -158,6 +158,7 @@ func TestBackoffDelay(t *testing.T) {
 	}
 }
 
+//ds:def id=testpermanent-874stknn owner=@khanakia stability=stable
 func TestPermanent(t *testing.T) {
 	base := errors.New("bad input")
 	p := workflow.Permanent(base)

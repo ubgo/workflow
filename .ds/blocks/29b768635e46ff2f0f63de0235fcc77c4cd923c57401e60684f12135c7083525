@@ -1,0 +1,3 @@
+func ResetStatusOK(st Status, opts ResetOptions) bool {
+	return st == StatusFailed || (opts.Succeeded && st == StatusSucceeded)
+}

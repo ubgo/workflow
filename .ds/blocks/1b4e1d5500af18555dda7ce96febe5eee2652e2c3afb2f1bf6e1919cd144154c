@@ -1,0 +1,19 @@
+type Store interface {
+	// Create saves a new batch. An existing ID is an error.
+	Create(ctx context.Context, st State) error
+
+	// Get returns a batch, or an error wrapping workflow.ErrNotFound.
+	Get(ctx context.Context, id ID) (State, error)
+
+	// Update applies fn to the current state and saves the result
+	// atomically, returning the saved state. When fn returns an error
+	// nothing is saved and Update returns that error. An unknown ID
+	// returns an error wrapping workflow.ErrNotFound.
+	Update(ctx context.Context, id ID, fn func(*State) error) (State, error)
+
+	// Unfinished returns every open batch (State.Open: a job not finished
+	// or a callback pending), for the status poller and RetryCallbacks. A
+	// SQL store backs it with an indexed flag written from Open, so a long
+	// history of closed batches costs nothing.
+	Unfinished(ctx context.Context) ([]State, error)
+}

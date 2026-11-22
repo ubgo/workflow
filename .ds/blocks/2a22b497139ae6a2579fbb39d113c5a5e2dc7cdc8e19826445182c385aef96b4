@@ -1,0 +1,11 @@
+type DatabaseClock struct {
+	db     *sql.DB
+	engine string
+	local  clock.Clock
+
+	mu     sync.Mutex
+	synced bool
+	base   time.Time     // the database's time at the midpoint of the last read
+	at     time.Time     // the local time at that midpoint
+	half   time.Duration // half the last read's round trip
+}

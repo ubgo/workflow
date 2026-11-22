@@ -1,0 +1,28 @@
+func (c *Client) weightedLocked(eligible []int, prio int) int {
+	byQueue := map[string]int{} // queue -> index of its first task
+	weighted := false
+	for _, i := range eligible {
+		t := c.tasks[i]
+		q := c.queues[t.r.queue]
+		if q.Priority != prio {
+			continue
+		}
+		weighted = weighted || q.Weight > 0
+		if j, ok := byQueue[t.r.queue]; !ok || c.before(t, c.tasks[j]) {
+			byQueue[t.r.queue] = i
+		}
+	}
+	if !weighted || len(byQueue) < 2 {
+		return -1
+	}
+	names := slices.Sorted(maps.Keys(byQueue))
+	weights := make([]int, len(names))
+	for i, n := range names {
+		weights[i] = c.queues[n].Weight
+	}
+	rnd := c.rnd
+	if rnd == nil {
+		rnd = rand.Float64
+	}
+	return byQueue[names[workflow.PickWeighted(weights, rnd())]]
+}

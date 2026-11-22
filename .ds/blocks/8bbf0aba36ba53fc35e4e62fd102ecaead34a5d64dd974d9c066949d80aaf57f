@@ -1,0 +1,9 @@
+type DebounceBurst struct {
+	// First is when the burst's first job was enqueued; maxWait counts
+	// from it.
+	First time.Time
+	// RunAt is when the pending run starts.
+	RunAt time.Time
+	// Ref is the pending run, which the next job of the burst cancels.
+	Ref workflow.RunRef
+}

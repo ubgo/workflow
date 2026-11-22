@@ -1,0 +1,18 @@
+func FailureOf(ev RunEvent, discarded bool, at time.Time) (Failure, bool) {
+	switch {
+	case ev.Status == StatusFailed:
+	case ev.Status == StatusDiscarded && discarded:
+	default:
+		return Failure{}, false
+	}
+	return Failure{
+		Ref:      ev.Ref,
+		Workflow: ev.Workflow,
+		Status:   ev.Status,
+		Step:     ev.Step,
+		Err:      ev.Err,
+		Final:    true,
+		Labels:   ev.Labels,
+		At:       at,
+	}, true
+}

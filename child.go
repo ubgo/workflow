@@ -8,9 +8,13 @@ import (
 
 // DefaultChildPoll is how long AwaitChild snoozes the parent step between
 // looks at an unfinished child.
+//
+//ds:def id=defaultchildpoll-3x57dveg owner=@khanakia stability=stable
 const DefaultChildPoll = 5 * time.Second
 
 // ChildOptions tunes AwaitChild and AwaitChildren.
+//
+//ds:def id=childoptions-xkkj3d49 owner=@khanakia stability=stable
 type ChildOptions struct {
 	// Poll is the snooze between looks at unfinished children; zero
 	// means DefaultChildPoll.
@@ -41,6 +45,8 @@ type ChildOptions struct {
 // AwaitChild refuses with a Permanent UnsupportedError instead. client is
 // the client the child runs on: the parent's own, or another backend
 // (then set ChildOptions.Parent to the parent's client).
+//
+//ds:def id=awaitchild-bk9f29f4 owner=@khanakia stability=stable
 func AwaitChild(ctx context.Context, client Client, name string, job Job, opts ChildOptions) ([]byte, error) {
 	outs, err := AwaitChildren(ctx, client, name, []Job{job}, opts)
 	if err != nil {
@@ -54,6 +60,8 @@ func AwaitChild(ctx context.Context, client Client, name string, job Job, opts C
 // back in job order): it spawns them all, snoozes until every one is
 // terminal, and returns their results in the order of jobs. The first
 // child that did not succeed fails the step, as AwaitChild does.
+//
+//ds:def id=awaitchildren-ddr2cfgz owner=@khanakia stability=stable
 func AwaitChildren(ctx context.Context, client Client, name string, jobs []Job, opts ChildOptions) ([][]byte, error) {
 	parent := opts.Parent
 	if parent == nil {

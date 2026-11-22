@@ -1,0 +1,5 @@
+func (s *store) bucketMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(BucketMigrationOwner), Name: "001_buckets", Script: s.script(s.render(bucketDefs(typesFor(s.engine))))},
+	}
+}

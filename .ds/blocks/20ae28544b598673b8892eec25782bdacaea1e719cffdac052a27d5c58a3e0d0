@@ -1,0 +1,61 @@
+func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
+	if err := c.usable(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	cfgs := make([]workflow.QueueConfig, 0, len(c.queueCfg))
+	for _, q := range c.queueCfg {
+		cfgs = append(cfgs, q)
+	}
+	names := c.names
+	c.mu.Unlock()
+	sort.Slice(cfgs, func(i, j int) bool { return cfgs[i].Name < cfgs[j].Name })
+	// The ready runs of every version this client runs (routeNames).
+	routes, err := c.routeNames(ctx, names)
+	if err != nil {
+		return nil, fmt.Errorf("redis: queue loads: %w", err)
+	}
+	pipe := c.rdb.Pipeline()
+	type pair struct {
+		depth *goredis.IntCmd
+		fair  *goredis.IntCmd // round-robin runs wait in pos:, not ready: (scripts.go)
+		head  *goredis.ZSliceCmd
+	}
+	cmds := make([][]pair, len(cfgs))
+	for i, q := range cfgs {
+		for _, wf := range names {
+			for _, rn := range routes[wf] {
+				cmds[i] = append(cmds[i], pair{
+					depth: pipe.ZCard(ctx, c.base+":ready:"+q.Name+"/"+rn),
+					fair:  pipe.ZCard(ctx, c.base+":pos:"+q.Name+"/"+rn),
+					head:  pipe.ZRangeWithScores(ctx, c.base+":since:"+q.Name+"/"+rn, 0, 0),
+				})
+			}
+		}
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, fmt.Errorf("redis: queue loads: %w", classify(err))
+	}
+	now := c.clk.Now()
+	out := make([]workflow.QueueLoad, len(cfgs))
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, q := range cfgs {
+		l := workflow.QueueLoad{Queue: q.Name, Workers: q.Workers, Running: c.heldQ[q.Name]}
+		if l.Workers == 0 {
+			l.Workers = c.workers
+		}
+		var oldest int64
+		for _, p := range cmds[i] {
+			l.Depth += int(p.depth.Val() + p.fair.Val())
+			if h := p.head.Val(); len(h) > 0 && (oldest == 0 || int64(h[0].Score) < oldest) {
+				oldest = int64(h[0].Score)
+			}
+		}
+		if l.Depth > 0 && oldest > 0 {
+			l.OldestWait = max(now.Sub(time.UnixMilli(oldest)), 0)
+		}
+		out[i] = l
+	}
+	return out, nil
+}

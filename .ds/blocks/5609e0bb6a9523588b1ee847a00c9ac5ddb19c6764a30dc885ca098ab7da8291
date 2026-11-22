@@ -1,0 +1,4 @@
+type FakeBatch struct {
+	ID   batch.ID
+	Jobs []workflow.Job
+}

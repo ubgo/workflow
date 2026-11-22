@@ -1,0 +1,1 @@
+func PauseQueue(name string) PauseTarget { return PauseTarget{Queue: name} }

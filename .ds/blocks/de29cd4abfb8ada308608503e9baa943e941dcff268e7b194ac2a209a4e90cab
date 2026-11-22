@@ -1,0 +1,11 @@
+func (c *Client) route(ctx context.Context, job workflow.Job) (string, workflow.Client, error) {
+	name, err := c.router.Region(ctx, job)
+	if err != nil {
+		return "", nil, fmt.Errorf("regional: router: %w", err)
+	}
+	rc, ok := c.regions[name]
+	if !ok {
+		return "", nil, unknownRegion(name, "the Router")
+	}
+	return name, rc, nil
+}

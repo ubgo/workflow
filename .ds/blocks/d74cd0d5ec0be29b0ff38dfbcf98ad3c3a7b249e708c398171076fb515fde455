@@ -1,0 +1,4 @@
+type MemoryLineage struct {
+	mu   sync.Mutex
+	recs []Lineage
+}

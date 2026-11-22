@@ -1,0 +1,6 @@
+func (a *Admin) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	if err := a.check(OpSchedules); err != nil {
+		return nil, err
+	}
+	return a.c.(workflow.ScheduleLister).Schedules(ctx)
+}

@@ -11,12 +11,18 @@ import (
 // ReadyFunc reports whether something the app waits on before starting
 // work is ready, such as a clock that has been synchronised. An error
 // stops the wait and is returned to the caller.
+//
+//ds:def id=readyfunc-qcg9688f owner=@khanakia stability=stable
 type ReadyFunc func(ctx context.Context) (bool, error)
 
 // DefaultStartWhenPoll is how often StartWhen asks its ReadyFunc.
+//
+//ds:def id=defaultstartwhenpoll-h7z7x3ch owner=@khanakia stability=stable
 const DefaultStartWhenPoll = time.Second
 
 // StartWhenOptions tunes StartWhen.
+//
+//ds:def id=startwhenoptions-ryd4cehw owner=@khanakia stability=stable
 type StartWhenOptions struct {
 	// Poll is the pause between two asks; zero means DefaultStartWhenPoll.
 	Poll time.Duration
@@ -38,6 +44,8 @@ type StartWhenOptions struct {
 // ended (ctx.Err()). ctx is also the ctx passed to Start, so it is the
 // client's lifetime as with Start. ClockAfter is a ReadyFunc for the
 // common clock case.
+//
+//ds:def id=startwhen-rgx6keu2 owner=@khanakia stability=stable
 func StartWhen(ctx context.Context, c Client, ready ReadyFunc, opts StartWhenOptions) error {
 	if c == nil || ready == nil {
 		return invalidf("StartWhen needs a client and a ReadyFunc")
@@ -74,6 +82,8 @@ func StartWhen(ctx context.Context, c Client, ready ReadyFunc, opts StartWhenOpt
 // before it, and the first network or GPS sync moves it past. For a sync
 // status the OS reports (timedatectl, an NTP client's state) write a
 // ReadyFunc that asks it.
+//
+//ds:def id=clockafter-3nzw3qf4 owner=@khanakia stability=stable
 func ClockAfter(clk clock.Clock, floor time.Time) ReadyFunc {
 	if clk == nil {
 		clk = clock.Real{}

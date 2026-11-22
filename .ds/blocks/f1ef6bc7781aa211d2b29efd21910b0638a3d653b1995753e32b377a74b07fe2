@@ -1,0 +1,22 @@
+func limitTicks(s Schedule, sched cron.Schedule, n int, after time.Time) (Schedule, error) {
+	if !s.Active.From.IsZero() && s.Active.From.After(after) {
+		after = s.Active.From.Add(-time.Nanosecond)
+	}
+	var first, at time.Time
+	at = after
+	for i := 0; i < n; i++ {
+		at = sched.Next(at, s.Location)
+		if at.IsZero() || !s.Active.Contains(at) {
+			return s, invalidf("LimitRuns: %q has only %d ticks after %s, want %d", s.Cron, i, after.Format(time.RFC3339), n)
+		}
+		if i == 0 {
+			first = at
+		}
+	}
+	until := at.Add(time.Second)
+	if next := sched.Next(at, s.Location); !next.IsZero() && next.Before(until) {
+		until = next
+	}
+	s.Active = Active{From: first, Until: until}
+	return s, nil
+}

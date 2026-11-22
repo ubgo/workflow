@@ -1,0 +1,15 @@
+func Serve(ctx context.Context, client Client) error {
+	if err := client.Start(ctx); err != nil {
+		return err
+	}
+	d, ok := client.(Drainer)
+	if !ok || !client.Capabilities().Has(CapDrain) {
+		<-ctx.Done()
+		return nil
+	}
+	<-d.Done()
+	if sc, ok := client.(StopCauser); ok {
+		return sc.StopCause()
+	}
+	return nil
+}

@@ -1,0 +1,5 @@
+func RunErrorOf(err error) (*RunError, bool) {
+	var re *RunError
+	ok := errors.As(err, &re)
+	return re, ok
+}

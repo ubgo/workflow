@@ -1,0 +1,28 @@
+func PruneEndedSchedules(ctx context.Context, c Client, now time.Time, opts ...PruneOption) ([]ScheduleID, error) {
+	o := pruneOptions{grace: MisfireGrace}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	lister, ok := c.(ScheduleLister)
+	if !ok || !c.Capabilities().Has(CapScheduleList) {
+		return nil, &UnsupportedError{Field: "PruneEndedSchedules", Missing: CapScheduleList}
+	}
+	list, err := lister.Schedules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var pruned []ScheduleID
+	for _, info := range list {
+		if info.Declared || info.Active.Until.IsZero() || now.Before(info.Active.Until.Add(o.grace)) {
+			continue
+		}
+		if err := c.Unschedule(ctx, info.ID); err != nil {
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			return pruned, fmt.Errorf("prune schedule %s: %w", info.ID, err)
+		}
+		pruned = append(pruned, info.ID)
+	}
+	return pruned, nil
+}

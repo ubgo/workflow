@@ -1,0 +1,6 @@
+func CheckHealth(ctx context.Context, c Client) HealthReport {
+	if h, ok := c.(HealthChecker); ok {
+		return h.Health(ctx)
+	}
+	return HealthReport{Live: true, Ready: true, Checks: []HealthCheck{{Name: "health", OK: true, Detail: "the driver reports no health"}}}
+}

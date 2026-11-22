@@ -1,0 +1,10 @@
+type StepOutcome struct {
+	Output []byte
+	Err    error
+
+	// Chain is the run's chain after this attempt: StepChain's jobs with
+	// the attempt's PrependToChain and AppendToChain edits applied when
+	// it succeeded, unchanged when it failed (a driver drops a failed
+	// attempt's edits).
+	Chain []workflow.Job
+}

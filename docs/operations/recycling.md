@@ -4,7 +4,7 @@ A long-lived worker can drift: a library that leaks, a cache that only grows, a 
 
 ## Before you start
 
-- Recycling is a driver option: `memory.WithRecycle`, `sqlstore.WithRecycle`, or `Config.Recycle` on the Hatchet driver, each taking a `workflow.Recycle`. The zero value never recycles.
+- Recycling is a driver option: [`memory.WithRecycle`](ds:block?id=memory-withrecycle-tsfrb2gk), [`sqlstore.WithRecycle`](ds:block?id=sql-withrecycle-tekpfn73), or `Config.Recycle` on the Hatchet driver, each taking a [`workflow.Recycle`](ds:block?id=recycle-xh3besny). The zero value never recycles.
 - The process needs a supervisor that restarts it. Recycling stops the worker; it never starts one.
 - The example is [`examples/worker-recycling`](../../examples/worker-recycling). Run it with `go run ./worker-recycling` from `examples/`.
 
@@ -12,13 +12,13 @@ A long-lived worker can drift: a library that leaks, a cache that only grows, a 
 
 | Field | Stops the worker | Like |
 |---|---|---|
-| `MaxJobs` | After this many finished step attempts by this client, whatever their outcome | `--max-jobs` |
+| `MaxJobs` | After this many finished step attempts by this client, whatever their outcome ([`RecycleWatch`](ds:block?id=recyclewatch-checklocked-mwcm8y6t) counts each one) | `--max-jobs` |
 | `MaxTime` | This long after `Start`, on the driver's clock | `--max-time` |
-| `MaxMemory` | Once `Memory()` reads at least this many bytes, checked after each attempt and every `CheckEvery` | `--memory` |
-| `Memory` | The reading; nil means `workflow.HeapObjectBytes` (the Go heap's live objects, from `runtime/metrics`). Pass your own to read RSS or a cgroup counter | |
-| `CheckEvery` | How often memory is checked between attempts; zero means `workflow.DefaultRecycleCheck` (one second) | |
+| `MaxMemory` | Once `Memory()` reads more than this many bytes ([`RecycleWatch`](ds:block?id=recyclewatch-checklocked-mwcm8y6t)), checked after each attempt and every `CheckEvery` | `--memory` |
+| `Memory` | The reading; nil means [`workflow.HeapObjectBytes`](ds:block?id=heapobjectbytes-c5bmxcaa) (the Go heap's live objects, from `runtime/metrics`). Pass your own to read RSS or a cgroup counter | |
+| `CheckEvery` | How often memory is checked between attempts; zero means [`workflow.DefaultRecycleCheck`](ds:block?id=defaultrecyclecheck-amqh8hxt) (one second) | |
 
-Any field left at zero is no limit. A negative limit is refused at `Start` with `workflow.ErrInvalid` (`workflow.ValidateRecycle`).
+Any field left at zero is no limit. A negative `MaxJobs`, `MaxTime` or `CheckEvery` is refused at `Start` with `workflow.ErrInvalid` ([`workflow.ValidateRecycle`](ds:block?id=validaterecycle-nuecyb5b)); `MaxMemory` is unsigned.
 
 <!-- snippet: examples/worker-recycling/main.go#max-memory -->
 ```go
@@ -32,7 +32,7 @@ c := memory.New(memory.WithClock(clk), memory.WithRecycle(workflow.Recycle{
 
 ## Step 2: serve until the worker stops
 
-`Start` returns once the workers are up, so recycling is not reported through it. `workflow.Serve(ctx, client)` starts the client and blocks until it has stopped, then returns why: Start's error, a `*workflow.RecycleError` when a limit stopped it, or nil for every stop you asked for (the context ending, `Drain`, stop-when-idle):
+`Start` returns once the workers are up, so recycling is not reported through it. [`workflow.Serve(ctx, client)`](ds:block?id=serve-m3sgzd2c) starts the client and blocks until it has stopped, then returns why: Start's error, a `*workflow.RecycleError` when a limit stopped it, or nil for every stop you asked for (the context ending, `Drain`, stop-when-idle):
 
 <!-- snippet: examples/worker-recycling/main.go#max-jobs -->
 ```go
@@ -55,7 +55,7 @@ cancel()
 
 ## Step 3: exit so the supervisor restarts you
 
-The error matches `workflow.ErrRecycle`, and `errors.As` gives the `*RecycleError` with the `Reason` (`RecycleMaxJobs`, `RecycleMaxTime`, `RecycleMaxMemory`), the jobs finished, the time since `Start` and the last memory reading. In a real worker, exit with a code your supervisor restarts on; the example loops instead, each pass standing in for a new process:
+The error matches [`workflow.ErrRecycle`](ds:block?id=errrecycle-smp6ce9f), and `errors.As` gives the [`*RecycleError`](ds:block?id=recycleerror-qfzrpxmt) with the `Reason` ([`RecycleMaxJobs`](ds:block?id=recyclemaxjobs-a7e34ytz), `RecycleMaxTime`, `RecycleMaxMemory`), the jobs finished, the time since `Start` and the last memory reading. In a real worker, exit with a code your supervisor restarts on; the example loops instead, each pass standing in for a new process:
 
 <!-- snippet: examples/worker-recycling/main.go#supervisor -->
 ```go
@@ -78,17 +78,17 @@ done: 5 of 5
 memory worker: recycled (max_memory) at 600 MiB, ErrRecycle true
 ```
 
-An app with its own loop reads the same answer without `Serve`: wait on `client.(workflow.Drainer).Done()`, then call `client.(workflow.StopCauser).StopCause()`. Clients wrapped with `middleware.WrapClient` or `WithCodec` forward `StopCause`; the failover client joins both sides, so its error matches `ErrRecycle` when either backend recycled.
+An app with its own loop reads the same answer without `Serve`: wait on `client.(workflow.Drainer).Done()`, then call [`client.(workflow.StopCauser).StopCause()`](ds:block?id=stopcauser-6chpc2ds). Clients wrapped with `middleware.WrapClient` or `WithCodec` forward `StopCause` ([`workflow.Forward`](ds:block?id=forward-stopcause-8kqevxch)); the [failover client](ds:block?id=failover-client-stopcause-nf8squej) joins both sides, so its error matches `ErrRecycle` when either backend recycled.
 
 ## What a recycle does
 
-The worker drains exactly as `Drain` does, with no deadline: it claims nothing more, lets running attempts finish, then stops, and `Done` closes.
+The worker drains exactly as `Drain` does, with no deadline ([memory](ds:block?id=memory-client-recyclenow-fmh3b27f), [SQL](ds:block?id=sql-client-recyclenow-8yuv3ad5), [Hatchet](ds:block?id=hatchet-client-recycle-v94a4x8t)): it claims nothing more, lets running attempts finish ([`TestRecycleLetsRunningAttemptsFinish`](ds:block?id=testrecycleletsrunningattemptsfinish-dm5rrvq6)), then stops, and `Done` closes.
 
 | Driver | Work left behind |
 |---|---|
 | SQL | Unclaimed and delayed runs stay in the database for the next process or any other worker |
 | Hatchet | Runs stay on the engine and go to any worker serving their workflow. On-failure handlers count as attempts; durable sleep and wait steps do not, since they hold no worker |
-| In-memory | Nothing outlives the client: runs not finished become cancelled. Recycling on this driver suits tests and single-process tools only |
+| In-memory | Nothing outlives the client: runs not finished become cancelled ([`memory.WithRecycle`](ds:block?id=memory-withrecycle-tsfrb2gk)). Recycling on this driver suits tests and single-process tools only |
 
 ## Try it
 
@@ -109,11 +109,11 @@ The program plays the supervisor: five jobs wait in a SQLite queue and each gene
 
 ## Pitfalls
 
-- **A long step delays the exit.** The drain has no deadline, so a step that runs for an hour keeps the old process alive for that hour after the limit. Bound steps with `Step.Timeout`.
-- **`MaxJobs` counts attempts, not runs.** A run of three steps, or one step retried twice, counts three. Several workers in one client can finish attempts at once, so the count can pass the limit by up to the number of workers before the drain stops claiming. On Hatchet, up to `Slots` attempts the engine already handed out before the pause landed may start past `MaxJobs`.
-- **The default memory reading is the Go heap,** not the process's resident size. Memory held by cgo, mmap or goroutine stacks is not in it; pass your own `Memory` for those.
-- **`Serve` returns nil for stops you asked for.** Treat only `ErrRecycle` as "restart me"; a nil return after stop-when-idle means the queue was empty.
-- **Give both failover backends the same limits.** The failover client's `Done` waits for both sides, so a recycle on one side alone stops nothing until the other stops too.
+- **A long step delays the exit.** The drain has no deadline (`Drain(context.Background())` in [`recycleNow`](ds:block?id=sql-client-recyclenow-8yuv3ad5)), so a step that runs for an hour keeps the old process alive for that hour after the limit. Bound steps with `Step.Timeout`.
+- **`MaxJobs` counts attempts, not runs.** A run of three steps, or one step retried twice, counts three. Several workers in one client can finish attempts at once, so the count can pass the limit by up to the number of workers before the drain stops claiming ([`Recycle.MaxJobs`](ds:block?id=recycle-xh3besny)). On Hatchet ([`TestRecycleLive`](ds:block?id=hatchet-testrecyclelive-dc5wbr5w)), up to `Slots` attempts the engine already handed out before the pause landed may start past `MaxJobs`.
+- **The default memory reading is the Go heap** ([`HeapObjectBytes`](ds:block?id=heapobjectbytes-c5bmxcaa)), not the process's resident size. Memory held by cgo, mmap or goroutine stacks is not in it; pass your own `Memory` for those.
+- **`Serve` returns nil for stops you asked for** ([`TestServeNilOnRequestedStop`](ds:block?id=testservenilonrequestedstop-bbccvjfa)). Treat only `ErrRecycle` as "restart me"; a nil return after stop-when-idle means the queue was empty.
+- **Give both failover backends the same limits.** The failover client's `Done` waits for both sides ([`StopCause`](ds:block?id=failover-client-stopcause-nf8squej)), so a recycle on one side alone stops nothing until the other stops too.
 - **Without a supervisor nothing restarts.** On a platform that does not restart an exited process, a recycle ends the worker for good.
 
 ## Related

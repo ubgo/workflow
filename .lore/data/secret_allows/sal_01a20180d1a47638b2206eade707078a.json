@@ -1,0 +1,29 @@
+{
+  "_hlc": "2026-11-22T04:25:49.380Z/0000/act_eed7179abc3d7c58a0a0613f51dfa322",
+  "_o": {
+    "cmd": "secrets allow",
+    "git": {
+      "branch": "docs/pass2",
+      "commit": "db1cd9ce8289852af9a60a849eb2765fbefcd8ae",
+      "state": "branch"
+    },
+    "project": "prj_01a115555ae37c48ae7fddcfa96da417",
+    "store": "repo"
+  },
+  "_table": "secret_allows",
+  "_v": 2,
+  "_w": {
+    "v": "0.1.31"
+  },
+  "created_at": "2026-11-22T04:25:49.380000000Z",
+  "created_by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "field": "file",
+  "id": "sal_01a20180d1a47638b2206eade707078a",
+  "match_hash": 1626552383,
+  "path": ".ds/blocks/721e860fbb2b076d88fa6548c2881dffff142ea7aea7236cb7a4fb8dfb4a3ea0",
+  "reason": "dummy test value copied from a test already in the repository (TestSecretGuard / TestHandler_ErrorMapping) into a docsync block snapshot",
+  "row_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "rule_id": "aws_access_key",
+  "updated_at": "2026-11-22T04:25:49.380000000Z",
+  "updated_by": "act_eed7179abc3d7c58a0a0613f51dfa322"
+}

@@ -38,6 +38,8 @@ type effects struct {
 //   - Once every job is terminal the batch finishes, once: Then fires only
 //     when every job succeeded and the batch was not cancelled; Finally
 //     always fires.
+//
+//ds:def id=batch-recordfinish-9b55fcjg owner=@khanakia stability=stable
 func recordFinish(st *State, idx int, status workflow.Status, now time.Time) effects {
 	var eff effects
 	if idx < 0 || idx >= len(st.Jobs) || !status.IsTerminal() || st.Jobs[idx].Status.IsTerminal() {
@@ -60,6 +62,8 @@ func recordFinish(st *State, idx int, status workflow.Status, now time.Time) eff
 // markCancelled cancels the batch: Then will not fire, and the jobs still
 // running must be cancelled. Cancelling a finished or already cancelled
 // batch changes nothing.
+//
+//ds:def id=batch-markcancelled-qxy4j7tu owner=@khanakia stability=stable
 func markCancelled(st *State, now time.Time) effects {
 	if st.Finished || st.Cancelled {
 		return effects{}
@@ -71,6 +75,8 @@ func markCancelled(st *State, now time.Time) effects {
 // finish latches Finished when every job is terminal and sets the Then and
 // Finally effects; it is a no-op once Finished is set, which makes both
 // callbacks fire at most once.
+//
+//ds:def id=batch-finish-2yzs4ctf owner=@khanakia stability=stable
 func finish(st *State, now time.Time, eff *effects) {
 	if st.Finished {
 		return
@@ -90,6 +96,8 @@ func finish(st *State, now time.Time, eff *effects) {
 // counted is the status a job's end counts as in every batch decision: a
 // StatusDiscarded end counts as st.DiscardedAs (StatusFailed when empty),
 // every other status as itself.
+//
+//ds:def id=batch-state-counted-ezrpnwzb owner=@khanakia stability=stable
 func (st *State) counted(s workflow.Status) workflow.Status {
 	if s != workflow.StatusDiscarded {
 		return s

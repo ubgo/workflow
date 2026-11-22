@@ -1,0 +1,22 @@
+func failureFinal(d *rest.V1WorkflowRunDetails, settle time.Duration, now time.Time) bool {
+	budgets := retryBudgets(d)
+	names := make(map[openapi_types.UUID]string, len(d.Shape))
+	for _, sh := range d.Shape {
+		names[sh.TaskExternalId] = sh.TaskName
+	}
+	for _, t := range d.Tasks {
+		if t.Status != rest.V1TaskStatusFAILED {
+			continue
+		}
+		if t.ErrorMessage != nil && strings.Contains(*t.ErrorMessage, finalMarker) {
+			return true
+		}
+		if budget, ok := budgets[names[t.TaskExternalId]]; ok && t.RetryCount != nil && *t.RetryCount >= budget {
+			return true
+		}
+		if t.FinishedAt != nil && now.Sub(*t.FinishedAt) >= settle {
+			return true
+		}
+	}
+	return false
+}

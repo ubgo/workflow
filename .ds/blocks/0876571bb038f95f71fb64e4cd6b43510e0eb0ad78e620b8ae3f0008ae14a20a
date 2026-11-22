@@ -1,0 +1,39 @@
+type CloudEvent struct {
+	// ID identifies the event; ID and Source together are unique per
+	// distinct event, so a consumer deduplicates by them.
+	ID string
+
+	// Source is a URI-reference naming the context the event happened
+	// in ("https://shop.example/orders", "/billing").
+	Source string
+
+	// SpecVersion is CloudEventsSpecVersion; any other value is refused.
+	SpecVersion string
+
+	// Type names the kind of event ("com.example.order.paid").
+	Type string
+
+	// DataContentType is Data's media type (RFC 2046); empty means
+	// JSON in the JSON format.
+	DataContentType string
+
+	// DataSchema is a URI naming the schema Data adheres to; a common
+	// place for a payload version.
+	DataSchema string
+
+	// Subject names the event's subject within Source (an order ID).
+	Subject string
+
+	// Time is when the event happened; zero means unset.
+	Time time.Time
+
+	// Data is the payload; nil means the event has none.
+	Data []byte
+
+	// Extensions are the extension attributes by name. Names are
+	// lower-case ASCII letters and digits and never a core attribute's
+	// name. Values are strings here: a JSON number or boolean is read as
+	// its literal text and written back as a string, which the spec
+	// allows for every attribute type.
+	Extensions map[string]string
+}

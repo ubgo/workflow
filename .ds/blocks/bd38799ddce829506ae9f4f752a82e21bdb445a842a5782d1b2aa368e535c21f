@@ -1,0 +1,6 @@
+func (c *Client) capabilities() workflow.Caps {
+	if c.cfg.API != nil {
+		return workflow.CapsOf(caps, workflow.CapPauseWorkflow, workflow.CapSchedulePause)
+	}
+	return caps
+}

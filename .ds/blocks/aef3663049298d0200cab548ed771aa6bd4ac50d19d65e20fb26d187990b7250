@@ -1,0 +1,26 @@
+type AuditEntry struct {
+	// Who is the principal Auth.Identify returned for the request (the
+	// handler's P), as an any so one sink serves every handler.
+	Who any
+
+	// Action and Resource are what Authorize was asked about.
+	Action   Action
+	Resource Resource
+
+	// Allowed is false when Authorize refused the request (403); the
+	// operation then never ran. A refused write is recorded too, since
+	// who tried what is what an audit log is read for.
+	Allowed bool
+
+	// Status is the HTTP status the handler answered.
+	Status int
+
+	// Err is why the action did not succeed: the operation's error (a
+	// conflict, an unsupported capability, a driver failure, with its
+	// full detail even when the response said only "internal error"), or
+	// the refusal. Nil on success.
+	Err error
+
+	// At is when the action ended, on the Admin's clock (WithClock).
+	At time.Time
+}

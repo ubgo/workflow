@@ -1,0 +1,20 @@
+func (cc *ClaimCheck) prepare(ctx context.Context) func(workflow.Job) (workflow.Job, error) {
+	return func(job workflow.Job) (workflow.Job, error) {
+		if err := refuseInternalLabels(ctx, "ClaimCheck", job.Labels, []string{ClaimCheckLabel}, UniqueKeyLabel, UniqueOwnerLabel); err != nil {
+			return job, err
+		}
+		token, err := cc.key()
+		if err != nil {
+			return job, err
+		}
+		job.Labels = stampClaim(job.Labels, token)
+		if len(job.Payload) > cc.threshold {
+			ref, err := cc.claim(ctx, token+claimKeySep+claimPayloadKey, job.Payload)
+			if err != nil {
+				return job, fmt.Errorf("workflow/middleware: claim check payload: %w", err)
+			}
+			job.Payload = ref
+		}
+		return job, nil
+	}
+}

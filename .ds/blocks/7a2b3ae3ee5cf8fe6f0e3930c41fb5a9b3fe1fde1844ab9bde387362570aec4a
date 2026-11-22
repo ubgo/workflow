@@ -1,0 +1,16 @@
+func ForkLabels(labels map[string]string, extra map[string]string, of RunID, step string, redo bool) map[string]string {
+	out := make(map[string]string, len(labels)+len(extra)+3)
+	for k, v := range labels {
+		if strings.HasPrefix(k, LabelPrefixBatch) || slices.Contains(forkDrops, k) {
+			continue
+		}
+		out[k] = v
+	}
+	maps.Copy(out, extra)
+	out[LabelForkOf] = of.String()
+	out[LabelForkStep] = step
+	if redo {
+		out[LabelRedo] = "true"
+	}
+	return out
+}

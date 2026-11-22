@@ -1,0 +1,1 @@
+func (r *Recorder) Batches() []FakeBatch { return batchesOf(r.Jobs()) }

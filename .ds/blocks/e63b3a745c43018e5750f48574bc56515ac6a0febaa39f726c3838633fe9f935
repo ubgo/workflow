@@ -1,0 +1,2 @@
+`INSERT INTO {p}run_ext (run_id, queue, idem_key, retry, started_at, discarded)
+VALUES (?, ?, ?, NULL, 0, 0)`

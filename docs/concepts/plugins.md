@@ -1,20 +1,20 @@
 # Plugins
 
-A plugin bundles a feature (multi-tenancy rules, an audit log, unique jobs, tracing) so an app adds it with one call instead of wiring each piece by hand. A plugin can contribute step middleware, enqueue middleware and run-finished observers; `workflow.Use` applies them all to a client and returns the client to use from then on. The core knows nothing about any particular plugin.
+A plugin bundles a feature (multi-tenancy rules, an audit log, unique jobs, tracing) so an app adds it with one call instead of wiring each piece by hand. A plugin can contribute step middleware, enqueue middleware and run-finished observers; [`workflow.Use`](ds:block?id=use-yq9nazws) applies them all to a client and returns the client to use from then on. The core knows nothing about any particular plugin.
 
 ## Before you start
 
-- You know the [client](client.md#start-and-stop) lifecycle: plugins are applied before `Register` and `Start`.
+- You know the [client](client.md#start-and-stop) lifecycle: plugins are applied before `Register` and `Start` ([`Use`](ds:block?id=use-yq9nazws)).
 
 ## Add a plugin
 
-`workflow.Use(c, plugins...)` takes a client and any number of `workflow.Plugin` values, each of which needs only a `Name() string`. What a plugin contributes is found by type assertion on three optional interfaces ([What a plugin can provide](../extending/writing-a-plugin.md#what-a-plugin-can-provide)):
+[`workflow.Use(c, plugins...)`](ds:block?id=use-yq9nazws) takes a client and any number of [`workflow.Plugin`](ds:block?id=plugin-nzzsb5eg) values, each of which needs only a `Name() string`. What a plugin contributes is found by type assertion on three optional interfaces ([What a plugin can provide](../extending/writing-a-plugin.md#what-a-plugin-can-provide)):
 
 | Interface | Contributes | Applied to |
 |---|---|---|
-| `workflow.StepMiddlewareProvider` | `StepMiddleware() []workflow.Middleware` | every step's handler and the `OnFailure` handler of workflows registered through the returned client |
-| `workflow.EnqueueMiddlewareProvider` | `EnqueueMiddleware() []workflow.EnqueueMiddleware` | every `Enqueue` through the returned client |
-| `workflow.RunFinishedProvider` | `RunFinishedObservers() []workflow.RunFinishedFunc` | registered on the client's `RunNotifier` by `Use` itself |
+| [`workflow.StepMiddlewareProvider`](ds:block?id=stepmiddlewareprovider-s6nzes9g) | `StepMiddleware() []workflow.Middleware` | every step's handler and the `OnFailure` and `OnTimeout` handlers of workflows registered through the returned client ([`Register`](ds:block?id=pluginclient-register-cdnscbg6)) |
+| [`workflow.EnqueueMiddlewareProvider`](ds:block?id=enqueuemiddlewareprovider-6akzkpv4) | `EnqueueMiddleware() []workflow.EnqueueMiddleware` | every `Enqueue` through the returned client ([`Use`](ds:block?id=use-yq9nazws)) |
+| [`workflow.RunFinishedProvider`](ds:block?id=runfinishedprovider-ck623ev8) | `RunFinishedObservers() []workflow.RunFinishedFunc` | registered on the client's `RunNotifier` by [`Use`](ds:block?id=use-yq9nazws) itself |
 
 The [custom-plugin](../../examples/custom-plugin/) example's `tenancy` plugin implements all three. Adding it:
 
@@ -46,13 +46,13 @@ if err := c.Start(ctx); err != nil {
 }
 ```
 
-The rules `Use` keeps:
+The rules [`Use`](ds:block?id=use-yq9nazws) keeps:
 
 - **Order is the order given.** The first plugin's middleware is outermost (it sees the job, or the step, first), and its observers are registered first. Within a plugin, its list's first entry is outermost.
-- **Plugin step middleware runs inside the driver's own.** A driver built with `WithMiddleware` (a codec, say) has already opened the input before a plugin's step middleware sees it.
-- **It checks before it changes anything.** A nil plugin or an empty name is `ErrInvalid`; two plugins with one name in one call are `ErrDuplicatePlugin`; a plugin with observers on a client that does not implement `RunNotifier` is an `UnsupportedError` naming `CapRunFinished` and the plugin. All of this is checked before any observer is registered.
-- **Observers can only be added before `Start`.** After `Start` the driver refuses them with `ErrAlreadyStarted`, which `Use` returns naming the plugin. Observers registered before a failing one stay registered, since `RunNotifier` has no way to remove one.
-- **Nothing is hidden.** The returned client keeps the inner client's `Capabilities` and forwards `RunNotifier`, so wrappers stacked on it still see the run-finished hook. With no plugins, `Use` returns the client unchanged.
+- **Plugin step middleware runs inside the driver's own.** A driver built with `WithMiddleware` (a codec, say) has already opened the input before a plugin's step middleware sees it: the returned client's [`Register`](ds:block?id=pluginclient-register-cdnscbg6) wraps the handlers before the driver adds its own middleware around them.
+- **It checks before it changes anything.** A nil plugin or an empty name is `ErrInvalid`; two plugins with one name in one call are [`ErrDuplicatePlugin`](ds:block?id=errduplicateplugin-ce74ermg); a plugin with observers on a client that does not implement `RunNotifier` is an `UnsupportedError` naming `CapRunFinished` and the plugin; a plugin that implements [`workflow.ClientBinder`](ds:block?id=clientbinder-q2955cf2) gets the client through `BindClient` in plugin order, and its error fails `Use`, naming the plugin. All of this is checked before any observer is registered ([`Use`](ds:block?id=use-yq9nazws)).
+- **Observers can only be added before `Start`.** After `Start` the driver refuses them with `ErrAlreadyStarted`, which [`Use`](ds:block?id=use-yq9nazws) returns naming the plugin. Observers registered before a failing one stay registered, since `RunNotifier` has no way to remove one.
+- **Nothing is hidden.** The returned client keeps the inner client's `Capabilities` and forwards `RunNotifier` and every interface `workflow.Forward` covers ([`Use`](ds:block?id=use-yq9nazws)), so wrappers stacked on it still see the run-finished hook. With no plugins, `Use` returns the client unchanged.
 
 ## Try it
 
@@ -72,10 +72,10 @@ The first line is the plugin's enqueue middleware refusing a job without a tenan
 
 ## Pitfalls
 
-- Registering on the bare driver (`base.Register`) instead of the client `Use` returned skips the plugin's step middleware for that workflow, silently. Keep one client variable after `Use`.
-- `ErrDuplicatePlugin` only sees the plugins of one call. Two `Use` calls with the same plugin apply it twice.
-- An observer plugin needs a client that implements `RunNotifier`. The memory, SQL and Redis drivers do, with guaranteed delivery (`CapRunFinished`); the Hatchet driver does best-effort only, so a plugin that must see every end needs a fallback there.
-- Enqueue middleware does not run on `sqlstore.Client.EnqueueTx`, which writes inside your transaction ([Choose how to enqueue](../choosing/methods.md#enqueue-enqueuetx-or-the-outbox)).
+- Registering on the bare driver (`base.Register`) instead of the client `Use` returned skips the plugin's step middleware for that workflow, silently: only the returned client's [`Register`](ds:block?id=pluginclient-register-cdnscbg6) wraps the handlers. Keep one client variable after `Use`.
+- [`ErrDuplicatePlugin`](ds:block?id=use-yq9nazws) only sees the plugins of one call. Two `Use` calls with the same plugin apply it twice.
+- An observer plugin needs a client that implements `RunNotifier`. The memory, SQL and Redis drivers do, with guaranteed delivery (`CapRunFinished` in [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j) and [Redis](ds:block?id=redis-caps-bfgdst9t)); the Hatchet driver does best-effort only ([`OnRunFinished`](ds:block?id=hatchet-client-onrunfinished-ymfhyxkr), without the capability in its [list](ds:block?id=hatchet-caps-d6x9fv8z)), so a plugin that must see every end needs a fallback there.
+- Enqueue middleware does not run on [`sqlstore.Client.EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq), which writes inside your transaction ([Choose how to enqueue](../choosing/methods.md#enqueue-enqueuetx-or-the-outbox)).
 
 ## Related
 

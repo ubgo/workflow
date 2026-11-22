@@ -1,0 +1,29 @@
+func TestUI_NoThirdPartyOrInlineCode(t *testing.T) {
+	remote := regexp.MustCompile(`(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}`)
+	for name := range uiTypes {
+		b, err := fs.ReadFile(uiFiles, "ui/"+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(b)
+		// The favicon is an inline SVG whose xmlns is a name, not a fetch.
+		src = strings.ReplaceAll(src, "http://www.w3.org/2000/svg", "")
+		if m := remote.FindString(src); m != "" {
+			t.Errorf("%s references %q; the UI loads nothing from another host", name, m)
+		}
+		switch name {
+		case "index.html":
+			for _, bad := range []string{"<script>", "<style", " style=", " onclick=", " onload=", "javascript:"} {
+				if strings.Contains(src, bad) {
+					t.Errorf("index.html has %q, which the CSP refuses", bad)
+				}
+			}
+		case "app.js":
+			for _, bad := range []string{"innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", ".style.", "'style'"} {
+				if strings.Contains(src, bad) {
+					t.Errorf("app.js uses %q", bad)
+				}
+			}
+		}
+	}
+}

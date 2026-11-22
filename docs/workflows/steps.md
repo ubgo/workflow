@@ -4,7 +4,7 @@ A workflow is a named graph of steps plus the policies that apply to every run o
 
 ## Before you start
 
-- A client to register the workflow on. The [quickstart](../start/quickstart.md) builds one on the memory driver.
+- A client to register the workflow on ([`Register`](ds:block?id=memory-client-register-ngcr2sck) on the memory driver). The [quickstart](../start/quickstart.md) builds one on the memory driver.
 - The example is [`examples/signals-and-sleep`](../../examples/signals-and-sleep). It registers four workflows on the memory driver with a fake clock: an order with a wait and a sleep, an approval that times out, a quote whose last step joins two parallel ones, and an export whose step times out. Run it with `go run ./signals-and-sleep` from `examples/`.
 
 ## Define a workflow
@@ -17,7 +17,7 @@ A workflow is a named graph of steps plus the policies that apply to every run o
 | `Wait` | Suspends until a matching event or a deadline | [signals](signals.md) |
 | `Sleep` | Suspends for a duration | [sleep](sleep.md) |
 
-A `workflow.Handler` is `func(ctx context.Context, in []byte) ([]byte, error)`: it gets the step's input as bytes and returns the step's output, which the engine stores. `Register` validates the definition (unique step names, exactly one kind per step, known parents, no cycles) and fails with an error matching `workflow.ErrInvalid`, so a broken workflow fails at start-up rather than mid-run.
+A [`workflow.Handler`](ds:block?id=handler-82jhj4f7) is `func(ctx context.Context, in []byte) ([]byte, error)`: it gets the step's input as bytes and returns the step's output, which the engine stores. `Register` validates the definition ([`workflow.Validate`](ds:block?id=validate-mnthpzkp): unique step names, exactly one kind per step, known parents, no cycles) and fails with an error matching [`workflow.ErrInvalid`](ds:block?id=errinvalid-y3xxpcy2), so a broken workflow fails at start-up rather than mid-run.
 
 <!-- snippet: examples/signals-and-sleep/main.go#order -->
 ```go
@@ -56,11 +56,11 @@ orderFlow := workflow.Workflow{
 }
 ```
 
-Register every workflow, then call `Start` once; `Register` after `Start` returns `workflow.ErrAlreadyStarted`.
+Register every workflow, then call `Start` once; `Register` after `Start` returns [`workflow.ErrAlreadyStarted`](ds:block?id=erralreadystarted-prauyy24) ([memory `Register`](ds:block?id=memory-client-register-ngcr2sck)).
 
 ## Typed handlers with Define
 
-Working with bytes in every step is tedious. `workflow.Define` wraps a typed function into a `Handler`: it decodes the input from JSON into `In` and encodes the `Out` it returns as JSON. Empty input decodes to the zero `In`. Input that does not decode is a `workflow.Permanent` error, so it is not retried: the same bytes can never decode.
+Working with bytes in every step is tedious. [`workflow.Define`](ds:block?id=define-d3ttbgk3) wraps a typed function into a `Handler`: it decodes the input from JSON into `In` and encodes the `Out` it returns as JSON. Empty input decodes to the zero `In`. Input that does not decode is a [`workflow.Permanent`](ds:block?id=permanent-9e6vjm6s) error, so it is not retried: the same bytes can never decode.
 
 The `reserve` and `ship` steps above are both `Define` handlers: `reserve` takes and returns an `order`, `ship` takes a `payment`. A `Define` handler is a plain `Handler`, so a unit test can call it with bytes and no driver at all:
 
@@ -90,7 +90,7 @@ The output is the JSON encoding of what the function returned, so the string com
 
 `Step.After` names the steps that must succeed before this one starts. Steps with no `After` start with the run, in parallel, so a plain list with no `After` is not a sequence: chain the steps with `After` to run them in order.
 
-A step's input follows one rule, `workflow.StepInput`, on every driver:
+A step's input follows one rule, [`workflow.StepInput`](ds:block?id=stepinput-ykz7ud5d), on every driver:
 
 - no parents: the run's payload;
 - one parent: that parent's output, unchanged;
@@ -133,15 +133,15 @@ type quoteIn struct {
 }
 ```
 
-When a step fails for good, the run's other steps are cancelled and the run fails.
+When a step fails for good, the run's other steps are cancelled and the run fails ([the memory driver's `fail`](ds:block?id=memory-client-fail-6tqmatzt)).
 
 ## What a step knows about its run
 
-Every driver puts a `workflow.StepInfo` on the ctx it passes to a handler: the workflow and step names, the `RunID`, the `Attempt` (1 for the first, one more per retry) and the run's `Labels`. Read it with `workflow.StepInfoFrom(ctx)`; the second result is false outside a step (in an enqueue middleware, for example). The `quote` step above prints its workflow, step and attempt from it. Handlers and middleware must not modify `Labels`; it is the run's own map.
+Every driver puts a [`workflow.StepInfo`](ds:block?id=stepinfo-kun3n4c3) on the ctx it passes to a handler: the workflow and step names, the `RunID`, the `Attempt` (1 for the first, one more per retry) and the run's `Labels`. Read it with [`workflow.StepInfoFrom(ctx)`](ds:block?id=stepinfofrom-rr9mwh2c); the second result is false outside a step (in an enqueue middleware, for example). The `quote` step above prints its workflow, step and attempt from it. Handlers and middleware must not modify `Labels`; it is the run's own map.
 
 `StepInfo` carries more for middleware: the run's `Queue`, its `Tenant`, the `Node` running the attempt, the workflow `Version`, and `ReadyAt`, when the attempt became ready to claim (now minus `ReadyAt` is how long it waited for a worker). Each is empty or zero on a driver without the matching capability.
 
-`workflow.WithStepInfo` is the setter. Drivers call it before running a step, before the middleware chain; you need it only when writing a driver, or a test that calls a handler directly. The program calls a handler that reads its `StepInfo`, once outside a step and once with a `StepInfo` set:
+[`workflow.WithStepInfo`](ds:block?id=withstepinfo-t26f3eu3) is the setter. Drivers call it before running a step, before the middleware chain; you need it only when writing a driver, or a test that calls a handler directly. The program calls a handler that reads its `StepInfo`, once outside a step and once with a `StepInfo` set:
 
 <!-- snippet: examples/signals-and-sleep/main.go#step-info -->
 ```go
@@ -164,7 +164,7 @@ fmt.Printf("  inside a step: %s\n", out)
 
 ## Timeouts
 
-`Step.Timeout` caps one attempt of a step; `Workflow.Timeout` is the default for steps that leave it zero. Zero everywhere means no timeout. When an attempt runs past its timeout its ctx is cancelled and the attempt fails with an error matching `context.DeadlineExceeded`; the retry policy then applies as for any failure.
+`Step.Timeout` caps one attempt of a step; `Workflow.Timeout` is the default for steps that leave it zero. Zero everywhere means no timeout. When an attempt runs past its timeout its ctx is cancelled and the attempt fails with an error matching `context.DeadlineExceeded` and [`workflow.ErrStepTimeout`](ds:block?id=errsteptimeout-6b727264) (`context.Cause(ctx)` in the handler is the step timeout; [the memory driver's attempt](ds:block?id=memory-client-exec-g88wsrmp)); the retry policy then applies as for any failure.
 
 <!-- snippet: examples/signals-and-sleep/main.go#timeout -->
 ```go
@@ -208,7 +208,7 @@ approval := workflow.Workflow{
 }
 ```
 
-In the example the approval's wait times out after 72 hours, and `OnFailure` receives the run's input, `"expense 77"`. `OnFailure` does not run for a cancelled run.
+In the example the approval's wait times out after 72 hours, and `OnFailure` receives the run's input, `"expense 77"`. `OnFailure` does not run for a cancelled run ([`fail`](ds:block?id=memory-client-fail-6tqmatzt) skips it for a run a Cancel already ended), and a set `OnTimeout` takes its place when the run failed by a timeout ([`workflow.FailureHandler`](ds:block?id=failurehandler-numvgfuc)).
 
 ## Try it
 
@@ -249,13 +249,13 @@ call a handler directly:
 
 ## Pitfalls
 
-- **Steps without `After` run in parallel.** Two steps listed one after the other both start with the run. Chain them with `After`.
-- **`OnFailure` runs at least once on a durable driver.** On the SQL driver it runs under a lease, so a crash reruns it on another process; make it idempotent.
-- **On Hatchet, set `Step.Timeout` near the step's real duration.** A step whose worker process dies is reclaimed only when its execution timeout expires (`Config.StepTimeout`, 24 hours by default) and then retried, if it has a retry left.
+- **Steps without `After` run in parallel.** Two steps listed one after the other both start with the run (a step is ready once every `After` parent has an output: [`readyLocked`](ds:block?id=memory-run-readylocked-amuukcsg)). Chain them with `After`.
+- **`OnFailure` runs at least once on a durable driver.** On the SQL driver it runs under a lease, so a crash reruns it on another process ([`recoverFailing`](ds:block?id=sql-client-recoverfailing-q3wafxbw)); make it idempotent.
+- **On Hatchet, set `Step.Timeout` near the step's real duration.** A step whose worker process dies is reclaimed only when its execution timeout expires (`Config.StepTimeout`, [24 hours](ds:block?id=hatchet-defaultsteptimeout-j3gvwcvw) by default; a step with its own timeout gets [that timeout plus a few seconds](ds:block?id=hatchet-enginetimeout-cuw8khf9)) and then retried, if it has a retry left. A wait step's execution timeout follows its `Timeout` or `Deadline` instead, and a wait with neither ends after `Config.StepTimeout` ([`waitTimeout`](ds:block?id=hatchet-waittimeout-cwq36qj9)) ([Hatchet limitations](../drivers/hatchet.md#limitations)).
 - **Read time from an injected clock in handlers**, never from `time.Now`, so a test or a replay sees the same values (the example reads its fake clock).
 - **The graph is fixed at Register.** A running workflow cannot gain steps: an engine declares the graph server-side and the SQL driver finds steps by name after a crash, so steps added at run time would have no code on the node that resumes them. For a fan-out decided at run time, enqueue child runs or a [batch](../batches/batches.md) from a step and wait for them.
-- **A `Define` input that does not decode is never retried.** It fails the step for good at once, so a payload whose shape changed fails runs instead of retrying them; version the payload type or accept both shapes.
-- **`StepInfoFrom` is false outside a step.** An enqueue middleware, or a helper called from `main`, gets the zero `StepInfo`; check the second result.
+- **A `Define` input that does not decode is never retried.** It fails the step for good at once ([`Define`](ds:block?id=define-d3ttbgk3) wraps the decode error in `Permanent`), so a payload whose shape changed fails runs instead of retrying them; version the payload type or accept both shapes.
+- **[`StepInfoFrom`](ds:block?id=stepinfofrom-rr9mwh2c) is false outside a step.** An enqueue middleware, or a helper called from `main`, gets the zero `StepInfo`; check the second result.
 - **Outputs are stored.** On a durable driver every step's output is written to the database or engine; keep outputs small, or move big ones out with a [claim check](../reliability/claim-check.md).
 
 ## Related

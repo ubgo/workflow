@@ -1,0 +1,6 @@
+func HasLabel(k, v string) JobMatcher {
+	return Where(fmt.Sprintf("label %s=%s", k, v), func(j workflow.Job) bool {
+		got, ok := j.Labels[k]
+		return ok && got == v
+	})
+}

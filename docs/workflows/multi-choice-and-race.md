@@ -2,12 +2,12 @@
 
 Two more ways to branch at run time, built of ordinary steps like [`Choice`](branching.md). A multi-choice runs every branch its decision picks and joins exactly those: notify a customer by email and text but not push, because that is what they turned on. A race lets the outside world decide: an offer waits for the customer's reply on any channel, and the first answer to arrive picks the branch.
 
-Use `Choice` when exactly one path runs, `MultiChoice` when any number of paths may run and a later step needs to wait for exactly those, and `Race` when the decision comes from outside the run (a person, a webhook, a deadline).
+Use `Choice` when exactly one path runs, [`MultiChoice`](ds:block?id=multichoice-5d9vshey) when any number of paths may run and a later step needs to wait for exactly those, and [`Race`](ds:block?id=race-mu522hb9) when the decision comes from outside the run (a person, a webhook, a deadline).
 
 ## Before you start
 
-- `MultiChoice` needs no capability. `Race` needs `CapWaitForEvent` (memory, sqlstore, Redis, Hatchet).
-- A local merge that reads what its branches stored uses run data, which needs the [Journal plugin](memoisation.md#turn-on-the-journal).
+- [`MultiChoice`](ds:block?id=multichoice-5d9vshey) needs no capability. [`Race`](ds:block?id=race-mu522hb9) needs [`CapWaitForEvent`](ds:block?id=capwaitforevent-2km3dkzy) ([memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)).
+- A local merge that reads what its branches stored uses run data ([`SetRunData`](ds:block?id=setrundata-2gsvewmu)), which needs the [Journal plugin](memoisation.md#turn-on-the-journal).
 - The examples are [`examples/flow-patterns`](../../examples/flow-patterns) and, for the mix of "all of" and "any of", [`examples/flow-cancel`](../../examples/flow-cancel). Run them with `go run ./flow-patterns` and `go run ./flow-cancel` from `examples/`.
 
 ## Multi-choice
@@ -33,14 +33,41 @@ steps, err := workflow.MultiChoice(workflow.MultiChoiceSpec{
 })
 ```
 
-`workflow.MultiChoice` returns a decide step (`<Name>.decide`), one step per branch (`<Name>.<branch>`) and a join named `Name`. The branches not picked end at once without running, so the join waits for exactly the branches taken (a structured synchronizing merge; with one branch taken it is a simple merge). The join's output is a JSON object keyed by branch name holding the outputs of the branches taken. A decision that picks nothing, an unknown branch or one branch twice fails the run (`Permanent`, `ErrInvalid`).
+[`workflow.MultiChoice`](ds:block?id=multichoice-5d9vshey) returns a decide step (`<Name>.decide`), one step per branch (`<Name>.<branch>`) and a join named `Name`. The branches not picked end at once without running ([`multiBranch`](ds:block?id=multibranch-x5xhz9st)), so the join waits for exactly the branches taken (a structured synchronizing merge; with one branch taken it is a simple merge). The join's output is a JSON object keyed by branch name holding the outputs of the branches taken ([`multiJoin`](ds:block?id=multijoin-3etse6jd)). A decision that picks nothing, an unknown branch or one branch twice fails the run (`Permanent`, `ErrInvalid`: [`multiDecide`](ds:block?id=multidecide-mmex4jpe), as [`MultiChoiceSpec.Decide`](ds:block?id=multichoicespec-tjvnntqy) documents); an error from `Decide` retries the decide step.
 
 ### Merge only the branches that ran
 
-A step that lists several branch steps of a multi-choice (`<Name>.<branch>`) in its `After`, instead of the join `Name`, is a local synchronizing merge: the branches not picked end at once without running, so the merge runs once, right after the last branch that was taken, and never waits for a branch that will not come. Use it when a step needs only some of the branches, or when the branches come from more than one multi-choice. Here the branches of a multi-choice named `page` each store a receipt, and the audit reads the ones that exist:
+A step that lists several branch steps of a multi-choice (`<Name>.<branch>`) in its `After`, instead of the join `Name`, is a local synchronizing merge: the branches not picked end at once without running ([`multiBranch`](ds:block?id=multibranch-x5xhz9st)), so the merge runs once, right after the last branch that was taken, and never waits for a branch that will not come. Use it when a step needs only some of the branches, or when the branches come from more than one multi-choice. Here the branches of a multi-choice named `page` (built by the [`MultiChoice`](ds:block?id=multichoice-5d9vshey) call) each store a receipt, and the audit reads the ones that exist:
 
 <!-- snippet: examples/flow-patterns/main.go#merge -->
 ```go
+channels := []string{"email", "sms", "push"}
+branches := make([]workflow.Branch, len(channels))
+for i, ch := range channels {
+	branches[i] = workflow.Branch{Name: ch, Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		return nil, workflow.SetRunData(ctx, "sent."+ch, ch+"-receipt-1") // one name per branch
+	}}
+}
+steps, err := workflow.MultiChoice(workflow.MultiChoiceSpec{
+	Name: "page",
+	Decide: func(ctx context.Context, in []byte) ([]string, error) {
+		var want map[string]bool
+		if err := json.Unmarshal(in, &want); err != nil {
+			return nil, workflow.Permanent(err)
+		}
+		var picked []string
+		for _, ch := range channels {
+			if want[ch] {
+				picked = append(picked, ch)
+			}
+		}
+		return picked, nil
+	},
+	Branches: branches,
+})
+if err != nil {
+	return workflow.Workflow{}, err
+}
 steps = append(steps, workflow.Step{
 	Name:  "audit",
 	After: []string{"page.email", "page.sms", "page.push"}, // the branch steps, not the join "page"
@@ -61,7 +88,7 @@ steps = append(steps, workflow.Step{
 })
 ```
 
-Each branch stored its receipt with `workflow.SetRunData(ctx, "sent."+ch, ...)`, one name per branch so parallel branches do not overwrite each other. The merge's input holds each branch step's own record (taken or not), not the plain branch outputs: a merge that needs the outputs follows the join `Name` instead, or reads values the branches stored, as here.
+Each branch stored its receipt with [`workflow.SetRunData`](ds:block?id=setrundata-2gsvewmu)`(ctx, "sent."+ch, ...)`, one name per branch so parallel branches do not overwrite each other. The merge's input holds each branch step's own record (taken or not, as [`multiBranch`](ds:block?id=multibranch-x5xhz9st) writes it), not the plain branch outputs: a merge that needs the outputs follows the join `Name` instead, or reads values the branches stored, as here.
 
 ## Race: the first answer wins
 
@@ -89,7 +116,7 @@ steps, err := workflow.Race(workflow.RaceSpec{
 })
 ```
 
-`workflow.Race` returns a wait step (`<Name>.wait`) on the event, keyed like any `WaitSpec`, followed by a choice whose decision is the branch the signal named. Every party that can answer sends `SignalChoice`:
+[`workflow.Race`](ds:block?id=race-mu522hb9) returns a wait step (`<Name>.wait`) on the event, keyed like any `WaitSpec`, followed by a choice whose decision is the branch the signal named. Every party that can answer sends [`SignalChoice`](ds:block?id=signalchoice-uf7du8cs):
 
 <!-- snippet: examples/flow-patterns/main.go#signal -->
 ```go
@@ -102,11 +129,11 @@ if err := workflow.SignalChoice(ctx, c, "offer.reply", "offer-7", "accept", nil)
 }
 ```
 
-The first signal the run takes decides; later ones never reach it. A signal sent before the run reaches its wait is kept, as every signal is, so a quick answer is not lost. Each branch receives the payload its signal carried.
+The first signal the run takes decides; later ones never reach it. A signal sent before the run reaches its wait is kept, as every signal is ([`Client.Signal`](ds:block?id=client-signal-2sdhmcdy)), so a quick answer is not lost. Each branch receives the payload its signal carried.
 
 ## A default branch at a deadline
 
-A race's `Timeout` fails the run. To take a default branch at a deadline instead (a delayed transition: "expire the listing when nobody answered"), add the default as a branch and enqueue a delayed job that answers for it. It competes like any other party: when someone answered first, its signal simply loses.
+A race's [`Timeout`](ds:block?id=racespec-y4vx6fbj) fails the run. To take a default branch at a deadline instead (a delayed transition: "expire the listing when nobody answered"), add the default as a branch and enqueue a delayed job that answers for it. It competes like any other party: when someone answered first, its signal simply loses.
 
 <!-- snippet: examples/flow-patterns/main.go#deadline -->
 ```go
@@ -135,13 +162,13 @@ if err != nil {
 }
 ```
 
-The listing's race has a `buy` and an `expire` branch. The deadline job needs `CapDelayedStart` besides the race's `CapWaitForEvent` (memory, sqlstore, Redis, Hatchet).
+The listing's race has a `buy` and an `expire` branch. The deadline job needs [`CapDelayedStart`](ds:block?id=capdelayedstart-qbxsx6hb) besides the race's [`CapWaitForEvent`](ds:block?id=capwaitforevent-2km3dkzy) ([memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)).
 
 ## Wait for all of, any of, or a mix
 
 - **All of.** Put one wait step per condition and a step whose `After` lists them all: it runs once every event arrived, in any order.
-- **Any of.** A race: every condition (a webhook, an operator, a deadline job) sends `SignalChoice` with its own branch, and the first one decides.
-- **A mix**, such as "paid and packed, or cancelled": run the "all of" part as a child run whose last step answers the parent's race, and cancel that child from the branch that wins otherwise. The program is [`examples/flow-cancel`](../../examples/flow-cancel), which needs the Journal plugin for `Spawn`.
+- **Any of.** A race: every condition (a webhook, an operator, a deadline job) sends [`SignalChoice`](ds:block?id=signalchoice-uf7du8cs) with its own branch, and the first one decides.
+- **A mix**, such as "paid and packed, or cancelled": run the "all of" part as a child run whose last step answers the parent's race, and cancel that child from the branch that wins otherwise. The program is [`examples/flow-cancel`](../../examples/flow-cancel), which needs the Journal plugin for [`Spawn`](ds:block?id=spawn-jrs3a39f).
 
 The child holds one wait per condition, keyed on the order label, and its last step sends the `ship` choice to the parent's race:
 
@@ -199,7 +226,7 @@ if err := workflow.SignalChoice(ctx, c, decidedEvent, o.id, "cancel", nil); err 
 }
 ```
 
-A signal reaches only runs enqueued before it was sent, so start the child before the conditions can happen, or have the senders retry; the program waits until the child is waiting before it sends `order.paid`. `CancelChildren` needs `CapCancelAll` (memory, sqlstore, Redis; see the [Hatchet pitfall](joins.md#pitfalls)). Running `go run ./flow-cancel` from `examples/` ends with:
+A signal reaches only runs enqueued before it was sent ([`Client.Signal`](ds:block?id=client-signal-2sdhmcdy)), so start the child before the conditions can happen, or have the senders retry; the program waits until the child is waiting before it sends `order.paid`. [`CancelChildren`](ds:block?id=cancelchildren-hh6njpmy) needs [`CapCancelAll`](ds:block?id=capcancelall-7enkwcsq) ([memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)). Running `go run ./flow-cancel` from `examples/` ends with:
 
 ```text
 wait for all of, or any of:
@@ -229,11 +256,11 @@ race deadline:
 
 ## Pitfalls
 
-- **A race's `Timeout` fails the run** with `ErrWaitTimeout`. For a default branch, see [A default branch at a deadline](#a-default-branch-at-a-deadline).
-- **A signal naming no branch of the race fails the run.** Validate the branch name where the answer comes in.
-- **A decision that picks nothing, an unknown branch or one branch twice fails the run** (`Permanent`, `ErrInvalid`): return at least one branch, or route the "nothing to do" case to a branch of its own.
-- **A signal reaches only runs enqueued before it was sent.** It is kept for a run that is enqueued but has not reached its wait step yet, but a run enqueued after the signal never sees it; that is why the deadline job is enqueued after the run.
-- **A local merge reads records, not outputs.** Parse the join's output, or store what the merge needs with `SetRunData` under one name per branch.
+- **A race's `Timeout` fails the run** with [`ErrWaitTimeout`](ds:block?id=errwaittimeout-vvzd9zgy). For a default branch, see [A default branch at a deadline](#a-default-branch-at-a-deadline).
+- **A signal naming no branch of the race fails the run** ([`Race`](ds:block?id=race-mu522hb9)). Validate the branch name where the answer comes in.
+- **A decision that picks nothing, an unknown branch or one branch twice fails the run** (`Permanent`, `ErrInvalid`: [`multiDecide`](ds:block?id=multidecide-mmex4jpe)): return at least one branch, or route the "nothing to do" case to a branch of its own.
+- **A signal reaches only runs enqueued before it was sent** ([`Client.Signal`](ds:block?id=client-signal-2sdhmcdy)). It is kept for a run that is enqueued but has not reached its wait step yet, but a run enqueued after the signal never sees it; that is why the deadline job is enqueued after the run.
+- **A local merge reads records, not outputs.** Parse the join's output, or store what the merge needs with [`SetRunData`](ds:block?id=setrundata-2gsvewmu) under one name per branch.
 
 ## Related
 

@@ -11,6 +11,8 @@ import (
 // (middleware.Check). Such an error is permanent: retrying the same input
 // cannot make it hold, so the run fails at once and an operator sees
 // which rule broke.
+//
+//ds:def id=errconstraint-57ytu3e7 owner=@khanakia stability=stable
 var ErrConstraint = errors.New("workflow: constraint violated")
 
 // Invariant returns nil when cond holds, and otherwise a Permanent error
@@ -24,6 +26,8 @@ var ErrConstraint = errors.New("workflow: constraint violated")
 //
 // The error matches ErrConstraint and IsPermanent. It runs on every
 // driver: a permanent error is part of the core contract.
+//
+//ds:def id=invariant-gu6ctdqv owner=@khanakia stability=stable
 func Invariant(cond bool, format string, args ...any) error {
 	if cond {
 		return nil

@@ -126,6 +126,8 @@ func chargeInTx(f *ctxFixture, ctx context.Context, output string, end func(*sql
 // ignored (no retry, no failure), the next step gets the output written in
 // the transaction, the run-finished hook fires once, and the app's row is
 // there.
+//
+//ds:def id=enginetest-testcompletetxcommit-t6a53up6 owner=@khanakia stability=stable
 func TestCompleteTxCommit(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -193,6 +195,8 @@ func TestCompleteTxCommit(t *testing.T) {
 // TestCompleteTxRollback proves a rolled-back CompleteTx records nothing:
 // the handler's own return value is recorded as usual, a success with its
 // output, or a failure that is retried.
+//
+//ds:def id=enginetest-testcompletetxrollback-hyf5acd3 owner=@khanakia stability=stable
 func TestCompleteTxRollback(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name+"/returns output", func(t *testing.T) {
@@ -257,6 +261,8 @@ func TestCompleteTxRollback(t *testing.T) {
 // ErrLeaseLost once the step is no longer the attempt's (taken over by
 // another lease, or its run cancelled); each refusal leaves the app's
 // transaction usable.
+//
+//ds:def id=enginetest-testcompletetxrefusals-86xvqrf7 owner=@khanakia stability=stable
 func TestCompleteTxRefusals(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name+"/outside a step", func(t *testing.T) {

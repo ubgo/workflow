@@ -1,0 +1,50 @@
+func (r *inlineRun) step(ctx context.Context, s Step, in []byte) ([]byte, error) {
+	switch s.Kind() {
+	case StepSleep:
+		if err := r.cfg.sleep(ctx, s.Sleep); err != nil {
+			return nil, err
+		}
+		return in, nil
+	case StepWait:
+		return r.wait(s)
+	}
+	h := r.wrap(s.Run)
+	policy := EffectiveRetriesFor(s, r.wf, r.job)
+	timeout := s.Timeout
+	if timeout == 0 {
+		timeout = r.wf.Timeout
+	}
+	a := Attempts{First: r.cfg.now()}
+	for {
+		attempt := a.N + 1
+		r.res.Attempts[s.Name] = attempt
+		actx := WithStepInfo(ctx, StepInfo{Workflow: r.wf.Name, Step: s.Name, RunID: InlineRunID, Attempt: attempt, Labels: r.job.Labels, Queue: EffectiveQueue(r.wf, r.job), ReadyAt: r.cfg.now()})
+		cancel := context.CancelFunc(func() {})
+		if timeout > 0 {
+			actx, cancel = context.WithTimeout(actx, timeout)
+		}
+		out, err := callInline(h, actx, in)
+		timedOut := timeout > 0 && errors.Is(actx.Err(), context.DeadlineExceeded)
+		cancel()
+		if err == nil && !timedOut {
+			return out, nil
+		}
+		if timedOut {
+			err = fmt.Errorf("workflow: RunInline: step %q attempt %d timed out after %s: %w", s.Name, attempt, timeout, context.DeadlineExceeded)
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("%w: %w", ErrCancelled, err)
+		}
+		a = a.Count(err)
+		delay, retry := policy.Next(err, a, r.cfg.now(), nil)
+		if !retry {
+			if dis := policy.ExhaustedError(attempt, err); dis != nil {
+				return nil, dis // DiscardOnExhaust: run() ends the call discarded, without OnFailure, like a driver
+			}
+			return nil, err
+		}
+		if serr := r.cfg.sleep(ctx, delay); serr != nil {
+			return nil, fmt.Errorf("%w: %w", ErrCancelled, serr)
+		}
+	}
+}

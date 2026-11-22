@@ -1,0 +1,3 @@
+func (c *Client) OutputStore(lim OutputLimits) *OutputStore {
+	return &OutputStore{st: c.st, lim: lim.withDefaults()}
+}

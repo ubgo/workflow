@@ -10,10 +10,14 @@ import (
 // the run data prefix's sibling namespace "ubgo.workflow/", which Memo
 // keys (a step name's length and a colon) and run data ("data/") never
 // use.
+//
+//ds:def id=suspendkey-agfhj5t4 owner=@khanakia stability=stable
 const suspendKey = "ubgo.workflow/suspended"
 
 // DefaultSuspendPoll is how often a suspended run's parked step looks
 // again whether it was resumed.
+//
+//ds:def id=defaultsuspendpoll-z8mrjrqz owner=@khanakia stability=stable
 const DefaultSuspendPoll = 5 * time.Second
 
 // suspendPlugin is Suspension.
@@ -36,6 +40,8 @@ type suspendPlugin struct {
 // finished run's flag is forgotten with its journal. It needs a driver
 // with CapSnooze (memory, sqlstore, Redis); on one without it the parked
 // step would spend attempts, so do not use it there.
+//
+//ds:def id=suspension-tvpj5mcy owner=@khanakia stability=stable
 func Suspension(store JournalStore, poll time.Duration) Plugin {
 	if poll <= 0 {
 		poll = DefaultSuspendPoll
@@ -69,6 +75,8 @@ func (p suspendPlugin) StepMiddleware() []Middleware {
 // ScheduledID) cannot be marked, since its flag is keyed by RunID; move
 // it with RunRescheduler instead. Suspending a finished run has no
 // effect.
+//
+//ds:def id=suspendrun-6dhpewn2 owner=@khanakia stability=stable
 func SuspendRun(ctx context.Context, store JournalStore, ref RunRef) error {
 	if ref.RunID.IsZero() {
 		return invalidf("SuspendRun needs a RunID; a run that has not started is moved with Reschedule")
@@ -78,6 +86,8 @@ func SuspendRun(ctx context.Context, store JournalStore, ref RunRef) error {
 
 // ResumeRun clears ref's suspension; its parked step runs at its next
 // look (within the plugin's poll).
+//
+//ds:def id=resumerun-td25p96u owner=@khanakia stability=stable
 func ResumeRun(ctx context.Context, store JournalStore, ref RunRef) error {
 	if ref.RunID.IsZero() {
 		return invalidf("ResumeRun needs a RunID")
@@ -86,6 +96,8 @@ func ResumeRun(ctx context.Context, store JournalStore, ref RunRef) error {
 }
 
 // RunSuspended reports whether ref is marked suspended in store.
+//
+//ds:def id=runsuspended-wjxk9sqy owner=@khanakia stability=stable
 func RunSuspended(ctx context.Context, store JournalStore, ref RunRef) (bool, error) {
 	if ref.RunID.IsZero() {
 		return false, nil

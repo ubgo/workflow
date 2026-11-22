@@ -13,6 +13,8 @@ import (
 
 // ErrClosed is returned by Manager.Add for a batch that has finished or
 // was cancelled: nothing would track the new jobs' ends to any callback.
+//
+//ds:def id=batch-errclosed-2uqeatej owner=@khanakia stability=stable
 var ErrClosed = errors.New("batch: the batch has finished or was cancelled")
 
 // ErrDispatching is returned by Manager.Add and Manager.RetryFailed while
@@ -20,6 +22,8 @@ var ErrClosed = errors.New("batch: the batch has finished or was cancelled")
 // dispatch) has not finished. It is transient: try again later, for
 // example by returning it from the step that called Add so the step's
 // retry policy repeats the call.
+//
+//ds:def id=batch-errdispatching-rr7bhna5 owner=@khanakia stability=stable
 var ErrDispatching = errors.New("batch: a dispatch of this batch is in progress")
 
 // WithRetryableJobs keeps every job's spec (workflow, payload, labels) in
@@ -28,6 +32,8 @@ var ErrDispatching = errors.New("batch: a dispatch of this batch is in progress"
 // WithResumableDispatch does, and costs the same: each State write
 // carries every job's payload, so keep payloads small (a claim check
 // reference rather than the data) in a batch that uses it.
+//
+//ds:def id=batch-withretryablejobs-2wtz6azn owner=@khanakia stability=stable
 func WithRetryableJobs() Option { return func(m *Manager) { m.retainSpecs = true } }
 
 // dropSpec forgets the kept job specs once a dispatch no longer needs
@@ -43,6 +49,8 @@ func (m *Manager) dropSpec(s *State) {
 // batch, whose jobs only a GroupSpawner starts, and a batch whose
 // dispatch has not finished. A resumer finishes the new dispatch if this
 // process dies part-way, as for Dispatch.
+//
+//ds:def id=batch-manager-claimchange-6dvwuu8g owner=@khanakia stability=stable
 func (m *Manager) claimChange(s *State, owner, what string) error {
 	if s.Coordinated {
 		return &workflow.UnsupportedError{Field: "batch." + what, Reason: "batch " + string(s.ID) + " runs as one coordinator run (GroupSpawner), which starts every job itself"}
@@ -72,6 +80,8 @@ func (m *Manager) claimChange(s *State, owner, what string) error {
 // When an Enqueue fails, the new jobs not yet started are recorded as
 // cancelled and the batch is cancelled, exactly as for a Dispatch that
 // fails part-way, and the error is returned.
+//
+//ds:def id=batch-manager-add-gy9xjhce owner=@khanakia stability=stable
 func (m *Manager) Add(ctx context.Context, id ID, jobs ...workflow.Job) error {
 	if len(jobs) == 0 {
 		return nil
@@ -134,6 +144,8 @@ func (m *Manager) Add(ctx context.Context, id ID, jobs ...workflow.Job) error {
 // dispatch (workflow.ErrInvalid), one whose dispatch is still running
 // (ErrDispatching) and a coordinated batch (an UnsupportedError). A batch
 // with nothing to retry returns 0 and changes nothing.
+//
+//ds:def id=batch-manager-retryfailed-6h3uccfy owner=@khanakia stability=stable
 func (m *Manager) RetryFailed(ctx context.Context, id ID) (int, error) {
 	ownerID, err := newID()
 	if err != nil {
@@ -187,6 +199,8 @@ func (m *Manager) RetryFailed(ctx context.Context, id ID) (int, error) {
 // retryable returns, in index order, the jobs RetryFailed starts again:
 // the failed ones, plus the cancelled ones when a failure cancelled the
 // batch.
+//
+//ds:def id=batch-retryable-6r4ca9cr owner=@khanakia stability=stable
 func retryable(s State) []int {
 	var out []int
 	for i, j := range s.Jobs {
@@ -202,6 +216,8 @@ func retryable(s State) []int {
 // UnsupportedError, and a filter with no rule an error wrapping
 // workflow.ErrInvalid. Run it on a schedule the app owns; the Manager
 // starts no pruning of its own.
+//
+//ds:def id=batch-manager-prune-6ccvsyas owner=@khanakia stability=stable
 func (m *Manager) Prune(ctx context.Context, f PruneFilter) (int, error) {
 	if f.IsZero() {
 		return 0, fmt.Errorf("%w: batch.PruneFilter has no rule; set FinishedBefore, UnfinishedBefore or CancelledBefore", workflow.ErrInvalid)

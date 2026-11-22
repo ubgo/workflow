@@ -1,0 +1,58 @@
+func pauseCmd(verb string) func(*flag.FlagSet) func(context.Context, *env, []string) error {
+	return func(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+		wf := fs.String("workflow", "", verb+" one workflow")
+		q := fs.String("queue", "", verb+" one queue")
+		everything := fs.Bool("everything", false, verb+" every workflow and queue")
+		dry := fs.Bool("dry-run", false, "show what would be "+verb+"d and the active pauses; change nothing")
+		return func(ctx context.Context, e *env, args []string) error {
+			if len(args) > 0 {
+				return usagef("%s takes --workflow, --queue or --everything, not %q", verb, args[0])
+			}
+			n := 0
+			for _, set := range []bool{*wf != "", *q != "", *everything} {
+				if set {
+					n++
+				}
+			}
+			if n != 1 {
+				return usagef("%s needs exactly one of --workflow, --queue and --everything", verb)
+			}
+			body := pauseBody{*wf, *q, *everything}
+			what := "everything"
+			if *wf != "" {
+				what = "workflow " + *wf
+			} else if *q != "" {
+				what = "queue " + *q
+			}
+			if *dry {
+				var cur struct {
+					Pauses []pauseBody `json:"pauses"`
+				}
+				raw, err := e.api.get(ctx, "pauses", &cur)
+				if err != nil {
+					return err
+				}
+				if e.asJSON {
+					return e.printJSON(raw)
+				}
+				state := "not paused now"
+				for _, p := range cur.Pauses {
+					if p == body {
+						state = "paused now"
+					}
+				}
+				fprintf(e.out, "dry run: would %s %s (%s; %d pauses active); nothing changed\n", verb, what, state, len(cur.Pauses))
+				return nil
+			}
+			raw, err := e.api.do(ctx, "POST", verb, body, nil)
+			if err != nil {
+				return err
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "%sd %s\n", verb, what)
+			return nil
+		}
+	}
+}

@@ -15,16 +15,22 @@ import (
 // primary failure followed by a failover could otherwise run it twice. It
 // is returned wrapped together with workflow.ErrInvalid, so errors.Is
 // matches both. AllowWithoutKey lifts the requirement.
+//
+//ds:def id=failover-errkeyrequired-5ywe568r owner=@khanakia stability=stable
 var ErrKeyRequired = errors.New("failover: Job.IdempotencyKey is required, because a primary that accepted the job and then failed to answer would make failover run it twice (use failover.AllowWithoutKey to accept that)")
 
 // Classifier reports whether an error from the primary's Enqueue means the
 // primary is unavailable, so the job should go to the secondary. It is
 // only consulted when the caller's context is still live.
+//
+//ds:def id=failover-classifier-sb6segry owner=@khanakia stability=stable
 type Classifier func(err error) bool
 
 // callerFault lists the errors the secondary would return just the same,
 // or that a different backend cannot fix; DefaultClassifier never fails
 // over on them.
+//
+//ds:def id=failover-callerfault-9aj98stm owner=@khanakia stability=stable
 var callerFault = []error{
 	context.Canceled,
 	context.DeadlineExceeded,
@@ -44,6 +50,8 @@ var callerFault = []error{
 // error. Not every driver marks its transport errors yet, so the default
 // errs towards failing over on unknown errors: an unknown error is most
 // often a transport one. StrictClassifier is the opposite trade.
+//
+//ds:def id=failover-defaultclassifier-t7rpm2z9 owner=@khanakia stability=stable
 func DefaultClassifier(err error) bool {
 	if err == nil || workflow.IsPermanent(err) {
 		return false
@@ -71,6 +79,8 @@ func DefaultClassifier(err error) bool {
 //	failover.New(primary, secondary, failover.WithClassifier(failover.StrictClassifier))
 //
 // A Permanent error never fails over.
+//
+//ds:def id=failover-strictclassifier-7nn6bzz9 owner=@khanakia stability=stable
 func StrictClassifier(err error) bool {
 	return err != nil && !workflow.IsPermanent(err) && workflow.IsUnavailable(err)
 }
@@ -83,19 +93,25 @@ const (
 	// EventFailedOver: the primary's Enqueue failed with an error the
 	// Classifier called unavailable, and the job went to the secondary
 	// (Err is the primary's error).
+	//ds:def id=failover-eventfailedover-ptyhkt89 owner=@khanakia stability=stable
 	EventFailedOver EventKind = "failed_over"
 	// EventPrimarySkipped: the primary was cooling off, so the job went
 	// straight to the secondary.
+	//ds:def id=failover-eventprimaryskipped-euuyyrdg owner=@khanakia stability=stable
 	EventPrimarySkipped EventKind = "primary_skipped"
 	// EventCoolOffStarted: the failover streak reached WithCoolOff's n;
 	// Until is when the primary is tried again.
+	//ds:def id=failover-eventcooloffstarted-9rzmaeb2 owner=@khanakia stability=stable
 	EventCoolOffStarted EventKind = "cool_off_started"
 	// EventCoolOffEnded: the primary took a job again after a cool-off.
+	//ds:def id=failover-eventcooloffended-x9sd452m owner=@khanakia stability=stable
 	EventCoolOffEnded EventKind = "cool_off_ended"
 )
 
 // Event is one failover event. It never carries the job's payload or
 // labels, which can hold personal data.
+//
+//ds:def id=failover-event-3c2gmzub owner=@khanakia stability=stable
 type Event struct {
 	Kind EventKind
 	// Workflow is the job's workflow name.
@@ -112,6 +128,8 @@ type Event struct {
 // that caused them; it must return quickly and must not call Enqueue on
 // the same Client. A secondary that fails too is reported to the caller
 // by Enqueue's error, not here.
+//
+//ds:def id=failover-observer-73etyu8p owner=@khanakia stability=stable
 type Observer func(ctx context.Context, ev Event)
 
 // Option configures a Client.
@@ -123,6 +141,8 @@ type Option func(*Client)
 //	failover.WithObserver(func(ctx context.Context, ev failover.Event) {
 //		logger.WarnContext(ctx, "workflow failover", "kind", ev.Kind, "workflow", ev.Workflow, "error", ev.Err)
 //	})
+//
+//ds:def id=failover-withobserver-r6smmcyd owner=@khanakia stability=stable
 func WithObserver(fn Observer) Option {
 	return func(f *Client) {
 		if fn != nil {
@@ -132,6 +152,8 @@ func WithObserver(fn Observer) Option {
 }
 
 // WithClassifier replaces DefaultClassifier. A nil c is ignored.
+//
+//ds:def id=failover-withclassifier-ghwaub6c owner=@khanakia stability=stable
 func WithClassifier(c Classifier) Option {
 	return func(f *Client) {
 		if c != nil {
@@ -142,12 +164,16 @@ func WithClassifier(c Classifier) Option {
 
 // AllowWithoutKey accepts jobs without an IdempotencyKey, accepting that
 // an ambiguous primary failure may run such a job on both backends.
+//
+//ds:def id=failover-allowwithoutkey-4fzbzhje owner=@khanakia stability=stable
 func AllowWithoutKey() Option { return func(f *Client) { f.allowNoKey = true } }
 
 // WithSchedulesOnBoth registers Workflow.Cron and Client.Schedule on both
 // backends, so schedules keep firing while the primary is down, at the
 // price of every tick firing on both while both are up. Only for
 // scheduled workflows that tolerate running twice per tick.
+//
+//ds:def id=failover-withschedulesonboth-vp7d75qm owner=@khanakia stability=stable
 func WithSchedulesOnBoth() Option { return func(f *Client) { f.schedBoth = true } }
 
 // WithCoolOff skips the primary for d after n consecutive enqueues failed
@@ -155,6 +181,8 @@ func WithSchedulesOnBoth() Option { return func(f *Client) { f.schedBoth = true 
 // tries the primary again; one more failure starts a new cool-off, and a
 // success ends the streak. n below 1 or d of zero or less disables it
 // (the default).
+//
+//ds:def id=failover-withcooloff-fjcjyt6q owner=@khanakia stability=stable
 func WithCoolOff(n int, d time.Duration) Option {
 	return func(f *Client) {
 		if n >= 1 && d > 0 {
@@ -165,6 +193,8 @@ func WithCoolOff(n int, d time.Duration) Option {
 
 // WithClock sets the time source of the cool-off. The default is
 // clock.Real. A nil c is ignored.
+//
+//ds:def id=failover-withclock-4b2e3nph owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option {
 	return func(f *Client) {
 		if c != nil {
@@ -207,6 +237,8 @@ var (
 // New returns a client that enqueues on primary and fails over to
 // secondary. Both must be fresh, unstarted clients owned by this one: it
 // registers and starts them.
+//
+//ds:def id=failover-new-r9uzm3cq owner=@khanakia stability=stable
 func New(primary, secondary workflow.Client, opts ...Option) *Client {
 	f := &Client{
 		primary:   primary,
@@ -229,10 +261,13 @@ func (f *Client) backend(s side) workflow.Client {
 }
 
 // Capabilities is what both backends can do, except the schedule family
-// (CapCron, CapScheduleWhen, CapScheduleWindow, CapSchedulePause,
-// CapScheduleList, CapTickEvents), which is the primary's alone unless
-// WithSchedulesOnBoth puts schedules on both: only the backends holding
-// schedules fire, condition, report, list or pause them. Every other
+// (scheduleCaps: CapCron, CapCronSeconds, CapScheduleWhen,
+// CapScheduleWindow, CapScheduleActive, CapSchedulePause,
+// CapScheduleList, CapScheduleTrigger, CapScheduleHistory,
+// CapScheduleKeep, CapTickEvents, CapTickTime and CapOverlapSkip), which
+// is the primary's alone unless WithSchedulesOnBoth puts schedules on
+// both: only the backends holding schedules fire, condition, report,
+// list, trigger, keep or pause them. Every other
 // capability, the run query and pause families included, is the
 // intersection, because a run may sit on either backend. CapClosure and
 // CapWorkerScale are the primary's alone: a closure cannot be retried on
@@ -241,6 +276,8 @@ func (f *Client) backend(s side) workflow.Client {
 // secondary with a BalanceLoop of its own).
 // CapRunFinished also needs both backends to implement
 // workflow.RunNotifier, which OnRunFinished requires.
+//
+//ds:def id=failover-client-capabilities-cb8n9pqm owner=@khanakia stability=stable
 func (f *Client) Capabilities() workflow.Caps {
 	p, s := f.primary.Capabilities(), f.secondary.Capabilities()
 	caps := p.Intersect(s)
@@ -266,6 +303,8 @@ func (f *Client) notifiers() (p, s workflow.RunNotifier, ok bool) {
 // that report the prefixed RunID in StepInfo. Without WithSchedulesOnBoth
 // the secondary's copy has no Cron, CronWindows, ScheduleWhen, Misfire or
 // CronOverlap.
+//
+//ds:def id=failover-client-register-jugw7yen owner=@khanakia stability=stable
 func (f *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -335,6 +374,8 @@ func sideHandler(h workflow.Handler, s side) workflow.Handler {
 // workflow the secondary cannot run is refused before anything starts,
 // then starts the primary and the secondary. When the secondary fails to
 // start the primary is stopped again.
+//
+//ds:def id=failover-client-start-dd5nj7n8 owner=@khanakia stability=stable
 func (f *Client) Start(ctx context.Context) error {
 	f.mu.Lock()
 	if f.started {
@@ -369,6 +410,8 @@ func (f *Client) Start(ctx context.Context) error {
 // Enqueue sends job to the primary, and to the secondary when the primary
 // is cooling off or fails with an error the Classifier calls unavailable.
 // The RunRef names the backend that took the job.
+//
+//ds:def id=failover-client-enqueue-w2azafu4 owner=@khanakia stability=stable
 func (f *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if job.IdempotencyKey == "" && !f.allowNoKey {
 		return workflow.RunRef{}, fmt.Errorf("%w (%w)", ErrKeyRequired, workflow.ErrInvalid)
@@ -408,6 +451,8 @@ func (f *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 }
 
 // tryPrimary reports whether the primary is outside a cool-off.
+//
+//ds:def id=failover-client-tryprimary-xsdx3fs7 owner=@khanakia stability=stable
 func (f *Client) tryPrimary() bool {
 	if f.coolN == 0 {
 		return true
@@ -432,6 +477,8 @@ func (f *Client) primaryOK() (coolOffEnded bool) {
 
 // primaryFailed counts a failover and returns the end of the cool-off it
 // started, or zero when it started none.
+//
+//ds:def id=failover-client-primaryfailed-jcs6ycqd owner=@khanakia stability=stable
 func (f *Client) primaryFailed() (until time.Time) {
 	if f.coolN == 0 {
 		return time.Time{}
@@ -478,6 +525,8 @@ func (f *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 // the primary does not know it or is unavailable; if the secondary does
 // not know it either, the primary's error is returned. A ref whose two IDs
 // name different backends was not made by this client: ErrNotFound.
+//
+//ds:def id=failover-client-onref-83za8ayr owner=@khanakia stability=stable
 func (f *Client) onRef(ref workflow.RunRef, fn func(workflow.Client, workflow.RunRef) error) error {
 	s, inner, ok := decodeRef(ref)
 	if !ok {
@@ -499,6 +548,8 @@ func (f *Client) onRef(ref workflow.RunRef, fn func(workflow.Client, workflow.Ru
 // Signal delivers ev to both backends, since a waiting run may sit on
 // either. When one fails, the other has already taken the event; the
 // error names the failing backend.
+//
+//ds:def id=failover-client-signal-wfxbuzsq owner=@khanakia stability=stable
 func (f *Client) Signal(ctx context.Context, ev workflow.Event) error {
 	var errs []error
 	if err := f.primary.Signal(ctx, ev); err != nil {
@@ -514,6 +565,8 @@ func (f *Client) Signal(ctx context.Context, ev workflow.Event) error {
 // WithSchedulesOnBoth. It never fails over: a schedule made on the
 // secondary during an outage would fire beside the primary's copies once
 // the app retries it there.
+//
+//ds:def id=failover-client-schedule-unuxqxtf owner=@khanakia stability=stable
 func (f *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	pid, err := f.primary.Schedule(ctx, s)
 	if err != nil {
@@ -557,6 +610,8 @@ func (f *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
 // prefixed by the backend it came from. Both backends must implement
 // workflow.RunNotifier; otherwise it returns an UnsupportedError, since
 // runs on the other backend would end unseen.
+//
+//ds:def id=failover-client-onrunfinished-dnwajra9 owner=@khanakia stability=stable
 func (f *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	pn, sn, ok := f.notifiers()
 	if !ok {

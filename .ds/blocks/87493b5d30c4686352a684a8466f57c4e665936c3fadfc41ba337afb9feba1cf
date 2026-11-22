@@ -1,0 +1,9 @@
+func (c *Client) Start(ctx context.Context) error {
+	if err := c.jobs.Start(ctx); err != nil {
+		return fmt.Errorf("hybrid: jobs: %w", err)
+	}
+	if err := c.sched.Start(ctx); err != nil {
+		return fmt.Errorf("hybrid: scheduler: %w", err)
+	}
+	return nil
+}

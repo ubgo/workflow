@@ -1,0 +1,3 @@
+func OnSignals(h SignalHandlers) Plugin {
+	return &signalsPlugin{h: h, names: slices.Sorted(maps.Keys(h.On))}
+}

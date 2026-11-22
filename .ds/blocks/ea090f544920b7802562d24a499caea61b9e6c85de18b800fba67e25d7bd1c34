@@ -1,0 +1,33 @@
+func firstFire(day, after time.Time, loc *time.Location, hour, minute uint64) (time.Time, bool) {
+	periodic := hour == allHours
+	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC).Unix()
+	lo, hi := offsetBounds(base, loc)
+	// Fire instants are whole seconds, so t > after exactly when t's
+	// seconds exceed after's (Unix floors, for negative instants too).
+	floor := after.Unix()
+	var best time.Time
+	found := false
+	for h := 0; h < 24; h++ {
+		if hour&(1<<uint(h)) == 0 {
+			continue
+		}
+		for m := 0; m < 60; m++ {
+			if minute&(1<<uint(m)) == 0 {
+				continue
+			}
+			w := base + int64(h*3600+m*60)
+			if found && w-int64(hi) >= best.Unix() {
+				return best, true // no later wall time can fire earlier
+			}
+			if w-int64(lo) <= floor {
+				continue // every instant of w is at or before `after`
+			}
+			for _, t := range resolve(day.Year(), day.Month(), day.Day(), h, m, loc, periodic) {
+				if t.After(after) && (!found || t.Before(best)) {
+					best, found = t, true
+				}
+			}
+		}
+	}
+	return best, found
+}

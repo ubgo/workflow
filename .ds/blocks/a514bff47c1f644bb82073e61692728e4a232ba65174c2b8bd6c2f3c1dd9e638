@@ -1,0 +1,6 @@
+func (p Progress) Percent() int {
+	if p.Total == 0 {
+		return 0
+	}
+	return p.Processed() * 100 / p.Total
+}

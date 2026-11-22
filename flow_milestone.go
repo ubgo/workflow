@@ -9,9 +9,13 @@ import (
 
 // DefaultMilestonePoll is how long a Milestone step snoozes between looks
 // at its run data while the run is not in the wanted state.
+//
+//ds:def id=defaultmilestonepoll-h74abmjj owner=@khanakia stability=stable
 const DefaultMilestonePoll = 5 * time.Second
 
 // MilestoneOptions tunes Milestone.
+//
+//ds:def id=milestoneoptions-kdc97jnc owner=@khanakia stability=stable
 type MilestoneOptions struct {
 	// Poll is the snooze between looks while the run is not in the
 	// wanted state; zero means DefaultMilestonePoll. Ignored with Skip.
@@ -38,6 +42,8 @@ type MilestoneOptions struct {
 // after a JSON round trip into a value of want's type, with
 // reflect.DeepEqual. A stored value that does not decode into want's type
 // is a Permanent error.
+//
+//ds:def id=milestone-cbnd2tzd owner=@khanakia stability=stable
 func Milestone[T any](name string, want T, h Handler, opts MilestoneOptions) Handler {
 	poll := opts.Poll
 	if poll <= 0 {

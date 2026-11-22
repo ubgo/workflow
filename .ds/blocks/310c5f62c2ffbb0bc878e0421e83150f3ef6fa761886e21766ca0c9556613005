@@ -1,0 +1,133 @@
+func DatasetsSharedLineage(t *testing.T, start func(t *testing.T, wfs ...workflow.Workflow) workflow.Client, la, lb events.LineageStore) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	var single, join atomic.Int32
+	release := make(chan struct{})
+	var once sync.Once
+	open := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(open)
+	wfs := []workflow.Workflow{
+		{Name: "lineage-single", Steps: []workflow.Step{{Name: "run", Run: func(context.Context, []byte) ([]byte, error) {
+			single.Add(1)
+			return nil, nil
+		}}}},
+		// The join's run waits for the test, so it is unfinished while
+		// both processes decide, and its idempotency key holds.
+		{Name: "lineage-join", Steps: []workflow.Step{{Name: "run", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			join.Add(1)
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return nil, nil
+		}}}},
+	}
+	type proc struct {
+		c  workflow.Client
+		ds *events.Datasets
+	}
+	var procs []proc
+	for _, store := range []events.LineageStore{la, lb} {
+		c := start(t, wfs...)
+		bus, err := events.New(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ds, err := events.NewDatasets(bus, events.WithLineage(store))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tr := range []events.DatasetTrigger{
+			{Name: "single", Datasets: []string{"orders"}, Workflow: "lineage-single"},
+			{Name: "join", Datasets: []string{"orders", "fx"}, All: true, Workflow: "lineage-join"},
+		} {
+			if err := ds.Trigger(tr); err != nil {
+				t.Fatal(err)
+			}
+		}
+		procs = append(procs, proc{c, ds})
+	}
+	a, b := procs[0], procs[1]
+	type started struct {
+		c   workflow.Client
+		ref workflow.RunRef
+	}
+	var runs []started
+	update := func(p proc, ds, version string) []events.TriggerRun {
+		t.Helper()
+		res, err := p.ds.Updated(ctx, ds, version, nil)
+		if err != nil {
+			t.Fatalf("Updated(%s, %s): %v", ds, version, err)
+		}
+		for _, r := range res.Triggered {
+			runs = append(runs, started{p.c, r.Ref})
+		}
+		return res.Triggered
+	}
+
+	if got := update(a, "orders", "o1"); len(got) != 1 || got[0].Trigger != "single" {
+		t.Fatalf("first announcement of orders o1 started %+v; want the any-of trigger", got)
+	}
+	if got := update(b, "orders", "o1"); len(got) != 0 {
+		t.Fatalf("the other process announcing orders o1 again started %+v; want nothing", got)
+	}
+
+	// Both processes announce the join's last dataset at once.
+	var wg sync.WaitGroup
+	results := make([][]events.TriggerRun, 2)
+	errs := make([]error, 2)
+	for i, p := range []proc{a, b} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			res, err := p.ds.Updated(ctx, "fx", "f1", nil)
+			results[i], errs[i] = res.Triggered, err
+		}()
+	}
+	wg.Wait()
+	joins := 0
+	for i, p := range []proc{a, b} {
+		if errs[i] != nil {
+			t.Fatalf("concurrent Updated(fx, f1): %v", errs[i])
+		}
+		for _, r := range results[i] {
+			if r.Trigger != "join" {
+				t.Fatalf("fx f1 started trigger %q", r.Trigger)
+			}
+			joins++
+			runs = append(runs, started{p.c, r.Ref})
+		}
+	}
+	if joins == 0 {
+		t.Fatal("fx f1 after orders o1 started no join")
+	}
+	t.Logf("%d of the two processes decided to start the join; its runs: %d", joins, join.Load())
+	open()
+	for _, r := range runs {
+		if _, err := workflow.Await(ctx, r.c, r.ref, workflow.AwaitOptions{Poll: 5 * time.Millisecond}); err != nil {
+			t.Fatalf("await %+v: %v", r.ref, err)
+		}
+	}
+	if single.Load() != 1 || join.Load() != 1 {
+		t.Fatalf("single ran %d times and join %d times; want once each", single.Load(), join.Load())
+	}
+
+	// Announcing every version again, from either process, starts nothing.
+	for _, p := range []proc{a, b} {
+		for _, ds := range []string{"orders", "fx"} {
+			version := map[string]string{"orders": "o1", "fx": "f1"}[ds]
+			if got := update(p, ds, version); len(got) != 0 {
+				t.Fatalf("re-announcing %s %s started %+v", ds, version, got)
+			}
+		}
+	}
+	prod, err := events.Producers(ctx, la, "orders")
+	if err != nil || len(prod) != 1 || prod[0].Version != "o1" {
+		t.Fatalf("producers of orders = %+v, %v; want o1 once, though both processes announced it", prod, err)
+	}
+	cons, err := events.Consumers(ctx, lb, "fx")
+	if err != nil || len(cons) == 0 || !slices.ContainsFunc(cons, func(l events.Lineage) bool { return l.Trigger == "join" && l.Version == "f1" }) {
+		t.Fatalf("consumers of fx = %+v, %v; want the join's f1", cons, err)
+	}
+}

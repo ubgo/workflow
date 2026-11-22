@@ -127,6 +127,7 @@ func TestServeReturnsRecycle(t *testing.T) {
 	}
 }
 
+//ds:def id=testservenilonrequestedstop-bbccvjfa owner=@khanakia stability=stable
 func TestServeNilOnRequestedStop(t *testing.T) {
 	c := memory.New(memory.WithRecycle(workflow.Recycle{MaxJobs: 5}))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -210,6 +211,7 @@ func TestMemoryRecycleMaxMemoryOnFakeClock(t *testing.T) {
 	}
 }
 
+//ds:def id=testrecycleletsrunningattemptsfinish-dm5rrvq6 owner=@khanakia stability=stable
 func TestRecycleLetsRunningAttemptsFinish(t *testing.T) {
 	c := memory.New(memory.WithRecycle(workflow.Recycle{MaxJobs: 1}), memory.WithWorkers(2))
 	release := make(chan struct{})

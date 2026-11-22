@@ -1,0 +1,7 @@
+func New(oldClient, newClient workflow.Client, opts ...Option) *Client {
+	c := &Client{old: oldClient, new: newClient, sched: SideNew, wfs: map[string]workflow.Workflow{}, newOnly: map[string]bool{}}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}

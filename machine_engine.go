@@ -63,6 +63,7 @@ type machine[D any] struct {
 	keep    int
 }
 
+//ds:def id=compilemachine-vd5zfvzw owner=@khanakia stability=stable
 func compileMachine[D any](spec MachineSpec[D]) (*machine[D], error) {
 	if spec.Name == "" || spec.Initial == "" || len(spec.States) == 0 || spec.Store == nil {
 		return nil, invalidf("machine needs a Name, an Initial state, States and a Store")
@@ -203,6 +204,8 @@ type machineRun[D any] struct {
 }
 
 // step is the machine workflow's one step.
+//
+//ds:def id=machine-step-vvjdn77u owner=@khanakia stability=stable
 func (m *machine[D]) step(ctx context.Context, in []byte) ([]byte, error) {
 	name := m.spec.Name
 	info, ok := StepInfoFrom(ctx)
@@ -391,6 +394,8 @@ func (r *machineRun[D]) handle(ev MachineEvent) (bool, error) {
 
 // drain processes queued internal events until none is left or the
 // instance is done.
+//
+//ds:def id=machinerun-drain-rbqwphvs owner=@khanakia stability=stable
 func (r *machineRun[D]) drain() error {
 	for len(r.internal) > 0 && !r.rec.Done {
 		ev := r.internal[0]
@@ -414,6 +419,8 @@ func (r *machineRun[D]) mctx(state string, ev MachineEvent) *MachineCtx[D] {
 // of the innermost state on its path to the root whose event matches and
 // whose guard passes; then conflicts between parallel regions are
 // removed as SCXML does.
+//
+//ds:def id=machinerun-selecttransitions-cu4hj8az owner=@khanakia stability=stable
 func (r *machineRun[D]) selectTransitions(ev MachineEvent) []*mtrans {
 	var enabled []*mtrans
 	_, leaves := r.configuration()
@@ -477,6 +484,8 @@ func intersects(a, b map[*mnode]bool) bool {
 
 // domain returns the state a transition does not leave: every active
 // state below it is exited. Nil for a transition that exits nothing.
+//
+//ds:def id=machinerun-domain-8t7hkkbb owner=@khanakia stability=stable
 func (r *machineRun[D]) domain(t *mtrans) *mnode {
 	if t.dst == nil || t.selfOnly() {
 		return nil
@@ -516,6 +525,8 @@ func (r *machineRun[D]) exitSet(t *mtrans) map[*mnode]bool {
 }
 
 // microstep takes a set of non-conflicting transitions.
+//
+//ds:def id=machinerun-microstep-33j5aqdq owner=@khanakia stability=stable
 func (r *machineRun[D]) microstep(ts []*mtrans, ev MachineEvent) error {
 	r.steps++
 	if r.steps > MaxMachineMicrosteps {
@@ -596,6 +607,8 @@ func hasInOrBelow(set map[*mnode]bool, s *mnode) bool {
 // addDescendants adds s and the states entering s enters below it: the
 // remembered ones under history, else the initial (compound) or every
 // (parallel) child.
+//
+//ds:def id=machinerun-adddescendants-7p23ezrv owner=@khanakia stability=stable
 func (r *machineRun[D]) addDescendants(s *mnode, set map[*mnode]bool, h HistoryMode) {
 	set[s] = true
 	if remembered, ok := r.rec.History[s.name]; ok && h != HistoryNone && len(remembered) > 0 {
@@ -637,6 +650,8 @@ func hasBelow(set map[*mnode]bool, s *mnode) bool {
 
 // enter enters set's states in document order (ancestors first), runs
 // their entry actions and raises done events for final states.
+//
+//ds:def id=machinerun-enter-w658d86g owner=@khanakia stability=stable
 func (r *machineRun[D]) enter(set map[*mnode]bool, ev MachineEvent) error {
 	entering := make([]*mnode, 0, len(set))
 	for n := range set {
@@ -697,6 +712,8 @@ func (r *machineRun[D]) inFinal(s *mnode) bool {
 // so a retried event does not send it twice: the timer's run cannot
 // finish (and free its key) before this event's run ends, because both
 // run under the instance's concurrency key.
+//
+//ds:def id=machinerun-sendtimers-kuc82nwf owner=@khanakia stability=stable
 func (r *machineRun[D]) sendTimers() error {
 	if !r.m.timers {
 		return nil

@@ -1,0 +1,1 @@
+func WithMaxBulk(n int) Option { return func(a *Admin) { a.maxBulk = n } }

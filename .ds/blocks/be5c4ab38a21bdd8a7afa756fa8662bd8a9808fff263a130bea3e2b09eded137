@@ -1,0 +1,7 @@
+func (o StepOutcome) AssertFailed(t testing.TB) {
+	t.Helper()
+	_, released := o.Released()
+	if o.Err == nil || o.Permanent() || o.Discarded() || released {
+		t.Errorf("step outcome is %s, want an ordinary failure", o.describe())
+	}
+}

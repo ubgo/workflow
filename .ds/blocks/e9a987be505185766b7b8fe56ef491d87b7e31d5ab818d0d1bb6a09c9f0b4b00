@@ -1,0 +1,57 @@
+func Use(c Client, plugins ...Plugin) (Client, error) {
+	if len(plugins) == 0 {
+		return c, nil
+	}
+	seen := make(map[string]struct{}, len(plugins))
+	var steps []Middleware
+	var enqueue []EnqueueMiddleware
+	notifier, hasNotifier := c.(RunNotifier)
+	for i, p := range plugins {
+		if p == nil {
+			return nil, invalidf("plugin %d is nil", i)
+		}
+		name := p.Name()
+		if name == "" {
+			return nil, invalidf("plugin %d has an empty name", i)
+		}
+		if _, dup := seen[name]; dup {
+			return nil, fmt.Errorf("%w: %q", ErrDuplicatePlugin, name)
+		}
+		seen[name] = struct{}{}
+		if b, ok := p.(ClientBinder); ok {
+			if err := b.BindClient(c); err != nil {
+				return nil, fmt.Errorf("workflow: plugin %q: %w", name, err)
+			}
+		}
+		if _, ok := p.(RunFinishedProvider); ok && !hasNotifier {
+			return nil, &UnsupportedError{Field: "OnRunFinished", Missing: CapRunFinished, Reason: "plugin " + name + " observes run ends and the client does not implement workflow.RunNotifier"}
+		}
+		if sp, ok := p.(StepMiddlewareProvider); ok {
+			steps = append(steps, sp.StepMiddleware()...)
+		}
+		if ep, ok := p.(EnqueueMiddlewareProvider); ok {
+			enqueue = append(enqueue, ep.EnqueueMiddleware()...)
+		}
+	}
+	for _, p := range plugins {
+		rp, ok := p.(RunFinishedProvider)
+		if !ok {
+			continue
+		}
+		for _, fn := range rp.RunFinishedObservers() {
+			if fn == nil {
+				continue
+			}
+			if err := notifier.OnRunFinished(fn); err != nil {
+				return nil, fmt.Errorf("workflow: plugin %q: %w", p.Name(), err)
+			}
+		}
+	}
+	next := EnqueueFunc(c.Enqueue)
+	for i := len(enqueue) - 1; i >= 0; i-- {
+		if enqueue[i] != nil {
+			next = enqueue[i](next)
+		}
+	}
+	return &pluginClient{Client: c, Forward: Forward{Inner: c}, steps: steps, enqueue: next}, nil
+}

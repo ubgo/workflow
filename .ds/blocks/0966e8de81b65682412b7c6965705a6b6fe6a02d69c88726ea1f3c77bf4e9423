@@ -1,0 +1,6 @@
+func (i *Instrumentation) RunFinished() workflow.RunFinishedFunc {
+	return func(ctx context.Context, ev workflow.RunEvent) {
+		i.runsFinished.Add(ctx, 1, metric.WithAttributes(
+			AttrWorkflow.String(ev.Workflow), AttrRunStatus.String(string(ev.Status))))
+	}
+}

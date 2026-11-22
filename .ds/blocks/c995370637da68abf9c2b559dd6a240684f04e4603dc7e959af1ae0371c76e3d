@@ -1,0 +1,7 @@
+func NewLineageStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*LineageStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.LineageStore(), nil
+}

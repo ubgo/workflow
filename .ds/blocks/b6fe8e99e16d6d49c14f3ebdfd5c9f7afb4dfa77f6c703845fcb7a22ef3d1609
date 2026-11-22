@@ -1,0 +1,4 @@
+type ReportingDrainer interface {
+	Drainer
+	DrainWithReport(ctx context.Context) (DrainReport, error)
+}

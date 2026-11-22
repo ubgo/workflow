@@ -1,0 +1,16 @@
+func (c *Client) Done() <-chan struct{} {
+	ds, err := every[workflow.Drainer](c, "Done", workflow.CapDrain)
+	if err != nil {
+		return nil
+	}
+	c.doneOnce.Do(func() {
+		c.done = make(chan struct{})
+		go func() {
+			for _, name := range c.names {
+				<-ds[name].Done()
+			}
+			close(c.done)
+		}()
+	})
+	return c.done
+}

@@ -1,0 +1,6 @@
+func (o StepOutcome) AssertPermanent(t testing.TB) {
+	t.Helper()
+	if !o.Permanent() {
+		t.Errorf("step outcome is %s, want a permanent failure", o.describe())
+	}
+}

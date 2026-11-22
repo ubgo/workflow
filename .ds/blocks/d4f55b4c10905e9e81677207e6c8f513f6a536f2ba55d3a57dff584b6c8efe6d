@@ -1,0 +1,12 @@
+func CheckQueueLimits(have Caps, qs []QueueConfig) error {
+	if have.Has(CapQueueLimitGlobal) {
+		return nil
+	}
+	for _, q := range qs {
+		if q.Limit != 0 {
+			return &UnsupportedError{Field: "QueueConfig.Limit", Missing: CapQueueLimitGlobal,
+				Reason: "queue " + q.Name + ": this driver cannot cap a queue across clients"}
+		}
+	}
+	return nil
+}

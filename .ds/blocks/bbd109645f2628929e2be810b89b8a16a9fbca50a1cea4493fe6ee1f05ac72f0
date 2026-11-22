@@ -1,0 +1,8 @@
+func groupEligible(jobs []workflow.Job) bool {
+	for _, j := range jobs {
+		if !j.RunAt.IsZero() || j.IdempotencyKey != "" {
+			return false
+		}
+	}
+	return true
+}

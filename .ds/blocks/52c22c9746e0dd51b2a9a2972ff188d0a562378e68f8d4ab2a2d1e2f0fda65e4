@@ -1,0 +1,7 @@
+func (g gcmCodec) Encode(plain []byte) ([]byte, error) {
+	nonce := make([]byte, g.aead.NonceSize(), g.aead.NonceSize()+len(plain)+g.aead.Overhead())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("nonce: %w", err)
+	}
+	return g.aead.Seal(nonce, nonce, plain, nil), nil
+}

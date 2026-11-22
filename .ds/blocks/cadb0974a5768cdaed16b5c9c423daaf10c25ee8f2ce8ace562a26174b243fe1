@@ -1,0 +1,14 @@
+func runPriority(p int) (*hatchetsdk.RunPriority, error) {
+	var v hatchetsdk.RunPriority
+	switch {
+	case p == 0:
+		return nil, nil
+	case p < 0:
+		return nil, workflow.Unsupported("Job.Priority", "Hatchet has no priority below its default")
+	case p == 1:
+		v = priorityMedium
+	default:
+		v = priorityHigh
+	}
+	return &v, nil
+}

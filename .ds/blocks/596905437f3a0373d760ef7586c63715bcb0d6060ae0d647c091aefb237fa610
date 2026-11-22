@@ -1,0 +1,12 @@
+func (f *Client) Delete(ctx context.Context, ref workflow.RunRef) error {
+	if err := f.need("Delete", workflow.CapDeleteRun); err != nil {
+		return err
+	}
+	return f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		d, ok := c.(workflow.RunDeleter)
+		if !ok {
+			return &workflow.UnsupportedError{Field: "Delete", Missing: workflow.CapDeleteRun, Reason: "the " + sd.String() + " backend does not implement it"}
+		}
+		return d.Delete(ctx, inner)
+	})
+}

@@ -1,0 +1,3 @@
+func (rc *ReplayCtx) Sleep(name string, d time.Duration) error {
+	return rc.sleep("sleep", name, func() time.Time { return rc.opts.Clock.Now().Add(d) })
+}

@@ -1,0 +1,23 @@
+func TestTenantRoutes_CoverEveryRoute(t *testing.T) {
+	src, err := os.ReadFile("http.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var registered []string
+	for _, m := range regexp.MustCompile(`mux\.HandleFunc\("([^"]+)"`).FindAllSubmatch(src, -1) {
+		registered = append(registered, string(m[1]))
+	}
+	if len(registered) < 20 {
+		t.Fatalf("found %d routes in http.go; the pattern no longer matches NewHandler", len(registered))
+	}
+	for _, p := range registered {
+		if _, ok := tenantRoutes[p]; !ok {
+			t.Errorf("route %q has no tenantRoutes rule", p)
+		}
+	}
+	for p := range tenantRoutes {
+		if !slices.Contains(registered, p) {
+			t.Errorf("tenantRoutes has %q, which NewHandler does not register", p)
+		}
+	}
+}

@@ -1,0 +1,10 @@
+func (u *UpstreamLimit) TakeOrSnooze(ctx context.Context, key string, cost float64) error {
+	wait, err := u.Wait(ctx, key, cost)
+	if err != nil {
+		return err
+	}
+	if wait > 0 {
+		return Snooze(wait)
+	}
+	return nil
+}

@@ -1,0 +1,10 @@
+func answerApproval(ctx context.Context, c Client, key string, d Decision) error {
+	if key == "" {
+		return invalidf("approval key is empty")
+	}
+	b, err := json.Marshal(d)
+	if err != nil {
+		return err
+	}
+	return c.Signal(ctx, Event{Name: ApprovalEvent, Key: key, Payload: b})
+}

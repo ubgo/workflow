@@ -1,0 +1,5 @@
+type Event struct {
+	Name    string
+	Key     string
+	Payload []byte
+}

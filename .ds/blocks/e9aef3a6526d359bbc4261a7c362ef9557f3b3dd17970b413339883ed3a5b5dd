@@ -1,0 +1,8 @@
+func (c Caps) With(more ...Caps) Caps {
+	for _, m := range more {
+		for i := range c.w {
+			c.w[i] |= m.w[i]
+		}
+	}
+	return c
+}

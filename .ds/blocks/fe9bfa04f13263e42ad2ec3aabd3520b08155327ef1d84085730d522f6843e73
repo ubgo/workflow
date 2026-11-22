@@ -1,0 +1,1 @@
+func DailyAt(hhmm string) Builder { return Daily().At(hhmm) }

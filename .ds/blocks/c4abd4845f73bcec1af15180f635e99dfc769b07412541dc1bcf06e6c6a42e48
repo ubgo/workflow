@@ -1,0 +1,1 @@
+func WithPayloads() HandlerOption { return func(c *handlerConfig) { c.payloads = true } }

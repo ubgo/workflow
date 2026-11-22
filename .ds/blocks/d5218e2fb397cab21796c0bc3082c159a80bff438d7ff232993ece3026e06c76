@@ -1,0 +1,11 @@
+func StackOf(err error) string {
+	var st StackTracer
+	if !errors.As(err, &st) {
+		return ""
+	}
+	s := st.StackTrace()
+	if len(s) > MaxErrorStack {
+		s = s[:MaxErrorStack]
+	}
+	return s
+}

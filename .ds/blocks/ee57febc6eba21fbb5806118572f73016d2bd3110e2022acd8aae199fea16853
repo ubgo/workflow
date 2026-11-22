@@ -1,0 +1,11 @@
+func runError(ctx context.Context, c Client, ref RunRef) string {
+	q, ok := c.(RunQuerier)
+	if !ok {
+		return ""
+	}
+	page, err := q.Runs(ctx, RunQuery{Ref: ref, Limit: 1})
+	if err != nil || len(page.Runs) == 0 {
+		return ""
+	}
+	return page.Runs[0].Error
+}

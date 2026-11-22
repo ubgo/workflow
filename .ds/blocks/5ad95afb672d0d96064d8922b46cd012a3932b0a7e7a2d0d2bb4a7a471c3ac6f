@@ -1,0 +1,7 @@
+type Source interface {
+	// Attach connects the source to m. It is called once, by
+	// Manager.Attach, before the client starts. A source that works in the
+	// background starts its goroutine here and stops it when ctx is
+	// cancelled. An error means the source cannot work with this client.
+	Attach(ctx context.Context, m *Manager) error
+}

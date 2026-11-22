@@ -1,5 +1,5 @@
 // Command custom-driver runs a workflow on Tiny, a minimal driver written
-// in driver.go: under 300 lines that implement workflow.Client
+// in driver.go: about 300 lines that implement workflow.Client
 // with no capability beyond the core contract and pass the conformance
 // suite (main_test.go runs it).
 //

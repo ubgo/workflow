@@ -1,0 +1,18 @@
+func (d stockDetector) detect(prefix string, job Job) []SecretFinding {
+	var out []SecretFinding
+	var v any
+	if len(job.Payload) > 0 {
+		if err := json.Unmarshal(job.Payload, &v); err == nil {
+			out = d.walk(out, prefix+"payload", v)
+		} else {
+			out = d.value(out, prefix+"payload", string(job.Payload))
+		}
+	}
+	for _, k := range slices.Sorted(maps.Keys(job.Labels)) {
+		out = d.keyed(out, prefix+"label "+k, k, job.Labels[k])
+	}
+	for i, c := range job.Chain {
+		out = append(out, d.detect(prefix+"chain["+strconv.Itoa(i)+"].", c)...)
+	}
+	return out
+}

@@ -1,0 +1,1 @@
+	CapRetryMaxErrors = defineCap(20, "RetryMaxErrors")

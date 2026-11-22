@@ -1,0 +1,3 @@
+func RejectPromise(ctx context.Context, client Client, store PromiseStore, id string, reason string) error {
+	return settlePromise(ctx, client, store, id, settlement{Reason: reason})
+}

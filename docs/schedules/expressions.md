@@ -1,17 +1,17 @@
 # Cron expression tools
 
-Five cron fields cannot say "09:00 on the last day of the month", "the weekday nearest the 15th" or "the first Monday". A thousand tenants each given `0 * * * *` all start at minute 0 and hit the database in the same second. A settings page that shows `30 8 * * MON#1` should also say what it means. The `cron` package has three tools for this: an opt-in extended dialect with the `L`, `W` and `#` day items, `cron.Hash` to spread schedules written alike, and `cron.Describe` for an English description.
+Five cron fields cannot say "09:00 on the last day of the month", "the weekday nearest the 15th" or "the first Monday". A thousand tenants each given `0 * * * *` all start at minute 0 and hit the database in the same second. A settings page that shows `30 8 * * MON#1` should also say what it means. The `cron` package has three tools for this: an opt-in extended dialect with the `L`, `W` and `#` day items, [`cron.Hash`](ds:block?id=cron-hash-xrapuzt3) to spread schedules written alike, and [`cron.Describe`](ds:block?id=cron-describe-e5rw59ey) for an English description.
 
 ## Before you start
 
-- The extended dialect (`cron.ParseExtended`, `cron.Extended`) is a `cron.Parser`, used only by a driver built with it: the memory driver (`memory.WithCronParser`), the SQL driver (`sqlstore.WithCronParser`) and the Redis driver (`redis.WithCronParser`). Hatchet parses expressions on its engine and has no such option, so a schedule written in the extended dialect does not run there.
-- `cron.Hash` returns a standard five-field expression, so its output runs on every driver, Hatchet included. `cron.Describe` is a pure function.
+- The extended dialect ([`cron.ParseExtended`](ds:block?id=cron-parseextended-tbb99h8z), [`cron.Extended`](ds:block?id=cron-extended-b3hq94dx)) is a `cron.Parser`, used only by a driver built with it: the memory driver ([`memory.WithCronParser`](ds:block?id=memory-withcronparser-jnqd5hex)), the SQL driver ([`sqlstore.WithCronParser`](ds:block?id=sql-withcronparser-dqejw86q)) and the Redis driver ([`redis.WithCronParser`](ds:block?id=redis-withcronparser-vkv8aegq)). [Hatchet](ds:block?id=hatchet-checkcron-s2s37tr5) parses expressions on its engine and has no such option, so a schedule written in the extended dialect does not run there. See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- [`cron.Hash`](ds:block?id=cron-hash-xrapuzt3) returns a standard five-field expression, so its output runs on every driver, Hatchet included. [`cron.Describe`](ds:block?id=cron-describe-e5rw59ey) is a pure function.
 - The example is [`examples/schedule-tools`](../../examples/schedule-tools). Run it with `go run ./schedule-tools` from `examples/`.
 - Cron basics and the standard syntax are on [cron schedules](cron.md).
 
 ## The last day, the nearest weekday, the n-th weekday
 
-`cron.ParseExtended` reads every standard expression, macros and `@every` included, plus these day items:
+[`cron.ParseExtended`](ds:block?id=cron-parseextended-tbb99h8z) reads every standard expression, macros and `@every` included, plus these day items ([day of month](ds:block?id=cron-splitdom-bur6fbx6), [day of week](ds:block?id=cron-splitdow-9sq56utt)):
 
 | Field | Item | Fires on |
 |---|---|---|
@@ -22,7 +22,7 @@ Five cron fields cannot say "09:00 on the last day of the month", "the weekday n
 | day of week | `d#n` | the n-th weekday d of the month (`MON#1`, `5#3`; n 1-5) |
 | day of week | `dL` | the last weekday d of the month (`FRIL`, `5L`) |
 
-A month that lacks the day (`L-30` in February, `31W` in June, `THU#5` in most months) does not fire. Special items mix with ordinary ones in a list (`1,15,L`), and a field holding one counts as restricted for the Vixie rule: `0 0 L * FRI` fires on the last day of every month and on every Friday. The fire times follow the same [DST rules](time-zones.md#daylight-saving-time) as every expression: a fixed time that falls in a spring-forward gap on the second Sunday of March fires once, at the end of the gap.
+A month that lacks the day (`L-30` in February, `31W` in June, `THU#5` in most months) [does not fire](ds:block?id=cron-extspec-daymatches-8gz3bb2u). Special items mix with ordinary ones in a list (`1,15,L`), and a field holding one counts as restricted for the Vixie rule: `0 0 L * FRI` fires on the last day of every month and on every Friday. The fire times follow the same [DST rules](time-zones.md#daylight-saving-time) as every expression: a fixed time that falls in a spring-forward gap on the second Sunday of March fires once, at the end of the gap.
 
 <!-- snippet: examples/schedule-tools/main.go#extended -->
 ```go
@@ -46,11 +46,11 @@ defer c.Stop()
 _, err = c.Schedule(ctx, workflow.Schedule{Name: "month-end", Workflow: "month-end", Cron: "0 9 L * *", Location: time.UTC})
 ```
 
-An expression without a special item parses to exactly what `cron.Parse` returns, so switching a driver to `cron.Extended` changes no existing schedule. Every error is a `*cron.ParseError` naming the field (`day-of-month`, `day-of-week`).
+An expression without a special item [parses to exactly what `cron.Parse` returns](ds:block?id=cron-parseextended-tbb99h8z), so switching a driver to `cron.Extended` changes no existing schedule. Every error is a `*cron.ParseError` naming the field (`day-of-month`, `day-of-week`).
 
 ## Spread schedules written alike with H
 
-`cron.Hash(expr, seed)` rewrites the hashed items of an expression into fixed numbers derived from the seed (FNV-1a), and returns a standard expression. `H` is one value in the field's range, `H(a-b)` one value in a-b, `H/n` every n-th value from an offset below n, and `H(a-b)/n` the same within a-b. In day of month `H` stays within 1-28, so every month has the day.
+[`cron.Hash(expr, seed)`](ds:block?id=cron-hash-xrapuzt3) rewrites the hashed items of an expression into fixed numbers derived from the seed ([FNV-1a](ds:block?id=cron-hashvalue-n5gtxsfn)), and returns a standard expression. `H` is one value in the field's range, `H(a-b)` one value in a-b, `H/n` every n-th value from an offset below n, and `H(a-b)/n` the same within a-b. In day of month `H` [stays within 1-28](ds:block?id=cron-hashdommax-begnkwpt), so every month has the day.
 
 <!-- snippet: examples/schedule-tools/main.go#hash -->
 ```go
@@ -64,7 +64,7 @@ Pass a stable seed, such as the tenant and the job name: the same seed gives the
 
 ## Describe an expression
 
-`cron.Describe(expr)` returns an English description of a five-field expression, a macro or `@every`, and reads the extended day items too. `cron.DescribeSeconds` does the same for the six-field [seconds dialect](cron.md#a-seconds-field).
+[`cron.Describe(expr)`](ds:block?id=cron-describe-e5rw59ey) returns an English description of a five-field expression, a macro or `@every`, and reads the extended day items too. [`cron.DescribeSeconds`](ds:block?id=cron-describeseconds-vjkqt6sr) does the same for the six-field [seconds dialect](cron.md#a-seconds-field).
 
 <!-- snippet: examples/schedule-tools/main.go#describe -->
 ```go
@@ -74,7 +74,7 @@ if err != nil {
 }
 ```
 
-When both day fields are restricted the description says "or", because cron fires on either: `0 0 1 * MON` is "At 00:00, on day 1 of the month or on Monday". Times are the schedule's wall clock, 24-hour, with no zone named, since the expression carries none; show the schedule's `Location` beside it.
+When both day fields are restricted the [description says "or"](ds:block?id=cron-describedays-mn5tyxmv), because cron fires on either: `0 0 1 * MON` is "At 00:00, on day 1 of the month or on Monday". Times are the schedule's wall clock, 24-hour, with no zone named, since the expression carries none; show the schedule's `Location` beside it.
 
 ## Try it
 
@@ -108,12 +108,12 @@ describe:
 
 ## Pitfalls
 
-- **The extended dialect is per driver, not per schedule.** A stored schedule with `L` fires only on clients built with `cron.Extended`; on the SQL and Redis drivers every client of one database must use the same parser, since each one fires stored schedules. A client with the default parser refuses the expression at `Schedule`.
-- **A bare `L` in day of week is refused.** Some dialects read it as Saturday; write `SAT` or `6`, or `dL` for the last such weekday.
-- **`nW` never leaves the month.** `1W` on a Saturday the 1st fires on Monday the 3rd, not on Friday of the month before; `31W` on a Sunday fires on Friday the 29th.
-- **Hash with a stable seed.** A seed that changes between deploys (a random value, a pod name) moves the schedule on every deploy. Use the schedule's or the tenant's name.
+- **The extended dialect is per driver, not per schedule.** A stored schedule with `L` fires only on clients built with `cron.Extended`; on the SQL and Redis drivers every client of one database must use the same parser, since each one fires stored schedules. A client with the default parser [refuses the expression at `Schedule`](ds:block?id=memory-client-schedule-vwvtn5w4).
+- **A bare `L` in day of week is [refused](ds:block?id=cron-splitdow-9sq56utt).** Some dialects read it as Saturday; write `SAT` or `6`, or `dL` for the last such weekday.
+- **`nW` [never leaves the month](ds:block?id=cron-nearestweekday-fgn3shjq).** `1W` on a Saturday the 1st fires on Monday the 3rd, not on Friday of the month before; `31W` on a Sunday fires on Friday the 29th.
+- **Hash with a stable seed.** A seed that changes between deploys (a random value, a pod name) [moves the schedule](ds:block?id=cron-hashfield-fy2xgcma) on every deploy. Use the schedule's or the tenant's name.
 - **`H` in a step can still collide.** `H/15` gives one of 15 offsets; with more schedules than offsets some share one, as they would by hand.
-- **Describe names no zone.** "At 09:00" is 09:00 on the schedule's `Location` wall clock.
+- **[Describe](ds:block?id=cron-describe-e5rw59ey) names no zone.** "At 09:00" is 09:00 on the schedule's `Location` wall clock.
 
 ## Related
 

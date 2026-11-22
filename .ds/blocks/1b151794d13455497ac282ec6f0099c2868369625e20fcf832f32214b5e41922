@@ -1,0 +1,6 @@
+func Suspension(store JournalStore, poll time.Duration) Plugin {
+	if poll <= 0 {
+		poll = DefaultSuspendPoll
+	}
+	return suspendPlugin{store: store, poll: poll}
+}

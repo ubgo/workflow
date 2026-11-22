@@ -22,6 +22,8 @@ import (
 // way. A cond error is returned as the step's error, so the retry policy
 // applies. A nil cond or h makes every call fail with a Permanent error
 // wrapping ErrInvalid.
+//
+//ds:def id=when-z8ecm2uw owner=@khanakia stability=stable
 func When(cond func(ctx context.Context, in []byte) (bool, error), h Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		if cond == nil || h == nil {

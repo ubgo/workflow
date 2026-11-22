@@ -1,0 +1,17 @@
+func TestHandler_ResourceScoping(t *testing.T) {
+	auth := bearerAuth()
+	auth.Authorize = func(_ context.Context, req Request[user]) error {
+		if req.Resource.Query == nil || req.Resource.Query.Labels["tenant"] != "a" {
+			return errors.New("scope to tenant a")
+		}
+		return nil
+	}
+	h := NewHandler(New(seeded()), auth)
+	if rec := do(t, h, "GET", "/runs", ""); rec.Code != http.StatusForbidden {
+		t.Errorf("unscoped list = %d, want 403", rec.Code)
+	}
+	rec := do(t, h, "GET", "/runs?label=tenant=a", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"run_id":"r2"`) || strings.Contains(rec.Body.String(), `"r1"`) {
+		t.Errorf("scoped list = %d %s", rec.Code, rec.Body)
+	}
+}

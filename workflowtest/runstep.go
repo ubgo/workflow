@@ -11,6 +11,8 @@ import (
 // StepOutcome is what one call of a step handler returned, for asserting
 // how the attempt ended (released, failed, permanent, discarded) without
 // a client or a driver.
+//
+//ds:def id=workflowtest-stepoutcome-753swc5f owner=@khanakia stability=api
 type StepOutcome struct {
 	Output []byte
 	Err    error
@@ -35,15 +37,21 @@ type stepRun struct {
 
 // StepContext sets the parent ctx of the call; the default is
 // context.Background.
+//
+//ds:def id=workflowtest-stepcontext-qvktt9hm owner=@khanakia stability=stable
 func StepContext(ctx context.Context) StepOption { return func(s *stepRun) { s.ctx = ctx } }
 
 // StepInfoOf sets the workflow.StepInfo the handler sees, for a handler
 // that reads its attempt, run or labels. The default is workflow "test",
 // step "step", run "runstep", attempt 1.
+//
+//ds:def id=workflowtest-stepinfoof-ex2r47gt owner=@khanakia stability=stable
 func StepInfoOf(info workflow.StepInfo) StepOption { return func(s *stepRun) { s.info = info } }
 
 // StepChain sets the chain the run already holds (its Job.Chain), which
 // the step's PrependToChain and AppendToChain edit; see StepOutcome.Chain.
+//
+//ds:def id=workflowtest-stepchain-b2p6dt3z owner=@khanakia stability=stable
 func StepChain(jobs ...workflow.Job) StepOption {
 	return func(s *stepRun) { s.chain = append(s.chain, jobs...) }
 }
@@ -53,10 +61,14 @@ func StepChain(jobs ...workflow.Job) StepOption {
 // Fake's default set, which includes CapChain. Without
 // CapChain the step's PrependToChain and AppendToChain are refused, as on
 // a driver that cannot edit chains.
+//
+//ds:def id=workflowtest-stepcaps-4qqyy6u2 owner=@khanakia stability=stable
 func StepCaps(c workflow.Caps) StepOption { return func(s *stepRun) { s.caps = c } }
 
 // StepMiddleware wraps the handler in mw, outermost first, as a driver
 // built with the same middleware would.
+//
+//ds:def id=workflowtest-stepmiddleware-3gea9j4h owner=@khanakia stability=stable
 func StepMiddleware(mw ...workflow.Middleware) StepOption {
 	return func(s *stepRun) { s.mw = append(s.mw, mw...) }
 }
@@ -67,6 +79,8 @@ func StepMiddleware(mw ...workflow.Middleware) StepOption {
 // (workflow.Discard), an ordinary failure the retry policy would retry,
 // or success. A panic in h is not
 // recovered, so it fails the test with its stack.
+//
+//ds:def id=workflowtest-runstep-zsng78k5 owner=@khanakia stability=stable
 func RunStep(h workflow.Handler, in []byte, opts ...StepOption) StepOutcome {
 	s := stepRun{ctx: context.Background(), info: workflow.StepInfo{Workflow: "test", Step: "step", RunID: "runstep", Attempt: 1},
 		caps: fakeDefaultCaps}
@@ -92,6 +106,8 @@ func RunStep(h workflow.Handler, in []byte, opts ...StepOption) StepOutcome {
 
 // ChainNames is the order the jobs of o.Chain would run in, nested
 // chains flattened as a driver runs them.
+//
+//ds:def id=workflowtest-stepoutcome-chainnames-7zn22fv7 owner=@khanakia stability=stable
 func (o StepOutcome) ChainNames() []string { return chainNames(o.Chain) }
 
 // Succeeded reports whether the attempt returned no error.
@@ -99,6 +115,8 @@ func (o StepOutcome) Succeeded() bool { return o.Err == nil }
 
 // Failed reports whether the attempt returned an error of any kind: a
 // release, a permanent failure or an ordinary one.
+//
+//ds:def id=workflowtest-stepoutcome-failed-jd76dhf7 owner=@khanakia stability=stable
 func (o StepOutcome) Failed() bool { return o.Err != nil }
 
 // Permanent reports whether the error forbids any retry
@@ -115,6 +133,8 @@ func (o StepOutcome) Discarded() bool { return workflow.IsDiscarded(o.Err) }
 // DelayFor is workflow.RetryAfterDelay honours it; other policies retry on
 // their Backoff. Permanent and Discard win over a release, as on every
 // driver.
+//
+//ds:def id=workflowtest-stepoutcome-released-zjsf6mru owner=@khanakia stability=stable
 func (o StepOutcome) Released() (time.Duration, bool) {
 	if o.Err == nil || o.Permanent() || o.Discarded() {
 		return 0, false
@@ -123,6 +143,8 @@ func (o StepOutcome) Released() (time.Duration, bool) {
 }
 
 // AssertSucceeded fails t unless the attempt succeeded.
+//
+//ds:def id=workflowtest-stepoutcome-assertsucceeded-u77vv7gv owner=@khanakia stability=stable
 func (o StepOutcome) AssertSucceeded(t testing.TB) {
 	t.Helper()
 	if o.Err != nil {
@@ -133,6 +155,8 @@ func (o StepOutcome) AssertSucceeded(t testing.TB) {
 // AssertFailed fails t unless the attempt returned an error that is
 // neither permanent, discarded nor a release: one the retry policy
 // retries.
+//
+//ds:def id=workflowtest-stepoutcome-assertfailed-73snx492 owner=@khanakia stability=stable
 func (o StepOutcome) AssertFailed(t testing.TB) {
 	t.Helper()
 	_, released := o.Released()
@@ -142,6 +166,8 @@ func (o StepOutcome) AssertFailed(t testing.TB) {
 }
 
 // AssertPermanent fails t unless the attempt failed permanently.
+//
+//ds:def id=workflowtest-stepoutcome-assertpermanent-kj8e4262 owner=@khanakia stability=stable
 func (o StepOutcome) AssertPermanent(t testing.TB) {
 	t.Helper()
 	if !o.Permanent() {
@@ -150,6 +176,8 @@ func (o StepOutcome) AssertPermanent(t testing.TB) {
 }
 
 // AssertDiscarded fails t unless the attempt asked to drop the run.
+//
+//ds:def id=workflowtest-stepoutcome-assertdiscarded-kqacfetq owner=@khanakia stability=stable
 func (o StepOutcome) AssertDiscarded(t testing.TB) {
 	t.Helper()
 	if !o.Discarded() {
@@ -159,6 +187,8 @@ func (o StepOutcome) AssertDiscarded(t testing.TB) {
 
 // AssertReleased fails t unless the attempt asked to be retried after
 // exactly d.
+//
+//ds:def id=workflowtest-stepoutcome-assertreleased-nzcxqexr owner=@khanakia stability=stable
 func (o StepOutcome) AssertReleased(t testing.TB, d time.Duration) {
 	t.Helper()
 	if got, ok := o.Released(); !ok || got != d {

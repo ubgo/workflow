@@ -1,0 +1,6 @@
+func Inputs(ctx context.Context, store LineageStore, run workflow.RunID) ([]Lineage, error) {
+	if run.IsZero() {
+		return nil, fmt.Errorf("%w: events: lineage inputs of an empty run ID", workflow.ErrInvalid)
+	}
+	return store.Find(ctx, LineageQuery{Kind: LineageConsumed, Run: run})
+}

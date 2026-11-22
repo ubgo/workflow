@@ -1,0 +1,22 @@
+func TestRunAllRightAfterSignal(t *testing.T) {
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
+		{Name: "wait", Wait: &workflow.WaitSpec{Event: "go"}},
+		{Name: "after", After: []string{"wait"}, Run: ok},
+	}}
+	for range 50 {
+		c, _ := newClient(t, []workflow.Workflow{wf})
+		ref := enqueue(t, c, workflow.Job{Workflow: "w"})
+		waitStatus(t, c, ref, workflow.StatusWaiting)
+		if err := c.Signal(context.Background(), workflow.Event{Name: "go"}); err != nil {
+			t.Fatal(err)
+		}
+		rep, err := c.RunAll(context.Background())
+		if err != nil || rep.Waiting != 0 || rep.Failed+rep.Cancelled+rep.Discarded != 0 {
+			t.Fatalf("RunAll right after Signal = %+v, %v; want the run finished", rep, err)
+		}
+		if st, err := c.Status(context.Background(), ref); err != nil || st != workflow.StatusSucceeded {
+			t.Fatalf("status when RunAll returned = %s, %v; want succeeded", st, err)
+		}
+		c.Stop()
+	}
+}

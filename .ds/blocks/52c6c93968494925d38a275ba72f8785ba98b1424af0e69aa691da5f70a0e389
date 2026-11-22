@@ -1,0 +1,3 @@
+type RunQuerier interface {
+	Runs(ctx context.Context, q RunQuery) (RunPage, error)
+}

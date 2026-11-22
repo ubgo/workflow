@@ -38,6 +38,8 @@ import (
 //
 // Items are kept as given (a BLOB column); the time Append stores is the
 // caller's now, never the database's clock.
+//
+//ds:def id=sql-aggregatestore-9nspa48r owner=@khanakia stability=stable
 type AggregateStore struct {
 	st    *store
 	names *strings.Replacer // {aggregate_items}, {aggregate_groups} -> quoted names
@@ -49,19 +51,25 @@ var _ middleware.AggregateStore = (*AggregateStore)(nil)
 // migrations: a list of its own, applied by AggregateStore.Migrate, so a
 // database with no sqlstore queue gets only the two aggregate tables.
 // Client.Migrate does not apply it: call Migrate on the store.
+//
+//ds:def id=sql-aggregatemigrationowner-rwfj7uay owner=@khanakia stability=stable
 const AggregateMigrationOwner = "ubgo/workflow/sqlstore/aggregate"
 
 // The aggregate tables' stems. They are resolved by the store itself, not
 // by the client's table list, because the tables belong to this store's
 // own migration list.
 const (
-	tblAggItems  = "aggregate_items"
+	//ds:def id=sql-tblaggitems-9za63rfa owner=@khanakia stability=stable
+	tblAggItems = "aggregate_items"
+	//ds:def id=sql-tblagggroups-rtvhqbte owner=@khanakia stability=stable
 	tblAggGroups = "aggregate_groups"
 )
 
 // aggregateMigrations is every AggregateStore schema change, in order,
 // under the same rules as migrations: never edit a released one, append a
 // new one.
+//
+//ds:def id=sql-aggregatestore-aggregatemigrations-qep75jy2 owner=@khanakia stability=stable
 func (s *AggregateStore) aggregateMigrations() []migrate.Migration {
 	stmts := s.st.render(aggregateDefs(typesFor(s.st.engine)))
 	for i, q := range stmts {
@@ -108,6 +116,8 @@ func aggregateDefs(t sqlTypes) []tableDef {
 // the Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Append.
+//
+//ds:def id=sql-newaggregatestore-2efq7rbx owner=@khanakia stability=stable
 func NewAggregateStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*AggregateStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -129,6 +139,8 @@ func (c *Client) AggregateStore() *AggregateStore {
 
 // Migrate creates the aggregate tables (their own migration list, under
 // the same ledger and lock as Client.Migrate), and nothing else.
+//
+//ds:def id=sql-aggregatestore-migrate-fw595ta7 owner=@khanakia stability=stable
 func (s *AggregateStore) Migrate(ctx context.Context) error {
 	return s.st.migrate(ctx, s.aggregateMigrations())
 }
@@ -136,6 +148,8 @@ func (s *AggregateStore) Migrate(ctx context.Context) error {
 // MigrationScripts returns the store's migrations as SQL text, with table
 // names resolved for its prefix and schema, for teams whose DDL goes
 // through their own pipeline (see the package's MigrationScripts).
+//
+//ds:def id=sql-aggregatestore-migrationscripts-g5bh3kkg owner=@khanakia stability=stable
 func (s *AggregateStore) MigrationScripts() []MigrationScript {
 	var out []MigrationScript
 	for _, m := range s.aggregateMigrations() {
@@ -213,6 +227,8 @@ func (s *AggregateStore) Take(ctx context.Context, group string, limit int) ([][
 // many. Such rows change nothing but the table's size (one per group ever
 // used), so run it now and then; it is safe beside Appends and Takes,
 // because either one inserts a group's row again when it is missing.
+//
+//ds:def id=sql-aggregatestore-pruneempty-8sfb57vh owner=@khanakia stability=stable
 func (s *AggregateStore) PruneEmpty(ctx context.Context) (int64, error) {
 	return s.st.execN(ctx, s.st.db, s.q("DELETE FROM {aggregate_groups} WHERE group_hash NOT IN (SELECT group_hash FROM {aggregate_items})"))
 }

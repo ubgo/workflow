@@ -1,0 +1,3 @@
+func WithDeliveryID(fn func(workflow.StepInfo) string) Option {
+	return func(d *deliverConfig) { d.id = fn }
+}

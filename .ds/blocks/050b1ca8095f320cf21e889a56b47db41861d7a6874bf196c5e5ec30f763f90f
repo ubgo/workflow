@@ -1,0 +1,11 @@
+type DrainTracker struct {
+	mu       sync.Mutex
+	next     uint64
+	running  map[uint64]DrainCut
+	draining bool
+	frozen   bool
+	sealed   bool
+	runs     map[RunID]struct{}
+	steps    int
+	report   DrainReport
+}

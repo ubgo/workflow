@@ -1,0 +1,1 @@
+func CanForceComplete(st Status) bool { return !st.IsTerminal() || st == StatusFailed }

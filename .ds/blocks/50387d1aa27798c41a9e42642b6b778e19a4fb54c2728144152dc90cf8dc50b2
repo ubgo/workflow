@@ -1,0 +1,51 @@
+func (r *machineRun[D]) selectTransitions(ev MachineEvent) []*mtrans {
+	var enabled []*mtrans
+	_, leaves := r.configuration()
+	for _, name := range leaves {
+	path:
+		for n := r.m.nodes[name]; n != r.m.root; n = n.parent {
+			for _, t := range r.m.trans[n] {
+				if t.event != ev.Name {
+					continue
+				}
+				if g := r.m.spec.Transitions[t.spec].Guard; g != nil {
+					mc := r.mctx(n.name, ev)
+					data := r.data // a guard reads a copy: a change it makes is not kept
+					mc.Data = &data
+					r.inGuard = true
+					ok := g(*mc)
+					r.inGuard = false
+					if !ok {
+						continue
+					}
+				}
+				if !slices.Contains(enabled, t) {
+					enabled = append(enabled, t)
+				}
+				break path
+			}
+		}
+	}
+	var kept []*mtrans
+	for _, t1 := range enabled {
+		x1 := r.exitSet(t1)
+		preempted := false
+		var drop []*mtrans
+		for _, t2 := range kept {
+			if !intersects(x1, r.exitSet(t2)) {
+				continue
+			}
+			if t1.src.descendantOf(t2.src) {
+				drop = append(drop, t2)
+			} else {
+				preempted = true
+				break
+			}
+		}
+		if !preempted {
+			kept = slices.DeleteFunc(kept, func(t *mtrans) bool { return slices.Contains(drop, t) })
+			kept = append(kept, t1)
+		}
+	}
+	return kept
+}

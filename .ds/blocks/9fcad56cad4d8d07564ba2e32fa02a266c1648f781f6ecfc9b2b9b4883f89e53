@@ -1,0 +1,1 @@
+var ErrResponseTooLarge = errors.New("push: response body too large")

@@ -1,0 +1,4 @@
+type StackTracer interface {
+	error
+	StackTrace() string
+}

@@ -1,0 +1,25 @@
+func AggregateInput(store AggregateStore) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if _, ok := AggregateGroup(ctx); !ok {
+				return next(ctx, in)
+			}
+			items, err := AggregatedItems(ctx, store)
+			if err != nil {
+				return nil, err
+			}
+			raw := make([]json.RawMessage, len(items))
+			for i, it := range items {
+				if !json.Valid(it) {
+					return nil, workflow.Permanent(fmt.Errorf("%w: AggregateInput: item %d of the flush is not JSON", workflow.ErrInvalid, i))
+				}
+				raw[i] = it
+			}
+			arr, err := json.Marshal(raw)
+			if err != nil {
+				return nil, workflow.Permanent(fmt.Errorf("workflow/middleware: aggregate input: %w", err))
+			}
+			return next(ctx, arr)
+		}
+	}
+}

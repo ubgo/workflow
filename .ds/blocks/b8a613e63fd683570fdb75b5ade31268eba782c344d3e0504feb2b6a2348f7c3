@@ -1,0 +1,9 @@
+func (c *Client) askWhen(ctx context.Context, when func(context.Context, workflow.Tick) bool, t workflow.Tick) (ok bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			c.log.Error("redis: ScheduleWhen panicked; the tick is skipped", "schedule", t.ScheduleID, "panic", fmt.Sprint(p))
+			ok = false
+		}
+	}()
+	return when(ctx, t)
+}

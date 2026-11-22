@@ -1,0 +1,22 @@
+type PollSpec struct {
+	// Every is the wait after the first look that found nothing; zero
+	// means one second.
+	Every time.Duration
+
+	// Factor grows the wait after each empty look (1 or less keeps it
+	// fixed); Max caps it (zero means no cap).
+	Factor float64
+	Max    time.Duration
+
+	// Next, when set, replaces Every, Factor and Max: the wait after
+	// empty look n (1 for the first).
+	Next func(n int) time.Duration
+
+	// Timeout ends the polling with ErrPollTimeout (Permanent) once this
+	// long has passed since the first look; zero polls until the run's
+	// own limits stop it.
+	Timeout time.Duration
+
+	// Clock is the time source; nil means clock.Real.
+	Clock clock.Clock
+}

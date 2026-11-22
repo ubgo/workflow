@@ -1,0 +1,19 @@
+func Debounce(c workflow.Client, clk clock.Clock, key func(workflow.Job) string, window, maxWait time.Duration, opts ...DebounceOption) (workflow.EnqueueMiddleware, error) {
+	if missing := c.Capabilities().Missing(debounceNeeds); !missing.IsZero() {
+		return nil, &workflow.UnsupportedError{Field: "Debounce", Missing: missing}
+	}
+	if key == nil || window <= 0 || (maxWait != 0 && maxWait < window) {
+		return nil, fmt.Errorf("%w: Debounce needs a key, a positive window and a maxWait of zero or at least window", workflow.ErrInvalid)
+	}
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	d := &debouncer{c: c, clk: clk, key: key, window: window, maxWait: maxWait}
+	for _, o := range opts {
+		o(d)
+	}
+	if d.store == nil {
+		d.store = NewMemoryDebounce(clk)
+	}
+	return d.wrap, nil
+}

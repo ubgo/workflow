@@ -496,6 +496,8 @@ func (failingUnique) Acquire(context.Context, string, string, time.Duration) (bo
 // TestPool_Unit pins the slot gate: a busy pool snoozes (or fails with a
 // RetryAfter), the slot is freed after the step whatever it returned,
 // PoolSteps narrows it, and bad inputs or store errors never run the step.
+//
+//ds:def id=mw-testpool-unit-cpxujhpf owner=@khanakia stability=stable
 func TestPool_Unit(t *testing.T) {
 	store := middleware.NewMemoryUnique(nil)
 	ctx := guardStepCtx(workflow.StepInfo{Workflow: "w", Step: "render", RunID: "r1", Attempt: 1})
@@ -549,6 +551,8 @@ func TestPool_Unit(t *testing.T) {
 
 // TestCriticalSection_Unit: the section is per run, so the same section
 // in another run is free while this run holds it.
+//
+//ds:def id=mw-testcriticalsection-unit-ka385p64 owner=@khanakia stability=stable
 func TestCriticalSection_Unit(t *testing.T) {
 	store := middleware.NewMemoryUnique(nil)
 	cs := middleware.CriticalSection(store, "ledger", time.Minute, "debit", "credit")
@@ -663,6 +667,8 @@ func TestCriticalSection_Memory(t *testing.T) {
 // TestAutoDisable pins the switch: it trips after n consecutive
 // failures, calls onDisable once, discards later attempts without
 // running them until Enable, and a success resets the count.
+//
+//ds:def id=mw-testautodisable-jvbkxgv6 owner=@khanakia stability=stable
 func TestAutoDisable(t *testing.T) {
 	store := middleware.NewMemoryDisable()
 	var disabled []string
@@ -721,6 +727,8 @@ func TestAutoDisable(t *testing.T) {
 
 // TestAutoDisable_CountFinal: with DisableCountFinal only the failures
 // the policy will not retry count.
+//
+//ds:def id=mw-testautodisable-countfinal-umq6hvxu owner=@khanakia stability=stable
 func TestAutoDisable_CountFinal(t *testing.T) {
 	store := middleware.NewMemoryDisable()
 	trips := 0

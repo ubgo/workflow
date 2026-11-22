@@ -1,0 +1,4 @@
+func noChain(field string) error {
+	return &UnsupportedError{Field: field, Missing: CapChain,
+		Reason: "ctx is not the ctx of a step on a driver that edits chains"}
+}

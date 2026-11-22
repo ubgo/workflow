@@ -1,0 +1,3 @@
+func Unsupported(field, reason string) error {
+	return &UnsupportedError{Field: field, Reason: reason}
+}

@@ -1,0 +1,7 @@
+func ChildLabels(run RunID, step string) map[string]string {
+	l := map[string]string{LabelParentRun: run.String()}
+	if step != "" {
+		l[LabelParentStep] = step
+	}
+	return l
+}

@@ -1,0 +1,13 @@
+type Monitor struct {
+	a          *Admin
+	alerter    Alerter
+	byQueue    map[string]Threshold
+	def        Threshold
+	hasDefault bool
+	interval   time.Duration
+	repeat     time.Duration
+	onErr      func(error)
+
+	mu   sync.Mutex
+	open map[alertKey]time.Time // open alert -> when it was last sent
+}

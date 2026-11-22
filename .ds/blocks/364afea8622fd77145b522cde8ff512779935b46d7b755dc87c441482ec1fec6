@@ -1,0 +1,1 @@
+func WithRepeat(d time.Duration) MonitorOption { return func(m *Monitor) { m.repeat = d } }

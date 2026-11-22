@@ -1,0 +1,1 @@
+	CapScheduleTrigger = defineCap(40, "ScheduleTrigger")

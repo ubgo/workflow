@@ -1,0 +1,9 @@
+func (h *webhook) deliveryID(r *http.Request, body []byte) string {
+	if h.cfg.ID != nil {
+		if id := h.cfg.ID(r, body); id != "" {
+			return id
+		}
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}

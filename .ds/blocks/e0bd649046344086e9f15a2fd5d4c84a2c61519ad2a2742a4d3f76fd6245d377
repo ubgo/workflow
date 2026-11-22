@@ -1,0 +1,19 @@
+type ErrorClass struct {
+	// UniqueViolation means a unique constraint refused the write. The
+	// driver's correctness guards are unique indexes (an idempotency key
+	// held twice, a cron tick fired twice, a lock row inserted twice), so
+	// this is how a lost race is told from a real failure. Saying true for
+	// an error that is not one makes the driver treat a failure as "someone
+	// else won", so a classifier says it only when sure.
+	UniqueViolation bool
+	// Retryable means the transaction lost a lock race (a deadlock, a
+	// serialization failure, SQLite busy) and is tried again from the
+	// start, up to WithTxAttempts.
+	Retryable bool
+	// Unavailable means the database could not be reached or dropped the
+	// connection (refused, reset, shut down, out of connections), as
+	// opposed to refusing the statement. The driver marks such errors with
+	// workflow.Unavailable, so errors.Is(err, workflow.ErrUnavailable)
+	// holds and a failover client can tell an outage from a bad request.
+	Unavailable bool
+}

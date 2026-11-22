@@ -1,0 +1,21 @@
+func (t *wakeTimer) run(w wakeClock, deadline time.Time) {
+	for {
+		left := deadline.Sub(w.inner.Now().Round(0))
+		if left <= 0 {
+			t.mu.Lock()
+			if !t.done {
+				t.done = true
+				t.c <- w.inner.Now()
+			}
+			t.mu.Unlock()
+			return
+		}
+		inner := w.inner.NewTimer(min(left, w.every))
+		select {
+		case <-inner.C():
+		case <-t.stop:
+			inner.Stop()
+			return
+		}
+	}
+}

@@ -1,0 +1,1 @@
+func NewSlotPool(size int) *SlotPool { return &SlotPool{size: max(size, 1)} }

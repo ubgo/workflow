@@ -1,0 +1,7 @@
+func cancelWaiting(ctx context.Context, c Client, bulk BulkCanceller, info RunInfo) (bool, error) {
+	if bulk == nil {
+		return true, c.Cancel(ctx, info.Ref)
+	}
+	n, err := bulk.CancelAll(ctx, RunQuery{Ref: info.Ref, Statuses: []Status{info.Status}})
+	return n > 0, err
+}

@@ -1,0 +1,20 @@
+func NewStandardWebhooks(secrets []string, tolerance time.Duration, clk clock.Clock) (*StandardWebhooks, error) {
+	if len(secrets) == 0 {
+		return nil, errors.New("events: standard webhooks needs at least one secret")
+	}
+	s := &StandardWebhooks{tolerance: tolerance, clk: clk}
+	if s.tolerance <= 0 {
+		s.tolerance = StandardWebhooksTolerance
+	}
+	if s.clk == nil {
+		s.clk = clock.Real{}
+	}
+	for i, raw := range secrets {
+		key, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(raw, standardSecretPrefix))
+		if err != nil || len(key) == 0 {
+			return nil, fmt.Errorf("events: standard webhooks secret %d is not %q followed by base64", i, standardSecretPrefix)
+		}
+		s.secrets = append(s.secrets, key)
+	}
+	return s, nil
+}

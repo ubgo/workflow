@@ -1,0 +1,1 @@
+var ErrUnknownRegion = errors.New("regional: unknown region")

@@ -1,0 +1,7 @@
+func (c *Client) guards() string {
+	g := "idem_active IS NULL"
+	if !c.retention.Undelivered {
+		g += " AND notified = 1"
+	}
+	return g
+}

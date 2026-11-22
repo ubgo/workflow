@@ -22,12 +22,16 @@ import (
 // items and together they miss none. Items carry no expiry: a pending
 // item stays until a Take removes it, and the list goes with its last
 // item. The time is the caller's now, never Redis's clock.
+//
+//ds:def id=redis-aggregatestore-mudq4qgz owner=@khanakia stability=stable
 type AggregateStore struct {
 	rdb  goredis.UniversalClient
 	base string
 }
 
 // NewAggregateStore returns an AggregateStore over rdb under prefix.
+//
+//ds:def id=redis-newaggregatestore-z6ddgfxu owner=@khanakia stability=stable
 func NewAggregateStore(rdb goredis.UniversalClient, prefix string) (*AggregateStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {

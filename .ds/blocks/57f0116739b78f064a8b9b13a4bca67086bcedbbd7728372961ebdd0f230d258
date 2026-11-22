@@ -1,0 +1,20 @@
+func PeriodKey(t time.Time, p Period, loc *time.Location) (string, error) {
+	if loc == nil || loc == time.Local {
+		return "", invalidf("period key needs an explicit location, not nil or time.Local")
+	}
+	t = t.In(loc)
+	switch p {
+	case PeriodDay:
+		return t.Format(time.DateOnly), nil
+	case PeriodWeek:
+		y, w := t.ISOWeek()
+		return fmt.Sprintf("%04d-W%02d", y, w), nil
+	case PeriodMonth:
+		return t.Format("2006-01"), nil
+	case PeriodQuarter:
+		return fmt.Sprintf("%04d-Q%d", t.Year(), (int(t.Month())-1)/3+1), nil
+	case PeriodYear:
+		return fmt.Sprintf("%04d", t.Year()), nil
+	}
+	return "", invalidf("unknown period %q", p)
+}

@@ -16,6 +16,8 @@ import (
 // DefaultPingTimeout bounds one ping when no WithPingTimeout is given: long
 // enough for a heartbeat service across the internet, short enough that a
 // dead one does not hold up the driver goroutine that delivers hooks.
+//
+//ds:def id=mw-defaultpingtimeout-bds6r4jh owner=@khanakia stability=stable
 const DefaultPingTimeout = 10 * time.Second
 
 // maxPingBody is how much of a ping's response body is read before the
@@ -26,6 +28,8 @@ const maxPingBody = 64 << 10
 // PingFunc sends one ping to target, a URL. It is the seam for any heartbeat
 // service: HTTPPing is the stock one, and a PingFunc can POST a body, add
 // an auth header or call a client library instead.
+//
+//ds:def id=mw-pingfunc-ruqb6wvr owner=@khanakia stability=stable
 type PingFunc func(ctx context.Context, target string) error
 
 // HTTPPing returns a PingFunc that sends GET target with client (nil means
@@ -33,6 +37,8 @@ type PingFunc func(ctx context.Context, target string) error
 // on a status outside 2xx. Its errors never contain the URL, because a
 // heartbeat URL usually carries the check's secret token and errors end
 // up in logs.
+//
+//ds:def id=mw-httpping-eygz4hw7 owner=@khanakia stability=stable
 func HTTPPing(client *http.Client) PingFunc {
 	if client == nil {
 		client = http.DefaultClient
@@ -76,6 +82,8 @@ func HTTPPing(client *http.Client) PingFunc {
 // is logged at Warn (without the URL) and never fails the run or the
 // tick. A Pinger holds no state beyond its options and is safe for
 // concurrent use.
+//
+//ds:def id=mw-pinger-86cwjrsq owner=@khanakia stability=stable
 type Pinger struct {
 	send    PingFunc
 	timeout time.Duration
@@ -88,6 +96,8 @@ type PingerOption func(*Pinger)
 // WithPingTimeout bounds each ping (DefaultPingTimeout when not given). A
 // d of zero or less keeps the default, so a ping can never block the
 // hook goroutine forever.
+//
+//ds:def id=mw-withpingtimeout-m77kpucx owner=@khanakia stability=stable
 func WithPingTimeout(d time.Duration) PingerOption {
 	return func(p *Pinger) {
 		if d > 0 {
@@ -97,6 +107,8 @@ func WithPingTimeout(d time.Duration) PingerOption {
 }
 
 // WithPingLogger sets where failed pings are logged; nil drops them.
+//
+//ds:def id=mw-withpinglogger-z7fhchd2 owner=@khanakia stability=stable
 func WithPingLogger(l *slog.Logger) PingerOption {
 	return func(p *Pinger) { p.logger = l }
 }
@@ -104,6 +116,8 @@ func WithPingLogger(l *slog.Logger) PingerOption {
 // NewPinger returns a Pinger that sends through send (nil means
 // HTTPPing(nil)) and logs failures to slog.Default() unless
 // WithPingLogger says otherwise.
+//
+//ds:def id=mw-newpinger-a4gtp79v owner=@khanakia stability=stable
 func NewPinger(send PingFunc, opts ...PingerOption) *Pinger {
 	if send == nil {
 		send = HTTPPing(nil)
@@ -119,6 +133,8 @@ func NewPinger(send PingFunc, opts ...PingerOption) *Pinger {
 // ScheduleHooks.Fired, or as a workflow.TickObserver of its
 // own. A skipped or misfired tick, or a fired tick whose enqueue failed,
 // sends nothing: no run started, so there is nothing to report as begun.
+//
+//ds:def id=mw-pinger-tick-h6gzbgev owner=@khanakia stability=stable
 func (p *Pinger) Tick(target string) func(ctx context.Context, t workflow.Tick) {
 	return func(ctx context.Context, t workflow.Tick) {
 		if t.Outcome != workflow.TickFired || t.Err != nil {
@@ -131,6 +147,8 @@ func (p *Pinger) Tick(target string) func(ctx context.Context, t workflow.Tick) 
 // Run returns a run hook that pings target for every run event it is given:
 // for ScheduleHooks.After, OnSuccess or OnFailure, which already choose
 // the outcome.
+//
+//ds:def id=mw-pinger-run-dvz4jcd7 owner=@khanakia stability=stable
 func (p *Pinger) Run(target string) func(ctx context.Context, ev workflow.RunEvent) {
 	return func(ctx context.Context, ev workflow.RunEvent) {
 		p.ping(ctx, target, slog.String("workflow", ev.Workflow), slog.String("status", string(ev.Status)))
@@ -140,6 +158,8 @@ func (p *Pinger) Run(target string) func(ctx context.Context, ev workflow.RunEve
 // ping sends one ping under the Pinger's timeout. The deadline is real
 // time on purpose: it bounds network I/O, not a scheduling decision, so
 // it does not come from the driver's clock.
+//
+//ds:def id=mw-pinger-ping-my6gsuyv owner=@khanakia stability=stable
 func (p *Pinger) ping(ctx context.Context, target string, attrs ...slog.Attr) {
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()

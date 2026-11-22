@@ -24,6 +24,8 @@ var unfinished = []workflow.Status{
 // RunQuerier, which it needs (an UnsupportedError naming CapRunQuery
 // otherwise); a driver without CapRunStates reports retrying runs as
 // queued or running, which are counted all the same.
+//
+//ds:def id=cutover-client-remaining-qasz4mwf owner=@khanakia stability=stable
 func (c *Client) Remaining(ctx context.Context) (int, error) {
 	q, ok := c.old.(workflow.RunQuerier)
 	if !ok || !c.old.Capabilities().Has(workflow.CapRunQuery) {
@@ -50,6 +52,8 @@ func (c *Client) Remaining(ctx context.Context) (int, error) {
 
 // Moved is one schedule MoveSchedules moved: its ID on the old backend
 // and on the new one (both prefixed, as this client names them).
+//
+//ds:def id=cutover-moved-hcz4wvs2 owner=@khanakia stability=stable
 type Moved struct {
 	Name, Workflow string
 	From, To       workflow.ScheduleID
@@ -76,6 +80,8 @@ type Moved struct {
 // removed, the new copy is unscheduled again before the error is
 // returned. Run it once, from one process: two runs at once could each
 // copy a schedule before either removes it.
+//
+//ds:def id=cutover-client-moveschedules-yrmb5kjs owner=@khanakia stability=stable
 func (c *Client) MoveSchedules(ctx context.Context, input func(workflow.ScheduleInfo) ([]byte, error)) ([]Moved, error) {
 	if c.sched != SideNew {
 		return nil, fmt.Errorf("%w: cutover: MoveSchedules moves schedules to the new backend, and this client keeps them on the old one", workflow.ErrInvalid)
@@ -105,6 +111,7 @@ func (c *Client) MoveSchedules(ctx context.Context, input func(workflow.Schedule
 	return moved, nil
 }
 
+//ds:def id=cutover-client-moveone-69cewga5 owner=@khanakia stability=stable
 func (c *Client) moveOne(ctx context.Context, info workflow.ScheduleInfo, input func(workflow.ScheduleInfo) ([]byte, error)) (Moved, error) {
 	in, err := input(info)
 	if err != nil {

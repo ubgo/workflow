@@ -1,0 +1,39 @@
+type LatestOnlyConfig struct {
+	// Schedules looks up the schedule that fired a run (its
+	// LabelSchedule), to compute the tick after the run's own. Usually
+	// the client itself (CapScheduleList). Required unless Next is set.
+	Schedules workflow.ScheduleLister
+
+	// Next, when set, returns the tick that follows tick for the run
+	// info describes, in place of the lookup through Schedules; ok false
+	// means unknown, and the step runs. For a schedule kept outside the
+	// client or a custom calendar.
+	Next func(ctx context.Context, info workflow.StepInfo, tick time.Time) (next time.Time, ok bool, err error)
+
+	// Parser is the cron dialect of the schedules when the drivers use a
+	// custom one (their WithCronParser option); nil means the default.
+	Parser cron.Parser
+
+	// When is the workflow's ScheduleWhen, when it has one: a due tick
+	// the condition rejects fired no run, so it does not make a run
+	// stale. LatestOnly asks it, on the step's context, about each tick
+	// after the run's own that is already due, as the scheduler did when
+	// the tick came; set it to the same function as Workflow.ScheduleWhen.
+	// Nil means every tick passes. Not used with Next.
+	When func(ctx context.Context, tick workflow.Tick) bool
+
+	// DefaultMisfire is the misfire policy the driver applies to a
+	// schedule whose Misfire is empty, so LatestOnly knows which missed
+	// ticks fire. Zero means MisfireFireOnce, the default of the memory,
+	// SQL and Redis drivers (a missed tick fires once). Set
+	// Misfire{Policy: MisfireSkip} for a driver that never catches up
+	// (Hatchet).
+	DefaultMisfire workflow.Misfire
+
+	// OnSkip, when set, is told about every attempt LatestOnly skips.
+	OnSkip func(ctx context.Context, info workflow.StepInfo, tick, newer time.Time)
+
+	// Clock is the now the newer tick is compared with; nil means
+	// clock.Real. Use the driver's clock.
+	Clock clock.Clock
+}

@@ -43,6 +43,7 @@ func txSetup(t *testing.T, e engine, policy workflow.IdempotencyPolicy) (*sqlsto
 	return c, db, orders, &runs
 }
 
+//ds:def id=enginetest-testenqueuetxcommitruns-2qydpvau owner=@khanakia stability=stable
 func TestEnqueueTxCommitRuns(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -78,6 +79,7 @@ func TestEnqueueTxCommitRuns(t *testing.T) {
 	}
 }
 
+//ds:def id=enginetest-testenqueuetxrollbackleavesnorun-tnwd4etr owner=@khanakia stability=stable
 func TestEnqueueTxRollbackLeavesNoRun(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -124,6 +126,8 @@ func TestEnqueueTxRollbackLeavesNoRun(t *testing.T) {
 // committed run, returns the holder, and that the duplicate does not abort
 // the caller's transaction (on Postgres a unique violation would, without
 // the savepoint): the app's later write still commits.
+//
+//ds:def id=enginetest-testenqueuetxidempotency-4bwneyt2 owner=@khanakia stability=stable
 func TestEnqueueTxIdempotency(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {
@@ -193,6 +197,7 @@ func TestEnqueueTxIdempotency(t *testing.T) {
 	}
 }
 
+//ds:def id=enginetest-testenqueuetxrefusals-wxb4ncd9 owner=@khanakia stability=stable
 func TestEnqueueTxRefusals(t *testing.T) {
 	e := engines(t)[0]
 	ctx := context.Background()

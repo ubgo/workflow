@@ -1,0 +1,9 @@
+func YearlyOn(month time.Month, day int, hhmm string) Builder {
+	if month < time.January || month > time.December {
+		return failed("YearlyOn(%d, %d): month must be 1-12", month, day)
+	}
+	if last := time.Date(leapYear, month+1, 0, 0, 0, 0, 0, time.UTC).Day(); day < 1 || day > last {
+		return failed("YearlyOn(%s, %d): day must be 1-%d", month, day, last)
+	}
+	return builderFields("0", "0", strconv.Itoa(day), strconv.Itoa(int(month)), wild, true).At(hhmm)
+}

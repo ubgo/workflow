@@ -1,0 +1,8 @@
+func (p *Pinger) Tick(target string) func(ctx context.Context, t workflow.Tick) {
+	return func(ctx context.Context, t workflow.Tick) {
+		if t.Outcome != workflow.TickFired || t.Err != nil {
+			return
+		}
+		p.ping(ctx, target, slog.String("workflow", t.Workflow), slog.String("schedule", t.Name))
+	}
+}

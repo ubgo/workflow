@@ -1,0 +1,17 @@
+type QueueStat struct {
+	// Queue is the queue name.
+	Queue string
+	// Depth is how many runs wait for a worker (StatusQueued), including
+	// runs held by a pause. Delayed runs (StatusScheduled) are not counted
+	// until they are due.
+	Depth int
+	// OldestEnqueuedAt is the enqueue time of the oldest queued run.
+	OldestEnqueuedAt time.Time
+	// OldestWait is how long that run has waited, on the Admin's clock.
+	OldestWait time.Duration
+	// Workers and Running are this client's worker count for the queue
+	// and how many attempts those workers run now. They are filled only
+	// when QueueReport.Workers is true; see QueueStats.
+	Workers int
+	Running int
+}

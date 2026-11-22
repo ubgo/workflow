@@ -1,0 +1,9 @@
+func (r *Recorder) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	got, err := r.Forward.Retry(ctx, ref)
+	if err == nil {
+		r.mu.Lock()
+		r.retries = append(r.retries, ref)
+		r.mu.Unlock()
+	}
+	return got, err
+}

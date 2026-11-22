@@ -1,8 +1,8 @@
 # Unique jobs
 
-A unique job refuses a second job with the same key while the first one holds a lock: one export per user at a time, one invoice run per account, one reindex per product. `middleware.Unique` is enqueue middleware, so it works on every driver; the lock lives in a `UniqueStore` you choose, and how far the guarantee reaches (one process, or every process sharing a database) is exactly how far that store reaches. The lock lasts for a time you choose, or until the run finishes, and the key is yours to build or the workflow and its arguments ([Unique by workflow and arguments](#unique-by-workflow-and-arguments)). It can count only while the holder waits to start ([Unique while the run waits to start](#unique-while-the-run-waits-to-start)), and a duplicate can get the existing run back instead of an error ([Return the existing run](#return-the-existing-run)).
+A unique job refuses a second job with the same key while the first one holds a lock: one export per user at a time, one invoice run per account, one reindex per product. [`middleware.Unique`](ds:block?id=mw-unique-pgzepgu6) is enqueue middleware, so it works on every driver; the lock lives in a [`UniqueStore`](ds:block?id=mw-uniquestore-udbnz7hp) you choose, and how far the guarantee reaches (one process, or every process sharing a database) is exactly how far that store reaches. The lock lasts for a time you choose, or until the run finishes, and the key is yours to build or the workflow and its arguments ([Unique by workflow and arguments](#unique-by-workflow-and-arguments)). It can count only while the holder waits to start ([Unique while the run waits to start](#unique-while-the-run-waits-to-start)), and a duplicate can get the existing run back instead of an error ([Return the existing run](#return-the-existing-run)).
 
-Uniqueness is not idempotency. A job's `IdempotencyKey` makes a duplicate enqueue return the run that already holds the key, with no error ([idempotency](../jobs/idempotency.md)); `Unique` refuses the duplicate with an error wrapping `workflow.ErrDuplicate`, so the caller learns that the work is already queued and can say so.
+Uniqueness is not idempotency. A job's `IdempotencyKey` makes a duplicate enqueue return the run that already holds the key, with no error ([idempotency](../jobs/idempotency.md)); [`Unique`](ds:block?id=mw-unique-pgzepgu6) refuses the duplicate with an error wrapping `workflow.ErrDuplicate`, so the caller learns that the work is already queued and can say so.
 
 ## Before you start
 
@@ -12,9 +12,9 @@ Uniqueness is not idempotency. A job's `IdempotencyKey` makes a duplicate enqueu
 
 ## Unique for a time
 
-`middleware.Unique(by, store, ttl)` takes the key from `by`, tries to acquire it in the store for `ttl`, and passes the job on only if it got the lock. A second job with the same key inside the `ttl` is refused with an error wrapping `workflow.ErrDuplicate`, and nothing reaches the driver. Wrap the client with `middleware.WrapClient` so every `Enqueue` goes through it; the wrapper keeps the driver's own capabilities.
+[`middleware.Unique(by, store, ttl)`](ds:block?id=mw-unique-pgzepgu6) takes the key from `by`, tries to acquire it in the store for `ttl`, and passes the job on only if it got the lock. A second job with the same key inside the `ttl` is refused by [`Unique`](ds:block?id=mw-unique-pgzepgu6) with an error wrapping `workflow.ErrDuplicate`, and nothing reaches the driver. Wrap the client with `middleware.WrapClient` so every `Enqueue` goes through it; the wrapper keeps the driver's own capabilities.
 
-The example keys exports by the `user` label and uses `middleware.NewMemoryUnique` on a fake clock, so the hour passes at once:
+The example keys exports by the `user` label and uses `middleware.NewMemoryUnique` ([`MemoryUnique`](ds:block?id=mw-memoryunique-uwj4x9gs)) on a fake clock, so the hour passes at once:
 
 <!-- snippet: examples/unique-jobs/main.go#unique -->
 ```go
@@ -29,15 +29,15 @@ clk.Advance(time.Hour)
 _, err3 := c.Enqueue(ctx, job) // the lock has expired
 ```
 
-The lock lasts `ttl` from the enqueue whatever the run does: it may outlive a fast run or end while a slow one is still working. Use plain `Unique` when the driver has no run-finished hook, or when "at most one per hour" is the rule you want.
+The lock lasts `ttl` from the enqueue whatever the run does ([`Unique`](ds:block?id=mw-unique-pgzepgu6)): it may outlive a fast run or end while a slow one is still working. Use plain `Unique` when the driver has no run-finished hook, or when "at most one per hour" is the rule you want.
 
-Every job that passes gets two labels: `middleware.UniqueKeyLabel` (`ubgo.workflow/unique-key`) with the key and `middleware.UniqueOwnerLabel` (`ubgo.workflow/unique-owner`) with a random token drawn per enqueue. The token is the lock's owner, so only that run's release can free it.
+Every job that passes gets two labels: [`middleware.UniqueKeyLabel`](ds:block?id=mw-uniquekeylabel-8nbrpuxx) (`ubgo.workflow/unique-key`) with the key and [`middleware.UniqueOwnerLabel`](ds:block?id=mw-uniqueownerlabel-mdhum8kz) (`ubgo.workflow/unique-owner`) with a random token drawn per enqueue ([`newOwnerToken`](ds:block?id=mw-newownertoken-87yjqfvt)). The token is the lock's owner, so only that run's release can free it.
 
-`UniqueStore` is the seam for your own store (Redis, another table): `Acquire(ctx, key, owner, ttl)` must check and take the key in one atomic step, and `Release(ctx, key, owner)` frees it only for its owner and is a no-op otherwise. `MemoryUnique` holds inside one process.
+[`UniqueStore`](ds:block?id=mw-uniquestore-udbnz7hp) is the seam for your own store (Redis, another table): `Acquire(ctx, key, owner, ttl)` must check and take the key in one atomic step, and `Release(ctx, key, owner)` frees it only for its owner and is a no-op otherwise. [`MemoryUnique`](ds:block?id=mw-memoryunique-uwj4x9gs) holds inside one process.
 
 ## Unique until the run finishes
 
-What an app usually wants is a lock that is freed as soon as the run ends, succeeded, failed or cancelled, with the `ttl` kept as a safety net. `middleware.UniqueUntilFinished(c, by, store, ttl)` registers a run-finished observer on `c` that reads the two labels from the `RunEvent` and releases the lock, then returns the same middleware as `Unique`. It registers an observer, so call it before `c.Start`:
+What an app usually wants is a lock that is freed as soon as the run ends, succeeded, failed or cancelled, with the `ttl` kept as a safety net. [`middleware.UniqueUntilFinished(c, by, store, ttl)`](ds:block?id=mw-uniqueuntilfinished-kgv65kyf) registers a run-finished observer on `c` that reads the two labels from the `RunEvent` and releases the lock, then returns the same middleware as `Unique`. It registers an observer, so call it before `c.Start`:
 
 <!-- snippet: examples/unique-jobs/main.go#until-finished -->
 ```go
@@ -50,11 +50,11 @@ if err != nil {
 c := middleware.WrapClient(mc, unique)
 ```
 
-While the first export runs, a second one for the same user is refused; once the run has finished, the next one is accepted. The release reads only the labels on the event, so it works in any process and after a restart, without a table in memory.
+While the first export runs, a second one for the same user is refused; once the run has finished, the next one is accepted. The release ([`UniqueUntilFinished`](ds:block?id=mw-uniqueuntilfinished-kgv65kyf)) reads only the labels on the event, so it works in any process and after a restart, without a table in memory.
 
 ## Unique by workflow and arguments
 
-Often the key is simply "the same job": the same workflow with the same arguments. `middleware.UniqueByArgs(opts...)` returns that key function, ready for `Unique`, `UniqueUntilFinished` and `UniqueUntilStarted`. The key is `args:` plus the workflow name plus the SHA-256 of the canonical payload: a JSON payload is decoded and encoded again, so key order and spacing do not matter (numbers keep their literal text, so `1` and `1.0` differ); any other payload is hashed as its bytes.
+Often the key is simply "the same job": the same workflow with the same arguments. [`middleware.UniqueByArgs(opts...)`](ds:block?id=mw-uniquebyargs-rgxc6ark) returns that key function, ready for `Unique`, `UniqueUntilFinished` and `UniqueUntilStarted`. The key is `args:` plus the workflow name plus the SHA-256 of the canonical payload ([`canonical`](ds:block?id=mw-argskey-canonical-rqdahqf4)): a JSON payload is decoded and encoded again, so key order and spacing do not matter (numbers keep their literal text, so `1` and `1.0` differ); any other payload is hashed as its bytes.
 
 <!-- snippet: examples/unique-jobs/main.go#by-args -->
 ```go
@@ -73,15 +73,15 @@ The options choose what counts:
 
 | Option | What it adds or changes |
 |---|---|
-| `ArgsFields(names...)` | Only these top-level fields of a JSON object count; a payload that is not an object counts whole, so the key gets narrower, never wider |
-| `ArgsQueue()` | `Job.Queue` counts, so the same arguments on two queues are two jobs |
-| `ArgsLabels(keys...)` | The values of these labels count (a missing label counts as absent) |
-| `ArgsKeyPrefix(p)` | Replaces `args:` (`middleware.DefaultArgsKeyPrefix`), to keep these locks apart from your own keys in one store |
-| `ArgsTagged[T]()` | Only the fields of `T` tagged `unique:"true"` count, by their JSON names: `ArgsFields` with the list kept on the payload type ([below](#fields-tagged-on-the-payload-type)) |
+| [`ArgsFields(names...)`](ds:block?id=mw-argsfields-8k2bg7nb) | Only these top-level fields of a JSON object count; a payload that is not an object counts whole, so the key gets narrower, never wider |
+| [`ArgsQueue()`](ds:block?id=mw-argsqueue-mw37nfwq) | `Job.Queue` counts, so the same arguments on two queues are two jobs |
+| [`ArgsLabels(keys...)`](ds:block?id=mw-argslabels-4quhx4yx) | The values of these labels count (a missing label counts as absent) |
+| [`ArgsKeyPrefix(p)`](ds:block?id=mw-argskeyprefix-wjc7sxu6) | Replaces `args:` ([`middleware.DefaultArgsKeyPrefix`](ds:block?id=mw-defaultargskeyprefix-rk2ta4j3)), to keep these locks apart from your own keys in one store |
+| [`ArgsTagged[T]()`](ds:block?id=mw-argstagged-mvcqcdgf) | Only the fields of `T` tagged `unique:"true"` count, by their JSON names: `ArgsFields` with the list kept on the payload type ([below](#fields-tagged-on-the-payload-type)) |
 
 ### Fields tagged on the payload type
 
-`ArgsFields` lists the fields that count as strings at the call site, apart from the type that defines them; a renamed field silently stops counting. `middleware.ArgsTagged[T]()` reads the list from struct tags instead, so the rule lives on the payload type next to the fields it names:
+`ArgsFields` lists the fields that count as strings at the call site, apart from the type that defines them; a renamed field silently stops counting. [`middleware.ArgsTagged[T]()`](ds:block?id=mw-argstagged-mvcqcdgf) reads the list from struct tags instead, so the rule lives on the payload type next to the fields it names:
 
 <!-- snippet: examples/unique-states/main.go#tagged -->
 ```go
@@ -115,11 +115,11 @@ fmt.Println("  s-1 and s-2, same key:", by(jobs[0]) == by(jobs[2]))
   s-1 and s-2, same key: false
 ```
 
-It goes into the middleware as any key function does: `UniqueWith(middleware.UniqueConfig{By: by, ...})` in [Unique while the run waits to start](#unique-while-the-run-waits-to-start) below uses exactly this one. A field's name is its `json` tag (the part before a comma), else its Go name, as `encoding/json` does; unexported fields are skipped. A `T` that is not a struct, or has no tagged field, makes the whole payload count, the same as no option. The tag name is `middleware.UniqueTag`.
+It goes into the middleware as any key function does: `UniqueWith(middleware.UniqueConfig{By: by, ...})` in [Unique while the run waits to start](#unique-while-the-run-waits-to-start) below uses exactly this one. A field's name is its `json` tag (the part before a comma), else its Go name, as `encoding/json` does; unexported fields are skipped ([`ArgsTagged`](ds:block?id=mw-argstagged-mvcqcdgf)). A `T` that is not a struct, or has no tagged field, makes the whole payload count, the same as no option. The tag name is [`middleware.UniqueTag`](ds:block?id=mw-uniquetag-r9sm3sfd).
 
 ## Unique while the run waits to start
 
-Plain `Unique` treats a key as taken whatever its holder is doing. Often the rule is narrower: "no second sync of this shop while one is waiting to start", because once a sync is running, a new request may carry changes it will not see, and should be let in. `middleware.UniqueWith(middleware.UniqueConfig{...})` is `Unique` with that choice. `States` lists the holder's statuses that make a new job a duplicate; when the key is held by a run in none of them, or by a run the client no longer knows, the new job takes the lock over:
+Plain `Unique` treats a key as taken whatever its holder is doing. Often the rule is narrower: "no second sync of this shop while one is waiting to start", because once a sync is running, a new request may carry changes it will not see, and should be let in. [`middleware.UniqueWith(middleware.UniqueConfig{...})`](ds:block?id=mw-uniquewith-646etc3s) is `Unique` with that choice. [`States`](ds:block?id=mw-uniqueconfig-uyr8qksj) lists the holder's statuses that make a new job a duplicate; when the key is held by a run in none of them, or by a run the client no longer knows, the new job takes the lock over ([`acquire`](ds:block?id=mw-uniquewith-acquire-nazcksj3)):
 
 <!-- snippet: examples/unique-states/main.go#states -->
 ```go
@@ -147,13 +147,13 @@ unique while waiting to start:
   started {"shop_id":"s-1","cursor":"c"}
 ```
 
-The first sync of `s-1` is delayed an hour, so it is `scheduled` and a second one is refused. Once it is running, a third is accepted. Adding `StatusSucceeded` to `States` keeps a key closed after success until the `TTL` ends ("at most one successful sync per day"); an empty `States` means every status counts, which is plain `Unique`.
+The first sync of `s-1` is delayed an hour, so it is `scheduled` and a second one is refused. Once it is running, a third is accepted. Adding `StatusSucceeded` to [`States`](ds:block?id=mw-uniqueconfig-uyr8qksj) keeps a key closed after success until the `TTL` ends ("at most one successful sync per day"); an empty `States` means every status counts, which is plain `Unique`.
 
-`UniqueWith` looks the holder up, so it needs two things beyond `Unique`: a `Client` to ask the holder's `Status` (any client; the example passes the driver), and a store that remembers which run holds each key, the optional `middleware.UniqueHolders` interface. `MemoryUnique`, the Redis driver's unique store and `sqlstore.UniqueStore` (the table `<prefix>unique_holders`) implement it. `UniqueWith` refuses a configuration it cannot honour with `ErrInvalid`, at construction: a missing `By`, `Store` or `TTL`, an unknown status, `States` without a `Client`, or `States` or `ReturnExisting` on a store without `UniqueHolders`. `TTL` still bounds every lock, whatever the holder's state.
+`UniqueWith` looks the holder up, so it needs two things beyond `Unique`: a `Client` to ask the holder's `Status` (any client; the example passes the driver), and a store that remembers which run holds each key, the optional [`middleware.UniqueHolders`](ds:block?id=mw-uniqueholders-n5q86z5e) interface. [`MemoryUnique`](ds:block?id=mw-memoryunique-uwj4x9gs), the Redis driver's unique store ([`redis.UniqueStore`](ds:block?id=redis-uniquestore-h4nzhmyb)) and `sqlstore.UniqueStore` (the table [`<prefix>unique_holders`](ds:block?id=sql-tbluniqueholder-ugf42htr)) implement it. [`UniqueWith`](ds:block?id=mw-uniquewith-646etc3s) refuses a configuration it cannot honour with `ErrInvalid`, at construction: a missing `By`, `Store` or `TTL`, an unknown status, `States` without a `Client`, or `States` or `ReturnExisting` on a store without `UniqueHolders`. `TTL` still bounds every lock, whatever the holder's state.
 
 ## Return the existing run
 
-A refused duplicate is an error the caller has to handle. Often the caller only wants "the run for this export", new or not, the way an idempotency key behaves. `UniqueConfig.ReturnExisting` answers a duplicate with the holder's `RunRef` and a nil error. To tell a new run from an existing one, ask for the enqueue's outcome with `workflow.WithEnqueueOutcome`:
+A refused duplicate is an error the caller has to handle. Often the caller only wants "the run for this export", new or not, the way an idempotency key behaves. [`UniqueConfig.ReturnExisting`](ds:block?id=mw-uniqueconfig-uyr8qksj) answers a duplicate with the holder's `RunRef` and a nil error ([`duplicate`](ds:block?id=mw-uniquewith-duplicate-hkdx4h2u)). To tell a new run from an existing one, ask for the enqueue's outcome with [`workflow.WithEnqueueOutcome`](ds:block?id=withenqueueoutcome-er5nfn38):
 
 <!-- snippet: examples/unique-states/main.go#return-existing -->
 ```go
@@ -188,7 +188,7 @@ return the existing run:
   second: same run true, duplicate true (reported true)
 ```
 
-`WithEnqueueOutcome(ctx)` returns a ctx to pass to `Enqueue` and a `*workflow.EnqueueOutcome` to read after it. `Duplicate` is true when no new run was started: the ref is an existing run's. `Reported` says whether anything below the caller reported at all: false means the client cannot tell, so `Duplicate` false is "unknown", not "new". The drivers report it themselves for an idempotency key, with no middleware involved:
+[`WithEnqueueOutcome(ctx)`](ds:block?id=withenqueueoutcome-er5nfn38) returns a ctx to pass to `Enqueue` and a [`*workflow.EnqueueOutcome`](ds:block?id=enqueueoutcome-m8eut4rc) to read after it. `Duplicate` is true when no new run was started: the ref is an existing run's. [`Reported`](ds:block?id=enqueueoutcome-m8eut4rc) says whether anything below the caller reported at all: false means the client cannot tell, so `Duplicate` false is "unknown", not "new". The drivers report it themselves for an idempotency key, with no middleware involved:
 
 <!-- snippet: examples/unique-states/main.go#idempotency-outcome -->
 ```go
@@ -207,11 +207,11 @@ for _, try := range []string{"first", "second"} {
   key second: duplicate true
 ```
 
-Drivers call `workflow.MarkInserted` once a new run is stored and `workflow.MarkDuplicate` when an idempotency key returns the holder's run; `UniqueWith` calls `MarkDuplicate` when it returns the holder. The first mark wins. The memory, Redis, SQL and Hatchet drivers report outcomes. When the holder's run is not known yet (a race with its own enqueue), `ReturnExisting` still returns `ErrDuplicate`.
+Drivers call [`workflow.MarkInserted`](ds:block?id=markinserted-j4ft23cj) once a new run is stored and [`workflow.MarkDuplicate`](ds:block?id=markduplicate-zvp7c76h) when an idempotency key returns the holder's run; [`UniqueWith`](ds:block?id=mw-uniquewith-duplicate-hkdx4h2u) calls `MarkDuplicate` when it returns the holder. The first mark wins ([`MarkInserted`](ds:block?id=markinserted-j4ft23cj)). The memory, Redis, SQL and Hatchet drivers report outcomes: each runs the conformance cases [`outcomeCases`](ds:block?id=workflowtest-outcomecases-fqks4apg). When the holder's run is not known yet (a race with its own enqueue), [`ReturnExisting`](ds:block?id=mw-uniquewith-duplicate-hkdx4h2u) still returns `ErrDuplicate`.
 
 ## Replace a scheduled duplicate
 
-A digest mail is scheduled for tonight; each new comment enqueues it again with the full list so far. The newest arguments should win, not the first. `UniqueConfig.Replace` makes a duplicate update the holder while it is still scheduled: its payload, priority and, when the new job sets one, `RunAt` become the new job's (through `workflow.RunEditor`), and the holder's `RunRef` comes back marked a duplicate. A holder that has started is left alone, and the duplicate is answered as without `Replace` (`ReturnExisting` or `ErrDuplicate`).
+A digest mail is scheduled for tonight; each new comment enqueues it again with the full list so far. The newest arguments should win, not the first. [`UniqueConfig.Replace`](ds:block?id=mw-uniqueconfig-uyr8qksj) makes a duplicate update the holder while it is still scheduled: its payload, priority and, when the new job sets one, `RunAt` become the new job's (through `workflow.RunEditor`), and the holder's `RunRef` comes back marked a duplicate. A holder that has started is left alone, and the duplicate is answered as without `Replace` (`ReturnExisting` or `ErrDuplicate`) ([`duplicate`](ds:block?id=mw-uniquewith-duplicate-hkdx4h2u)).
 
 <!-- snippet: examples/run-control/main.go#unique-replace -->
 ```go
@@ -228,13 +228,13 @@ if err != nil {
 c := middleware.WrapClient(mc, mw)
 ```
 
-`Replace` needs a `Client` implementing `workflow.RunEditor` and a store implementing `UniqueHolders`; `UniqueWith` refuses it otherwise (`ErrInvalid`). To collapse a burst of jobs into one run that sees only the latest, without a schedule, see [debounce](debounce.md).
+`Replace` needs a `Client` implementing `workflow.RunEditor` and a store implementing `UniqueHolders`; [`UniqueWith`](ds:block?id=mw-uniquewith-646etc3s) refuses it otherwise (`ErrInvalid`). To collapse a burst of jobs into one run that sees only the latest, without a schedule, see [debounce](debounce.md).
 
 ## A store shared by every process
 
-`MemoryUnique` makes the lock hold in one process: two servers would each accept one job. `sqlstore.UniqueStore` keeps the locks as rows of `<prefix>unique_locks` (`wf_unique_locks` by default), so the lock holds across every process that shares the database. Its semantics are `MemoryUnique`'s exactly, and `Acquire` is atomic across processes: one upsert on Postgres and SQLite, and on MySQL a delete of the expired row followed by an insert that the primary key lets only one process win.
+`MemoryUnique` makes the lock hold in one process: two servers would each accept one job. [`sqlstore.UniqueStore`](ds:block?id=sql-uniquestore-u4xwy2j4) keeps the locks as rows of `<prefix>unique_locks` (`wf_unique_locks` by default), so the lock holds across every process that shares the database. Its semantics are `MemoryUnique`'s exactly, and [`Acquire`](ds:block?id=sql-uniquestore-acquireonce-nrwb8u2g) is atomic across processes: one upsert on Postgres and SQLite, and on MySQL a delete of the expired row followed by an insert that the primary key lets only one process win.
 
-It needs no running SQL driver. `sqlstore.NewUniqueStore(db, dialect, opts...)` builds it over any `*sql.DB`, and its `Migrate` creates the lock table and nothing else, which is how an app on Hatchet gets durable uniqueness. An app on the SQL driver takes `Client.UniqueStore()` instead; `Client.Migrate` already creates the table. Of the sqlstore options, `WithTablePrefix` and `WithClock` apply.
+It needs no running SQL driver. [`sqlstore.NewUniqueStore(db, dialect, opts...)`](ds:block?id=sql-newuniquestore-65hb2yyu) builds it over any `*sql.DB`, and its [`Migrate`](ds:block?id=sql-uniquestore-migrate-y9u8ckrz) creates the lock table and nothing else, which is how an app on Hatchet gets durable uniqueness. An app on the SQL driver takes `Client.UniqueStore()` instead; `Client.Migrate` already creates the table. Of the sqlstore options, `WithTablePrefix` and `WithClock` apply ([`NewUniqueStore`](ds:block?id=sql-newuniquestore-65hb2yyu)).
 
 In the example two connection pools on one SQLite file stand in for two servers. Each builds its own store and its own client, as a separate process would:
 
@@ -256,7 +256,7 @@ mc := memory.New()
 c := middleware.WrapClient(mc, middleware.Unique(byUser, locks, 10*time.Minute))
 ```
 
-Process A's export is accepted and process B's, for the same user, is refused. Expired rows never block an `Acquire`; they only take space. A running `sqlstore.Client` deletes them on its dispatcher's housekeeping, and an app with no SQL client calls `PruneExpired` from its own scheduler:
+Process A's export is accepted and process B's, for the same user, is refused. Expired rows never block an `Acquire`; they only take space. A running `sqlstore.Client` deletes them on its dispatcher's housekeeping ([`prune`](ds:block?id=sql-client-prune-5kgznfp8)), and an app with no SQL client calls [`PruneExpired`](ds:block?id=sql-uniquestore-pruneexpired-3k6mfgct) from its own scheduler:
 
 <!-- snippet: examples/unique-jobs/main.go#prune -->
 ```go
@@ -323,20 +323,20 @@ return the existing run:
 
 ## Pitfalls
 
-- A `ttl` of zero or less fails every keyed enqueue with `workflow.ErrInvalid`, rather than holding a lock forever.
-- A job for which the key function returns `""` is not unique and passes straight through.
-- `Acquire` on a held key reports false whoever asks, the holder included: the same caller enqueuing twice is refused too.
-- If the driver refuses the enqueue, `Unique` releases the lock at once, so a retry can pass.
-- `UniqueUntilFinished` after `Start` returns `workflow.ErrAlreadyStarted`. On a client that does not implement `workflow.RunNotifier` it returns an `UnsupportedError` naming `CapRunFinished`; use `Unique` there and live with the `ttl`.
-- On a driver without `CapRunFinished` (Hatchet delivers run ends best effort) a lost event leaves the lock held until the `ttl` runs out. Pick a `ttl` longer than the longest run, but short enough that a lost event costs little.
-- `Unique` owns `ubgo.workflow/unique-key` and `ubgo.workflow/unique-owner`. A job arriving with either, or any other label under `ubgo.workflow/` except the claim check's, is refused with `workflow.ErrInvalid`, so a caller cannot release someone else's lock. Use one `Unique` per middleware chain; a second one would refuse the first one's labels.
-- A job enqueued straight on the driver, bypassing the middleware, is not checked, and so is a run written with `sqlstore.Client.EnqueueTx`, which runs no enqueue middleware. Route those through the [outbox](outbox.md) when they must be unique.
-- **Place `UniqueByArgs` before a codec that changes the payload on every call.** It hashes the payload the middleware sees; after an encrypting codec two identical jobs have different bytes and never match.
-- **A field missing from the payload is not the same as a field set to `null`** under `ArgsFields`; send the field consistently.
-- **Use a fresh `WithEnqueueOutcome` per `Enqueue`.** The first mark wins, so a ctx reused for a second enqueue keeps the first one's answer; an `Enqueue` of a chain or a batch with one ctx reports its first job only.
-- **`States` costs a `Status` call per refused enqueue.** The holder is looked up only when the key is held, but each lookup reaches the backend.
-- **A takeover does not stop the holder.** With `States`, a running holder keeps running beside the job that took its key over; `States` decides whether a second run may exist, not which one wins.
-- `MemoryUnique` holds per process. With several servers, use the SQL store (or your own shared `UniqueStore`).
+- A `ttl` of zero or less fails every keyed enqueue with `workflow.ErrInvalid`, rather than holding a lock forever ([`Unique`](ds:block?id=mw-unique-pgzepgu6)).
+- A job for which the key function returns `""` is not unique and passes straight through ([`Unique`](ds:block?id=mw-unique-pgzepgu6)).
+- [`Acquire`](ds:block?id=mw-memoryunique-acquire-k57hg9em) on a held key reports false whoever asks, the holder included: the same caller enqueuing twice is refused too.
+- If the driver refuses the enqueue, [`Unique`](ds:block?id=mw-unique-pgzepgu6) releases the lock at once, so a retry can pass.
+- [`UniqueUntilFinished`](ds:block?id=mw-uniqueuntilfinished-kgv65kyf) after `Start` returns `workflow.ErrAlreadyStarted`. On a client that does not implement `workflow.RunNotifier` it returns an `UnsupportedError` naming `CapRunFinished`; use `Unique` there and live with the `ttl`.
+- On a driver without `CapRunFinished` (Hatchet delivers run ends best effort: [`hatchet caps`](ds:block?id=hatchet-caps-d6x9fv8z)) a lost event leaves the lock held until the `ttl` runs out. Pick a `ttl` longer than the longest run, but short enough that a lost event costs little. See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- `Unique` owns `ubgo.workflow/unique-key` and `ubgo.workflow/unique-owner`. A job arriving with either, or any other label under `ubgo.workflow/` except the claim check's, is refused with `workflow.ErrInvalid` ([`refuseInternalLabels`](ds:block?id=mw-refuseinternallabels-2brs9sqg)), so a caller cannot release someone else's lock. Use one `Unique` per middleware chain; a second one would refuse the first one's labels.
+- A job enqueued straight on the driver, bypassing the middleware, is not checked, and so is a run written with [`sqlstore.Client.EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq), which runs no enqueue middleware. Route those through the [outbox](outbox.md) when they must be unique.
+- **Place `UniqueByArgs` before a codec that changes the payload on every call.** [`UniqueByArgs`](ds:block?id=mw-uniquebyargs-rgxc6ark) hashes the payload the middleware sees; after an encrypting codec two identical jobs have different bytes and never match.
+- **A field missing from the payload is not the same as a field set to `null`** under [`ArgsFields`](ds:block?id=mw-argsfields-8k2bg7nb); send the field consistently.
+- **Use a fresh `WithEnqueueOutcome` per `Enqueue`.** The first mark wins ([`MarkDuplicate`](ds:block?id=markduplicate-zvp7c76h)), so a ctx reused for a second enqueue keeps the first one's answer; an `Enqueue` of a chain or a batch with one ctx reports its first job only.
+- **`States` costs a `Status` call per refused enqueue.** The holder is looked up only when the key is held ([`acquire`](ds:block?id=mw-uniquewith-acquire-nazcksj3)), but each lookup reaches the backend.
+- **A takeover does not stop the holder.** With `States`, the takeover ([`acquire`](ds:block?id=mw-uniquewith-acquire-nazcksj3)) only moves the lock, and a running holder keeps running beside the job that took its key over; `States` decides whether a second run may exist, not which one wins.
+- [`MemoryUnique`](ds:block?id=mw-memoryunique-uwj4x9gs) holds per process. With several servers, use the SQL store (or your own shared `UniqueStore`).
 
 ## Related
 

@@ -39,6 +39,8 @@ func (r realTimer) Stop() bool          { return r.t.Stop() }
 // TestWakeCheckedFiresByWallClock: the wall clock jumps eight hours (a
 // suspend) while the running-time timers did not move; the wrapped timer
 // fires at its next check, a plain one would wait out its whole delay.
+//
+//ds:def id=clock-testwakecheckedfiresbywallclock-qpns5h9b owner=@khanakia stability=stable
 func TestWakeCheckedFiresByWallClock(t *testing.T) {
 	sc := &suspendClock{base: time.Date(2026, 11, 20, 22, 0, 0, 0, time.UTC), start: time.Now()}
 	wrapped := clock.WakeChecked(sc, time.Minute).NewTimer(time.Hour)

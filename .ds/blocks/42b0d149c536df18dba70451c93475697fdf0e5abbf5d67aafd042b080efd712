@@ -1,0 +1,16 @@
+func (c *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
+	if id.IsZero() {
+		return nil
+	}
+	s, inner := splitID(string(id))
+	if s != "" {
+		return c.backend(s).Unschedule(ctx, workflow.ScheduleID(inner))
+	}
+	err := c.old.Unschedule(ctx, id)
+	if errors.Is(err, workflow.ErrNotFound) {
+		if nerr := c.new.Unschedule(ctx, id); !errors.Is(nerr, workflow.ErrNotFound) {
+			return nerr
+		}
+	}
+	return err
+}

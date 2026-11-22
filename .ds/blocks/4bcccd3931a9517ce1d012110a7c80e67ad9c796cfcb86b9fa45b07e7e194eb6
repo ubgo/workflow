@@ -1,0 +1,14 @@
+func SortPending(rs []RunRecord) {
+	slices.SortFunc(rs, func(a, b RunRecord) int {
+		if c := a.CheckedAt.Compare(b.CheckedAt); c != 0 {
+			return c
+		}
+		switch {
+		case a.Key() < b.Key():
+			return -1
+		case a.Key() > b.Key():
+			return 1
+		}
+		return 0
+	})
+}

@@ -1,0 +1,14 @@
+func OncePerPeriod(job Job, scope string, p Period, t time.Time, loc *time.Location) (Job, error) {
+	if scope == "" {
+		return job, invalidf("once per period: scope is empty")
+	}
+	if job.IdempotencyKey != "" {
+		return job, invalidf("once per period: job already has IdempotencyKey %q", job.IdempotencyKey)
+	}
+	k, err := PeriodKey(t, p, loc)
+	if err != nil {
+		return job, err
+	}
+	job.IdempotencyKey = "period/" + scope + "/" + k
+	return job, nil
+}

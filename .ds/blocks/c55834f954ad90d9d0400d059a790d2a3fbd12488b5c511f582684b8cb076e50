@@ -1,0 +1,11 @@
+func (f *Fake) AssertSignalled(t testing.TB, name, key string) {
+	t.Helper()
+	var all []string
+	for _, ev := range f.Signals() {
+		if ev.Name == name && ev.Key == key {
+			return
+		}
+		all = append(all, ev.Name+"/"+ev.Key)
+	}
+	t.Errorf("event %q with key %q was not signalled; signals: [%s]", name, key, strings.Join(all, ", "))
+}

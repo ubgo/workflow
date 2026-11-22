@@ -1,0 +1,7 @@
+func WithObserver(fn Observer) Option {
+	return func(f *Client) {
+		if fn != nil {
+			f.observe = fn
+		}
+	}
+}

@@ -1,0 +1,12 @@
+func refuseInternalLabels(ctx context.Context, owner string, labels map[string]string, own []string, allow ...string) error {
+	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if !strings.HasPrefix(k, workflow.LabelPrefixInternal) || slices.Contains(allow, k) {
+			continue
+		}
+		if !slices.Contains(own, k) && workflow.CheckJobLabels(ctx, workflow.Job{Labels: map[string]string{k: labels[k]}}) == nil {
+			continue
+		}
+		return fmt.Errorf("%w: %s: label %q uses the reserved prefix %q", workflow.ErrInvalid, owner, k, workflow.LabelPrefixInternal)
+	}
+	return nil
+}

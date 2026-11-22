@@ -2,18 +2,18 @@
 
 Two problems with the same shape: the number of runs does not match the work. Aggregation turns many small jobs into few runs: forty comments on a post in ten minutes become one digest mail per user instead of forty mails. Chunked fan-out turns one job into very many, safely: an announcement to a million recipients is enqueued a chunk at a time, under a rate limit, and a failure halfway resumes at the chunk that failed without mailing anyone twice.
 
-`middleware.Aggregate` collects the payloads of an aggregated workflow's jobs in an `AggregateStore` and enqueues one flush run per group and window, whose step gets every collected item at once. `batch.EnqueueChunked` pages recipients inside a step and starts each chunk with `EnqueueMany`, resuming through the step's journal.
+[`middleware.Aggregate`](ds:block?id=mw-aggregate-pdu5kk9k) collects the payloads of an aggregated workflow's jobs in an [`AggregateStore`](ds:block?id=mw-aggregatestore-4ujmkzzc) and enqueues one flush run per group and window, whose step gets every collected item at once. [`batch.EnqueueChunked`](ds:block?id=batch-enqueuechunked-zkg8zjpv) pages recipients inside a step and starts each chunk with `EnqueueMany`, resuming through the step's journal.
 
 ## Before you start
 
-- Aggregation needs a client with `CapDelayedStart` (the memory, SQL, Redis and Hatchet drivers all have it) and the [Journal plugin](../workflows/memoisation.md) on the worker, so a retried flush step gets back the items it took.
-- Where the items live decides the reach: `middleware.NewMemoryAggregate()` holds them in one process; `sqlstore.AggregateStore` (a table pair in your database) and `redis.AggregateStore` (one list per group) let every process enqueue into the same groups and every worker flush them.
-- Chunked fan-out runs inside a step on any driver with the Journal plugin, and needs `CapIdempotencyKey` on the client the jobs go to (memory, SQL, Redis, Hatchet).
+- Aggregation needs a client with `CapDelayedStart` ([`aggregateNeeds`](ds:block?id=mw-aggregateneeds-4qsn28f8); the memory, SQL, Redis and Hatchet drivers all have it: [`memory`](ds:block?id=memory-caps-yxkuq583), [`SQL`](ds:block?id=sql-caps-yu37ef2j), [`Redis`](ds:block?id=redis-caps-bfgdst9t), [`Hatchet`](ds:block?id=hatchet-caps-d6x9fv8z)) and the [Journal plugin](../workflows/memoisation.md) on the worker, so a retried flush step gets back the items it took.
+- Where the items live decides the reach: `middleware.NewMemoryAggregate()` holds them in one process ([`MemoryAggregate`](ds:block?id=mw-memoryaggregate-d68n2mzr)); [`sqlstore.AggregateStore`](ds:block?id=sql-aggregatestore-9nspa48r) (a table pair in your database) and [`redis.AggregateStore`](ds:block?id=redis-aggregatestore-mudq4qgz) (one list per group) let every process enqueue into the same groups and every worker flush them.
+- Chunked fan-out runs inside a step on any driver with the Journal plugin, and needs `CapIdempotencyKey` on the client the jobs go to ([`EnqueueChunked`](ds:block?id=batch-enqueuechunked-zkg8zjpv) checks it; [`memory`](ds:block?id=memory-caps-yxkuq583), [`SQL`](ds:block?id=sql-caps-yu37ef2j), [`Redis`](ds:block?id=redis-caps-bfgdst9t) and [`Hatchet`](ds:block?id=hatchet-caps-d6x9fv8z) have it).
 - The runnable program for this page is [examples/aggregate-digest](../../examples/aggregate-digest/).
 
 ## Aggregate jobs into one run per window
 
-`middleware.AggregatePlugin(c, store, cfg)` bundles both halves for `workflow.Use`: the enqueue middleware (`Aggregate`) and the step middleware that hands the flush run its items as a JSON array (`AggregateInput`). Put it after the Journal plugin in the same `Use` call. `AggregateConfig` names the aggregated workflows, the `Group` a job joins (here the user; `""` sends the job as an ordinary run), the `Window` and the `MaxItems` cap:
+[`middleware.AggregatePlugin(c, store, cfg)`](ds:block?id=mw-aggregateplugin-fpzxvv2y) bundles both halves for `workflow.Use`: the enqueue middleware (`Aggregate`) and the step middleware that hands the flush run its items as a JSON array ([`AggregateInput`](ds:block?id=mw-aggregateinput-zg7dq6qm)). Put it after the Journal plugin in the same `Use` call. [`AggregateConfig`](ds:block?id=mw-aggregateconfig-rxz5zsns) names the aggregated workflows, the `Group` a job joins (here the user; `""` sends the job as an ordinary run), the `Window` and the `MaxItems` cap:
 
 <!-- snippet: examples/aggregate-digest/main.go#aggregate -->
 ```go
@@ -36,7 +36,7 @@ if err != nil {
 }
 ```
 
-The jobs are enqueued as usual. None becomes a run of its own: its payload is appended to its group, and a flush run is enqueued only when the group needs one:
+The jobs are enqueued as usual. None becomes a run of its own: its payload is appended to its group, and a flush run is enqueued only when the group needs one ([`Aggregate`](ds:block?id=mw-aggregator-wrap-mhdsx7xx)):
 
 <!-- snippet: examples/aggregate-digest/main.go#enqueue -->
 ```go
@@ -51,7 +51,7 @@ for _, cm := range posts {
 }
 ```
 
-The flush run is a run of the same workflow. Its step receives the group's items, in the order they were appended, as one JSON array:
+The flush run is a run of the same workflow ([`flushJob`](ds:block?id=mw-aggregator-flushjob-nfx9yqzx)). Its step receives the group's items, in the order they were appended, as one JSON array ([`AggregateInput`](ds:block?id=mw-aggregateinput-zg7dq6qm)):
 
 <!-- snippet: examples/aggregate-digest/main.go#flush -->
 ```go
@@ -77,25 +77,25 @@ Seven comments become three mails: Alice's third comment fills a chunk, so her f
 
 ### When a flush run is enqueued
 
-- The job that opens a group (its first item since the group was empty) enqueues a flush for the window's end: `Window` after the group's oldest pending item.
-- With `MaxItems` set, the job that fills a chunk (the group's count reaches a multiple of `MaxItems`) enqueues a flush for now, and the job that opens the next chunk enqueues one for the window's end. A flush takes at most `MaxItems` items.
-- Every other job enqueues nothing and returns a zero `RunRef` with a nil error: its item rides with the pending flush.
+- The job that opens a group (its first item since the group was empty) enqueues a flush for the window's end: `Window` after the group's oldest pending item ([`trigger`](ds:block?id=mw-aggregator-trigger-8xtzdnbj)).
+- With `MaxItems` set, the job that fills a chunk (the group's count reaches a multiple of `MaxItems`) enqueues a flush for now ([`trigger`](ds:block?id=mw-aggregator-trigger-8xtzdnbj)), and the job that opens the next chunk enqueues one for the window's end. A flush takes at most `MaxItems` items.
+- Every other job enqueues nothing and returns a zero `RunRef` with a nil error: its item rides with the pending flush ([`Aggregate`](ds:block?id=mw-aggregator-wrap-mhdsx7xx)).
 
-So there is one flush per window and chunk, never one per job, and always at least as many flushes pending as the stored items need. A flush that finds its chunk already taken by an earlier one gets an empty array and should return early. Items appended after a flush took its chunk go to the next flush.
+So there is one flush per window and chunk, never one per job, and always at least as many flushes pending as the stored items need. A flush that finds its chunk already taken by an earlier one gets an empty array ([`AggregatedItems`](ds:block?id=mw-aggregateditems-mgvmxuw5)) and should return early. Items appended after a flush took its chunk go to the next flush.
 
 ### No item lost or delivered twice
 
-`AggregateStore` has two methods: `Append(ctx, group, item, now)` returns the group's count and the time of its oldest pending item, and `Take(ctx, group, max)` removes and returns up to `max` of the oldest items. Both are atomic per group, so every item comes out of exactly one `Take`. The SQL store locks the group's row before reading or writing its items (the same statements on SQLite, Postgres and MySQL, no `RETURNING` needed); the Redis store runs each as one Lua script. `workflowtest.AggregateStoreContract` is the test every store passes, appenders and takers racing on one group.
+[`AggregateStore`](ds:block?id=mw-aggregatestore-4ujmkzzc) has two methods: `Append(ctx, group, item, now)` returns the group's count and the time of its oldest pending item, and `Take(ctx, group, max)` removes and returns up to `max` of the oldest items. Both are atomic per group, so every item comes out of exactly one `Take`. The SQL store locks the group's row before reading or writing its items (the same statements on SQLite, Postgres and MySQL, no `RETURNING` needed: [`sqlstore.AggregateStore`](ds:block?id=sql-aggregatestore-9nspa48r)); the Redis store runs each as one Lua script ([`redis.AggregateStore`](ds:block?id=redis-aggregatestore-mudq4qgz)). [`workflowtest.AggregateStoreContract`](ds:block?id=workflowtest-aggregatestorecontract-qdhkqxx3) is the test every store passes, appenders and takers racing on one group.
 
-The flush step takes its items once: `AggregatedItems` (which `AggregateInput` calls) keeps what it took as run data in the journal, so a retried step, a later step of the same run, or a run retried with `RunRetrier` gets the same items back rather than taking another chunk. Read the items yourself with `middleware.AggregatedItems(ctx, store)` when they are not JSON (`AggregateConfig.RawItems`) or when you want them as bytes.
+The flush step takes its items once: [`AggregatedItems`](ds:block?id=mw-aggregateditems-mgvmxuw5) (which `AggregateInput` calls) keeps what it took as run data in the journal, so a retried step, a later step of the same run, or a run retried with `RunRetrier` gets the same items back rather than taking another chunk. Read the items yourself with `middleware.AggregatedItems(ctx, store)` when they are not JSON (`AggregateConfig.RawItems`) or when you want them as bytes.
 
 ### The SQL and Redis stores
 
-`Client.AggregateStore()` on the SQL driver, or `sqlstore.NewAggregateStore(db, dialect, opts...)` over any `*sql.DB` (an app on Hatchet with a database), returns the durable store. Its two tables have a migration list of their own (owner `ubgo/workflow/sqlstore/aggregate`, `001_aggregate`): call the store's `Migrate`, which `Client.Migrate` does not do for you, or apply `AggregateStore.MigrationScripts()` in your own pipeline. A group's row outlives its items, so a busy group is locked by an update rather than re-inserted; `PruneEmpty` deletes the rows of empty groups now and then. In Redis, `redis.NewAggregateStore(rdb, prefix)` or `Client.AggregateStore()`.
+`Client.AggregateStore()` on the SQL driver, or [`sqlstore.NewAggregateStore(db, dialect, opts...)`](ds:block?id=sql-newaggregatestore-2efq7rbx) over any `*sql.DB` (an app on Hatchet with a database), returns the durable store. Its two tables have a migration list of their own (owner [`ubgo/workflow/sqlstore/aggregate`](ds:block?id=sql-aggregatemigrationowner-rwfj7uay), [`001_aggregate`](ds:block?id=sql-aggregatestore-aggregatemigrations-qep75jy2)): call the store's [`Migrate`](ds:block?id=sql-aggregatestore-migrate-fw595ta7), which `Client.Migrate` does not do for you, or apply [`AggregateStore.MigrationScripts()`](ds:block?id=sql-aggregatestore-migrationscripts-g5bh3kkg) in your own pipeline. A group's row outlives its items, so a busy group is locked by an update rather than re-inserted; [`PruneEmpty`](ds:block?id=sql-aggregatestore-pruneempty-8sfb57vh) deletes the rows of empty groups now and then. In Redis, `redis.NewAggregateStore(rdb, prefix)` or `Client.AggregateStore()`.
 
 ## Fan out to many recipients in chunks
 
-`batch.EnqueueChunked(ctx, c, name, opts, page)` runs inside a step. It calls `page` with each chunk's offset and size, enqueues the jobs it returns with `EnqueueMany` (one transaction on the SQL driver, one bulk request on Hatchet), and ends when a page returns fewer jobs than the chunk size. It is built on `workflow.ProcessChunks`, so each finished chunk is recorded in the journal and progress is reported after every chunk:
+[`batch.EnqueueChunked(ctx, c, name, opts, page)`](ds:block?id=batch-enqueuechunked-zkg8zjpv) runs inside a step. It calls `page` with each chunk's offset and size, enqueues the jobs it returns with `EnqueueMany` (one transaction on the SQL driver, one bulk request on Hatchet), and ends when a page returns fewer jobs than the chunk size. It is built on `workflow.ProcessChunks`, so each finished chunk is recorded in the journal and progress is reported after every chunk:
 
 <!-- snippet: examples/aggregate-digest/main.go#chunked -->
 ```go
@@ -126,9 +126,9 @@ wf := workflow.Workflow{Name: "announce", Retry: workflow.RetryPolicy{Max: 3}, S
 
 The second page fails once, the step is retried, and it resumes at that page: the first chunk is not read or sent again, and every recipient gets one mail.
 
-Each job gets an `IdempotencyKey` made from the run, the name and the job's index (or `ChunkedOptions.Key`), which covers the one window the journal cannot: a crash after a chunk was enqueued and before the journal recorded it. The retry sends that chunk again and the keys fold each job into its run from the first send, while that run is unfinished.
+Each job gets an `IdempotencyKey` made from the run, the name and the job's index ([`chunkKey`](ds:block?id=batch-chunkkey-djcqhrrv); or [`ChunkedOptions.Key`](ds:block?id=batch-chunkedoptions-9m7wt4dg)), which covers the one window the journal cannot: a crash after a chunk was enqueued and before the journal recorded it. The retry sends that chunk again and the keys fold each job into its run from the first send, while that run is unfinished.
 
-`ChunkedOptions.Limit` takes a `workflow.UpstreamLimit` and draws one unit per job before each chunk is enqueued, so the fan-out goes out at the rate the mail provider allows. A chunk that does not fit fails the step with the limit's retry-after error (or snoozes it, with `ChunkedOptions.Snooze` on a driver with `CapSnooze`), and the retry resumes at that chunk. Give the step's workflow `RetryPolicy{DelayFor: workflow.RetryAfterDelay}` so the retry waits for room, and enough attempts.
+[`ChunkedOptions.Limit`](ds:block?id=batch-chunkedoptions-9m7wt4dg) takes a `workflow.UpstreamLimit` and draws one unit per job before each chunk is enqueued ([`EnqueueChunked`](ds:block?id=batch-enqueuechunked-zkg8zjpv)), so the fan-out goes out at the rate the mail provider allows. A chunk that does not fit fails the step with the limit's retry-after error (or snoozes it, with `ChunkedOptions.Snooze` on a driver with `CapSnooze`), and the retry resumes at that chunk. Give the step's workflow `RetryPolicy{DelayFor: workflow.RetryAfterDelay}` so the retry waits for room, and enough attempts.
 
 ## Try it
 
@@ -150,18 +150,18 @@ pages read: offset 0 1x, offset 10 2x, offset 20 1x
 
 ## Pitfalls
 
-- `Client.Migrate` does not create the aggregate tables, on purpose: like the outbox, the store migrates on its own, so an app that never aggregates gets no tables for it. Call `AggregateStore.Migrate` after `Client.Migrate` (or apply `AggregateStore.MigrationScripts()`); without it the first `Append` fails with a missing table ([each store's migration list](../operations/migrations.md#each-stores-migration-list)).
-- `Aggregate` returns an `UnsupportedError` (matching `workflow.ErrUnsupported`) on a client without `CapDelayedStart`; a config without workflows or a positive `Window`, or a negative `MaxItems`, is `workflow.ErrInvalid`.
-- A job of an aggregated workflow may not carry an `IdempotencyKey` or a `Chain` (`ErrInvalid`): the flush run is not that job's run. Its `RunAt` is replaced; its `Queue`, `Tenant`, `Priority`, `Retry` and labels are copied onto the flush run it triggers.
-- Payloads must be JSON (`ErrInvalid` before anything is stored), since the step gets them as a JSON array; set `RawItems` and read them with `AggregatedItems` for other bytes.
-- If the item is stored and its flush run cannot be enqueued, the error matches `middleware.ErrFlushNotEnqueued`. The item is kept and the group's next job in this process enqueues a flush at once. Do not enqueue the same job again: its payload is already in the group.
-- Items are stored as the payload reaches `Aggregate`. A payload codec or claim check that runs before it in the enqueue chain stores sealed or referenced payloads, which are not JSON: put `Aggregate` first, or set `RawItems` and open the items in the step.
-- Every process enqueuing a group must use the same `MaxItems`: the trigger rule counts on it.
-- Call `AggregatedItems` from one step at a time. Two steps of one run taking in parallel would each take a chunk.
-- A crash between a flush's take and the journal's save loses that chunk; with a durable `JournalStore` the window is two store calls wide. A flush run that fails for good keeps its items only in its journal: keep failed journals (`workflow.JournalKeepFailed`) to retry it with them.
-- `EnqueueChunked` returns a Permanent `UnsupportedError` without `CapIdempotencyKey` on the client, and a Permanent `ErrInvalid` outside a step (no `StepInfo`) unless `ChunkedOptions.Key` is set, or for a page that returns more jobs than the chunk size.
-- An idempotency key holds only while its run is unfinished. A recipient whose run already finished before a chunk was sent again gets a second message: keep the job's own handler idempotent, or add long-lived dedup such as [unique jobs](unique-jobs.md), when that matters.
-- `ChunkedOptions.Size` must not exceed the limit's capacity, or every chunk is refused (Permanent).
+- `Client.Migrate` does not create the aggregate tables, on purpose ([`AggregateMigrationOwner`](ds:block?id=sql-aggregatemigrationowner-rwfj7uay)): like the outbox, the store migrates on its own, so an app that never aggregates gets no tables for it. Call `AggregateStore.Migrate` after `Client.Migrate` (or apply `AggregateStore.MigrationScripts()`); without it the first `Append` fails with a missing table ([each store's migration list](../operations/migrations.md#each-stores-migration-list)).
+- [`Aggregate`](ds:block?id=mw-aggregate-pdu5kk9k) returns an `UnsupportedError` (matching `workflow.ErrUnsupported`) on a client without `CapDelayedStart`; a config without workflows or a positive `Window`, or a negative `MaxItems`, is `workflow.ErrInvalid`.
+- A job of an aggregated workflow may not carry an `IdempotencyKey` or a `Chain` (`ErrInvalid`: [`check`](ds:block?id=mw-aggregator-check-vqkgkvza)): the flush run is not that job's run. Its `RunAt` is replaced; its `Queue`, `Tenant`, `Priority`, `Retry` and labels are copied onto the flush run it triggers ([`flushJob`](ds:block?id=mw-aggregator-flushjob-nfx9yqzx)).
+- Payloads must be JSON (`ErrInvalid` before anything is stored: [`check`](ds:block?id=mw-aggregator-check-vqkgkvza)), since the step gets them as a JSON array; set `RawItems` and read them with `AggregatedItems` for other bytes.
+- If the item is stored and its flush run cannot be enqueued, the error matches [`middleware.ErrFlushNotEnqueued`](ds:block?id=mw-errflushnotenqueued-wyzy7c7x). The item is kept and the group's next job in this process enqueues a flush at once ([`Aggregate`](ds:block?id=mw-aggregator-wrap-mhdsx7xx)). Do not enqueue the same job again: its payload is already in the group.
+- Items are stored as the payload reaches [`Aggregate`](ds:block?id=mw-aggregator-wrap-mhdsx7xx). A payload codec or claim check that runs before it in the enqueue chain stores sealed or referenced payloads, which are not JSON: put `Aggregate` first, or set `RawItems` and open the items in the step.
+- Every process enqueuing a group must use the same `MaxItems`: the trigger rule ([`trigger`](ds:block?id=mw-aggregator-trigger-8xtzdnbj)) counts on it.
+- Call [`AggregatedItems`](ds:block?id=mw-aggregateditems-mgvmxuw5) from one step at a time. Two steps of one run taking in parallel would each take a chunk.
+- A crash between a flush's take and the journal's save loses that chunk ([`AggregatedItems`](ds:block?id=mw-aggregateditems-mgvmxuw5)); with a durable `JournalStore` the window is two store calls wide. A flush run that fails for good keeps its items only in its journal: keep failed journals (`workflow.JournalKeepFailed`) to retry it with them.
+- [`EnqueueChunked`](ds:block?id=batch-enqueuechunked-zkg8zjpv) returns a Permanent `UnsupportedError` without `CapIdempotencyKey` on the client, and a Permanent `ErrInvalid` outside a step (no `StepInfo`) unless `ChunkedOptions.Key` is set, or for a page that returns more jobs than the chunk size.
+- An idempotency key holds only while its run is unfinished ([`EnqueueChunked`](ds:block?id=batch-enqueuechunked-zkg8zjpv)). A recipient whose run already finished before a chunk was sent again gets a second message: keep the job's own handler idempotent, or add long-lived dedup such as [unique jobs](unique-jobs.md), when that matters.
+- `ChunkedOptions.Size` must not exceed the limit's capacity, or every chunk is refused (Permanent: [`ChunkedOptions`](ds:block?id=batch-chunkedoptions-9m7wt4dg)).
 
 ## Related
 

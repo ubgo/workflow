@@ -1,0 +1,1 @@
+	CapRetryDelay = defineCap(11, "RetryDelay")

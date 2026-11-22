@@ -1,0 +1,5 @@
+type RunNotifier interface {
+	// OnRunFinished registers fn. It returns ErrAlreadyStarted after
+	// Start.
+	OnRunFinished(fn RunFinishedFunc) error
+}

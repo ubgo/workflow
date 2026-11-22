@@ -1,0 +1,37 @@
+func toleratedHandler(step string, policy RetryPolicy, routes []CatchRoute, next Handler) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		out, err := next(ctx, in)
+		if te := attemptTimeout(ctx); te != nil && !IsTimeout(err) {
+			if err == nil {
+				err = te
+			} else {
+				err = fmt.Errorf("%w: %w", te, err)
+			}
+		}
+		if err == nil || IsDiscarded(err) || errors.Is(err, ErrCancelled) || errors.Is(err, ErrSnoozed) {
+			return out, err
+		}
+		attempt := 1
+		if info, ok := StepInfoFrom(ctx); ok && info.Attempt > 0 {
+			attempt = info.Attempt
+		}
+		if !IsPermanent(err) && policy.Retryable(err, attempt) {
+			return out, err
+		}
+		kind := FailureError
+		if IsTimeout(err) {
+			kind = FailureTimeout
+		}
+		for _, r := range routes {
+			if r.Match(err) {
+				kind = r.Kind
+				break
+			}
+		}
+		rec, rerr := encodeJSON("tolerated step "+step, ruleRecord{Failed: &StepFailure{Step: step, Kind: kind, Error: err.Error()}})
+		if rerr == nil {
+			ClaimTimeout(ctx) // a no-op unless the attempt timed out
+		}
+		return rec, rerr
+	}
+}

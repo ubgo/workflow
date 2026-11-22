@@ -1,0 +1,7 @@
+func WithClock(c clock.Clock) Option {
+	return func(o *Outbox) {
+		if c != nil {
+			o.clk = c
+		}
+	}
+}

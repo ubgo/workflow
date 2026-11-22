@@ -1,0 +1,10 @@
+func noteAuthorize(ctx context.Context, action Action, res Resource, err error) {
+	rec, ok := ctx.Value(auditKey{}).(*auditRecord)
+	if !ok {
+		return
+	}
+	rec.action, rec.res, rec.asked, rec.allowed = action, res, true, err == nil
+	if err != nil {
+		rec.err = errors.New("admin: not allowed: " + string(action))
+	}
+}

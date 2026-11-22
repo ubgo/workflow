@@ -38,12 +38,20 @@ type WriteOp string
 
 // The writes a Recorder makes.
 const (
-	OpUpsertRun  WriteOp = "upsert-run"
-	OpStartStep  WriteOp = "start-step"
-	OpEndStep    WriteOp = "end-step"
-	OpAddEvent   WriteOp = "add-event"
-	OpFinishRun  WriteOp = "finish-run"
+	//ds:def id=rec-opupsertrun-zvthqrsn owner=@khanakia stability=stable
+	OpUpsertRun WriteOp = "upsert-run"
+	//ds:def id=rec-opstartstep-yh65yvgr owner=@khanakia stability=stable
+	OpStartStep WriteOp = "start-step"
+	//ds:def id=rec-opendstep-9gt5czpt owner=@khanakia stability=stable
+	OpEndStep WriteOp = "end-step"
+	//ds:def id=rec-opaddevent-kpqzyqhe owner=@khanakia stability=stable
+	OpAddEvent WriteOp = "add-event"
+	//ds:def id=rec-opfinishrun-c5chxmfv owner=@khanakia stability=stable
+	OpFinishRun WriteOp = "finish-run"
+	//ds:def id=rec-opreadresult-rkjnuah5 owner=@khanakia stability=stable
 	OpReadResult WriteOp = "read-result"
+	//ds:def id=rec-opsetoutcome-c9naecw4 owner=@khanakia stability=stable
+	OpSetOutcome WriteOp = "set-outcome"
 )
 
 // ErrorFunc is told about a failed write. The run goes on regardless: a
@@ -232,6 +240,8 @@ func New(s Store, opts ...Option) (*Recorder, error) {
 }
 
 // logError is the default ErrorFunc.
+//
+//ds:def id=rec-logerror-ne6hyt2t owner=@khanakia stability=stable
 func logError(ctx context.Context, op WriteOp, ref workflow.RunRef, err error) {
 	slog.Default().WarnContext(ctx, "recorder: write failed", slog.String("op", string(op)), slog.String("run", KeyOf(ref)), slog.Any("error", err))
 }
@@ -300,6 +310,14 @@ var (
 // panic in the store, to the error hook. It never returns an error: a
 // recorder never fails a run.
 func (r *Recorder) write(ctx context.Context, op WriteOp, ref workflow.RunRef, fn func(context.Context) error) {
+	_ = r.guarded(ctx, op, ref, fn)
+}
+
+// guarded is write that also returns the failure, for the one write whose
+// caller wants it (SetOutcome): the store call runs detached and bounded,
+// a panic in it becomes an error, and any error reaches the error hook
+// before it is returned.
+func (r *Recorder) guarded(ctx context.Context, op WriteOp, ref workflow.RunRef, fn func(context.Context) error) error {
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.writeTimeout)
 	defer cancel()
 	err := func() (err error) {
@@ -313,6 +331,7 @@ func (r *Recorder) write(ctx context.Context, op WriteOp, ref workflow.RunRef, f
 	if err != nil {
 		r.onError(ctx, op, ref, err)
 	}
+	return err
 }
 
 // body returns what may be stored of b, and its size before redaction: nil
@@ -450,19 +469,21 @@ func (s stepSink) RecordStepEvent(ctx context.Context, e workflow.StepEvent) {
 	s.r.write(ctx, OpAddEvent, ref, func(wctx context.Context) error { return s.r.store.AddEvent(wctx, w) })
 }
 
-// outcomeSetter stores the outcome a step sets. Unlike the other writes,
-// its error goes back to the step: SetOutcome's caller asked for the
-// outcome to be kept.
+// outcomeSetter stores the outcome a step sets. Like every write it is
+// panic-protected and a failure reaches the error hook (OpSetOutcome);
+// unlike the others, the error also goes back to the step: SetOutcome's
+// caller asked for the outcome to be kept.
 type outcomeSetter struct {
 	r   *Recorder
 	ref workflow.RunRef
 }
 
 // SetOutcome implements workflow.OutcomeSetter.
+//
+//ds:def id=rec-outcomesetter-setoutcome-xyzz7nyk owner=@khanakia stability=stable
 func (o outcomeSetter) SetOutcome(ctx context.Context, oc workflow.Outcome, note string) error {
-	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), o.r.writeTimeout)
-	defer cancel()
-	return o.r.store.SetOutcome(wctx, OutcomeWrite{Ref: o.ref, Outcome: oc, Note: note, At: o.r.clk.Now()})
+	w := OutcomeWrite{Ref: o.ref, Outcome: oc, Note: note, At: o.r.clk.Now()}
+	return o.r.guarded(ctx, OpSetOutcome, o.ref, func(wctx context.Context) error { return o.r.store.SetOutcome(wctx, w) })
 }
 
 // OnRunFinished records a run's end; it is the run-finished observer the

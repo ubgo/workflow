@@ -1,0 +1,6 @@
+var mysqlExprs = engineExprs{
+	id:     "CONCAT('obx_', REPLACE(UUID(), '-', ''))",
+	now:    "CAST(UNIX_TIMESTAMP(NOW(6)) * 1000000000 AS SIGNED)",
+	object: "JSON_OBJECT",
+	key:    func(col string) string { return "CAST(" + col + " AS CHAR)" },
+}

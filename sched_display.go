@@ -18,6 +18,8 @@ type NextRun struct {
 
 // String renders r as "2026-10-15 09:00:00 CEST (07:00:00 UTC)"; the date
 // in parentheses is added when the UTC day differs.
+//
+//ds:def id=nextrun-string-chk5jqpn owner=@khanakia stability=stable
 func (r NextRun) String() string {
 	const day, clock = "2006-01-02", "15:04:05"
 	utc := r.UTC.Format(clock)
@@ -50,6 +52,7 @@ type NextRunsQuery struct {
 // examined: a window that rejects almost every tick must not turn a
 // display call into a long loop.
 const (
+	//ds:def id=maxnextruns-v73usp38 owner=@khanakia stability=stable
 	MaxNextRuns     = 100
 	maxNextRunsScan = 10000
 )
@@ -59,6 +62,8 @@ const (
 // dashboard's "next run" column). It returns fewer when the schedule ends
 // or the scan limit is reached. It is a pure function: the reference time
 // comes from q.After.
+//
+//ds:def id=nextruns-eumy8g7g owner=@khanakia stability=stable
 func NextRuns(q NextRunsQuery) []NextRun {
 	if q.Schedule == nil || q.Count <= 0 {
 		return nil

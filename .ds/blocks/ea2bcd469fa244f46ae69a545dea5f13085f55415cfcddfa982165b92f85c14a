@@ -1,0 +1,8 @@
+func (f *Client) tryPrimary() bool {
+	if f.coolN == 0 {
+		return true
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.coolUntil.IsZero() || !f.clk.Now().Before(f.coolUntil)
+}

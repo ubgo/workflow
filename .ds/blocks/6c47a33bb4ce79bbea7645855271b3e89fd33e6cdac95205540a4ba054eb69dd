@@ -1,0 +1,54 @@
+func TestTraceLink(t *testing.T) {
+	cases := []struct {
+		name string
+		link string
+		want string
+	}{
+		{"https", "https://tracing.example.com/trace/0af7651916cd43dd8448eb211c80319c", "https://tracing.example.com/trace/0af7651916cd43dd8448eb211c80319c"},
+		{"http upper-case scheme", "HTTP://jaeger.local:16686/trace/abc", "HTTP://jaeger.local:16686/trace/abc"},
+		{"empty means none", "", ""},
+		{"javascript refused", "javascript:alert(1)", ""},
+		{"data refused", "data:text/html,<script>alert(1)</script>", ""},
+		{"relative refused", "/trace/abc", ""},
+		{"scheme-relative refused", "//evil.example.com/x", ""},
+		{"no host refused", "https:///trace", ""},
+		{"control character refused", "https://a.example.com/\nx", ""},
+		{"panic", "panic", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var saw workflow.RunInfo
+			h := NewHandler(New(seeded()), bearerAuth(), WithTraceLink(func(r workflow.RunInfo) string {
+				saw = r
+				if tc.link == "panic" {
+					panic("bad template")
+				}
+				return tc.link
+			}))
+			rec := do(t, h, "GET", "/runs/r2", "")
+			var out struct {
+				TraceURL *string `json:"trace_url"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+			got := ""
+			if out.TraceURL != nil {
+				got = *out.TraceURL
+			}
+			if got != tc.want {
+				t.Errorf("trace_url %q, want %q", got, tc.want)
+			}
+			if saw.Ref.RunID != "r2" || saw.Labels["tenant"] != "a" {
+				t.Errorf("fn saw %+v", saw)
+			}
+		})
+	}
+	h := NewHandler(New(seeded()), bearerAuth(), WithTraceLink(func(workflow.RunInfo) string { return "https://t.example.com/x" }))
+	if body := do(t, h, "GET", "/runs", "").Body.String(); strings.Contains(body, "trace_url") {
+		t.Errorf("a list carries trace_url: %s", body)
+	}
+	if body := do(t, NewHandler(New(seeded()), bearerAuth()), "GET", "/runs/r2", "").Body.String(); strings.Contains(body, "trace_url") {
+		t.Errorf("trace_url without WithTraceLink: %s", body)
+	}
+}

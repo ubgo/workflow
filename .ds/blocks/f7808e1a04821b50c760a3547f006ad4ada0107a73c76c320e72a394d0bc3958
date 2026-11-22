@@ -1,0 +1,9 @@
+type JoinFailedError struct {
+	// Name is the join's name.
+	Name string
+	// Need and Succeeded are the successes wanted and seen.
+	Need, Succeeded int
+	// Failed are the children that ended without succeeding, by index
+	// into the children started, with how each ended.
+	Failed map[int]*RunFailedError
+}

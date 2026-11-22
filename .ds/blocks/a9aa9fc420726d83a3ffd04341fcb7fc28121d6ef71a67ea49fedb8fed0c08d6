@@ -1,0 +1,12 @@
+type Notifier interface {
+	// Notify tells every client listening on channel that work may be due.
+	// The client calls it from one background goroutine, coalescing
+	// bursts, with a bounded context; an error is logged and dropped.
+	Notify(ctx context.Context, channel string) error
+	// Listen subscribes to channel and calls wake for every notification
+	// until ctx ends, then returns. It may call wake spuriously (once after
+	// subscribing is recommended, to cover the gap before it). Any other
+	// return is a lost subscription: the client logs it and calls Listen
+	// again after its poll interval (at most a second), polling meanwhile.
+	Listen(ctx context.Context, channel string, wake func()) error
+}

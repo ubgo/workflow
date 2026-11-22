@@ -1,0 +1,9 @@
+type StepFailure struct {
+	// Step is the step that failed.
+	Step string `json:"step"`
+	// Kind is the CatchRoute kind, FailureTimeout or FailureError.
+	Kind string `json:"kind"`
+	// Error is the failure's message (the error itself does not survive
+	// the trip between steps).
+	Error string `json:"error"`
+}

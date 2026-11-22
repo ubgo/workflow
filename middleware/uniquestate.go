@@ -15,6 +15,8 @@ import (
 // up: to decide by the holder's status (UniqueConfig.States) or to return
 // it (UniqueConfig.ReturnExisting). MemoryUnique implements it, and so
 // should a shared store (sqlstore.UniqueStore).
+//
+//ds:def id=mw-uniqueholders-n5q86z5e owner=@khanakia stability=stable
 type UniqueHolders interface {
 	// SetHolder records ref as the run of key while owner holds it; a key
 	// held by another owner, or free, is left alone.
@@ -25,6 +27,8 @@ type UniqueHolders interface {
 }
 
 // UniqueConfig configures UniqueWith.
+//
+//ds:def id=mw-uniqueconfig-uyr8qksj owner=@khanakia stability=stable
 type UniqueConfig struct {
 	// By derives the key; "" passes the job through. Required.
 	By func(workflow.Job) string
@@ -70,6 +74,8 @@ type UniqueConfig struct {
 // (ReturnExisting). It refuses a config it cannot honour with ErrInvalid:
 // a missing By, Store or TTL, States without a Client, or States or
 // ReturnExisting on a store that does not implement UniqueHolders.
+//
+//ds:def id=mw-uniquewith-646etc3s owner=@khanakia stability=stable
 func UniqueWith(cfg UniqueConfig) (workflow.EnqueueMiddleware, error) {
 	if cfg.By == nil || cfg.Store == nil || cfg.TTL <= 0 {
 		return nil, fmt.Errorf("%w: UniqueWith needs By, Store and a positive TTL", workflow.ErrInvalid)
@@ -139,6 +145,8 @@ func (u uniqueWith) middleware(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 
 // acquire takes key, taking it over from a holder whose run is in none of
 // States.
+//
+//ds:def id=mw-uniquewith-acquire-nazcksj3 owner=@khanakia stability=stable
 func (u uniqueWith) acquire(ctx context.Context, key, owner string) (bool, error) {
 	ok, err := u.cfg.Store.Acquire(ctx, key, owner, u.cfg.TTL)
 	if err != nil || ok || len(u.cfg.States) == 0 {
@@ -166,6 +174,8 @@ func (u uniqueWith) acquire(ctx context.Context, key, owner string) (bool, error
 }
 
 // duplicate answers an enqueue whose key is held.
+//
+//ds:def id=mw-uniquewith-duplicate-hkdx4h2u owner=@khanakia stability=stable
 func (u uniqueWith) duplicate(ctx context.Context, key string, job workflow.Job) (workflow.RunRef, error) {
 	if u.cfg.Replace {
 		_, ref, found, err := u.holders.Holder(ctx, key)

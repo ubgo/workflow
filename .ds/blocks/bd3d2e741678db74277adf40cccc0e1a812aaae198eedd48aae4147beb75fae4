@@ -1,0 +1,3 @@
+func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	return workflow.Forward{Inner: c.sched}.Schedules(ctx)
+}

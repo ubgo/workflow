@@ -21,62 +21,89 @@ import (
 
 // ScopeName is the instrumentation scope of every tracer and meter this
 // package creates.
+//
+//ds:def id=otel-scopename-5xfp7mp2 owner=@khanakia stability=stable
 const ScopeName = "github.com/ubgo/workflow/otel"
 
 // LabelPrefix starts every job label this package writes to carry trace
 // context; see the package doc for why this prefix. It is the core's
 // workflow.LabelPrefixOTel, which this package owns.
+//
+//ds:def id=otel-labelprefix-hb4wagdf owner=@khanakia stability=stable
 const LabelPrefix = workflow.LabelPrefixOTel
 
 // Attribute keys. Labels are recorded under LabelAttributePrefix + key.
 const (
+	//ds:def id=otel-attrworkflow-m4cwsvz8 owner=@khanakia stability=stable
 	AttrWorkflow = attribute.Key("workflow.name")
-	AttrStep     = attribute.Key("workflow.step")
-	AttrRunID    = attribute.Key("workflow.run_id")
-	AttrAttempt  = attribute.Key("workflow.attempt")
-	AttrOutcome  = attribute.Key("workflow.outcome")
-	AttrQueue    = attribute.Key("workflow.queue")
+	//ds:def id=otel-attrstep-c3rg5j6t owner=@khanakia stability=stable
+	AttrStep = attribute.Key("workflow.step")
+	//ds:def id=otel-attrrunid-evsavb7g owner=@khanakia stability=stable
+	AttrRunID = attribute.Key("workflow.run_id")
+	//ds:def id=otel-attrattempt-4axttveq owner=@khanakia stability=stable
+	AttrAttempt = attribute.Key("workflow.attempt")
+	//ds:def id=otel-attroutcome-dq7f9wcq owner=@khanakia stability=stable
+	AttrOutcome = attribute.Key("workflow.outcome")
+	//ds:def id=otel-attrqueue-b5u3yxt9 owner=@khanakia stability=stable
+	AttrQueue = attribute.Key("workflow.queue")
 	// AttrNode is StepInfo.Node, the process that ran the attempt, on
 	// step spans when the driver sets it.
+	//ds:def id=otel-attrnode-dv4zd9dw owner=@khanakia stability=stable
 	AttrNode = attribute.Key("workflow.node")
 	// AttrTenant is Job.Tenant (StepInfo.Tenant) on step and enqueue
 	// spans, recorded only with WithTenant.
+	//ds:def id=otel-attrtenant-5dkn6ckw owner=@khanakia stability=stable
 	AttrTenant = attribute.Key("workflow.tenant")
 	// AttrRunStatus is the terminal workflow.Status of a run on
 	// MetricRunsFinished: succeeded, failed, cancelled, or discarded on a
 	// driver with CapRunStates.
-	AttrRunStatus        = attribute.Key("workflow.run.status")
+	//ds:def id=otel-attrrunstatus-5nbeuysf owner=@khanakia stability=stable
+	AttrRunStatus = attribute.Key("workflow.run.status")
+	//ds:def id=otel-labelattributeprefix-td9mmuw2 owner=@khanakia stability=stable
 	LabelAttributePrefix = "workflow.label."
 )
 
 // Outcome is the value of the workflow.outcome attribute.
+//
+//ds:def id=otel-outcome-dxhyabc3 owner=@khanakia stability=stable
 type Outcome string
 
 // The outcomes a step attempt or an enqueue can have.
 const (
-	OutcomeOK        Outcome = "ok"
-	OutcomeError     Outcome = "error"
+	//ds:def id=otel-outcomeok-ur4xja87 owner=@khanakia stability=stable
+	OutcomeOK Outcome = "ok"
+	//ds:def id=otel-outcomeerror-rf73ckyh owner=@khanakia stability=stable
+	OutcomeError Outcome = "error"
+	//ds:def id=otel-outcomepermanent-d2djqzf2 owner=@khanakia stability=stable
 	OutcomePermanent Outcome = "permanent"
+	//ds:def id=otel-outcomecancelled-hxv3x5u7 owner=@khanakia stability=stable
 	OutcomeCancelled Outcome = "cancelled"
 	// OutcomeDiscarded is a step that returned workflow.Discard: the run
 	// is dropped, not retried and not failed.
+	//ds:def id=otel-outcomediscarded-c7rj4ujx owner=@khanakia stability=stable
 	OutcomeDiscarded Outcome = "discarded"
 )
 
 // Metric names.
 const (
+	//ds:def id=otel-metricstepduration-hedu2w5b owner=@khanakia stability=stable
 	MetricStepDuration = "workflow.step.duration"
+	//ds:def id=otel-metricstepoutcomes-hxy5z37a owner=@khanakia stability=stable
 	MetricStepOutcomes = "workflow.step.outcomes"
+	//ds:def id=otel-metricenqueuecount-xg9zbms4 owner=@khanakia stability=stable
 	MetricEnqueueCount = "workflow.enqueue.count"
 	// MetricQueueWait is how long a step attempt waited for a worker:
 	// from the moment it became ready (StepInfo.ReadyAt) to the moment it
 	// started. For a run's first step that is enqueue to start.
+	//ds:def id=otel-metricqueuewait-cvnnku6c owner=@khanakia stability=stable
 	MetricQueueWait = "workflow.queue.wait"
 	// MetricQueueDepth is how many runs wait in each queue, read through a
 	// QueueDepthFunc at every collection.
+	//ds:def id=otel-metricqueuedepth-fgtkqkfz owner=@khanakia stability=stable
 	MetricQueueDepth = "workflow.queue.depth"
 	// MetricRunsFinished counts run ends by workflow and AttrRunStatus,
 	// fed by RunFinished.
+	//ds:def id=otel-metricrunsfinished-kencama7 owner=@khanakia stability=stable
 	MetricRunsFinished = "workflow.runs.finished"
 )
 
@@ -87,6 +114,8 @@ const (
 // put almost every wait in the first two buckets. An SDK View replaces
 // them. It returns a new slice on every call, so no caller can change
 // another's boundaries.
+//
+//ds:def id=otel-queuewaitbuckets-m9t9px3s owner=@khanakia stability=stable
 func QueueWaitBuckets() []float64 {
 	return []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300, 900, 3600}
 }
@@ -94,6 +123,8 @@ func QueueWaitBuckets() []float64 {
 // QueueDepthFunc returns how many runs wait in each queue, by queue name.
 // admin.Admin.QueueDepths has this signature, so a method value plugs in
 // directly; an app that can count with one SQL query passes its own.
+//
+//ds:def id=otel-queuedepthfunc-bczzu4r9 owner=@khanakia stability=stable
 type QueueDepthFunc func(ctx context.Context) (map[string]int64, error)
 
 // Option configures New.
@@ -120,20 +151,25 @@ type Parenting string
 const (
 	// ParentChild makes the step span a child of the enqueue span, so the
 	// whole run is one trace with its caller. The default.
+	//ds:def id=otel-parentchild-5bcxkepy owner=@khanakia stability=stable
 	ParentChild Parenting = "child"
 	// ParentLink keeps whatever span ctx already holds as the parent (an
 	// engine SDK's span, or none) and links the enqueue span, as the OTel
 	// messaging conventions do for async consumers.
+	//ds:def id=otel-parentlink-uh7dzcaw owner=@khanakia stability=stable
 	ParentLink Parenting = "link"
 	// ParentNewRootLink starts every step span as the root of its own
 	// trace, linked to the enqueue span, so a fan-out of thousands of jobs
 	// does not build one trace too large for the backend to keep.
+	//ds:def id=otel-parentnewrootlink-xr8w9g8v owner=@khanakia stability=stable
 	ParentNewRootLink Parenting = "new_root_link"
 )
 
 // WithParenting picks how a step span relates to its enqueue span; the
 // default is ParentChild. New refuses any other value with
 // workflow.ErrInvalid.
+//
+//ds:def id=otel-withparenting-6nfcu2q3 owner=@khanakia stability=stable
 func WithParenting(p Parenting) Option { return func(c *config) { c.parenting = p } }
 
 // WithStepSpanName names step spans with fn instead of
@@ -141,6 +177,8 @@ func WithParenting(p Parenting) Option { return func(c *config) { c.parenting = 
 // when ctx has none); an empty result falls back to the default. A span
 // name is indexed by most backends, so keep it to a bounded set of values:
 // never put a run ID or a label value with unbounded values in it.
+//
+//ds:def id=otel-withstepspanname-pykjm6rf owner=@khanakia stability=stable
 func WithStepSpanName(fn func(workflow.StepInfo) string) Option {
 	return func(c *config) { c.stepName = fn }
 }
@@ -148,6 +186,8 @@ func WithStepSpanName(fn func(workflow.StepInfo) string) Option {
 // WithEnqueueSpanName names enqueue spans with fn instead of
 // "workflow.enqueue <workflow>". The same advice as WithStepSpanName
 // applies; fn must not read the payload into the name.
+//
+//ds:def id=otel-withenqueuespanname-u75brhk8 owner=@khanakia stability=stable
 func WithEnqueueSpanName(fn func(workflow.Job) string) Option {
 	return func(c *config) { c.enqueueName = fn }
 }
@@ -160,18 +200,26 @@ func WithEnqueueSpanName(fn func(workflow.Job) string) Option {
 // values (a tier, a region, a few hundred tenants at most), never a user
 // or order id. A job without a named label records it as "". Keys under
 // LabelPrefix and empty keys are refused by New with workflow.ErrInvalid.
+//
+//ds:def id=otel-withmetriclabels-4zzn4wqj owner=@khanakia stability=stable
 func WithMetricLabels(keys ...string) Option {
 	return func(c *config) { c.metricLabels = append(c.metricLabels, keys...) }
 }
 
 // WithTracerProvider sets where spans go. Nil means otel.GetTracerProvider.
+//
+//ds:def id=otel-withtracerprovider-ueajjzzj owner=@khanakia stability=stable
 func WithTracerProvider(tp trace.TracerProvider) Option { return func(c *config) { c.tp = tp } }
 
 // WithMeterProvider sets where metrics go. Nil means otel.GetMeterProvider.
+//
+//ds:def id=otel-withmeterprovider-a998ufwa owner=@khanakia stability=stable
 func WithMeterProvider(mp metric.MeterProvider) Option { return func(c *config) { c.mp = mp } }
 
 // WithPropagator sets how trace context is written into and read from job
 // labels. Nil keeps the default, W3C TraceContext.
+//
+//ds:def id=otel-withpropagator-sgqm46gx owner=@khanakia stability=stable
 func WithPropagator(p propagation.TextMapPropagator) Option {
 	return func(c *config) { c.prop = p }
 }
@@ -181,6 +229,8 @@ func WithPropagator(p propagation.TextMapPropagator) Option {
 // tenant or user ids, and a trace backend is often a third party, so
 // recording them is opt-in, as Logging never logs them either. Keys under
 // LabelPrefix are never recorded. A nil keep records none.
+//
+//ds:def id=otel-withlabelfilter-8xrwxdpa owner=@khanakia stability=stable
 func WithLabelFilter(keep func(key string) bool) Option {
 	return func(c *config) { c.labels = keep }
 }
@@ -188,6 +238,8 @@ func WithLabelFilter(keep func(key string) bool) Option {
 // WithAllLabels records every job label (except LabelPrefix keys) as a
 // span attribute. Use it only when no label holds personal data or
 // secrets; WithLabelFilter picks labels by key instead.
+//
+//ds:def id=otel-withalllabels-82h5srqg owner=@khanakia stability=stable
 func WithAllLabels() Option {
 	return WithLabelFilter(func(string) bool { return true })
 }
@@ -196,10 +248,14 @@ func WithAllLabels() Option {
 // and enqueue spans. It is off by default, as labels are: a tenant ID can
 // identify a customer. It is never a metric dimension (one series per
 // tenant); WithMetricLabels is the way to opt into that, through a label.
+//
+//ds:def id=otel-withtenant-w9822jna owner=@khanakia stability=stable
 func WithTenant() Option { return func(c *config) { c.tenant = true } }
 
 // WithClock sets the clock step durations are measured with. Nil means
 // clock.Real.
+//
+//ds:def id=otel-withclock-qtagzrcf owner=@khanakia stability=stable
 func WithClock(clk clock.Clock) Option { return func(c *config) { c.clk = clk } }
 
 // Instrumentation holds the tracer, meter instruments and propagator the
@@ -226,6 +282,8 @@ type Instrumentation struct {
 // New builds the instrumentation. It fails when an option is invalid
 // (workflow.ErrInvalid) or the meter provider refuses to create an
 // instrument.
+//
+//ds:def id=otel-new-7u57f8wb owner=@khanakia stability=stable
 func New(opts ...Option) (*Instrumentation, error) {
 	cfg := config{}
 	for _, o := range opts {
@@ -314,6 +372,8 @@ func New(opts ...Option) (*Instrumentation, error) {
 // the other middleware and sees a recovered panic as an error. A ctx
 // without a workflow.StepInfo still gets a span, with no workflow
 // attributes.
+//
+//ds:def id=otel-instrumentation-step-3trz8uhf owner=@khanakia stability=stable
 func (i *Instrumentation) Step() workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -383,6 +443,8 @@ func (i *Instrumentation) Step() workflow.Middleware {
 // any span or count, rather than having it silently replaced: it would
 // otherwise let a caller choose the trace the run's steps join. So put
 // Enqueue in a chain once.
+//
+//ds:def id=otel-instrumentation-enqueue-9865m6xu owner=@khanakia stability=stable
 func (i *Instrumentation) Enqueue() workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -440,6 +502,8 @@ func (i *Instrumentation) Enqueue() workflow.EnqueueMiddleware {
 // collection's points and is handed to the OpenTelemetry error handler.
 // Unregister the returned registration to stop. A nil fn is refused with
 // workflow.ErrInvalid.
+//
+//ds:def id=otel-instrumentation-observequeuedepth-sed5czpp owner=@khanakia stability=stable
 func (i *Instrumentation) ObserveQueueDepth(fn QueueDepthFunc) (metric.Registration, error) {
 	if fn == nil {
 		return nil, fmt.Errorf("%w: workflow/otel: ObserveQueueDepth needs a QueueDepthFunc", workflow.ErrInvalid)
@@ -462,6 +526,8 @@ func (i *Instrumentation) ObserveQueueDepth(fn QueueDepthFunc) (metric.Registrat
 
 // labelAttrs turns labels into span attributes, skipping this package's
 // own keys and any the filter rejects.
+//
+//ds:def id=otel-instrumentation-labelattrs-4u4wxgpe owner=@khanakia stability=stable
 func (i *Instrumentation) labelAttrs(labels map[string]string) []attribute.KeyValue {
 	if len(labels) == 0 || i.labels == nil {
 		return nil
@@ -478,6 +544,8 @@ func (i *Instrumentation) labelAttrs(labels map[string]string) []attribute.KeyVa
 
 // metricLabelAttrs returns the WithMetricLabels keys of labels as metric
 // attributes, "" for a missing one so every series has the same keys.
+//
+//ds:def id=otel-instrumentation-metriclabelattrs-rdczpnjf owner=@khanakia stability=stable
 func (i *Instrumentation) metricLabelAttrs(labels map[string]string) []attribute.KeyValue {
 	if len(i.metricLabels) == 0 {
 		return nil
@@ -496,6 +564,8 @@ func (i *Instrumentation) metricLabelAttrs(labels map[string]string) []attribute
 // twice; the counter is a rate, not a ledger. Only terminal statuses
 // arrive here: a run in retry backoff (StatusRetrying) is not an end and
 // is seen through RunQuery or admin instead.
+//
+//ds:def id=otel-instrumentation-runfinished-pcpk5bes owner=@khanakia stability=stable
 func (i *Instrumentation) RunFinished() workflow.RunFinishedFunc {
 	return func(ctx context.Context, ev workflow.RunEvent) {
 		i.runsFinished.Add(ctx, 1, metric.WithAttributes(
@@ -506,6 +576,8 @@ func (i *Instrumentation) RunFinished() workflow.RunFinishedFunc {
 // outcomeOf classifies an error the way the retry policy does. Discard is
 // checked first: a discarded step is neither an error to retry nor a
 // failure.
+//
+//ds:def id=otel-outcomeof-sg88bt3a owner=@khanakia stability=stable
 func outcomeOf(err error) Outcome {
 	switch {
 	case err == nil:
@@ -524,6 +596,8 @@ func outcomeOf(err error) Outcome {
 // recordErr marks span as failed. The error text is recorded because it is
 // what an operator needs; steps that put secrets in error strings leak
 // them to logs and run status already.
+//
+//ds:def id=otel-recorderr-ezczmja6 owner=@khanakia stability=stable
 func recordErr(span trace.Span, err error) {
 	if err == nil {
 		return
@@ -535,6 +609,8 @@ func recordErr(span trace.Span, err error) {
 // labelCarrier adapts job labels to propagation.TextMapCarrier, with every
 // key under LabelPrefix so propagator keys never collide with app labels
 // or with a driver's reserved names.
+//
+//ds:def id=otel-labelcarrier-dhprd6f7 owner=@khanakia stability=stable
 type labelCarrier struct{ labels map[string]string }
 
 func (c labelCarrier) Get(key string) string { return c.labels[LabelPrefix+key] }

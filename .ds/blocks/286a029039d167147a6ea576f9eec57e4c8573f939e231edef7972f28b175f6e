@@ -1,0 +1,7 @@
+func AwaitResult(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) ([]byte, error) {
+	st, err := Await(ctx, c, ref, opts)
+	if err != nil {
+		return nil, err
+	}
+	return resultOf(ctx, c, ref, st)
+}

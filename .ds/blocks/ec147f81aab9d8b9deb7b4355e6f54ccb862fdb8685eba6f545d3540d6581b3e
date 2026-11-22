@@ -1,0 +1,3 @@
+func WithPropagator(p propagation.TextMapPropagator) Option {
+	return func(c *config) { c.prop = p }
+}

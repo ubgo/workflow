@@ -1,0 +1,16 @@
+type scheduleJSON struct {
+	V        int               `json:"v"`
+	Name     string            `json:"name,omitempty"`
+	Workflow string            `json:"workflow"`
+	Cron     string            `json:"cron"`
+	Location string            `json:"location,omitempty"`
+	Input    []byte            `json:"input,omitempty"`
+	Labels   map[string]string `json:"labels,omitempty"`
+	Misfire  *misfireJSON      `json:"misfire,omitempty"`
+	Windows  *windowsJSON      `json:"windows,omitempty"`
+	Overlap  OverlapPolicy     `json:"overlap,omitempty"`
+	Seconds  bool              `json:"seconds,omitempty"`
+	Active   *activeJSON       `json:"active,omitempty"`
+	KeepRuns int               `json:"keep_runs,omitempty"`
+	Tenant   string            `json:"tenant,omitempty"`
+}

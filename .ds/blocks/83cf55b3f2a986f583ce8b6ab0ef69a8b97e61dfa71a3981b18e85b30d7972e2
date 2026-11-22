@@ -1,0 +1,28 @@
+func multiJoin(choice string, names, branchSteps []string) Handler {
+	return func(_ context.Context, in []byte) ([]byte, error) {
+		outs := map[string]json.RawMessage{}
+		if len(branchSteps) == 1 {
+			outs[branchSteps[0]] = in
+		} else if err := json.Unmarshal(in, &outs); err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: multi-choice %q: join input does not decode: %w", choice, err))
+		}
+		var taken []string
+		res := map[string][]byte{}
+		for i, s := range branchSteps {
+			var o choiceOut
+			if raw := outs[s]; len(raw) > 0 && string(raw) != "null" {
+				if err := json.Unmarshal(raw, &o); err != nil {
+					return nil, Permanent(fmt.Errorf("workflow: multi-choice %q: branch %q output does not decode: %w", choice, s, err))
+				}
+			}
+			if o.Taken {
+				taken = append(taken, names[i])
+				res[names[i]] = o.Output
+			}
+		}
+		if len(taken) == 0 {
+			return nil, Permanent(fmt.Errorf("workflow: multi-choice %q: no branch was taken", choice))
+		}
+		return objectOf(taken, res), nil
+	}
+}

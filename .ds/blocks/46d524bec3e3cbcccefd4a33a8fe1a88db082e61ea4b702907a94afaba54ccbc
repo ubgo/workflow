@@ -1,0 +1,1 @@
+var ErrSagaAborted = errors.New("workflow: saga aborted")

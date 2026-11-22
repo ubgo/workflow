@@ -1,0 +1,25 @@
+func (d *Datasets) due(ctx context.Context, t DatasetTrigger, dataset string) (map[string]string, bool, error) {
+	watch := []string{dataset}
+	if t.All {
+		watch = t.Datasets
+	}
+	versions := make(map[string]string, len(watch))
+	for _, ds := range watch {
+		latest, err := d.store.Find(ctx, LineageQuery{Kind: LineageProduced, Dataset: ds, Limit: 1})
+		if err != nil {
+			return nil, false, err
+		}
+		if len(latest) == 0 {
+			return nil, false, nil // all-of: this dataset has no version yet
+		}
+		used, err := d.store.Find(ctx, LineageQuery{Kind: LineageConsumed, Trigger: t.Name, Dataset: ds, Limit: 1})
+		if err != nil {
+			return nil, false, err
+		}
+		if len(used) > 0 && used[0].Version == latest[0].Version {
+			return nil, false, nil // not updated since t's last run
+		}
+		versions[ds] = latest[0].Version
+	}
+	return versions, true, nil
+}

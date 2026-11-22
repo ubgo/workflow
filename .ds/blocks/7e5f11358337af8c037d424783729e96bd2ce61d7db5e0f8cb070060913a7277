@@ -1,0 +1,25 @@
+func rateLimit(r workflow.RateLimit, scope string, i int) (*hatchetsdk.RateLimit, error) {
+	field := "Workflow.RateLimits[" + strconv.Itoa(i) + "]"
+	window, ok := rateLimitWindows[r.Per]
+	if !ok {
+		return nil, workflow.Unsupported(field+".Per", "Hatchet rate limits take a window of one second, minute, hour, day or week, not "+r.Per.String())
+	}
+	if r.Key.Func != nil {
+		return nil, workflow.Unsupported(field+".Key.Func", "Hatchet evaluates rate-limit keys on the engine; use workflow.KeyExpr")
+	}
+	if r.Key.Expr == "" {
+		// A keyless limit maps to a static Hatchet limit upserted by the
+		// driver; its live test missed the long-run bound by 1.2s
+		// (handler-observed starts), so it is refused until proven.
+		// workflow.KeyExpr(`"all"`) gives one bucket through the proven
+		// dynamic path.
+		return nil, workflow.Unsupported(field+".Key", `a keyless Hatchet rate limit is not proven on the engine; use workflow.KeyExpr("\"all\"") for one bucket`)
+	}
+	units := 1
+	// The engine requires Key on every limit; with KeyExpr it names the
+	// expression set, and the buckets come from the expression's values.
+	static := staticRateLimitKey(scope, i)
+	expr, limit := scopedRateLimitExpr(static, r.Key.Expr), strconv.Itoa(r.Limit)
+	rl := &hatchetsdk.RateLimit{Key: static, KeyExpr: &expr, LimitValueExpr: &limit, Units: &units, Duration: &window}
+	return rl, nil
+}

@@ -1,0 +1,7 @@
+func WithTickRetention(d time.Duration) Option {
+	return func(cl *Client) {
+		if d > 0 {
+			cl.tickRetention = d
+		}
+	}
+}

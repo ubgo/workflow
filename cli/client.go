@@ -18,6 +18,8 @@ const maxResponse = 32 << 20
 
 // APIError is an error answer from the admin API: its HTTP status and the
 // code and message from its {"error":{...}} body.
+//
+//ds:def id=cli-apierror-w4hu3735 owner=@khanakia stability=stable
 type APIError struct {
 	Status  int
 	Code    string

@@ -1,0 +1,7 @@
+func CheckJobQueue(have Caps, wf Workflow, job Job) error {
+	if job.Queue == "" || have.Has(CapQueueOverride) || job.Queue == EffectiveQueue(wf, Job{}) {
+		return nil
+	}
+	return &UnsupportedError{Field: "Job.Queue", Missing: CapQueueOverride,
+		Reason: "workflow " + wf.Name + " runs on queue " + EffectiveQueue(wf, Job{}) + ", not " + job.Queue}
+}

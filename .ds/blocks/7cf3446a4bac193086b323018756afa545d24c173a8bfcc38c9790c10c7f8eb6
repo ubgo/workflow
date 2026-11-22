@@ -1,0 +1,1 @@
+	CapDurableSleep = defineCap(3, "DurableSleep")

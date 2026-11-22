@@ -1,0 +1,33 @@
+type ChunkedOptions struct {
+	// ChunkOptions is the paging: Size jobs per chunk (at least 1), the
+	// Total when known (for progress) and MaxChunks, which is required
+	// when Total is not set. See workflow.ProcessChunks.
+	workflow.ChunkOptions
+
+	// Limit, when set, is drawn from before each chunk is enqueued, at a
+	// cost of one per job, so a fan-out to a million recipients goes out
+	// at the rate the downstream allows. A chunk that does not fit fails
+	// the step with the limit's retry-after error (or snoozes it, with
+	// Snooze), and the retried step resumes at that chunk: give the
+	// step's workflow RetryPolicy.DelayFor workflow.RetryAfterDelay, so
+	// the retry waits for room, and enough attempts. Size must not exceed
+	// the limit's capacity, or every chunk is refused (Permanent).
+	Limit *workflow.UpstreamLimit
+
+	// LimitKey is the Limit bucket the chunks draw from; empty means the
+	// name given to EnqueueChunked.
+	LimitKey string
+
+	// Snooze makes a spent Limit snooze the step (workflow.Snooze, which
+	// spends no attempt) instead of failing it. Set it only when the
+	// step's own driver has workflow.CapSnooze; elsewhere a snooze is an
+	// ordinary error.
+	Snooze bool
+
+	// Key returns the IdempotencyKey of the job at index (its position in
+	// the whole fan-out, from 0). Nil means a key made from the step's
+	// run, the name and the index, so a chunk sent again by a retry of
+	// the same run is folded into the runs the first send started. A job
+	// that already has a key keeps it.
+	Key func(index int64, job workflow.Job) string
+}

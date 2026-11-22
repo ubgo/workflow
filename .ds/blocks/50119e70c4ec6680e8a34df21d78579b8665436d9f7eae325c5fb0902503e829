@@ -1,0 +1,3 @@
+func DiscardedError(step string, err error) error {
+	return fmt.Errorf("%w: %w: step %q: %w", ErrCancelled, ErrDiscarded, step, err)
+}

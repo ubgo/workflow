@@ -1,0 +1,20 @@
+func TestWakeCheckedFiresByWallClock(t *testing.T) {
+	sc := &suspendClock{base: time.Date(2026, 11, 20, 22, 0, 0, 0, time.UTC), start: time.Now()}
+	wrapped := clock.WakeChecked(sc, time.Minute).NewTimer(time.Hour)
+	plain := sc.NewTimer(time.Hour)
+	sc.suspend(8 * time.Hour)
+	select {
+	case <-wrapped.C():
+	case <-time.After(time.Second): // 60 ms of checks, with room for a slow CI
+		t.Fatal("the wake-checked timer did not fire after the wall clock passed its deadline")
+	}
+	select {
+	case <-plain.C():
+		t.Fatal("control: a plain timer fired early, so the test proves nothing")
+	default:
+	}
+	plain.Stop()
+	if wrapped.Stop() {
+		t.Fatal("Stop after firing reported true")
+	}
+}

@@ -1,0 +1,7 @@
+func Heartbeat(ctx context.Context, details []byte) error {
+	h, ok := ctx.Value(heartbeaterKey{}).(Heartbeater)
+	if !ok {
+		return nil
+	}
+	return h.Heartbeat(ctx, details)
+}

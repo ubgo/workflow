@@ -1,0 +1,10 @@
+type BlobStore interface {
+	// Put stores data under key, replacing any blob already there.
+	Put(ctx context.Context, key string, data []byte) error
+	// Get returns the blob under key, or an error wrapping ErrBlobNotFound.
+	Get(ctx context.Context, key string) ([]byte, error)
+	// Delete removes the blob under key. Deleting a missing key is a
+	// no-op, not an error, because run-finished events arrive at least
+	// once.
+	Delete(ctx context.Context, key string) error
+}

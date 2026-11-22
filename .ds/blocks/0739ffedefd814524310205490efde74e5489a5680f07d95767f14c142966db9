@@ -1,0 +1,5 @@
+const (
+	ExitOK    = 0 // the command did what it was asked
+	ExitError = 1 // the API refused or failed, or drain timed out
+	ExitUsage = 2 // the command line is wrong
+)

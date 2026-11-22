@@ -1,0 +1,18 @@
+func reportChunk(ctx context.Context, total, done int64, last bool) error {
+	p := Progress{Message: fmt.Sprintf("%d items", done)}
+	switch {
+	case last:
+		p.Percent = 100
+	case total > 0:
+		p.Percent = min(float64(done)/float64(total)*100, 100)
+	}
+	if total > 0 {
+		p.Message = fmt.Sprintf("%d of %d items", done, total)
+	}
+	p.Data, _ = json.Marshal(ChunkProgress{Done: done, Total: total}) // two int64 fields always encode
+	err := ReportProgress(ctx, p)
+	if errors.Is(err, ErrUnsupported) {
+		return Permanent(err)
+	}
+	return err
+}

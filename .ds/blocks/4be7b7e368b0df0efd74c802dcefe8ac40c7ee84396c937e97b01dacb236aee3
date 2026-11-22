@@ -1,0 +1,17 @@
+func TestStartWhenErrors(t *testing.T) {
+	boom := errors.New("ntp down")
+	c := memory.New()
+	err := workflow.StartWhen(context.Background(), c, func(context.Context) (bool, error) { return false, boom }, workflow.StartWhenOptions{})
+	if !errors.Is(err, boom) {
+		t.Fatalf("ready error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err = workflow.StartWhen(ctx, c, func(context.Context) (bool, error) { return false, nil }, workflow.StartWhenOptions{Poll: time.Millisecond})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled ctx = %v", err)
+	}
+	if err := workflow.StartWhen(context.Background(), nil, nil, workflow.StartWhenOptions{}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil args = %v", err)
+	}
+}

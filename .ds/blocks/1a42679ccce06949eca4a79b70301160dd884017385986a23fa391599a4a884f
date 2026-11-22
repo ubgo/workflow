@@ -1,0 +1,36 @@
+func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
+	api, err := c.api()
+	if err != nil {
+		return nil, err
+	}
+	tenant, _ := uuid.Parse(api.TenantID)
+	var out []workflow.PauseTarget
+	for offset := 0; ; offset += int(cronListPage) {
+		limit, off := int(cronListPage), offset
+		resp, err := api.Client.WorkflowListWithResponse(ctx, tenant, &rest.WorkflowListParams{Limit: &limit, Offset: &off})
+		if err != nil {
+			return nil, engineErr(err, "list workflows")
+		}
+		if resp.JSON200 == nil {
+			return nil, apiErr(resp.StatusCode(), resp.Body, "list workflows")
+		}
+		rows := []rest.Workflow{}
+		if resp.JSON200.Rows != nil {
+			rows = *resp.JSON200.Rows
+		}
+		for _, w := range rows {
+			if w.IsPaused == nil || !*w.IsPaused {
+				continue
+			}
+			// A delayed variant is paused with its workflow, not listed.
+			if name, ok := c.localName(w.Name); ok && !strings.HasSuffix(name, delayedSuffix) {
+				out = append(out, workflow.PauseWorkflow(name))
+			}
+		}
+		if len(rows) < limit {
+			break
+		}
+	}
+	slices.SortFunc(out, func(a, b workflow.PauseTarget) int { return cmp.Compare(a.Workflow, b.Workflow) })
+	return out, nil
+}

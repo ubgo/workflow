@@ -1,0 +1,23 @@
+type Recycle struct {
+	// MaxJobs is how many step attempts this client may finish, whatever
+	// their outcome. Attempts already running when it is reached still
+	// finish, so a client with several workers may finish a few more.
+	MaxJobs int
+
+	// MaxTime is how long the client may run, from Start, on the
+	// driver's clock.
+	MaxTime time.Duration
+
+	// MaxMemory is the memory reading, in bytes, above which the client
+	// recycles. Checked every CheckEvery and after every attempt.
+	MaxMemory uint64
+
+	// Memory reads the current memory use in bytes. Nil means
+	// HeapObjectBytes. A test passes a function returning what it needs;
+	// an app may read RSS or a cgroup counter instead.
+	Memory func() uint64
+
+	// CheckEvery is how often the driver checks MaxMemory between
+	// attempts. Zero means DefaultRecycleCheck.
+	CheckEvery time.Duration
+}

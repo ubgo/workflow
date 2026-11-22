@@ -1,0 +1,9 @@
+type Auth[P any] struct {
+	// Identify returns the caller of r, from a session cookie or a bearer
+	// token. An error means anonymous: the request is refused with 401
+	// before any of it is parsed.
+	Identify func(r *http.Request) (P, error)
+	// Authorize allows req by returning nil. Any error, or a panic, refuses
+	// it with 403, so an Authorizer that fails, fails closed.
+	Authorize func(ctx context.Context, req Request[P]) error
+}

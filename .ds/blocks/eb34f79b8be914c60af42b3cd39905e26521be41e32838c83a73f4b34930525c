@@ -1,0 +1,8 @@
+func (f *Fake) AssertReset(t testing.TB, ref workflow.RunRef, step string) {
+	t.Helper()
+	resets := f.Resets()
+	if slices.ContainsFunc(resets, func(r FakeReset) bool { return r.Ref == ref && r.Step == step }) {
+		return
+	}
+	t.Errorf("run %+v was not reset from step %q; resets: %+v", ref, step, resets)
+}

@@ -1,0 +1,3 @@
+func WithRecycle(r workflow.Recycle) Option {
+	return func(m *Client) { m.recycle = r }
+}

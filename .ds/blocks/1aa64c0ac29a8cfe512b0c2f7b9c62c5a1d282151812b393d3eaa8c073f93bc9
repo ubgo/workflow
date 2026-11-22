@@ -1,0 +1,45 @@
+func (h *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, h.cfg.MaxBody+1))
+	if err != nil {
+		http.Error(w, "cannot read body", http.StatusBadRequest)
+		return
+	}
+	if int64(len(body)) > h.cfg.MaxBody {
+		http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	var id string
+	if h.cfg.Verifier != nil {
+		if id, err = h.cfg.Verifier.Verify(r, body); err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+	if id == "" {
+		id = h.deliveryID(r, body)
+	}
+	var labels map[string]string
+	if h.cfg.Labels != nil {
+		labels = h.cfg.Labels(r)
+		if err := workflow.ValidateLabels(labels); err != nil {
+			// A configuration error, not an enqueue failure: the Labels
+			// func returned a reserved key. It cannot be checked at
+			// NewWebhook (the func depends on the request). 500 makes the
+			// sender retry, which succeeds once the app is fixed.
+			h.cfg.Logger.ErrorContext(r.Context(), "webhook: configuration error: the Labels func returned a reserved label key; nothing was enqueued", slog.Any("err", err))
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := h.deliver(r.Context(), id, body, labels); err != nil {
+		h.fail(r.Context(), w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"id": id}) // the response is already committed
+}

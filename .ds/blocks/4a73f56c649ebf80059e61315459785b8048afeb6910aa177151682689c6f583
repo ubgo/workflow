@@ -1,0 +1,24 @@
+func (c *Client) FindBatchRuns(ctx context.Context, id batch.ID, since time.Time) (map[int]workflow.RunRef, error) {
+	noPayloads := false
+	rows, err := c.listRuns(ctx, rest.V1WorkflowRunListParams{
+		Since:              since.Add(-batchListLag),
+		AdditionalMetadata: &[]string{batch.LabelBatch + ":" + id.String()},
+		IncludePayloads:    &noPayloads,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := map[int]workflow.RunRef{}
+	for _, r := range rows {
+		md := metadataStrings(r.AdditionalMetadata)
+		if md[batch.LabelBatch] != id.String() {
+			continue
+		}
+		idx, err := strconv.Atoi(md[batch.LabelIndex])
+		if err != nil {
+			continue
+		}
+		out[idx] = workflow.RunRef{RunID: workflow.RunID(r.WorkflowRunExternalId.String())}
+	}
+	return out, nil
+}

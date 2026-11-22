@@ -21,6 +21,8 @@ import (
 // the queue, how long the oldest has waited, its worker cap here and its
 // runs executing here (workflow.WorkerScaler). A client given no queues
 // reports none.
+//
+//ds:def id=redis-client-queueloads-fjy4pejd owner=@khanakia stability=stable
 func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	if err := c.usable(); err != nil {
 		return nil, err
@@ -86,6 +88,8 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 // SetWorkers sets how many runs of queue this client executes at once,
 // from its next claim; running runs are not interrupted. n below one
 // wraps ErrInvalid; a queue not given to WithQueues wraps ErrNotFound.
+//
+//ds:def id=redis-client-setworkers-d4dn726u owner=@khanakia stability=stable
 func (c *Client) SetWorkers(_ context.Context, queue string, n int) error {
 	if err := c.usable(); err != nil {
 		return err

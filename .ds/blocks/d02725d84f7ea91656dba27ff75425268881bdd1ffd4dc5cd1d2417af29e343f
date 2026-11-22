@@ -1,0 +1,7 @@
+type StartWhenOptions struct {
+	// Poll is the pause between two asks; zero means DefaultStartWhenPoll.
+	Poll time.Duration
+
+	// Clock times the pauses; nil means clock.Real.
+	Clock clock.Clock
+}

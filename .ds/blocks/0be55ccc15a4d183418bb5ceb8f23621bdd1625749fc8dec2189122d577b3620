@@ -1,0 +1,8 @@
+func (c *Client) Drain(ctx context.Context) error {
+	ds, err := every[workflow.Drainer](c, "Drain", workflow.CapDrain)
+	if err != nil {
+		return err
+	}
+	errs := c.parallel(func(name string) error { return ds[name].Drain(ctx) })
+	return joinRegions("Drain", c.names, errs)
+}

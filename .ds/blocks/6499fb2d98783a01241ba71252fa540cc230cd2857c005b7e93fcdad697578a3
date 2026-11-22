@@ -1,0 +1,56 @@
+func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	oq, nq, err := both[workflow.RunQuerier](c, "Runs", workflow.CapRunQuery)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.ValidateRunQuery(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.CheckRunQuery(c.Capabilities(), q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	cur, err := decodeCursor(q.Cursor)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	feeds := []*feed{{side: SideOld, src: oq, pos: cur.O}, {side: SideNew, src: nq, pos: cur.N}}
+	if !q.Ref.RunID.IsZero() || !q.Ref.ScheduledID.IsZero() {
+		sd, inner, ok := decodeRef(q.Ref)
+		q.Ref = inner
+		for _, fd := range feeds {
+			if !ok || (sd != "" && fd.side != sd) {
+				fd.pos = feedPos{Done: true}
+			}
+		}
+	}
+	limit := q.PageLimit()
+	for _, fd := range feeds {
+		var holds bool
+		if fd.q, holds = sideQuery(q, fd.side); !holds {
+			fd.pos = feedPos{Done: true}
+		}
+		if err := fd.load(ctx, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("cutover: %s: %w", fd.side, err)
+		}
+	}
+	var page workflow.RunPage
+	for len(page.Runs) < limit {
+		var pick *feed
+		for _, fd := range feeds {
+			if len(fd.buf) > 0 && (pick == nil || newer(fd.buf[0], pick.buf[0])) {
+				pick = fd
+			}
+		}
+		if pick == nil {
+			break
+		}
+		page.Runs = append(page.Runs, pick.buf[0])
+		if err := pick.take(ctx, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("cutover: %s: %w", pick.side, err)
+		}
+	}
+	if feeds[0].more() || feeds[1].more() {
+		page.Next = encodeCursor(runsCursor{O: feeds[0].pos, N: feeds[1].pos})
+	}
+	return page, nil
+}

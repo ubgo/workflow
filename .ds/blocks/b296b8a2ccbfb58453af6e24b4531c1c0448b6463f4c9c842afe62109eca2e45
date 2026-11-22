@@ -1,0 +1,36 @@
+type RunEvent struct {
+	// Ref is the run. ScheduledID is set too when the run was enqueued
+	// with RunAt, so a caller that stored the RunRef Enqueue returned
+	// (which held only the ScheduledID) can match the event.
+	Ref RunRef
+
+	// Workflow is the workflow name.
+	Workflow string
+
+	// Status is terminal: StatusSucceeded, StatusFailed or
+	// StatusCancelled, or StatusDiscarded on a driver with CapRunStates.
+	Status Status
+
+	// Err is why the run failed; nil when it succeeded. In-process
+	// drivers pass the original error; an engine rebuilds it from the
+	// message it stored, so errors.Is against an app's own sentinel is
+	// reliable only on in-process drivers. A cancelled run's Err matches
+	// ErrCancelled on every driver.
+	Err error
+
+	// Labels are the run's Job.Labels. Observers must not modify them.
+	Labels map[string]string
+
+	// FinishedAt is when the run reached its terminal status, from the
+	// driver's clock: the engine's timestamp for an engine driver when the
+	// engine records one, else the driver's own clock at the moment it
+	// learned of the end (a delayed run cancelled before it fired).
+	FinishedAt time.Time
+
+	// Step is the step whose failure ended the run (RunInfo.FailedStep);
+	// empty for other ends and for drivers that do not know it.
+	Step string
+
+	// Tenant is the run's Job.Tenant (CapTenant).
+	Tenant string
+}

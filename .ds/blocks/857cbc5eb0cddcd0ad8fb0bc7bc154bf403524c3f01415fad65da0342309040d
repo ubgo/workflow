@@ -1,0 +1,15 @@
+func (f *follower[P]) fail(err error) {
+	code, msg := CodeInternal, "internal error"
+	switch {
+	case errors.Is(err, workflow.ErrNotFound):
+		code, msg = CodeNotFound, "the run no longer exists"
+	case workflow.IsUnavailable(err):
+		code, msg = CodeUnavailable, "the job backend is unavailable"
+	default:
+		f.h.cfg.Logger.Error("httprun: events: status failed", "run", refString(f.ref), "err", err)
+	}
+	f.send("", EventError, struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}{code, msg})
+}

@@ -97,3 +97,40 @@ func TestFinalErr(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+// TestRunErrorStepTimeout pins that a failed run whose stored message is
+// the worker's step timeout (quoted, as the engine stores it, or bare) is
+// rebuilt as an error matching workflow.ErrStepTimeout and ErrTimeout
+// with its text kept, and that any other message is not.
+func TestRunErrorStepTimeout(t *testing.T) {
+	text := workflow.TimeoutError(workflow.ErrStepTimeout, `hatchet: step "a" attempt 1 after 2s`).Error() + ": context deadline exceeded"
+	for _, msg := range []string{text, `"` + finalMarker + text + `"`} {
+		err := runError(workflow.StatusFailed, ptr(msg))
+		if !errors.Is(err, workflow.ErrStepTimeout) || !workflow.IsTimeout(err) || errors.Is(err, workflow.ErrHeartbeatTimeout) {
+			t.Errorf("runError(%q) = %v, want it to match ErrStepTimeout and ErrTimeout only", msg, err)
+		}
+		if err.Error() != stripFinal(msg) {
+			t.Errorf("runError(%q) text = %q, want %q", msg, err.Error(), stripFinal(msg))
+		}
+	}
+	if err := runError(workflow.StatusFailed, ptr(`"boom: workflow: step attempt timed out"`)); workflow.IsTimeout(err) {
+		t.Errorf("a message that only contains the timeout text matched ErrTimeout: %v", err)
+	}
+}
+
+// TestRunErrorWaitTimeout pins the same for a wait step that reached its
+// Timeout or Deadline: the stored message (quoted or bare) is rebuilt as
+// an error matching workflow.ErrWaitTimeout and ErrTimeout, not
+// ErrStepTimeout, with its text kept.
+func TestRunErrorWaitTimeout(t *testing.T) {
+	text := workflow.TimeoutError(workflow.ErrWaitTimeout, `hatchet: wait step "approve" for event "approved" key "k"`).Error() + ": context deadline exceeded"
+	for _, msg := range []string{text, `"` + finalMarker + text + `"`} {
+		err := runError(workflow.StatusFailed, ptr(msg))
+		if !errors.Is(err, workflow.ErrWaitTimeout) || !workflow.IsTimeout(err) || errors.Is(err, workflow.ErrStepTimeout) {
+			t.Errorf("runError(%q) = %v, want it to match ErrWaitTimeout and ErrTimeout only", msg, err)
+		}
+		if err.Error() != stripFinal(msg) {
+			t.Errorf("runError(%q) text = %q, want %q", msg, err.Error(), stripFinal(msg))
+		}
+	}
+}

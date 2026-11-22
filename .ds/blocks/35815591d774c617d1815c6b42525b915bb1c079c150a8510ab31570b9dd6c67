@@ -1,0 +1,25 @@
+func (c *Client) recoverFailing(ctx context.Context) error {
+	var ids []string
+	var id string
+	// Only runs of a version this client's definition runs (LO-11): it
+	// runs that definition's OnFailure.
+	vw, vargs := c.versionWhere("r.id", "r.workflow")
+	err := c.st.each(ctx, c.st.db, "SELECT r.id FROM {runs} r WHERE r."+c.inNames()+" AND r.status = ? AND r.fail_until < ? AND "+vw+" LIMIT ?",
+		c.nameArgs(append(append([]any{runFailing, c.expiredBefore()}, vargs...), c.fetch)...), func() error { ids = append(ids, id); return nil }, &id)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		token := randomID("fail")
+		now := c.leaseNanos()
+		n, err := c.st.execN(ctx, c.st.db, "UPDATE {runs} SET fail_token = ?, fail_until = ? WHERE id = ? AND status = ? AND fail_until < ?",
+			token, now+int64(c.lease), id, runFailing, now-int64(c.leaseSkew))
+		if err != nil {
+			return err
+		}
+		if n == 1 {
+			c.finalizeFailure(ctx, failClaim{runID: id, token: token})
+		}
+	}
+	return nil
+}

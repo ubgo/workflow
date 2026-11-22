@@ -1,0 +1,50 @@
+func TestRecycleLetsRunningAttemptsFinish(t *testing.T) {
+	c := memory.New(memory.WithRecycle(workflow.Recycle{MaxJobs: 1}), memory.WithWorkers(2))
+	release := make(chan struct{})
+	slowDone := make(chan struct{})
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{{Name: "s", Run: func(_ context.Context, in []byte) ([]byte, error) {
+		if string(in) == "slow" {
+			<-release
+			close(slowDone)
+		}
+		return nil, nil
+	}}}}
+	if err := c.Register(wf); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	slow, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte("slow")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if st, _ := c.Status(ctx, slow); st == workflow.StatusRunning {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte("fast")}); err != nil {
+		t.Fatal(err)
+	}
+	// The fast job reaches MaxJobs; the client drains but must wait for
+	// the slow attempt rather than cut it off.
+	select {
+	case <-c.Done():
+		t.Fatal("stopped while an attempt was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	<-slowDone
+	select {
+	case <-c.Done():
+	case <-ctx.Done():
+		t.Fatal("not stopped after the running attempt finished")
+	}
+	if !errors.Is(c.StopCause(), workflow.ErrRecycle) {
+		t.Fatalf("StopCause = %v", c.StopCause())
+	}
+}

@@ -1,0 +1,1 @@
+func WithArchive(fn ArchiveFunc) Option { return func(cl *Client) { cl.archive = fn } }

@@ -1,0 +1,18 @@
+func (f *Fake) Cancel(ctx context.Context, ref workflow.RunRef) error {
+	if !f.caps.Has(workflow.CapCancel) {
+		return &workflow.UnsupportedError{Field: "Cancel", Missing: workflow.CapCancel}
+	}
+	f.mu.Lock()
+	r, ok := f.byRef[ref]
+	if !ok {
+		f.mu.Unlock()
+		if f.inner != nil {
+			return f.inner.Cancel(ctx, ref)
+		}
+		return fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	defer f.mu.Unlock()
+	f.cancels = append(f.cancels, ref)
+	f.finishLocked(r, workflow.StatusCancelled)
+	return nil
+}

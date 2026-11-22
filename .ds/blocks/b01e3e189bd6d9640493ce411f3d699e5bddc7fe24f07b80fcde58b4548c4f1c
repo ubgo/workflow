@@ -1,0 +1,120 @@
+func (c *Client) fire(ctx context.Context, id string, now time.Time) error {
+	h, err := c.rdb.HGetAll(ctx, c.base+":sched:"+id).Result()
+	if err != nil {
+		return classify(err)
+	}
+	if len(h) == 0 {
+		return c.rdb.ZRem(ctx, c.base+":scheds", id).Err() // removed meanwhile
+	}
+	c.mu.Lock()
+	reg := c.wfs[h["wf"]]
+	c.mu.Unlock()
+	if reg == nil {
+		return nil // its ScheduleWhen and windows are code only a client that registered it has
+	}
+	info, input, err := c.decodeSchedule(id, h)
+	if err != nil {
+		return err
+	}
+	if !info.Paused {
+		if info.Paused, err = c.allSchedulesPaused(ctx); err != nil {
+			return err
+		}
+	}
+	cs, err := c.parseCronFor(h["cron"], info.Seconds)
+	if err != nil {
+		return fmt.Errorf("stored cron %q: %w", h["cron"], err)
+	}
+	src, loc := tickSource{cs, info.Active}, info.Location
+	lastMS, _ := strconv.ParseInt(h["last"], 10, 64)
+	last := time.UnixMilli(lastMS)
+	next := src.Next(now, loc)
+	base := workflow.Tick{ScheduleID: workflow.ScheduleID(id), Name: info.Name, Workflow: info.Workflow, Declared: info.Declared,
+		Location: loc, Labels: info.Labels}
+
+	// Decide each due tick on this node; the script below moves the
+	// schedule from the last value read, so only one node acts on a tick
+	// and reports it.
+	type candidate struct {
+		at  time.Time
+		id  string
+		run []any
+	}
+	var (
+		skipped   []workflow.Tick
+		cands     []candidate
+		missed    int
+		missedAt  time.Time
+		pausedAll bool
+	)
+	if info.Paused {
+		pausedAll = true
+		for _, t := range src.Between(last, now, loc, admitBatch) {
+			tk := base
+			tk.At, tk.Outcome, tk.Reason = t.In(loc), workflow.TickSkipped, workflow.TickReasonPaused
+			skipped = append(skipped, tk)
+		}
+	} else {
+		policy := effectiveMisfire(info.Misfire)
+		fire := policy.Due(src, last, now, loc)
+		missed, missedAt = droppedTicks(src, last, now, loc, fire)
+		for _, t := range fire {
+			tk := base
+			tk.At = t.In(loc)
+			switch {
+			case !info.Windows.IsZero() && !info.Windows.Allows(t, loc):
+				tk.Outcome, tk.Reason = workflow.TickSkipped, workflow.TickReasonWindow
+				skipped = append(skipped, tk)
+			case reg.wf.ScheduleWhen != nil && !c.askWhen(ctx, reg.wf.ScheduleWhen, tk):
+				tk.Outcome, tk.Reason = workflow.TickSkipped, workflow.TickReasonWhen
+				skipped = append(skipped, tk)
+			default:
+				runID := c.newID()
+				fired := workflow.FiredLabelsAt(info.Labels, workflow.ScheduleID(id), info.Name, t)
+				a, err := c.createArgs(runID, workflow.Job{Workflow: info.Workflow, Payload: input, Labels: fired, Tenant: info.Tenant}, "", false, now)
+				if err != nil {
+					return err
+				}
+				cands = append(cands, candidate{at: t, id: runID, run: a})
+			}
+		}
+	}
+	args := []any{c.base, id, h["last"], now.UnixMilli(), next.UnixMilli(), len(cands)}
+	for _, cd := range cands {
+		args = append(append(args, cd.at.UnixMilli()), cd.run...)
+	}
+	if next.IsZero() {
+		c.log.Warn("redis: cron schedule never fires again", "schedule", id, "cron", h["cron"])
+		args[4] = int64(1<<53 - 1) // park it at the end of the index
+	}
+	res, err := fireScript.Run(ctx, c.rdb, c.keys(), args...).Int64Slice()
+	if err != nil {
+		return classify(err)
+	}
+	if len(res) != 2 || res[0] == 0 {
+		return nil // another client fired these ticks
+	}
+	var ticks []workflow.Tick
+	if missed > 0 && !pausedAll {
+		tk := base
+		tk.Outcome, tk.At, tk.Missed = workflow.TickMisfired, missedAt.In(loc), missed
+		ticks = append(ticks, tk)
+	}
+	ticks = append(ticks, skipped...)
+	for i, cd := range cands {
+		tk := base
+		tk.At = cd.at.In(loc)
+		if int64(i) < res[1] {
+			tk.Outcome, tk.Run = workflow.TickFired, workflow.RunRef{RunID: workflow.RunID(cd.id)}
+		} else {
+			tk.Outcome, tk.Reason = workflow.TickSkipped, workflow.TickReasonOverlap
+		}
+		ticks = append(ticks, tk)
+	}
+	sort.SliceStable(ticks, func(i, j int) bool { return ticks[i].At.Before(ticks[j].At) })
+	if res[1] > 0 {
+		c.wakeAll()
+	}
+	c.emitTicks(ctx, ticks)
+	return nil
+}

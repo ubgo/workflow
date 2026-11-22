@@ -1,0 +1,3 @@
+func Snooze(d time.Duration) error {
+	return &snoozeError{d: min(max(d, 0), MaxSnooze)}
+}

@@ -14,13 +14,19 @@ import (
 // reader refuses any other version, and any field it does not know, so a
 // schedule stored by a newer release is never loaded with part of its
 // meaning (a window, a misfire policy) silently dropped.
+//
+//ds:def id=schedulejsonversion-f9pnaa4s owner=@khanakia stability=stable
 const ScheduleJSONVersion = 1
 
 // ErrScheduleJSON is wrapped by every error of the JSON form.
+//
+//ds:def id=errschedulejson-v6hk7ay2 owner=@khanakia stability=stable
 var ErrScheduleJSON = errors.New("workflow: invalid schedule JSON")
 
 // scheduleJSON is the stored form: the zone by IANA name, durations and
 // instants as text, so the document is readable and diffable.
+//
+//ds:def id=schedulejson-scxasjxc owner=@khanakia stability=stable
 type scheduleJSON struct {
 	V        int               `json:"v"`
 	Name     string            `json:"name,omitempty"`
@@ -66,6 +72,8 @@ type windowJSON struct {
 // admin form. The zone is written by its IANA name, so a Location without
 // one (time.Local, a time.FixedZone) is refused rather than written as a
 // name no reader can load. It does not validate the rest; Validate does.
+//
+//ds:def id=schedule-marshaljson-r7xwj8x5 owner=@khanakia stability=stable
 func (s Schedule) MarshalJSON() ([]byte, error) {
 	out := scheduleJSON{V: ScheduleJSONVersion, Name: s.Name, Workflow: s.Workflow, Cron: s.Cron, Input: s.Input, Labels: s.Labels, Overlap: s.Overlap, Seconds: s.Seconds, KeepRuns: s.KeepRuns, Tenant: s.Tenant}
 	if !s.Active.IsZero() {
@@ -96,6 +104,8 @@ func (s Schedule) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON reads the form MarshalJSON writes, loading the zone with
 // cron.LoadZone. Use UnmarshalSchedule to load zones another way.
+//
+//ds:def id=schedule-unmarshaljson-rvdt6ut7 owner=@khanakia stability=stable
 func (s *Schedule) UnmarshalJSON(data []byte) error {
 	got, err := UnmarshalSchedule(data, nil)
 	if err != nil {
@@ -111,6 +121,8 @@ func (s *Schedule) UnmarshalJSON(data []byte) error {
 // a schedule firing at the wrong hour. A version other than
 // ScheduleJSONVersion and unknown fields are refused. Every error wraps
 // ErrScheduleJSON.
+//
+//ds:def id=unmarshalschedule-7ytw9duj owner=@khanakia stability=stable
 func UnmarshalSchedule(data []byte, loadZone func(name string) (*time.Location, error)) (Schedule, error) {
 	if loadZone == nil {
 		loadZone = cron.LoadZone

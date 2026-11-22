@@ -1,0 +1,1 @@
+type Classifier func(err error) bool

@@ -1,0 +1,7 @@
+type Clock interface {
+	// Now returns the current time.
+	Now() time.Time
+	// NewTimer returns a timer that delivers on C once d has passed. A d
+	// of zero or less fires at once.
+	NewTimer(d time.Duration) Timer
+}

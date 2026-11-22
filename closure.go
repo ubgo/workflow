@@ -10,13 +10,19 @@ import (
 // middleware see closures as runs of one name. Validate refuses it as the
 // name of a registered workflow. The closure's own name is in the
 // LabelClosure label.
+//
+//ds:def id=closureworkflow-5ad4abw7 owner=@khanakia stability=stable
 const ClosureWorkflow = "ubgo.workflow.closure"
 
 // LabelClosure is the label holding a closure run's ClosureJob.Name. It
 // sits under the reserved internal prefix, so app labels cannot forge it.
+//
+//ds:def id=labelclosure-ruy9jt45 owner=@khanakia stability=stable
 const LabelClosure = LabelPrefixInternal + "closure"
 
 // ClosureStep is the name of a closure run's one step.
+//
+//ds:def id=closurestep-hvxugm4k owner=@khanakia stability=stable
 const ClosureStep = "closure"
 
 // ClosureJob is a Go function run as a job in this process, for small
@@ -28,6 +34,8 @@ const ClosureStep = "closure"
 // on another machine. Anything that must survive a restart is a
 // registered workflow with a payload. Only an in-process driver declares
 // CapClosure; durable drivers and engines refuse closures.
+//
+//ds:def id=closurejob-ghxxzktz owner=@khanakia stability=stable
 type ClosureJob struct {
 	// Name says what the closure is, for logs and run listings (the
 	// LabelClosure label). Required.
@@ -61,6 +69,8 @@ type ClosureJob struct {
 // ValidateClosure checks c: a Name, a Fn, a valid queue and retry policy,
 // a Timeout that is not negative, and no label under a reserved prefix.
 // Errors wrap ErrInvalid.
+//
+//ds:def id=validateclosure-hd4ctss3 owner=@khanakia stability=stable
 func ValidateClosure(c ClosureJob) error {
 	if c.Name == "" {
 		return invalidf("closure has no Name")
@@ -90,6 +100,8 @@ func ValidateClosure(c ClosureJob) error {
 // RunRef works with Status, Cancel and the run query family as any
 // other. Before Start it returns ErrNotStarted. A closure run is never
 // matched by an idempotency key and is never chained.
+//
+//ds:def id=closureenqueuer-amwdzqnj owner=@khanakia stability=stable
 type ClosureEnqueuer interface {
 	EnqueueClosure(ctx context.Context, c ClosureJob) (RunRef, error)
 }
@@ -97,6 +109,8 @@ type ClosureEnqueuer interface {
 // EnqueueClosure runs c on client when it implements ClosureEnqueuer and
 // declares CapClosure, and otherwise returns an UnsupportedError naming
 // CapClosure, never silently dropping the work.
+//
+//ds:def id=enqueueclosure-ngugsmdf owner=@khanakia stability=stable
 func EnqueueClosure(ctx context.Context, client Client, c ClosureJob) (RunRef, error) {
 	ce, ok := client.(ClosureEnqueuer)
 	if !ok || !client.Capabilities().Has(CapClosure) {

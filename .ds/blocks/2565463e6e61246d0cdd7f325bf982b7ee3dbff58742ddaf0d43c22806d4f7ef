@@ -1,0 +1,17 @@
+type Alert struct {
+	Kind  AlertKind
+	Queue string
+	// Depth and Wait are the queue's values at the poll that raised the
+	// alert (Wait is its OldestWait).
+	Depth int
+	Wait  time.Duration
+	// Threshold is the one crossed.
+	Threshold Threshold
+	// Resolved is true on the alert that reports the queue back under the
+	// threshold.
+	Resolved bool
+	// Truncated is copied from the QueueReport: Depth is a lower bound.
+	Truncated bool
+	// At is the poll time on the Admin's clock.
+	At time.Time
+}

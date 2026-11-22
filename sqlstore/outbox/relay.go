@@ -17,19 +17,25 @@ import (
 const (
 	// defaultPoll is how often a relay looks for entries when nothing woke
 	// it (Notify) sooner: entries written by other processes, ended backoffs.
+	//ds:def id=outbox-defaultpoll-6usxr8he owner=@khanakia stability=stable
 	defaultPoll = time.Second
 	// defaultBatch caps the entries one claim takes, so one pass stays
 	// short and other relays get a share.
+	//ds:def id=outbox-defaultbatch-n8q6sxu8 owner=@khanakia stability=stable
 	defaultBatch = 100
 	// defaultLease is how long a claimed batch stays claimed. A relay that
 	// dies loses its batch to another relay after at most this long.
+	//ds:def id=outbox-defaultlease-re9a7nfj owner=@khanakia stability=stable
 	defaultLease = time.Minute
 	// defaultEnqueueTimeout bounds one enqueue on the target, so a hung
 	// call cannot hold the batch past its lease.
+	//ds:def id=outbox-defaultenqueuetimeout-xx3czv6a owner=@khanakia stability=stable
 	defaultEnqueueTimeout = 10 * time.Second
 )
 
 // defaultBackoff spaces retries of a failing entry: 1s doubling to 5m.
+//
+//ds:def id=outbox-defaultbackoff-2sqvbn62 owner=@khanakia stability=stable
 var defaultBackoff = workflow.Backoff{Initial: time.Second, Factor: 2, Max: 5 * time.Minute}
 
 // RelayOption configures a Relay.
@@ -78,10 +84,14 @@ func WithEnqueueTimeout(d time.Duration) RelayOption {
 
 // WithBackoff sets the wait before an entry is tried again after its n-th
 // failed enqueue (Backoff.Delay(n)).
+//
+//ds:def id=outbox-withbackoff-47cktjec owner=@khanakia stability=stable
 func WithBackoff(b workflow.Backoff) RelayOption { return func(r *Relay) { r.backoff = b } }
 
 // WithMaxAttempts moves an entry to the dead status after n failed
 // enqueues. Zero (the default) retries forever.
+//
+//ds:def id=outbox-withmaxattempts-45nh9skd owner=@khanakia stability=stable
 func WithMaxAttempts(n int) RelayOption {
 	return func(r *Relay) {
 		if n >= 0 {
@@ -95,11 +105,15 @@ func WithMaxAttempts(n int) RelayOption {
 // written. It runs on the relay's goroutine, so it should hand slow work
 // (paging, a ticket) off rather than block the relay. ctx is not cancelled
 // by Stop.
+//
+//ds:def id=outbox-deadfunc-qz436ync owner=@khanakia stability=stable
 type DeadFunc func(ctx context.Context, e DeadEntry, cause error)
 
 // WithOnDead sets the hook told about each entry that goes dead, for
 // alerting or moving it elsewhere; ListDead and Requeue are the read and
 // replay side. A nil hook is ignored; without one, dead entries are logged.
+//
+//ds:def id=outbox-withondead-ssqqjtsz owner=@khanakia stability=stable
 func WithOnDead(fn DeadFunc) RelayOption {
 	return func(r *Relay) {
 		if fn != nil {
@@ -116,6 +130,8 @@ func WithOnDead(fn DeadFunc) RelayOption {
 // when the job has none), since such a target refuses keyed jobs. Without
 // this option NewRelay refuses such a target, because every entry would
 // otherwise be refused at enqueue time and go dead.
+//
+//ds:def id=outbox-allowduplicates-wx53najx owner=@khanakia stability=stable
 func AllowDuplicates() RelayOption { return func(r *Relay) { r.allowDuplicates = true } }
 
 // Relay moves committed outbox entries to a target client. Build it with
@@ -149,6 +165,8 @@ type Relay struct {
 // It refuses, with an UnsupportedError, a target without CapIdempotencyKey
 // unless AllowDuplicates is given: the relay's duplicate protection is the
 // key it sends with every enqueue.
+//
+//ds:def id=outbox-outbox-newrelay-5jmb3cm4 owner=@khanakia stability=stable
 func (o *Outbox) NewRelay(target workflow.Client, opts ...RelayOption) (*Relay, error) {
 	if target == nil {
 		return nil, fmt.Errorf("%w: NewRelay needs a target client", workflow.ErrInvalid)
@@ -171,6 +189,8 @@ func (o *Outbox) NewRelay(target workflow.Client, opts ...RelayOption) (*Relay, 
 
 // Start runs the relay loop until ctx ends or Stop is called. It does not
 // block, and it does not migrate (Outbox.Migrate does).
+//
+//ds:def id=outbox-relay-start-4jvwb54m owner=@khanakia stability=stable
 func (r *Relay) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -187,6 +207,8 @@ func (r *Relay) Start(ctx context.Context) error {
 // Stop ends the loop and waits for it. Entries it had claimed but not yet
 // enqueued are released for any relay at once. Safe to call more than
 // once, and before Start.
+//
+//ds:def id=outbox-relay-stop-sgffde6u owner=@khanakia stability=stable
 func (r *Relay) Stop() {
 	r.mu.Lock()
 	cancel, done := r.cancel, r.done
@@ -200,6 +222,8 @@ func (r *Relay) Stop() {
 
 // Notify wakes the loop to relay now rather than at its next poll: call it
 // after committing a transaction that wrote to the outbox. It never blocks.
+//
+//ds:def id=outbox-relay-notify-3s3vb4cd owner=@khanakia stability=stable
 func (r *Relay) Notify() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -213,6 +237,7 @@ func (r *Relay) wakeCh() <-chan struct{} {
 	return r.wake
 }
 
+//ds:def id=outbox-relay-loop-hg5c9hfq owner=@khanakia stability=stable
 func (r *Relay) loop(ctx context.Context) {
 	defer close(r.done)
 	for {
@@ -237,6 +262,8 @@ func (r *Relay) loop(ctx context.Context) {
 // delivers nothing, so entries failing with no backoff cannot keep it
 // looping. An error is a database failure; a target failure is recorded on
 // the entry and retried later, not returned.
+//
+//ds:def id=outbox-relay-flush-guc9yfbb owner=@khanakia stability=stable
 func (r *Relay) Flush(ctx context.Context) (int, error) {
 	total := 0
 	for {
@@ -274,6 +301,8 @@ func (e *entry) targets() []any {
 
 // job rebuilds the Job written, with the entry ID as the idempotency key
 // when the job had none and entryKey is set.
+//
+//ds:def id=outbox-entry-job-867uyy4p owner=@khanakia stability=stable
 func (e *entry) job(entryKey bool) (workflow.Job, error) {
 	job := workflow.Job{Workflow: e.workflow, Payload: e.payload, Priority: int(e.priority)}
 	if entryKey {
@@ -299,6 +328,8 @@ const claimWhere = "status = ? AND due <= ? AND lease_until < ? ORDER BY seq LIM
 // Postgres and MySQL lock the candidates with FOR UPDATE SKIP LOCKED, so
 // concurrent relays pass over each other; SQLite, with one writer, claims
 // with a single conditional UPDATE.
+//
+//ds:def id=outbox-relay-claim-fxnbwdp6 owner=@khanakia stability=stable
 func (r *Relay) claim(ctx context.Context) ([]*entry, string, error) {
 	o := r.o
 	now := o.clk.Now().UnixNano()
@@ -361,6 +392,8 @@ func (r *Relay) claimLocked(ctx context.Context, token string, until int64, args
 // for any relay, when ctx ends or when the lease could run out during the
 // next enqueue (another relay might then take the entry while this one
 // still sends it).
+//
+//ds:def id=outbox-relay-deliver-g2n48m2x owner=@khanakia stability=stable
 func (r *Relay) deliver(ctx context.Context, batch []*entry, token string) (int, error) {
 	o := r.o
 	leaseEnd := o.clk.Now().Add(r.lease)
@@ -400,6 +433,8 @@ func (r *Relay) deliver(ctx context.Context, batch []*entry, token string) (int,
 
 // fail records a failed enqueue of e: due again after the backoff, or dead
 // once WithMaxAttempts is reached.
+//
+//ds:def id=outbox-relay-fail-5pyc97na owner=@khanakia stability=stable
 func (r *Relay) fail(ctx context.Context, e *entry, token string, cause error) error {
 	o := r.o
 	attempts := e.attempts + 1

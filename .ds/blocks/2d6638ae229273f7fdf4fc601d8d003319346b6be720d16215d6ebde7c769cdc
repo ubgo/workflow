@@ -1,0 +1,7 @@
+func NewDataStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DataStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.DataStore(), nil
+}

@@ -1,0 +1,32 @@
+type Lineage struct {
+	// Kind is produced or consumed.
+	Kind LineageKind
+
+	// Dataset is the dataset's name ("warehouse.orders", an S3 prefix).
+	Dataset string
+
+	// Version is the dataset version: opaque to the library, compared
+	// only for equality, so make each update's version unique (a
+	// partition, a timestamp, a content hash).
+	Version string
+
+	// Meta is what the producer reported with the version (row count,
+	// location); nil for a consumed record.
+	Meta map[string]string
+
+	// Run, Workflow and Step name the run involved: for a produced
+	// record the step that called Updated (all empty when it was called
+	// outside a step), for a consumed record the run the trigger started
+	// (Step empty; Run empty when the driver hands out only a
+	// ScheduledID for a delayed run).
+	Run      workflow.RunID
+	Workflow string
+	Step     string
+
+	// Trigger is the DatasetTrigger that consumed the version; empty
+	// for a produced record.
+	Trigger string
+
+	// At is when the record was made, on the Datasets' clock.
+	At time.Time
+}

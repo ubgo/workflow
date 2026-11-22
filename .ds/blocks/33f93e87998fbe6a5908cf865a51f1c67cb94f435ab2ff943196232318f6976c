@@ -1,0 +1,13 @@
+type ReportConfig struct {
+	// Attempts also reports every failed step attempt (Failure.Final
+	// false), from step middleware on the worker that ran it. The last
+	// attempt of a failing run is then reported twice: once as an
+	// attempt, once as the run's end.
+	Attempts bool
+
+	// Discarded also reports runs a step discarded.
+	Discarded bool
+
+	// Clock stamps Failure.At. Nil means clock.Real.
+	Clock clock.Clock
+}

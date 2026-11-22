@@ -1,0 +1,19 @@
+func handleRunSignals(ctx context.Context, reader RunSignalReader, run RunID, on map[string]SignalHandler, names []string, batch int) error {
+	sigs, err := reader.PendingSignals(ctx, run, names, batch)
+	if err != nil {
+		return fmt.Errorf("workflow: run signals: %w", err)
+	}
+	for _, sig := range sigs {
+		fn := on[sig.Name]
+		if fn == nil {
+			continue // the reader filters by name; a stray one is left alone
+		}
+		if err := fn(ctx, sig); err != nil {
+			return fmt.Errorf("workflow: signal %q handler: %w", sig.Name, err)
+		}
+		if _, err := reader.TakeSignal(ctx, run, sig.ID); err != nil && !errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("workflow: take signal %q: %w", sig.Name, err)
+		}
+	}
+	return nil
+}

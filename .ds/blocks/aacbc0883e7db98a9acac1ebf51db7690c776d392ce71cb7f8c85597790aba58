@@ -1,0 +1,13 @@
+func (m *Manager) AwaitStep(name string, build func(ctx context.Context, in []byte) (Batch, error), opts ...AwaitOption) workflow.Step {
+	cfg := awaitConfig{poll: DefaultAwaitPoll, polls: DefaultAwaitPolls}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return workflow.Step{
+		Name: name,
+		Run: func(ctx context.Context, in []byte) ([]byte, error) {
+			return m.await(ctx, cfg, build, in)
+		},
+		Retry: &workflow.RetryPolicy{Max: cfg.polls, Backoff: workflow.Backoff{Initial: cfg.poll, Max: cfg.poll}},
+	}
+}

@@ -1,0 +1,8 @@
+func TestClaimCheck_MissingBlobIsPermanent(t *testing.T) {
+	cc := newClaimCheck(t, middleware.NewMemoryBlobStore())
+	step := cc.Step()(echo)
+	_, err := step(runCtx("tok"), claimRef("tok/payload"))
+	if !errors.Is(err, middleware.ErrBlobNotFound) || !workflow.IsPermanent(err) {
+		t.Fatalf("got %v, want a permanent ErrBlobNotFound", err)
+	}
+}

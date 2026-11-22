@@ -1,0 +1,1 @@
+func WithBackoff(b workflow.Backoff) RelayOption { return func(r *Relay) { r.backoff = b } }

@@ -1,0 +1,10 @@
+func resultOf(ctx context.Context, c Client, ref RunRef, st Status) ([]byte, error) {
+	if st != StatusSucceeded {
+		return nil, &RunFailedError{Ref: ref, Status: st, Err: runError(ctx, c, ref)}
+	}
+	rr, ok := c.(ResultReader)
+	if !ok {
+		return nil, &UnsupportedError{Field: "Result", Missing: CapResult, Reason: "the client does not keep run results"}
+	}
+	return rr.Result(ctx, ref)
+}

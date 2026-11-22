@@ -1,0 +1,39 @@
+func Stuck(cfg StuckConfig) workflow.Middleware {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if cfg.OnStuck == nil || (cfg.After == nil && cfg.Default <= 0) {
+				return nil, workflow.Permanent(fmt.Errorf("%w: Stuck needs OnStuck and After or a positive Default", workflow.ErrInvalid))
+			}
+			info, _ := workflow.StepInfoFrom(ctx)
+			limit := cfg.Default
+			if cfg.After != nil {
+				limit = cfg.After(info)
+			}
+			if limit <= 0 {
+				return next(ctx, in)
+			}
+			started := clk.Now()
+			tm := clk.NewTimer(limit)
+			done := make(chan struct{})
+			watched := make(chan struct{})
+			go func() {
+				defer close(watched)
+				select {
+				case <-tm.C():
+					cfg.OnStuck(context.WithoutCancel(ctx), StuckEvent{Info: info, Started: started, Running: clk.Now().Sub(started)})
+				case <-done:
+					tm.Stop()
+				}
+			}()
+			defer func() {
+				close(done)
+				<-watched // OnStuck, if it fired, has returned before the attempt ends
+			}()
+			return next(ctx, in)
+		}
+	}
+}

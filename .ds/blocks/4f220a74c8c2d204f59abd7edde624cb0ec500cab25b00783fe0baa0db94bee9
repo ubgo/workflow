@@ -1,0 +1,1 @@
+func WithMetrics(src MetricsSource) Option { return func(a *Admin) { a.metrics = src } }

@@ -1,0 +1,37 @@
+func (c *Client) touchNode(ctx context.Context) error {
+	now := c.leaseNanos()
+	if c.nodeSeen != 0 && now-c.nodeSeen < int64(c.lease/3) {
+		return nil
+	}
+	queues := make([]string, 0, len(c.queues))
+	for _, q := range c.queues {
+		queues = append(queues, q.Name)
+	}
+	raw, err := json.Marshal(queues)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	running := 0
+	for _, n := range c.running {
+		running += n
+	}
+	c.mu.Unlock()
+	workers := c.workers
+	if c.schedulerOnly {
+		workers = 0
+	}
+	n, err := c.st.execN(ctx, c.st.db, "UPDATE {nodes} SET mode = ?, queues = ?, workers = ?, running = ?, started_at = ?, last_seen = ? WHERE id = ?",
+		string(c.mode()), string(raw), workers, running, c.startedAt, now, c.nodeID)
+	if err == nil && n == 0 {
+		_, err = c.st.exec(ctx, c.st.db, "INSERT INTO {nodes} (id, mode, queues, workers, running, started_at, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			c.nodeID, string(c.mode()), string(raw), workers, running, c.startedAt, now)
+		if err != nil && c.st.isUnique(err) {
+			err = nil // another client with this id inserted first; the next touch updates it
+		}
+	}
+	if err == nil {
+		c.nodeSeen = now
+	}
+	return err
+}

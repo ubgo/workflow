@@ -1,0 +1,3 @@
+func WithLevels(final, attempt sentrygo.Level) Option {
+	return func(r *Reporter) { r.final, r.attempt = final, attempt }
+}

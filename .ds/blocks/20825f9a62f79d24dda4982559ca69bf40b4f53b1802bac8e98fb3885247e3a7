@@ -1,0 +1,27 @@
+func CheckScheduleCaps(have Caps, s Schedule) error {
+	missing := have.Missing(RequiresSchedule(s))
+	if missing.IsZero() {
+		return nil
+	}
+	field := "Schedule"
+	switch {
+	case missing.Has(CapCron):
+	case missing.HasAny(CapCronZone):
+		field = "Schedule.Location"
+	case missing.HasAny(CapScheduleWindow):
+		field = "Schedule.Windows"
+	case missing.HasAny(CapOverlapSkip):
+		field = "Schedule.Overlap"
+	case missing.HasAny(CapCronSeconds):
+		field = "Schedule.Seconds"
+	case missing.HasAny(CapScheduleActive):
+		field = "Schedule.Active"
+	case missing.HasAny(CapScheduleKeep):
+		field = "Schedule.KeepRuns"
+	case missing.HasAny(CapTenant):
+		field = "Schedule.Tenant"
+	default:
+		field = "Schedule.Misfire"
+	}
+	return &UnsupportedError{Field: field, Missing: missing, Reason: "schedule for workflow " + s.Workflow}
+}

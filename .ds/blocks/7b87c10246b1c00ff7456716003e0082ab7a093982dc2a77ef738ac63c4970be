@@ -1,0 +1,1 @@
+func WithManualCallbackRetry() Option { return func(m *Manager) { m.manualRetry = true } }

@@ -1,0 +1,41 @@
+func PartitionStatus(ctx context.Context, client Client, set string) ([]PartitionRun, error) {
+	if client == nil {
+		return nil, invalidf("partition status %q: client is nil", set)
+	}
+	if set == "" {
+		return nil, invalidf("partition status: empty set name")
+	}
+	q, ok := client.(RunQuerier)
+	if !ok || !client.Capabilities().Has(CapRunQuery) {
+		return nil, &UnsupportedError{Field: "PartitionStatus", Missing: CapRunQuery,
+			Reason: "the status of a partition set is read from the run listing"}
+	}
+	latest := map[string]RunInfo{}
+	query := RunQuery{Labels: map[string]string{LabelPartitionSet: set}, Limit: MaxRunsLimit}
+	for {
+		page, err := q.Runs(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("workflow: partition status %q: %w", set, err)
+		}
+		for _, r := range page.Runs {
+			k, ok := r.Labels[LabelPartitionKey]
+			if !ok {
+				continue
+			}
+			// Pages run newest first, so the first run seen for a
+			// key is its latest.
+			if _, seen := latest[k]; !seen {
+				latest[k] = r
+			}
+		}
+		if page.Next == "" {
+			break
+		}
+		query.Cursor = page.Next
+	}
+	out := make([]PartitionRun, 0, len(latest))
+	for _, k := range slices.Sorted(maps.Keys(latest)) {
+		out = append(out, PartitionRun{Key: k, Run: latest[k]})
+	}
+	return out, nil
+}

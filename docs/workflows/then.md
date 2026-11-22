@@ -1,17 +1,17 @@
 # Completion triggers
 
-When an import succeeds, its index should be rebuilt; when it fails, someone should be alerted. Enqueuing the index job from import's last step couples import to everything that follows it and misses the failure case, since a failed step never reaches that code. `workflow.Then` is a plugin that watches run ends and starts the next workflow per rule, so "after import, index" lives beside the workflows and a failed or cancelled end can trigger its own follow-up.
+When an import succeeds, its index should be rebuilt; when it fails, someone should be alerted. Enqueuing the index job from import's last step couples import to everything that follows it and misses the failure case, since a failed step never reaches that code. [`workflow.Then`](ds:block?id=then-j2sz7cnw) is a plugin that watches run ends and starts the next workflow per rule, so "after import, index" lives beside the workflows and a failed or cancelled end can trigger its own follow-up.
 
 ## Before you start
 
-- `Then` observes run ends, so it needs a client with `workflow.RunNotifier`; `workflow.Use` refuses one without it with an `*workflow.UnsupportedError` naming `CapRunFinished`.
-- With `workflow.CapRunFinished` (memory, SQL, Redis) every run end is delivered, including after a restart on the durable drivers. On Hatchet delivery is best effort, so a next job can be missed.
+- `Then` observes run ends, so it needs a client with [`workflow.RunNotifier`](ds:block?id=runnotifier-tbkv69uz); [`workflow.Use`](ds:block?id=use-yq9nazws) refuses one without it with an `*workflow.UnsupportedError` naming `CapRunFinished`.
+- With [`workflow.CapRunFinished`](ds:block?id=caprunfinished-7nrsun98) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t)) every run end is delivered, including after a restart on the durable drivers. On [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) delivery is best effort ([`RunNotifier`'s contract](ds:block?id=runnotifier-tbkv69uz)), so a next job can be missed.
 - The rules are shown in [`examples/events-more`](../../examples/events-more) (`go run ./events-more` from `examples/`); redo runs and the error hook in [`examples/then-redo`](../../examples/then-redo) (`go run ./then-redo`).
-- Redo runs come from resetting or forking a run, which the memory, SQL and Redis drivers offer through `workflow.RunResetterWith` and `workflow.RunForker` ([manage runs](../jobs/manage-runs.md#reset-a-run-that-succeeded)).
+- Redo runs come from resetting or forking a run, which the memory, SQL and Redis drivers offer through [`workflow.RunResetterWith`](ds:block?id=runresetterwith-792722gn) and [`workflow.RunForker`](ds:block?id=runforker-9cpe2f7f) ([manage runs](../jobs/manage-runs.md#reset-a-run-that-succeeded)).
 
 ## Start a workflow when another finishes
 
-`workflow.Then(rules, opts...)` returns the plugin; pass it to `Use` before `Register` and `Start`:
+[`workflow.Then(rules, opts...)`](ds:block?id=then-j2sz7cnw) returns the plugin; pass it to `Use` before `Register` and `Start`:
 
 <!-- snippet: examples/events-more/main.go#then -->
 ```go
@@ -39,15 +39,15 @@ then:
   import bad.csv failed -> alert ran with bad.csv
 ```
 
-A `ThenRule` fires when a run of `When` ends in one of `On` (default: `StatusSucceeded` only). `Start` gets the `RunEvent` (the run's ref, status, error, labels, failed step) and returns the next job, or `false` to start nothing. The output is not in the event; a next job that needs it reads it with `workflow.ResultReader` or gets the finished run's ref. Every matching rule starts its own job, in rule order.
+A [`ThenRule`](ds:block?id=thenrule-rcv7hzmr) fires when a run of `When` ends in one of `On` (default: `StatusSucceeded` only). `Start` gets the `RunEvent` (the run's ref, status, error, labels, failed step) and returns the next job, or `false` to start nothing. The output is not in the event; a next job that needs it reads it with `workflow.ResultReader` or gets the finished run's ref. Every matching rule starts its own job, in rule order ([`observe`](ds:block?id=thenplugin-observe-fkwupcpn)).
 
-Each next job carries the label `workflow.LabelThenFrom` with the finished run's ID, and the idempotency key `then/<rule>/<finished run ID>` unless `Start` set one. The rule's name is `Name`, or `When>` plus the next job's workflow when `Name` is empty; set `Name` when two rules for one workflow start the same next workflow. A run-finished event delivered twice therefore starts the next job once while that job is unfinished.
+Each next job carries the label [`workflow.LabelThenFrom`](ds:block?id=labelthenfrom-8h5tpxrg) with the finished run's ID, and the idempotency key `then/<rule>/<finished run ID>` unless `Start` set one ([`observe`](ds:block?id=thenplugin-observe-fkwupcpn)). The rule's name is `Name`, or `When>` plus the next job's workflow when `Name` is empty; set `Name` when two rules for one workflow start the same next workflow. A run-finished event delivered twice therefore starts the next job once while that job is unfinished.
 
-`Then` enqueues through the client `Use` returns, below the `Then` plugin itself: put `Then` first in `Use` so the other plugins' enqueue middleware (unique jobs, tracing) applies to the next job. One `Then` value may be used with several clients; each enqueues on its own.
+`Then` enqueues through the client `Use` returns, below the `Then` plugin itself ([its enqueue middleware](ds:block?id=thenplugin-enqueuemiddleware-45pnxp9j) binds that enqueue): put `Then` first in `Use` so the other plugins' enqueue middleware (unique jobs, tracing) applies to the next job. One `Then` value may be used with several clients; each enqueues on its own.
 
 ## Redo runs
 
-A run reset after it had succeeded (`ResetOptions.Succeeded`) and a fork of a run that had succeeded carry `workflow.LabelRedo` with the value `"true"` ([manage runs](../jobs/manage-runs.md#reset-a-run-that-succeeded)). The reset keeps the run's ref, so the run that ends is the same run that already succeeded once:
+A run reset after it had succeeded (`ResetOptions.Succeeded`) and a fork of a run that had succeeded carry [`workflow.LabelRedo`](ds:block?id=labelredo-7f5kcp9k) with the value `"true"` ([manage runs](../jobs/manage-runs.md#reset-a-run-that-succeeded)). The reset keeps the run's ref, so the run that ends is the same run that already succeeded once:
 
 <!-- snippet: examples/then-redo/main.go#redo -->
 ```go
@@ -59,7 +59,7 @@ if _, err := c.(workflow.RunResetterWith).ResetRunWith(ctx, ref, importStep,
 }
 ```
 
-A fork is a new run, made from the succeeded one; it carries the label too, and it drops `workflow.LabelThenFrom` and the other membership labels of the original:
+A fork is a new run, made from the succeeded one; it carries the label too ([`ForkLabels`](ds:block?id=forklabels-479w9npr)), and it drops `workflow.LabelThenFrom` and the other membership labels of the original ([`forkDrops`](ds:block?id=forkdrops-k5wk4h5m)):
 
 <!-- snippet: examples/then-redo/main.go#fork -->
 ```go
@@ -69,7 +69,7 @@ if _, err := c.(workflow.RunForker).ForkRun(ctx, ref, importStep, workflow.ForkO
 }
 ```
 
-The first success already started each rule's next job, and the idempotency key deduplicates only while that job is unfinished, so by default `Then` skips the end of every run carrying the label: neither the reset nor the fork above starts a second `index`. Pass `workflow.ThenAfterRedo()` when the next job must follow the corrected result too:
+The first success already started each rule's next job, and the idempotency key deduplicates only while that job is unfinished, so by default `Then` skips the end of every run carrying the label ([`observe`](ds:block?id=thenplugin-observe-fkwupcpn)): neither the reset nor the fork above starts a second `index`. Pass [`workflow.ThenAfterRedo()`](ds:block?id=thenafterredo-zh59sk4a) when the next job must follow the corrected result too:
 
 <!-- snippet: examples/then-redo/main.go#after-redo -->
 ```go
@@ -83,7 +83,7 @@ With it, the reset and the fork each start one more `index`, so the next workflo
 
 ## Errors
 
-An observer has no caller, so `Then` hands its errors to `workflow.ThenErrors(fn)`: each is a `*workflow.ThenError` with the rule, the finished run (`From`), the job (when `Start` built one) and the cause (`Err`, also reached by `errors.Unwrap`), so an app that must not lose the next job can enqueue it again from there. Without the option they are logged with `slog.Default` at error level. The errors are a `Start` error, a reserved label in the job `Start` returned (`ErrInvalid`), a plugin used without `Use`, and the enqueue's error.
+An observer has no caller, so `Then` hands its errors to [`workflow.ThenErrors(fn)`](ds:block?id=thenerrors-j2g8pm8g): each is a [`*workflow.ThenError`](ds:block?id=thenerror-9gk7jpsy) with the rule, the finished run (`From`), the job (when `Start` built one) and the cause (`Err`, also reached by `errors.Unwrap`), so an app that must not lose the next job can enqueue it again from there. Without the option they are logged with `slog.Default` at error level ([`Then`](ds:block?id=then-j2sz7cnw)). The errors are a `Start` error, a reserved label in the job `Start` returned (`ErrInvalid`), a plugin used without `Use`, and the enqueue's error ([`observe`](ds:block?id=thenplugin-observe-fkwupcpn)).
 
 <!-- snippet: examples/then-redo/main.go#errors -->
 ```go
@@ -101,7 +101,7 @@ if err != nil {
 
 `fn` runs on the driver's observer goroutine, so hand the error on (a channel, a queue, a counter) and return. A rule whose `Start` failed has no job, so `ThenError.Job` is the zero `Job`.
 
-`Then` itself refuses, with `ErrInvalid`, no rules, a rule without `When` or `Start`, a status in `On` that is not terminal, and two rules with one `Name`.
+[`Then`](ds:block?id=then-j2sz7cnw) itself refuses, with `ErrInvalid`, no rules, a rule without `When` or `Start`, a status in `On` that is not terminal, and two rules with one `Name`.
 
 ## Try it
 
@@ -127,12 +127,12 @@ Each line is printed by an observer registered after `Use`, which runs after `Th
 
 ## Pitfalls
 
-- An enqueue that fails is reported, not retried: the observer runs once per delivered event. Handle `ThenError` if a lost next job matters.
-- The key deduplicates only while the next job is unfinished. A driver that redelivers a run end after the next job finished would start it again, so make the next workflow idempotent where that matters.
-- `Start` runs on the driver's observer goroutine; keep it quick and leave slow work to the job it returns.
-- **A redo that ends while the first next job still runs starts nothing, even with `ThenAfterRedo`.** A reset keeps the run's ID, so the key `then/<rule>/<run ID>` is the same, and while the first next job is unfinished the driver hands back that job instead of starting another (the memory driver returns the existing run without an error). Wait for the next job to end before resetting, or have `Start` set its own `IdempotencyKey`.
+- An enqueue that fails is reported, not retried: the observer runs once per delivered event ([`observe`](ds:block?id=thenplugin-observe-fkwupcpn)). Handle `ThenError` if a lost next job matters.
+- The key deduplicates only while the next job is unfinished ([`Then`](ds:block?id=then-j2sz7cnw)). A driver that redelivers a run end after the next job finished would start it again, so make the next workflow idempotent where that matters.
+- `Start` runs on the driver's observer goroutine ([`RunNotifier`](ds:block?id=runnotifier-tbkv69uz)); keep it quick and leave slow work to the job it returns.
+- **A redo that ends while the first next job still runs starts nothing, even with `ThenAfterRedo`.** A reset keeps the run's ID, so the key `then/<rule>/<run ID>` is the same, and while the first next job is unfinished the driver hands back that job instead of starting another (the memory driver returns the existing run without an error: [`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)). Wait for the next job to end before resetting, or have `Start` set its own `IdempotencyKey`.
 - **Redo runs are skipped by default.** An operator who resets a succeeded import to fix its data gets no new `index` unless the plugin was built with `ThenAfterRedo`; decide per plugin which behaviour the next workflow needs.
-- **Observers run in registration order.** An observer you register before `Use` sees a run end before `Then` has started its next job.
+- **Observers run in registration order** ([`RunNotifier`](ds:block?id=runnotifier-tbkv69uz)). An observer you register before `Use` sees a run end before `Then` has started its next job.
 
 ## Related
 

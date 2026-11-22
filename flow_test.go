@@ -372,6 +372,7 @@ func TestSpawnOncePerRun(t *testing.T) {
 	}
 }
 
+//ds:def id=testsecretguard-2tfh9yq4 owner=@khanakia stability=stable
 func TestSecretGuard(t *testing.T) {
 	next := func(context.Context, workflow.Job) (workflow.RunRef, error) { return workflow.RunRef{RunID: "ok"}, nil }
 	guard := workflow.SecretGuard(nil)(next)
@@ -426,6 +427,7 @@ func (m mapResolver) ResolveSecret(_ context.Context, name string) ([]byte, erro
 	return []byte(v), nil
 }
 
+//ds:def id=testresolvesecret-cz6ravyv owner=@khanakia stability=stable
 func TestResolveSecret(t *testing.T) {
 	v, err := workflow.ResolveSecret(context.Background(), mapResolver{"db": "pw"}, workflow.SecretRef{Ref: "db"})
 	if err != nil || string(v) != "pw" {

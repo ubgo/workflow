@@ -1,0 +1,25 @@
+func (c *Client) shutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.stopped {
+		return
+	}
+	c.stopped = true
+	for _, r := range c.runs {
+		c.cancelLocked(r, errShutdown)
+	}
+	for _, r := range c.delayed {
+		c.cancelLocked(r, errShutdown)
+	}
+	for _, s := range c.scheds {
+		s.halt()
+	}
+	if c.drained != nil && c.executing == 0 {
+		closeOnce(c.drained)
+	}
+	if c.rateTm != nil {
+		c.rateTm.Stop()
+	}
+	c.taskCond.Broadcast()
+	c.pokeNotifier() // let it drain the shutdown cancellations, then exit
+}

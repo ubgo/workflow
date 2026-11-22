@@ -53,6 +53,8 @@ var listEpoch = time.Unix(0, 0).UTC()
 // of workflows that are not registered on this client are listed too when
 // Enqueue of this driver created them (the workflow name is stamped on
 // the run), so any process can query.
+//
+//ds:def id=hatchet-client-runs-tp4ns8fc owner=@khanakia stability=stable
 func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	if err := workflow.ValidateRunQuery(q); err != nil {
 		return workflow.RunPage{}, err
@@ -235,6 +237,8 @@ func (c *Client) runByRef(ctx context.Context, sdk *hatchetsdk.Client, q workflo
 // The engine has neither: a run in retry backoff lists as QUEUED and a
 // discarded run as FAILED, so answering such a filter with an empty page
 // would tell an operator "none" while many exist.
+//
+//ds:def id=hatchet-checkrunstates-d62jh9cp owner=@khanakia stability=stable
 func checkRunStates(q workflow.RunQuery) error {
 	for _, s := range q.Statuses {
 		if s == workflow.StatusRetrying || s == workflow.StatusDiscarded {
@@ -260,7 +264,13 @@ func listedStatuses(want []workflow.Status) (runs, sched bool, statuses *[]rest.
 	for _, s := range want {
 		switch s {
 		case workflow.StatusScheduled:
+			// Unfired delayed starts, plus the keyed delayed starts a
+			// start gate holds back: those are runs the engine reads
+			// RUNNING (or QUEUED before the gate runs), told apart by
+			// gateStatus and kept by RunQuery.Match.
 			sched = true
+			add(rest.V1TaskStatusRUNNING)
+			add(rest.V1TaskStatusQUEUED)
 		case workflow.StatusQueued:
 			add(rest.V1TaskStatusQUEUED)
 		case workflow.StatusRunning, workflow.StatusWaiting:
@@ -321,7 +331,7 @@ func (c *Client) runInfo(id string, d *rest.V1WorkflowRunDetails) (workflow.RunI
 	if err != nil {
 		return workflow.RunInfo{}, false
 	}
-	if !st.IsTerminal() && c.suspended(d) {
+	if !st.IsTerminal() && st != workflow.StatusScheduled && c.suspended(d) {
 		st = workflow.StatusWaiting
 	}
 	c.mu.Lock()
@@ -333,7 +343,7 @@ func (c *Client) runInfo(id string, d *rest.V1WorkflowRunDetails) (workflow.RunI
 	}
 	isStep := func(task string) bool {
 		if !registered {
-			return task != ""
+			return task != "" && task != startGateTask
 		}
 		return slices.ContainsFunc(spec.Steps, func(s workflow.Step) bool { return s.Name == task })
 	}
@@ -356,7 +366,9 @@ func (c *Client) runInfo(id string, d *rest.V1WorkflowRunDetails) (workflow.RunI
 	// The run's insert time, which the run listing orders by (CreatedAt
 	// is its first task event, a little later).
 	info.EnqueuedAt = d.Run.Metadata.CreatedAt
-	if d.Run.StartedAt != nil {
+	if gateID, gated := gateTaskID(d); gated {
+		info.StartedAt = stepsStartedAt(d, gateID)
+	} else if d.Run.StartedAt != nil {
 		info.StartedAt = *d.Run.StartedAt
 	}
 	if d.Run.FinishedAt != nil && st.IsTerminal() {
@@ -410,7 +422,7 @@ func (c *Client) failedStep(name string, d *rest.V1WorkflowRunDetails) string {
 	}
 	for _, t := range d.Tasks {
 		task := names[t.TaskExternalId]
-		if t.Status != rest.V1TaskStatusFAILED || task == "" {
+		if t.Status != rest.V1TaskStatusFAILED || task == "" || task == startGateTask {
 			continue
 		}
 		if !registered || slices.ContainsFunc(spec.Steps, func(s workflow.Step) bool { return s.Name == task }) {
@@ -423,6 +435,8 @@ func (c *Client) failedStep(name string, d *rest.V1WorkflowRunDetails) string {
 // runInput is the trigger input inside a run's stored input: the engine
 // keeps it under "input", beside the parents' outputs and trigger data
 // (checked on hatchet-lite v0.110.5).
+//
+//ds:def id=hatchet-runinput-xzafk9na owner=@khanakia stability=stable
 func runInput(doc map[string]any) any {
 	if in, ok := doc["input"].(map[string]any); ok {
 		return in
@@ -529,6 +543,8 @@ func parseCursor(cursor string) (runs, sched int64, err error) {
 // engine fired anyway has its run cancelled, with no error. It returns how
 // many it asked the engine to cancel; a run that finished between the
 // listing and the cancel is counted but left as it ended.
+//
+//ds:def id=hatchet-client-cancelall-np3kt3p8 owner=@khanakia stability=stable
 func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	if err := workflow.ValidateCancelQuery(q); err != nil {
 		return 0, err
@@ -605,6 +621,8 @@ func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error
 // the key again for a replayed run, so an Enqueue with that key while the
 // retried run is unfinished starts a second run; this is a known gap of
 // the Hatchet driver.
+//
+//ds:def id=hatchet-client-retry-jgtn26c3 owner=@khanakia stability=stable
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -663,6 +681,8 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 
 // replayTasks is the external IDs of the run's step tasks that failed or
 // were cancelled.
+//
+//ds:def id=hatchet-replaytasks-uc6typ7h owner=@khanakia stability=stable
 func replayTasks(d *rest.V1WorkflowRunDetails) []openapi_types.UUID {
 	var out []openapi_types.UUID
 	for _, t := range d.Tasks {
@@ -675,6 +695,8 @@ func replayTasks(d *rest.V1WorkflowRunDetails) []openapi_types.UUID {
 
 // checkKeyFree returns ErrDuplicate when a run other than self holds key
 // and is unfinished. A per-run key (no caller key) is never shared.
+//
+//ds:def id=hatchet-client-checkkeyfree-p52jhfhq owner=@khanakia stability=stable
 func (c *Client) checkKeyFree(ctx context.Context, sdk *hatchetsdk.Client, key, self string) error {
 	if key == "" || !strings.Contains(key, idemKeySep+idemKindCaller+idemKeySep) {
 		return nil

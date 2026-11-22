@@ -1,0 +1,15 @@
+type FuncConfig struct {
+	// Queue is the default queue of its runs; empty means DefaultQueue.
+	Queue string
+
+	// Retry is the retry policy of its one step; nil means no retry.
+	Retry *RetryPolicy
+
+	// Timeout bounds each attempt; zero means none.
+	Timeout time.Duration
+
+	// Catch runs once when a run fails for good, with the decoded
+	// argument. Nil means nothing runs. Its error is reported the way the
+	// driver reports an OnFailure error.
+	Catch func(ctx context.Context, in []byte) error
+}

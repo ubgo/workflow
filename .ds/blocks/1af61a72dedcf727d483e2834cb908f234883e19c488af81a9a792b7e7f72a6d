@@ -1,0 +1,6 @@
+func RunReplayFlows(t *testing.T, h ReplayHarness) {
+	t.Run("locals", func(t *testing.T) { replayLocals(t, h) })
+	t.Run("recorded-error", func(t *testing.T) { replayRecordedError(t, h) })
+	t.Run("nondeterminism", func(t *testing.T) { replayDiverges(t, h) })
+	t.Run("child", func(t *testing.T) { replayChild(t, h) })
+}

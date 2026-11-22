@@ -1,0 +1,7 @@
+func WithPruneInterval(d time.Duration) Option {
+	return func(cl *Client) {
+		if d > 0 {
+			cl.pruneEvery = d
+		}
+	}
+}

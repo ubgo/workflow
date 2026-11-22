@@ -1,0 +1,50 @@
+func (i *Instrumentation) Enqueue() workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			for _, k := range slices.Sorted(maps.Keys(job.Labels)) {
+				if strings.HasPrefix(k, LabelPrefix) {
+					return workflow.RunRef{}, fmt.Errorf("%w: workflow/otel: label %q uses the reserved prefix %q", workflow.ErrInvalid, k, LabelPrefix)
+				}
+			}
+			attrs := append([]attribute.KeyValue{AttrWorkflow.String(job.Workflow)}, i.labelAttrs(job.Labels)...)
+			if i.tenant && job.Tenant != "" {
+				attrs = append(attrs, AttrTenant.String(job.Tenant))
+			}
+			// The enqueue side knows only the queue the job asked for; the
+			// workflow's own queue is resolved by the driver, so an empty
+			// Job.Queue records no attribute rather than a wrong one.
+			var queueAttr []attribute.KeyValue
+			if job.Queue != "" {
+				queueAttr = []attribute.KeyValue{AttrQueue.String(job.Queue)}
+				attrs = append(attrs, queueAttr...)
+			}
+			name := ""
+			if i.enqueueName != nil {
+				name = i.enqueueName(job)
+			}
+			if name == "" {
+				name = "workflow.enqueue " + job.Workflow
+			}
+			ctx, span := i.tracer.Start(ctx, name,
+				trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attrs...))
+			defer span.End()
+			mlabels := i.metricLabelAttrs(job.Labels)
+
+			labels := make(map[string]string, len(job.Labels)+2)
+			maps.Copy(labels, job.Labels)
+			i.prop.Inject(ctx, labelCarrier{labels: labels})
+			job.Labels = labels
+
+			ref, err := next(workflow.AllowReservedPrefix(ctx, workflow.LabelPrefixOTel), job)
+			if !ref.RunID.IsZero() {
+				span.SetAttributes(AttrRunID.String(ref.RunID.String()))
+			}
+			outcome := outcomeOf(err)
+			recordErr(span, err)
+			span.SetAttributes(AttrOutcome.String(string(outcome)))
+			i.enqueues.Add(ctx, 1, metric.WithAttributes(append(append(mlabels, queueAttr...),
+				AttrWorkflow.String(job.Workflow), AttrOutcome.String(string(outcome)))...))
+			return ref, err
+		}
+	}
+}

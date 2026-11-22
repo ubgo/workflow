@@ -1,0 +1,3 @@
+func WithTraceLink(fn func(workflow.RunInfo) string) HandlerOption {
+	return func(c *handlerConfig) { c.traceLink = fn }
+}

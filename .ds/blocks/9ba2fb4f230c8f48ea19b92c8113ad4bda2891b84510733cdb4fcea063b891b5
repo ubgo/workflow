@@ -1,0 +1,19 @@
+func RunData[T any](ctx context.Context, name string) (T, bool, error) {
+	var zero T
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return zero, false, err
+	}
+	raw, ok, err := j.store.Load(ctx, j.run, runDataPrefix+name)
+	if err != nil {
+		return zero, false, fmt.Errorf("workflow: run data %q: load: %w", name, err)
+	}
+	if !ok {
+		return zero, false, nil
+	}
+	var v T
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return zero, false, Permanent(fmt.Errorf("workflow: run data %q: stored value does not decode: %w", name, err))
+	}
+	return v, true, nil
+}

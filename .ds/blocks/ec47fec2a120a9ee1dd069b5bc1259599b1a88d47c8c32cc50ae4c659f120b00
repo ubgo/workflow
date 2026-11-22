@@ -1,0 +1,7 @@
+func WithStopWhenIdle(grace time.Duration) Option {
+	return func(m *Client) {
+		if grace >= 0 {
+			m.idleGrace, m.stopWhenIdle = grace, true
+		}
+	}
+}

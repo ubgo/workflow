@@ -1,0 +1,5 @@
+func WithErrorHistory(n int) Option {
+	return func(c *Client) {
+		c.errHistory = n
+	}
+}

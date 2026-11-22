@@ -1,0 +1,11 @@
+func (c *Client) notifyChannel() string {
+	name := channelPrefix + c.prefix + "wake"
+	if c.schema != "" {
+		name = channelPrefix + c.schema + "_" + c.prefix + "wake"
+	}
+	if len(name) <= maxChannelLen {
+		return name
+	}
+	sum := sha256.Sum256([]byte(name))
+	return channelPrefix + hex.EncodeToString(sum[:16])
+}

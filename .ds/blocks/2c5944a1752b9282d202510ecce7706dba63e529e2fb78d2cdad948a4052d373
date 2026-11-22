@@ -1,0 +1,7 @@
+func TraceIDOf(labels map[string]string) (string, bool) {
+	sc := SpanContextOf(labels, propagation.TraceContext{})
+	if !sc.TraceID().IsValid() {
+		return "", false
+	}
+	return sc.TraceID().String(), true
+}

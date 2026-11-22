@@ -1,0 +1,14 @@
+var triggerScript = goredis.NewScript(luaPrelude + `
+local b, sid = ARGV[1], ARGV[2]
+local sk = b .. ':sched:' .. sid
+if redis.call('EXISTS', sk) == 0 then return {'notfound'} end
+local lr, st, rsid = overlapped(b, sk)
+if lr then return {'overlap', lr, st, rsid} end
+create(b, ARGV, 4)
+if (tonumber(redis.call('HGET', sk, 'keep') or '0') or 0) > 0 then
+  redis.call('ZADD', b .. ':sruns:' .. sid, ARGV[11], ARGV[4])
+end
+redis.call('HSET', sk, 'lfire', ARGV[3], 'lrun', ARGV[4])
+redis.call('PUBLISH', b .. ':wake', 'e')
+return {'ok'}
+`)

@@ -1,0 +1,3 @@
+func RejectRun(ctx context.Context, c Client, ref RunRef, by, note string) error {
+	return answerRun(ctx, c, ref, Decision{Approved: false, By: by, Note: note})
+}

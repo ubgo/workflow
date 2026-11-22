@@ -1,0 +1,3 @@
+func BackfillAllowDuplicates() BackfillOption {
+	return func(o *backfillOptions) { o.allowDuplicates = true }
+}

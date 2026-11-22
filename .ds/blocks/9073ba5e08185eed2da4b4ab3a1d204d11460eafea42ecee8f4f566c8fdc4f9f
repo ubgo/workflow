@@ -1,0 +1,19 @@
+type BalanceConfig struct {
+	// Total is the worker budget shared by the queues. Zero means the
+	// sum of their current Workers, so balancing moves workers between
+	// queues without adding any. It is raised to the sum of the minimums
+	// when lower.
+	Total int
+
+	// Bounds holds per-queue bounds by queue name.
+	Bounds map[string]QueueBounds
+
+	// Default bounds a queue absent from Bounds.
+	Default QueueBounds
+
+	// MaxShift caps how far one Balance call moves a queue's count, up or
+	// down, so a burst does not swing every worker at once. Zero means no
+	// cap. With a cap the counts can briefly sum to more or less than
+	// Total while they converge.
+	MaxShift int
+}

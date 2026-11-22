@@ -1,0 +1,17 @@
+func exprKeys(wf workflow.Workflow) error {
+	reason := "the Redis driver evaluates only KeyFunc keys; workflow " + wf.Name
+	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
+		return workflow.Unsupported("Workflow.Concurrency.Key.Expr", reason)
+	}
+	for i, r := range wf.RateLimits {
+		if r.Key.Expr != "" {
+			return workflow.Unsupported(fmt.Sprintf("Workflow.RateLimits[%d].Key.Expr", i), reason)
+		}
+	}
+	for _, s := range wf.Steps {
+		if s.Wait != nil && s.Wait.KeyFrom.Expr != "" {
+			return workflow.Unsupported("WaitSpec.KeyFrom.Expr", reason+", step "+s.Name)
+		}
+	}
+	return nil
+}

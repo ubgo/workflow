@@ -1,0 +1,3 @@
+func WithScheduleRegion(name string) Option {
+	return func(c *config) { c.schedRegion = name }
+}

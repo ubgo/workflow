@@ -1,0 +1,17 @@
+func (c *Client) queueEndedLocked(r *run) {
+	c.emitLocked(r, workflow.LifecycleFinished, r.failedStep, 0, r.err)
+	if len(c.observers) == 0 {
+		return
+	}
+	c.ended = append(c.ended, notice{run: &workflow.RunEvent{
+		Ref:        r.ref(),
+		Workflow:   r.reg.wf.Name,
+		Status:     r.status,
+		Err:        r.err,
+		Labels:     maps.Clone(r.job.Labels),
+		FinishedAt: c.clk.Now(),
+		Step:       r.failedStep,
+		Tenant:     r.job.Tenant,
+	}})
+	c.pokeNotifier()
+}

@@ -1,0 +1,13 @@
+func encodeLoc(loc *time.Location) (string, error) {
+	name := locName(loc)
+	if _, err := time.LoadLocation(name); err == nil {
+		return name, nil
+	}
+	// A fixed zone has one offset all year; probe two seasons to tell.
+	_, jan := time.Date(2026, 1, 1, 0, 0, 0, 0, loc).Zone()
+	_, jul := time.Date(2026, 7, 1, 0, 0, 0, 0, loc).Zone()
+	if jan != jul {
+		return "", fmt.Errorf("%w: zone %q is neither in the time zone database nor a fixed offset, so other clients could not evaluate it", workflow.ErrInvalid, name)
+	}
+	return fixedPrefix + strconv.Itoa(jan) + ":" + name, nil
+}

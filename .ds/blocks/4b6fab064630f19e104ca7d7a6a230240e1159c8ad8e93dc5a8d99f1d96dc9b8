@@ -1,0 +1,11 @@
+func (m Misfire) Plan(src TickSource, last, now time.Time, loc *time.Location) (fire []time.Time, dropped int) {
+	fire = m.Due(src, last, now, loc)
+	if m.IsZero() || !now.After(last) {
+		return fire, 0
+	}
+	total := countTicks(src, last, now, loc)
+	if total > len(fire) {
+		dropped = total - len(fire)
+	}
+	return fire, dropped
+}

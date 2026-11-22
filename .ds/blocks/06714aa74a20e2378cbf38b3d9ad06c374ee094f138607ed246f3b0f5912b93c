@@ -1,0 +1,23 @@
+func TestHandler_ErrorMapping(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		code int
+		body string
+	}{
+		{fmt.Errorf("x: %w", workflow.ErrWrongState), http.StatusConflict, CodeConflict},
+		{workflow.ErrDuplicate, http.StatusConflict, CodeConflict},
+		{workflow.ErrNotFound, http.StatusNotFound, CodeNotFound},
+		{&workflow.UnsupportedError{Field: "f"}, http.StatusNotImplemented, CodeUnsupported},
+		{errors.New("pq: password=hunter2 connection refused"), http.StatusInternalServerError, CodeInternal},
+	} {
+		f := seeded()
+		f.err = tc.err
+		rec := do(t, NewHandler(New(f), bearerAuth()), "POST", "/runs/r2/retry", "")
+		if rec.Code != tc.code || errCode(t, rec) != tc.body {
+			t.Errorf("%v: %d %s", tc.err, rec.Code, rec.Body)
+		}
+		if strings.Contains(rec.Body.String(), "hunter2") {
+			t.Errorf("internal error leaked: %s", rec.Body)
+		}
+	}
+}

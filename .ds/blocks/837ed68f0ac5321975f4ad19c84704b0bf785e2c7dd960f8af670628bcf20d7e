@@ -1,0 +1,79 @@
+func (c *Client) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckFork(step, opts); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	orig, err := c.lookup(ctx, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !isTerminalRun(orig.status) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s is %s; only a finished run can be forked", workflow.ErrWrongState, orig.id, orig.status)
+	}
+	reg, err := c.runsRun(ctx, c.st.db, orig)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if reg == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: ForkRun: workflow %s at the run's version is not registered on this client, so its steps are unknown", workflow.ErrInvalid, orig.workflow)
+	}
+	rerun := workflow.StepsFrom(reg.wf, step)
+	if rerun == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, orig.workflow, step)
+	}
+	job, kept, err := c.forkJob(ctx, orig, rerun, step, opts)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.checkJob(reg, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	key, err := idemKey(reg, job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	for range maxIdemAttempts {
+		var row *runRow
+		var held string
+		err := c.st.tx(ctx, func(tx *sql.Tx) error {
+			var err error
+			if row, err = c.insertRun(ctx, tx, reg, job, key, ""); err != nil {
+				return err
+			}
+			held = row.id
+			c.holdEvents(held)
+			return c.insertForkSteps(ctx, tx, reg, row, kept)
+		})
+		if err == nil {
+			c.releaseEvents(ctx, held, c.insertedEvent(row, job, runQueue(reg, job)))
+			if err := c.admit(ctx, reg); err != nil {
+				return row.ref(), err
+			}
+			c.nudge()
+			workflow.MarkInserted(ctx)
+			return row.ref(), nil
+		}
+		if held != "" {
+			c.releaseEvents(ctx, held, nil)
+		}
+		if key == "" || !c.st.isUnique(err) {
+			return workflow.RunRef{}, err
+		}
+		var holder runRow
+		err = c.st.one(ctx, c.st.db, "SELECT "+runCols+" FROM {runs} WHERE workflow = ? AND idem_active = ?",
+			[]any{reg.wf.Name, key}, holder.targets()...)
+		if err == nil {
+			workflow.MarkDuplicate(ctx)
+			return holder.ref(), nil
+		}
+		if !errors.Is(err, sqlb.ErrNoRows) {
+			return workflow.RunRef{}, fmt.Errorf("sqlstore: read idempotency holder: %w", err)
+		}
+	}
+	return workflow.RunRef{}, fmt.Errorf("%w: key %q of workflow %q kept changing hands", workflow.ErrDuplicate, key, reg.wf.Name)
+}

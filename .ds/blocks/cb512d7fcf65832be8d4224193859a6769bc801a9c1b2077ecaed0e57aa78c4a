@@ -1,0 +1,136 @@
+func (m *machine[D]) step(ctx context.Context, in []byte) ([]byte, error) {
+	name := m.spec.Name
+	info, ok := StepInfoFrom(ctx)
+	if !ok {
+		return nil, Permanent(invalidf("machine %q: not called from a step", name))
+	}
+	key := info.Labels[LabelObjectKey]
+	if key == "" {
+		return nil, Permanent(invalidf("machine %q: the event has no instance key; send it with SendEvent", name))
+	}
+	var call machineCall
+	if err := json.Unmarshal(in, &call); err != nil {
+		return nil, Permanent(fmt.Errorf("%w: machine %q: event payload: %v", ErrInvalid, name, err))
+	}
+	run := objectRun(name, key)
+	rec, err := loadMachine(ctx, m.spec.Store, run)
+	if err != nil {
+		return nil, fmt.Errorf("workflow: machine %q key %q: %w", name, key, err)
+	}
+	if rec.LastRun == info.RunID {
+		return rec.LastOut, nil // applied already; a retry after the save
+	}
+	r := &machineRun[D]{m: m, ctx: ctx, key: key, rec: &rec, active: map[*mnode]bool{}, seq0: rec.Seq}
+	if len(rec.Data) > 0 {
+		if err := json.Unmarshal(rec.Data, &r.data); err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: machine %q key %q: stored data does not decode: %w", name, key, err))
+		}
+	}
+	for _, a := range rec.Active {
+		n := m.nodes[a]
+		if n == nil {
+			return nil, Permanent(invalidf("machine %q key %q: stored state %q is not in the machine (renamed or removed since?)", name, key, a))
+		}
+		r.active[n] = true
+	}
+	if rec.Entered == nil {
+		rec.Entered = map[string]uint64{}
+	}
+	from := slices.Clone(rec.Leaves)
+	res := MachineResult{}
+	event := call.Event
+	var rejected error // MachineReject's refusal of an event that started the instance
+	switch {
+	case call.Timer != nil:
+		n := m.nodes[call.Timer.State]
+		if !rec.Started || rec.Done || n == nil || !r.active[n] || rec.Entered[n.name] != call.Timer.Seq {
+			res.Stale = true
+			break
+		}
+		if res.Handled, err = r.handle(MachineEvent{Name: event}); err != nil {
+			return nil, err
+		}
+	case call.Start:
+		if rec.Started {
+			break
+		}
+		if len(call.Data) > 0 {
+			if err := json.Unmarshal(call.Data, &r.data); err != nil {
+				return nil, Permanent(fmt.Errorf("%w: machine %q: start data: %v", ErrInvalid, name, err))
+			}
+		}
+		event = MachineStartEvent
+		res.Started = true
+		if err := r.start(); err != nil {
+			return nil, err
+		}
+	default:
+		if event == "" {
+			return nil, Permanent(invalidf("machine %q: event has no name", name))
+		}
+		if !rec.Started {
+			res.Started = true
+			if err := r.start(); err != nil {
+				return nil, err
+			}
+		}
+		if !rec.Done {
+			if res.Handled, err = r.handle(MachineEvent{Name: event, Payload: call.Payload}); err != nil {
+				return nil, err
+			}
+		}
+		if !res.Handled && m.spec.Unhandled == MachineReject {
+			rejected = Permanent(fmt.Errorf("%w (machine %q key %q, event %q, states %v)", ErrUnhandledEvent, name, key, event, rec.Leaves))
+			if !res.Started {
+				return nil, rejected
+			}
+			// The event started the instance and was then refused: keep
+			// the start (its entry actions ran and must not run again on
+			// the next event), refuse the event.
+			event = MachineStartEvent
+		}
+	}
+	if !res.Handled && !res.Started {
+		// Nothing changed: answer without a write, and without claiming
+		// the run as applied (applying it again changes nothing either).
+		res.States, res.Done, res.Seq = rec.Leaves, rec.Done, rec.Seq
+		if res.States == nil {
+			res.States = []string{}
+		}
+		return encodeJSON("machine result", res)
+	}
+	if err := r.sendTimers(); err != nil {
+		return nil, err
+	}
+	rec.Active, rec.Leaves = r.configuration()
+	raw, err := encodeJSON("machine "+name+" data", r.data)
+	if err != nil {
+		return nil, err
+	}
+	rec.Data = raw
+	if m.keep > 0 {
+		rec.Log = append(rec.Log, MachineStep{Seq: rec.Seq, Event: event, From: from, To: rec.Leaves, At: m.clk.Now().UTC()})
+		if over := len(rec.Log) - m.keep; over > 0 {
+			rec.Log = slices.Delete(rec.Log, 0, over)
+		}
+	}
+	res.States, res.Done, res.Seq = rec.Leaves, rec.Done, rec.Seq
+	out, err := encodeJSON("machine result", res)
+	if err != nil {
+		return nil, err
+	}
+	if rejected == nil {
+		rec.LastRun, rec.LastOut = info.RunID, out
+	}
+	b, err := encodeJSON("machine "+name+" record", rec)
+	if err != nil {
+		return nil, err
+	}
+	if err := m.spec.Store.Save(ctx, run, objectStateKey, b); err != nil {
+		return nil, fmt.Errorf("workflow: machine %q key %q: save: %w", name, key, err)
+	}
+	if rejected != nil {
+		return nil, rejected
+	}
+	return out, nil
+}

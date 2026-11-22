@@ -1,0 +1,29 @@
+func (e *LeaderElector) Campaign(ctx context.Context) (bool, error) {
+	from := e.clk.Now()
+	now := from.UnixNano()
+	if _, err := e.st.exec(ctx, e.st.db, "INSERT INTO {leaders} (name, holder, lease_until, term) VALUES (?, '', 0, 0)", e.role); err != nil && !e.st.isUnique(err) {
+		return e.lost(), fmt.Errorf("sqlstore: create the leader row: %w", err)
+	}
+	// term is assigned first: MySQL evaluates SET left to right with the new
+	// values, and the CASE must compare the holder before this update.
+	n, err := e.st.execN(ctx, e.st.db, "UPDATE {leaders} SET term = term + CASE WHEN holder = ? THEN 0 ELSE 1 END, holder = ?, lease_until = ?"+
+		" WHERE name = ? AND (holder = ? OR lease_until < ?)",
+		e.node, e.node, now+int64(e.lease), e.role, e.node, now-int64(e.skew))
+	if err != nil {
+		return e.IsLeader(), fmt.Errorf("sqlstore: campaign for leader: %w", err)
+	}
+	if n == 0 {
+		return e.lost(), nil
+	}
+	var term int64
+	if err := e.st.one(ctx, e.st.db, "SELECT term FROM {leaders} WHERE name = ? AND holder = ?", []any{e.role, e.node}, &term); err != nil {
+		if errors.Is(err, sqlb.ErrNoRows) {
+			return e.lost(), nil // taken over between the two statements
+		}
+		return e.IsLeader(), fmt.Errorf("sqlstore: read the leader term: %w", err)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.leader, e.from, e.term = true, from, term
+	return true, nil
+}

@@ -1,0 +1,10 @@
+func Parse(data []byte) (Definition, error) {
+	def, err := parseDoc[Definition](data)
+	if err != nil {
+		return Definition{}, err
+	}
+	if err := def.Validate(); err != nil {
+		return Definition{}, err
+	}
+	return def, nil
+}

@@ -1,0 +1,1 @@
+	CapDiscard = defineCap(21, "Discard")

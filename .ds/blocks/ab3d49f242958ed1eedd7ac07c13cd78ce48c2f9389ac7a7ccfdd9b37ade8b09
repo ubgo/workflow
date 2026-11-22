@@ -1,0 +1,7 @@
+type ChainEditor interface {
+	// Prepend puts jobs in front of the rest of the chain, in the order
+	// given, so jobs[0] runs next once this run succeeds.
+	Prepend(jobs ...Job) error
+	// Append puts jobs at the end of the chain, in the order given.
+	Append(jobs ...Job) error
+}

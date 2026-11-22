@@ -5,9 +5,9 @@ A run recorder keeps a history of runs that your app owns, separate from the dri
 ## Before you start
 
 - You know [plugins](../concepts/plugins.md): the recorder is applied with `workflow.Use` before `Register` and `Start`.
-- Any driver works: the recorder is built only from enqueue middleware, step middleware and the [run-finished hook](run-finished.md), which every driver runs. On the Hatchet driver, whose run-finished delivery is best effort, run the [Reconciler](#close-the-gaps-with-the-reconciler) next to it.
+- Any driver works: [`rec.Plugin()`](ds:block?id=rec-recorder-plugin-u7hfc2yc) is built only from enqueue middleware, step middleware and the [run-finished hook](run-finished.md), which every driver runs. On the Hatchet driver, whose run-finished delivery is best effort, run the [Reconciler](#close-the-gaps-with-the-reconciler) next to it.
 - Add the modules you use: `go get github.com/ubgo/workflow/recorder` (the contract, an in-memory store, redaction, the Reconciler; standard library and the core only), and `go get github.com/ubgo/workflow/recorder/sqlrecorder` for the SQL store. Neither pulls a database driver: you open the `*sql.DB` with the driver you already use.
-- The runnable program for this page is [examples/run-recorder](../../examples/run-recorder/). Two more cover the rest: [examples/recorder-custom-store](../../examples/recorder-custom-store/) (redaction of your own, the error hook, the Reconciler's options, a store of your own proven with `recordertest`) and [examples/recorder-sql](../../examples/recorder-sql/) (the SQL store's dialects, retries and two-stage retention).
+- The runnable program for this page is [examples/run-recorder](../../examples/run-recorder/). Two more cover the rest: [examples/recorder-custom-store](../../examples/recorder-custom-store/) (redaction of your own, the error hook, the Reconciler's options, a store of your own proven with `recordertest`) and [examples/recorder-sql](../../examples/recorder-sql/) (the SQL store's dialects, retries, two-stage retention and archive table).
 
 ## Why a recorder
 
@@ -16,10 +16,10 @@ A driver's run history is the driver's store. On an engine it ends where the eng
 | Question | Where the recorder answers it |
 |---|---|
 | Who started this run? | `RunRecord.Source` and `SourceRef` ([Trigger source](#trigger-source)) |
-| What did each step do? | `RunRecord.Steps`: one record per attempt, with input, output, error, node, timings and events |
+| What did each step do? | [`RunRecord.Steps`](ds:block?id=rec-runrecord-xjfqvqc3): one [`StepRecord`](ds:block?id=rec-steprecord-tsk32v93) per attempt, with input, output, error, node, timings and events |
 | Did the work succeed, not only the worker? | `RunRecord.Outcome`: success, partial, error or skipped ([Step events and outcome](#step-events-and-outcome)) |
 | What happened to a run the engine already forgot? | The record stays until your own [retention](#retention) removes it |
-| Which runs did an operator start from an engine UI? | The Reconciler records them with source `external` |
+| Which runs did an operator start from an engine UI? | The Reconciler records them with source [`external`](ds:block?id=sourceexternal-pq4saxv5) |
 
 ## Wire it in
 
@@ -48,17 +48,17 @@ if err != nil {
 }
 ```
 
-Register and start through `c`, the client `Use` returned. For tests and single-process apps, [`recorder.NewMemoryStore()`](ds:block?id=rec-newmemorystore-5yrbgb94) is the in-process store; it keeps nothing across a restart.
+Register and start through `c`, the client `Use` returned. The plugin reports the name [`recorder`](ds:block?id=rec-defaultpluginname-wtsqd67u) to `workflow.Use`; [`WithName`](ds:block?id=rec-withname-cuvqnswq) changes it, so two recorders, one per store, can wrap one client. [`rec.Store()`](ds:block?id=rec-recorder-store-2gdjppvt) returns the store the recorder writes to. For tests and single-process apps, [`recorder.NewMemoryStore()`](ds:block?id=rec-newmemorystore-5yrbgb94) is the in-process store; it keeps nothing across a restart.
 
 What each seam records:
 
 | Seam | Write | When |
 |---|---|---|
-| Enqueue middleware | `UpsertRun`: workflow, queue, tenant, labels, source, input, priority, due time | `Enqueue` succeeded (a refused enqueue records nothing) |
-| Step middleware | `StartStep`, `EndStep`, `AddEvent`, `SetOutcome` | Every attempt of every step, `OnFailure` and `OnTimeout` included |
-| Run-finished observer | `FinishRun`: status, error, failed step, end time, result | The run reached a terminal status |
+| Enqueue middleware ([`rec.EnqueueMiddleware()`](ds:block?id=rec-recorder-enqueuemiddleware-tkqchzg3)) | `UpsertRun`: workflow, queue, tenant, labels, source, input, priority, due time | `Enqueue` succeeded (a refused enqueue records nothing) |
+| Step middleware ([`rec.StepMiddleware()`](ds:block?id=rec-recorder-stepmiddleware-tbta9pzy)) | `StartStep`, `EndStep`, `AddEvent`, `SetOutcome` | Every attempt of every step, `OnFailure` and `OnTimeout` included |
+| Run-finished observer ([`rec.OnRunFinished`](ds:block?id=rec-recorder-onrunfinished-9a8agy3p)) | `FinishRun`: status, error, failed step, end time, result | The run reached a terminal status |
 
-On a web or API node that only enqueues, apply [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv) instead ([Web nodes that only enqueue](#web-nodes-that-only-enqueue)).
+The plugin is these three; they are exported for an app that wires the seams by hand. On a web or API node that only enqueues, apply [`rec.EnqueuePlugin()`](ds:block?id=rec-recorder-enqueueplugin-rn5k8npv) instead ([Web nodes that only enqueue](#web-nodes-that-only-enqueue)).
 
 A run started past the enqueue seam (a schedule fire, a chained job, a child) is recorded from its first step. A write that fails never fails the run: it goes to [`recorder.WithOnError`](ds:block?id=rec-withonerror-r4hkn36k) (logged with `slog.Default` by default). Every write is an upsert keyed by the run, so the at-least-once delivery of each seam is harmless.
 
@@ -162,7 +162,7 @@ save := func(ctx context.Context, in []byte) ([]byte, error) {
 
 ## Read the history
 
-`Store.Run(ctx, ref)` returns one run with its steps and their events; `Store.Records(ctx, query)` lists runs with the filters only a recorder can answer (`Sources`, `Outcomes`, `Search` over the run ID, scheduled ID, workflow and source reference, `OnlyStale`) on top of every `workflow.RunQuery` filter; and every store is a `workflow.RunQuerier`, so anything that lists runs can read it:
+[`Store.Run(ctx, ref)`](ds:block?id=rec-store-pgu7xhxs) returns one run with its steps and their events; `Store.Records(ctx, query)` lists runs, without their steps, with the filters only a recorder can answer ([`recorder.Query`](ds:block?id=rec-query-7ufc7wgu): `Sources`, `Outcomes`, `Search` over the run ID, scheduled ID, workflow and source reference, `OnlyStale`) on top of the `workflow.RunQuery` filters of [`recorder.QueryCaps`](ds:block?id=rec-querycaps-x2zk9xju); and every store is a `workflow.RunQuerier`, so anything that lists runs can read it:
 
 <!-- snippet: examples/run-recorder/main.go#read -->
 ```go
@@ -184,6 +184,10 @@ if err != nil {
 }
 fmt.Println("webhook runs with a partial outcome:", len(page.Runs))
 ```
+
+- `Records` returns a [`recorder.RecordPage`](ds:block?id=rec-recordpage-8ehzyqwp): its `Runs`, and `Next`, the cursor of the following page (empty on the last), which goes back as the query's `Cursor`.
+- [`recorder.ValidateQuery`](ds:block?id=rec-validatequery-nz2h9e24) checks a query before a store answers it: a `Search` longer than [256 bytes](ds:block?id=rec-maxsearchlen-ve8yffru), an unknown source or outcome, or a `RunQuery` filter outside `QueryCaps` is refused, with an error wrapping `workflow.ErrInvalid` or `workflow.ErrUnsupported`.
+- A step record's `Status` is a [`recorder.StepStatus`](ds:block?id=rec-stepstatus-nxdj7ers), one of [`running`, `succeeded`, `failed` and `snoozed`](ds:block?id=rec-stepstatuses-8svs5ers); a switch on it keeps a default branch, because a later version may add statuses.
 
 The admin API reads the recorder when you give it one: listings, run detail, failures and queue stats come from the store, while actions (retry, cancel, delete, force, the bulk ones) still go to the client, which owns the runs. A run the store does not hold is looked up on the client:
 
@@ -248,6 +252,11 @@ prune after a month, archive down: deleted=0 error=sqlrecorder: archive: cold st
 day 31: report succeeded steps=0, billing succeeded steps=1
 archived: report (steps kept: 0)
 after PruneEvery: report gone, billing succeeded steps=1
+archive store: migration statements: 19, tables: arch_archive arch_events arch_labels arch_runs arch_schema arch_steps
+archive prune: runs deleted=3 moved=3
+archived runs, pages of 2: 2+1 runs: exp-1 exp-2 exp-3
+archived run exp-1: succeeded steps=1 events=1
+still in the runs table: false
 ```
 
 ## Redaction and payload bounds
@@ -298,7 +307,7 @@ Returning `nil` stores no body; the record still holds the size the body had. Re
 
 ### Step 2: combine redactors and set the bounds
 
-`PerWorkflow` gives `checkout` both redactors, card paths first, and every other workflow the card paths only:
+[`PerWorkflow`](ds:block?id=rec-perworkflow-vx8puukg) gives `checkout` both redactors, which [`Chain`](ds:block?id=rec-chain-ryg3zfvp) applies in order, card paths first, and every other workflow the card paths only. The error hook is `onError`, typed as a [`recorder.ErrorFunc`](ds:block?id=rec-errorfunc-nrd8pzfd) ([Be told about a failed write](#be-told-about-a-failed-write)):
 
 <!-- snippet: examples/recorder-custom-store/main.go#recorder -->
 ```go
@@ -311,15 +320,19 @@ if err != nil {
 redact := recorder.PerWorkflow(map[string]recorder.Redactor{
 	"checkout": recorder.Chain(cards, receipts{}),
 }, cards)
+// onError is the error hook, a recorder.ErrorFunc: told about each
+// failed history write while the run goes on, on the goroutine that
+// made the write, so it only counts.
+var onError recorder.ErrorFunc = func(_ context.Context, op recorder.WriteOp, ref workflow.RunRef, err error) {
+	failed.add(op) // in an app: a counter by op, and a log line with ref and err
+}
 rec, err := recorder.New(db,
 	recorder.WithRedactor(redact),
 	recorder.WithMaxPayload(maxBody),        // larger bodies are kept by size only
 	recorder.WithStepBodies(true),           // the default; false keeps only the run's input and result
 	recorder.WithErrorHistory(errorHistory), // attempt errors kept per run
 	recorder.WithClock(clk),                 // the driver's clock, so records and driver agree
-	recorder.WithOnError(func(_ context.Context, op recorder.WriteOp, ref workflow.RunRef, err error) {
-		failed.add(op) // in an app: a counter by op, and a log line with ref and err
-	}),
+	recorder.WithOnError(onError),           // every failed write, by its WriteOp
 )
 if err != nil {
 	return err
@@ -337,18 +350,19 @@ input as stored: {"card":{"number":"[REDACTED]"},"order":"order-1"}
 
 ## Be told about a failed write
 
-A recorder never fails a run: when a history write fails (the store is down, a write times out after [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw), the store panics), the run goes on and the failure goes to the hook set with [`recorder.WithOnError`](ds:block?id=rec-withonerror-r4hkn36k). The hook is a [`recorder.ErrorFunc`](ds:block?id=rec-errorfunc-nrd8pzfd), `func(ctx, op recorder.WriteOp, ref workflow.RunRef, err error)`; without one, each failure is logged with `slog.Default` at warn level. `op` says which write failed:
+A recorder never fails a run: when a history write fails (the store is down, a write times out after [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw), the store panics), the run goes on and the failure goes to the hook set with [`recorder.WithOnError`](ds:block?id=rec-withonerror-r4hkn36k). The hook is a [`recorder.ErrorFunc`](ds:block?id=rec-errorfunc-nrd8pzfd), `func(ctx, op recorder.WriteOp, ref workflow.RunRef, err error)`; without one, each failure is [logged](ds:block?id=rec-logerror-ne6hyt2t) with `slog.Default` at warn level. `op` says which write failed:
 
 | `WriteOp` | Value | The write |
 |---|---|---|
-| `OpUpsertRun` | `upsert-run` | The run was accepted (enqueue seam) |
-| `OpStartStep` | `start-step` | A step attempt started |
-| `OpEndStep` | `end-step` | A step attempt ended |
-| `OpAddEvent` | `add-event` | A step event (`workflow.RecordEvent`) |
-| `OpFinishRun` | `finish-run` | The run ended (run-finished observer) |
-| `OpReadResult` | `read-result` | Reading a succeeded run's result with [`WithResultReader`](ds:block?id=rec-withresultreader-wrjsqy26) failed; the end is still written, without the result |
+| `OpUpsertRun` | [`upsert-run`](ds:block?id=rec-opupsertrun-zvthqrsn) | The run was accepted (enqueue seam) |
+| `OpStartStep` | [`start-step`](ds:block?id=rec-opstartstep-yh65yvgr) | A step attempt started |
+| `OpEndStep` | [`end-step`](ds:block?id=rec-opendstep-9gt5czpt) | A step attempt ended |
+| `OpAddEvent` | [`add-event`](ds:block?id=rec-opaddevent-kpqzyqhe) | A step event (`workflow.RecordEvent`) |
+| `OpFinishRun` | [`finish-run`](ds:block?id=rec-opfinishrun-c5chxmfv) | The run ended (run-finished observer) |
+| `OpReadResult` | [`read-result`](ds:block?id=rec-opreadresult-rkjnuah5) | Reading a succeeded run's result with [`WithResultReader`](ds:block?id=rec-withresultreader-wrjsqy26) failed; the end is still written, without the result |
+| `OpSetOutcome` | [`set-outcome`](ds:block?id=rec-opsetoutcome-c9naecw4) | A step's `workflow.SetOutcome`; the error (a store panic turned into one) also goes back to the step |
 
-The example's hook (in the `recorder` snippet above) collects the ops. It then takes the store down for maintenance and runs the workflow again: every write fails, the hook hears of each, and the run still succeeds on the driver:
+The example's hook, `onError` in the `recorder` snippet above, is a named `recorder.ErrorFunc` that collects the ops. It then takes the store down for maintenance and runs the workflow again: every write fails, the hook hears of each, and the run still succeeds on the driver:
 
 ```text
 -- the history store goes into maintenance
@@ -363,8 +377,10 @@ The hook runs on the goroutine that made the write (a step's, an enqueuer's, the
 Both bundled stores prune in [two stages](ds:block?id=rec-retention-gz6xhhm8), measured from a run's end, so the heavy part goes first and the summary row a runs page lists stays longer:
 
 - After `Steps`, a finished run's step and event rows are dropped; its record stays.
-- After `Runs`, the record is handed to `Archive` (with whatever steps are left) and deleted. An `Archive` error stops the prune and deletes nothing of that batch, so nothing is lost while an archive is down.
+- After `Runs`, the record is handed to `Archive` (with whatever steps are left) and deleted. An `Archive` error stops the prune and deletes nothing of that batch, so nothing is lost while an archive is down. `Archive` sees a run at least once on `sqlrecorder` (see [Pitfalls](#pitfalls)); for an exactly-once archive in the same database, use [`sqlrecorder.WithArchiveTable`](ds:block?id=sqlrec-witharchivetable-cduufku5) (below).
 - A zero age keeps that stage; `PerWorkflow` overrides both ages for a workflow. Unfinished runs are never pruned, and each prune works in batches ([`Retention.Batch`](ds:block?id=rec-retention-gz6xhhm8), [500](ds:block?id=rec-defaultprunebatch-4n8gxw2n) by default).
+- A batch is at most [10,000](ds:block?id=rec-maxprunebatch-f8u6nphh) runs: [`recorder.ValidateRetention`](ds:block?id=rec-validateretention-pwmvywwn) refuses a larger one or a negative age with `workflow.ErrInvalid`, so `sqlrecorder.WithRetention` and `recorder.NewMemoryStore` fail on one.
+- Ages are measured on the store's clock, the real one by default: [`sqlrecorder.WithClock`](ds:block?id=sqlrec-withclock-dbbcdpey), or [`recorder.WithMemoryClock`](ds:block?id=rec-withmemoryclock-mejrhz64) on the in-memory store. The in-memory store takes its retention from [`recorder.WithMemoryRetention`](ds:block?id=rec-withmemoryretention-2a2a7wde); without one its `Prune` does nothing.
 
 The program is [examples/recorder-sql](../../examples/recorder-sql/). Its store keeps step rows a week and run rows a month, a [`recorder.Retention`](ds:block?id=rec-retention-gz6xhhm8) with a [`RetentionRule`](ds:block?id=rec-retentionrule-33x6hwfr) for every workflow and a `PerWorkflow` rule that keeps `billing` runs a year, and an `Archive` hook that takes each run before it is deleted:
 
@@ -432,6 +448,88 @@ archived: report (steps kept: 0)
 after PruneEvery: report gone, billing succeeded steps=1
 ```
 
+### Archive into a table, exactly once
+
+[`sqlrecorder.WithArchiveTable()`](ds:block?id=sqlrec-witharchivetable-cduufku5) moves each run that stage two deletes into `<prefix>archive` ([`wf_rec_archive`](ds:block?id=sqlrec-defaulttableprefix-af54bca4) by default) in the same transaction as the delete: one row per run, keyed like the runs table, with `run_id`, `workflow`, `tenant`, `status`, `finished_at`, `archived_at` (the store's clock at the move) and `record`, the whole `recorder.RunRecord` (steps and events included) as JSON. The archive copy and the delete commit together, so each run is in exactly one of the two places: a cancelled context, a crash or a failed commit rolls the batch back whole, and the next prune moves it. Two processes pruning the same tables move each run once ([`TestSQLRecorderArchiveTableExactlyOnce`](ds:block?id=e2e-testsqlrecorderarchivetableexactlyonce-c7vjhu87) holds both on every engine).
+
+The second store of [examples/recorder-sql](../../examples/recorder-sql/) lives in the same SQLite database under its own prefix, `arch_`, keeps runs a month and moves them to the table:
+
+<!-- snippet: examples/recorder-sql/main.go#archive-store -->
+```go
+store, err := sqlrecorder.New(db, sqlrecorder.SQLite,
+	sqlrecorder.WithTablePrefix(archivePrefix),
+	sqlrecorder.WithClock(clk),
+	// Retention decides what moves and when; the table is where it goes.
+	sqlrecorder.WithRetention(recorder.Retention{RetentionRule: recorder.RetentionRule{Runs: runsAge}}),
+	sqlrecorder.WithArchiveTable(), // Migrate also creates arch_archive
+)
+if err != nil {
+	return err
+}
+if err := store.Migrate(ctx); err != nil {
+	return err
+}
+```
+
+A month on, one prune moves every expired run. [`ArchivedRuns`](ds:block?id=sqlrec-store-archivedruns-39uycka3) reads the table a page at a time, oldest finish first, with an [`ArchiveQuery`](ds:block?id=sqlrec-archivequery-56dg4s52) (`Workflow`, `Tenant`, `Limit`, `Cursor`); each [`ArchivePage`](ds:block?id=sqlrec-archivepage-fgu6n8d6) carries its runs and `Next`, the cursor of the following page, empty on the last. [`ArchivedRun`](ds:block?id=sqlrec-store-archivedrun-x7b4wy6a) returns one run with its steps and events, as `Run` returned it before the move, or `workflow.ErrNotFound` when the table does not hold it:
+
+<!-- snippet: examples/recorder-sql/main.go#archive-read -->
+```go
+res, err := store.Prune(ctx) // stage two moves each expired run, exactly once
+if err != nil {
+	return err
+}
+fmt.Fprintf(w, "archive prune: runs deleted=%d moved=%d\n", res.RunsDeleted, res.Archived)
+
+// Read the archive a page at a time, oldest finish first.
+var sizes, sources []string
+q := sqlrecorder.ArchiveQuery{Workflow: exportWorkflow, Limit: archivePageSize}
+for {
+	page, err := store.ArchivedRuns(ctx, q)
+	if err != nil {
+		return err
+	}
+	sizes = append(sizes, fmt.Sprint(len(page.Runs)))
+	for _, r := range page.Runs {
+		sources = append(sources, r.SourceRef)
+	}
+	if page.Next == "" { // the last page
+		break
+	}
+	q.Cursor = page.Next
+}
+slices.Sort(sources)
+fmt.Fprintf(w, "archived runs, pages of %d: %s runs: %s\n", archivePageSize, strings.Join(sizes, "+"), strings.Join(sources, " "))
+
+// One run, as Run returned it before the move.
+r, err := store.ArchivedRun(ctx, first)
+if err != nil {
+	return err
+}
+events := 0
+for _, st := range r.Steps {
+	events += len(st.Events)
+}
+fmt.Fprintf(w, "archived run %s: %s steps=%d events=%d\n", r.SourceRef, r.Status, len(r.Steps), events)
+_, err = store.Run(ctx, first) // the runs table no longer holds it
+fmt.Fprintln(w, "still in the runs table:", !errors.Is(err, workflow.ErrNotFound))
+```
+
+```text
+archive store: migration statements: 19, tables: arch_archive arch_events arch_labels arch_runs arch_schema arch_steps
+archive prune: runs deleted=3 moved=3
+archived runs, pages of 2: 2+1 runs: exp-1 exp-2 exp-3
+archived run exp-1: succeeded steps=1 events=1
+still in the runs table: false
+```
+
+The three runs ended at the same instant on the program's fake clock; the two pages still hold each of them once.
+
+- The table is opt-in: [`Migrate`](ds:block?id=sqlrec-store-migrate-63gjrdbn) creates it (and its indexes on `run_id`, `finished_at` and `workflow`) only for a store with the option, idempotently on every call, and [`MigrationScripts`](ds:block?id=sqlrec-store-migrationscripts-xbepgg67) then lists its statements last: 19 here, the 15 of the default schema and then the table and its three indexes. The default schema and [`SchemaVersion`](ds:block?id=sqlrec-schemaversion-scf4u7mm) do not change, so older binaries keep working against the same database.
+- It needs [`WithRetention`](ds:block?id=sqlrec-withretention-jvnmngh9), which decides what moves and when; the archive table has no retention of its own, so trim it with your own `DELETE` on `finished_at` or `archived_at`.
+- `Retention.Archive` can be set beside it: the callback still sees each batch first and keeps its at-least-once delivery, while the table holds each run once. [`PruneResult.Archived`](ds:block?id=sqlrec-store-prune-843j2gjz) counts the runs handed to `Archive` when it is set, otherwise the runs moved to the table (`moved=3` above).
+- `ArchivedRuns` pages by finish time, then run key, so runs that finished at the same instant are never skipped across a page boundary. A zero `Limit` is `workflow.DefaultRunsLimit`; a negative one, one over `workflow.MaxRunsLimit` or a cursor it did not issue is refused with `workflow.ErrInvalid`.
+
 ## Close the gaps with the Reconciler
 
 The seams cannot see everything: a worker that died before its step ended, a run cancelled from an engine's UI, a run started from an engine's CLI, a run-finished event a best-effort driver lost. [`recorder.NewReconciler(client, store, opts...)`](ds:block?id=rec-newreconciler-su363hcv) closes those gaps:
@@ -458,11 +556,11 @@ Run it with [`go rc.Run(ctx)`](ds:block?id=rec-reconciler-run-hkpv3q3x) (every [
 
 | Option | Default | What it changes |
 |---|---|---|
-| [`WithInterval(d)`](ds:block?id=rec-withinterval-xygvejf4) | 30 seconds | The pause between passes of `Run` |
+| [`WithInterval(d)`](ds:block?id=rec-withinterval-xygvejf4) | [30 seconds](ds:block?id=rec-defaultreconcileinterval-6wpsuxsy) | The pause between passes of `Run` |
 | [`WithStaleAfter(d)`](ds:block?id=rec-withstaleafter-94d6u87k) | [10 minutes](ds:block?id=rec-defaultstaleafter-ecr2t7eq) | How long an unfinished run may go with nothing recorded before it is flagged `Stale` |
 | [`WithBatch(n)`](ds:block?id=rec-withbatch-7wqg86rr) | [100](ds:block?id=rec-defaultreconcilebatch-6zk3gwwh) | Unfinished records checked per pass, and the page size of the backfill listing (1 to `workflow.MaxRunsLimit`) |
 | [`WithBackfill(on)`](ds:block?id=rec-withbackfill-euvuqmgs) | on | Whether a pass lists the client's runs at all |
-| `WithBackfillWindow(d)` | an hour | How far back the listing reaches: longer than the longest store outage you expect |
+| `WithBackfillWindow(d)` | [an hour](ds:block?id=rec-defaultbackfillwindow-7nsg79u2) | How far back the listing reaches: longer than the longest store outage you expect |
 | [`WithBackfillPages(n)`](ds:block?id=rec-withbackfillpages-eyrfe4qc) | [10](ds:block?id=rec-defaultbackfillpages-mejfjkfb) | The pages one backfill pass reads at most, so a large window cannot make a pass unbounded |
 | `WithBackfillQuery(q)` | every run | The workflows, tenant or labels the listing is scoped to |
 | [`WithReconcileClock(c)`](ds:block?id=rec-withreconcileclock-9n7x2xtd) | the real clock | The clock ages and the window are measured on: the recorder's |
@@ -514,7 +612,7 @@ The recorder is the same on every driver; what differs is which run ends the dri
 | [hatchet](../drivers/hatchet.md#record-run-history) | Best effort: run the Reconciler | `recorder.MemoryStore`; `sqlrecorder` on SQLite for the split | The record keeps every attempt's error, which the driver does not report |
 | [hybrid](../drivers/hybrid.md#record-run-history) | The jobs client's | not run on its own | Cron runs are recorded from their first step, as `schedule` |
 
-The same cases run on your driver, or with your store, from a test of your own. `RunDriver` takes a [`workflowtest.Harness`](../extending/writing-a-driver.md#run-the-conformance-suite) that builds a fresh client per case, and [`recordertest.WithStore`](ds:block?id=rectest-withstore-uh7nyewq) records into stores your function builds instead of the in-memory default. The function is a [`recordertest.NewStore`](ds:block?id=rectest-newstore-ppek35b3), `func(t, cfg recordertest.StoreConfig) recorder.Store`; [`StoreConfig`](ds:block?id=rectest-storeconfig-ehg5t6ys) carries the `Retention` and `Clock` a case wants, which a store without retention ignores:
+The same cases run on your driver, or with your store, from a test of your own. `RunDriver` takes a [`workflowtest.Harness`](../extending/writing-a-driver.md#run-the-conformance-suite) that builds a fresh client per case, and [`recordertest.WithStore`](ds:block?id=rectest-withstore-uh7nyewq), one of its [`recordertest.DriverOption`](ds:block?id=rectest-driveroption-rbmxvkrq)s, records into stores your function builds instead of the in-memory default. The function is a [`recordertest.NewStore`](ds:block?id=rectest-newstore-ppek35b3), `func(t, cfg recordertest.StoreConfig) recorder.Store`; [`StoreConfig`](ds:block?id=rectest-storeconfig-ehg5t6ys) carries the `Retention` and `Clock` a case wants, which a store without retention ignores:
 
 <!-- snippet: examples/recorder-custom-store/main_test.go#contract-driver -->
 ```go
@@ -560,7 +658,7 @@ func dialectFor(name string) (sqlrecorder.Dialect, error) {
 }
 ```
 
-Steps and events are rows of their own, so a busy run never rewrites one large row per event. Times are Unix nanoseconds in UTC (0 for unset), identifiers compare byte by byte on every engine, and every write is one transaction that locks the run's row first and is [retried on contention](ds:block?id=sqlrec-defaultretryable-h3ustvp4). [`Migrate`](ds:block?id=sqlrec-store-migrate-63gjrdbn) is idempotent and safe to run on every start; [`MigrationScripts`](ds:block?id=sqlrec-store-migrationscripts-xbepgg67) returns its statements for your own migration tool.
+Steps and events are rows of their own, so a busy run never rewrites one large row per event. Times are Unix nanoseconds in UTC (0 for unset), identifiers compare byte by byte on every engine, and every write is one transaction that locks the run's row first and is [retried on contention](ds:block?id=sqlrec-defaultretryable-h3ustvp4). [`Migrate`](ds:block?id=sqlrec-store-migrate-63gjrdbn) is idempotent and safe to run on every start: it records [`SchemaVersion`](ds:block?id=sqlrec-schemaversion-scf4u7mm) in the `schema` table and refuses a database whose recorded version is newer than the release running it; [`MigrationScripts`](ds:block?id=sqlrec-store-migrationscripts-xbepgg67) returns its statements for your own migration tool.
 
 A write transaction that hits contention (two first writes of one run racing, a deadlock, a serialization failure, a busy SQLite file) runs again, up to [`WithTxAttempts(n)`](ds:block?id=sqlrec-withtxattempts-dqc6w5mx) times ([8](ds:block?id=sqlrec-defaulttxattempts-a3fk8dhr) by default). Which errors count as contention is [`DefaultRetryable`](ds:block?id=sqlrec-defaultretryable-h3ustvp4): it matches the error text of each engine (`40001`, `40P01`, `deadlock`, `Error 1213`, `database is locked`, the unique violations and more), so the module needs no driver's error types. A driver or a proxy whose errors read differently adds its own with [`WithRetryable`](ds:block?id=sqlrec-withretryable-cx2mmux2); keep `DefaultRetryable` in it, as here:
 
@@ -588,7 +686,7 @@ The SQL store's whole set-up, with the table prefix, the retries, the clock and 
 
 ### Step 1: load, apply the shared rule, save
 
-The `Apply*` functions of the `recorder` package hold the merge rules (fill and never overwrite, the earliest enqueue and start, a terminal status changed only by a finish or a new attempt, the join of a delayed run's `ScheduledID` and `RunID` with `MergeRecords`), so your store merges a write exactly as the bundled ones do. Each write loads the run's document, applies the rule and saves it, in one transaction:
+The `Apply*` functions of the `recorder` package ([`ApplyRunWrite`](ds:block?id=rec-applyrunwrite-f6w7phc8) and the rest) hold the merge rules (fill and never overwrite, the earliest enqueue and start, a terminal status changed only by a finish or a new attempt, the join of a delayed run's `ScheduledID` and `RunID` with [`MergeRecords`](ds:block?id=rec-mergerecords-d5syda8z)), so your store merges a write exactly as the bundled ones do. Each write loads the run's document, applies the rule and saves it, in one transaction:
 
 <!-- snippet: examples/recorder-custom-store/store.go#store -->
 ```go
@@ -661,7 +759,7 @@ func (s *docStore) update(ref workflow.RunRef, fn func(r *recorder.RunRecord, is
 
 ### Step 2: one rule per write
 
-Every write method is a check (`recorder.CheckRef`, `recorder.CheckStep`, refused with `workflow.ErrInvalid`) and one call to `update` with its rule. The other four writes follow the same pattern; the file has all of them:
+Every write method is a check ([`recorder.CheckRef`](ds:block?id=rec-checkref-mdjaph5q) refuses a write that names no run, [`recorder.CheckStep`](ds:block?id=rec-checkstep-9z4s2dzb) a step write without a `RunID`, a step name or an attempt from 1, both with `workflow.ErrInvalid`) and one call to `update` with its rule. The other four writes follow the same pattern; the file has all of them:
 
 <!-- snippet: examples/recorder-custom-store/store.go#writes -->
 ```go
@@ -699,7 +797,7 @@ func (s *docStore) StartStep(_ context.Context, st recorder.StepStart) error {
 
 ### Step 3: answer listings the shared way
 
-`Records` filters with `recorder.Query.Match`, orders with `recorder.SortRecords` and pages with `recorder.EncodeCursor`, so a page reads the same as on the bundled stores; a database store turns the same filters into its own query. `Runs` is `Records` through `recorder.InfoPage`, which makes the store a `workflow.RunQuerier` the admin API can read; `Pending` sorts with `recorder.SortPending` for the Reconciler:
+`Records` checks the query with [`recorder.ValidateQuery`](ds:block?id=rec-validatequery-nz2h9e24), filters with [`recorder.Query.Match`](ds:block?id=rec-query-match-hevjbnr4), orders with [`recorder.SortRecords`](ds:block?id=rec-sortrecords-7cv25nfq) (newest enqueue first) and pages with `recorder.EncodeCursor`, so a page reads the same as on the bundled stores; a database store turns the same filters into its own query. `Runs` is `Records` through [`recorder.InfoPage`](ds:block?id=rec-infopage-zbeybkpx), which makes the store a `workflow.RunQuerier` the admin API can read; `Pending` sorts with [`recorder.SortPending`](ds:block?id=rec-sortpending-6uhd5bsp) (never checked first, then least recently checked) for the Reconciler:
 
 <!-- snippet: examples/recorder-custom-store/store.go#records -->
 ```go
@@ -763,18 +861,18 @@ cd examples
 go test -v -run 'Contract|Driver' ./recorder-custom-store
 ```
 
-Every case passes; `prune_two_stages` and `prune_archive_failure` skip, because `docStore` has no retention.
+Every case passes; `prune_two_stages`, `prune_archive_failure` and `prune_cancelled_archives_once` skip, because `docStore` has no retention.
 
 ## Pitfalls
 
-- Registering on the bare driver instead of the client `Use` returned skips the step middleware: those runs get a record only from the run-finished observer and the Reconciler.
-- A delayed run is recorded under its `ScheduledID` at enqueue and under its `RunID` once it starts; the two records are joined by the first write that carries both IDs (its run-finished event, or a Reconciler pass). Until then a listing can show both.
-- On a driver without `workflow.CapRunFinished` (Hatchet), a run end can be missed: run the Reconciler.
+- Registering on the bare driver instead of the client `Use` returned skips the [step middleware](ds:block?id=rec-recorder-stepmiddleware-tbta9pzy): those runs get a record only from the run-finished observer and the Reconciler.
+- A delayed run is recorded under its `ScheduledID` at enqueue and under its `RunID` once it starts; the two records are [joined](ds:block?id=rec-mergerecords-d5syda8z) by the first write that carries both IDs (its run-finished event, or a Reconciler pass). Until then a listing can show both.
+- On a driver without `workflow.CapRunFinished` ([Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)), a run end can be missed: run the Reconciler.
 - The recorder's history is not the driver's: [`admin.WithRunQuerier`](ds:block?id=admin-withrunquerier-g356xuy3) shows the recorder, while a retry or a cancel acts on the client. A run the engine already pruned can be shown but no longer retried.
-- **An archive sees a run at least once.** The SQL store deletes a batch after `Archive` returned; a prune stopped between the two (its context cancelled, the database gone) archives the batch again next time. Key what the archive writes by the run, so a second copy replaces the first.
-- **A failed `SetOutcome` is not reported to the hook.** `workflow.SetOutcome` returns the store's error to the step that called it; the `WriteOp` list has no outcome write.
-- **A `Redactor` must not change the slice it gets.** Return a new one; the body it was handed is the step's own input or output.
-- **The backfill window must outlast an outage.** A run that started and ended while the store was down for longer than `WithBackfillWindow` is never listed again, so it never gets a record.
+- **`sqlrecorder`'s `Archive` callback sees a run at least once; `MemoryStore`'s exactly once; `WithArchiveTable` moves it exactly once.** Cancelling a prune no longer repeats a batch: once [`Archive`](ds:block?id=sqlrec-store-prune-843j2gjz) accepted it, its delete runs even after the context is cancelled (bounded at [30 seconds](ds:block?id=sqlrec-archiveddeletetimeout-66323gs2)). A batch still comes again when the process dies or the delete fails between `Archive` returning and the delete committing, or when two processes prune the same tables at once, because an outside archive and the database cannot commit together. A repeat carries the same records (same `RunRef` and `Key`), so key what the archive writes by the run and a second copy replaces the first. `MemoryStore` runs one prune at a time and deletes what `Archive` accepted at once, so it hands each run over once. Where the archive can live in the same database, [`WithArchiveTable`](#archive-into-a-table-exactly-once) commits the archive copy with the delete, so nothing repeats.
+- **A failed `SetOutcome` is reported twice, on purpose.** The hook hears it as [`OpSetOutcome`](ds:block?id=rec-opsetoutcome-c9naecw4), and `workflow.SetOutcome` also returns the error to the step that called it, which asked for the outcome to be kept; a store panic there becomes that error, as on every other write.
+- **A [`Redactor`](ds:block?id=rec-redactor-x3e2p5bt) must not change the slice it gets.** Return a new one; the body it was handed is the step's own input or output.
+- **The backfill window must outlast an outage.** A run that started and ended while the store was down for longer than [`WithBackfillWindow`](ds:block?id=rec-withbackfillwindow-tb9q9u8e) is never listed again, so it never gets a record.
 - `RecordEvent` and the recorder's writes run on the step's goroutine: a slow store slows steps, up to [`WithWriteTimeout`](ds:block?id=rec-withwritetimeout-rn35n8vw) ([5 seconds](ds:block?id=rec-defaultwritetimeout-wbngg5vx) by default) per write.
 
 ## Related
@@ -785,4 +883,4 @@ Every case passes; `prune_two_stages` and `prune_archive_failure` skip, because 
 - [Retention](../operations/retention.md): the SQL driver's own retention, separate from the recorder's.
 - [Write a plugin](../extending/writing-a-plugin.md): the seams the recorder is built from.
 - [Trigger source](../concepts/trigger-source.md), [Step events](../concepts/step-events.md), [Run outcome](../concepts/run-outcome.md): the run metadata the recorder keeps.
-- Examples: [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) (a web node and a worker), [recorder-custom-store](../../examples/recorder-custom-store/) (redaction, the error hook, the Reconciler, a store of your own), [recorder-sql](../../examples/recorder-sql/) (dialects, retries, retention), [step-events](../../examples/step-events/).
+- Examples: [run-recorder](../../examples/run-recorder/), [recorder-split](../../examples/recorder-split/) (a web node and a worker), [recorder-custom-store](../../examples/recorder-custom-store/) (redaction, the error hook, the Reconciler, a store of your own), [recorder-sql](../../examples/recorder-sql/) (dialects, retries, retention, the archive table), [step-events](../../examples/step-events/).

@@ -1,0 +1,3 @@
+func ArgsFields(names ...string) ArgsOption {
+	return func(k *argsKey) { k.fields = append([]string(nil), names...) }
+}

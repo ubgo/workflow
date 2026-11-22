@@ -1,0 +1,52 @@
+func TestLatestOnlyMisfireRule(t *testing.T) {
+	hourly := workflow.ScheduleInfo{ID: "s1", Cron: "0 * * * *", Location: time.UTC}
+	with := func(f func(*workflow.ScheduleInfo)) fakeLister { s := hourly; f(&s); return fakeLister{s} }
+	skip := workflow.Misfire{Policy: workflow.MisfireSkip}
+	own := workflow.ScheduleLast{Fire: at(9, 0), Run: workflow.RunRef{RunID: "r1"}}
+	cases := []struct {
+		name     string
+		lister   fakeLister
+		fallback workflow.Misfire // LatestOnlyConfig.DefaultMisfire
+		now      time.Time
+		wantRan  bool
+	}{
+		{"skip: 10:00-12:00 dropped by a late wake, nothing fires", with(func(s *workflow.ScheduleInfo) { s.Misfire = skip }), workflow.Misfire{}, at(12, 30), true},
+		{"skip: 12:00 is on time and fires", with(func(s *workflow.ScheduleInfo) { s.Misfire = skip }), workflow.Misfire{}, at(12, 0).Add(30 * time.Second), false},
+		{"fire once within 10m: 12:00 is 30m late, dropped", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: 10 * time.Minute}
+		}), workflow.Misfire{}, at(12, 30), true},
+		{"fire once within 10m: 12:00 is 5m late, fires", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: 10 * time.Minute}
+		}), workflow.Misfire{}, at(12, 5), false},
+		{"fire all: the missed ticks fire", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}
+		}), workflow.Misfire{}, at(12, 30), false},
+		{"fire once: the newest due tick is outside the window, nothing fires", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce}
+			s.Windows = workflow.Windows{Between: []workflow.Window{{From: "09:00", To: "11:00"}}}
+		}), workflow.Misfire{}, at(12, 30), true},
+		{"default policy: fire once, so a due tick fires", fakeLister{hourly}, workflow.Misfire{}, at(12, 30), false},
+		{"default policy given as skip (a driver that never catches up)", fakeLister{hourly}, skip, at(12, 30), true},
+		{"history: 10:00 is on time and not recorded yet", with(func(s *workflow.ScheduleInfo) { s.Last = own }), workflow.Misfire{}, at(10, 0).Add(30 * time.Second), false},
+		{"history: a catch-up still enqueueing 10:00-12:00", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3}
+			s.Last = own
+		}), workflow.Misfire{}, at(12, 30), false},
+		{"history: within 10m, 12:00 is 30m late and never fired", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: 10 * time.Minute}
+			s.Last = own
+		}), workflow.Misfire{}, at(12, 30), true},
+		{"history: skip policy, 12:00 fired on time", with(func(s *workflow.ScheduleInfo) {
+			s.Misfire = skip
+			s.Last = workflow.ScheduleLast{Fire: at(12, 0), Run: workflow.RunRef{RunID: "r4"}}
+		}), workflow.Misfire{}, at(12, 30), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := middleware.LatestOnlyConfig{Schedules: tc.lister, DefaultMisfire: tc.fallback, Clock: clock.NewFake(tc.now)}
+			if got := latestCase(t, cfg, at(9, 0), nil); got != tc.wantRan {
+				t.Fatalf("handler ran = %v, want %v", got, tc.wantRan)
+			}
+		})
+	}
+}

@@ -14,6 +14,7 @@ const (
 	// the new one is enqueued (CR-05): the newest tick replaces the
 	// running one. Cancellation is the driver's Cancel, so a running step
 	// sees its ctx cancelled and stops when it honours it.
+	//ds:def id=overlapreplace-a8xq5jgc owner=@khanakia stability=stable
 	OverlapReplace OverlapMode = "replace"
 
 	// OverlapBufferOne keeps at most one run waiting behind the running
@@ -22,6 +23,7 @@ const (
 	// with Concurrency{MaxRuns: 1} on the workflow (keyed by the schedule
 	// when the workflow has several), so the buffered run waits instead
 	// of starting beside the running one.
+	//ds:def id=overlapbufferone-755j8s3p owner=@khanakia stability=stable
 	OverlapBufferOne OverlapMode = "buffer_one"
 )
 
@@ -52,6 +54,8 @@ const overlapScan = 100
 // exist; a process that dies in between leaves both, and the next fire
 // applies the rule again. Errors (a failed list or cancel) go to onErr;
 // nil drops them.
+//
+//ds:def id=guardoverlap-56dpjf45 owner=@khanakia stability=stable
 func GuardOverlap(c Client, onErr func(error), rules ...OverlapRule) error {
 	if len(rules) == 0 {
 		return invalidf("GuardOverlap needs at least one rule")

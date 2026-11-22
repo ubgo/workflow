@@ -156,15 +156,16 @@ func TestWorkerPools(t *testing.T) {
 }
 
 // TestListedStatuses pins how query statuses map to the two engine
-// listings.
+// listings. StatusScheduled lists the unfired delayed starts and the live
+// runs, where a keyed delayed start held by its start gate is.
 func TestListedStatuses(t *testing.T) {
 	runs, sched, st := listedStatuses(nil)
 	if !runs || !sched || st != nil {
 		t.Fatalf("empty: %v %v %v", runs, sched, st)
 	}
-	runs, sched, _ = listedStatuses([]workflow.Status{workflow.StatusScheduled})
-	if runs || !sched {
-		t.Fatalf("scheduled only: runs=%v sched=%v", runs, sched)
+	runs, sched, st = listedStatuses([]workflow.Status{workflow.StatusScheduled})
+	if !runs || !sched || st == nil || !reflect.DeepEqual(*st, []rest.V1TaskStatus{rest.V1TaskStatusRUNNING, rest.V1TaskStatusQUEUED}) {
+		t.Fatalf("scheduled only: runs=%v sched=%v statuses=%v", runs, sched, st)
 	}
 	runs, sched, st = listedStatuses([]workflow.Status{workflow.StatusWaiting, workflow.StatusFailed})
 	want := []rest.V1TaskStatus{rest.V1TaskStatusRUNNING, rest.V1TaskStatusQUEUED, rest.V1TaskStatusFAILED}

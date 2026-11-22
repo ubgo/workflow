@@ -1,0 +1,13 @@
+func scopeSchedules(ctx context.Context, all []workflow.ScheduleInfo) []workflow.ScheduleInfo {
+	tenant, ok := TenantFrom(ctx)
+	if !ok {
+		return all
+	}
+	out := make([]workflow.ScheduleInfo, 0, len(all))
+	for _, s := range all {
+		if s.Tenant == tenant {
+			out = append(out, s)
+		}
+	}
+	return out
+}

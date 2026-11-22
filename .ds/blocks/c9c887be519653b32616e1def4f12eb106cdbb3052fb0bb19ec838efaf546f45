@@ -1,0 +1,1 @@
+func StepSlots(s Step) int { return max(s.Slots, 1) }

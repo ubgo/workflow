@@ -29,6 +29,8 @@ return 'ok'
 // either lands before it or returns ErrWrongState; the run's concurrency
 // and rate keys are computed from the payload when it is admitted, as for
 // every run. A new start goes through Reschedule.
+//
+//ds:def id=redis-client-editrun-fwewy3st owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	if err := workflow.CheckJobEdit(edit); err != nil {
 		return workflow.RunRef{}, err

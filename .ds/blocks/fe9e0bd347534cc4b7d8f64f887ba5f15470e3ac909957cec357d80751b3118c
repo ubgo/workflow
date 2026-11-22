@@ -1,0 +1,12 @@
+func (h *handler[P]) uiRedirect(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(w, r, ActionUI, Resource{File: "index.html"}) {
+		return
+	}
+	// From .../ and from .../ui alike, "ui/" resolves to .../ui/: a
+	// relative reference replaces the last path segment.
+	// Not http.Redirect: it rewrites a relative target against the
+	// stripped request path, which would drop the mount prefix.
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Location", uiRedirectTarget)
+	w.WriteHeader(http.StatusFound)
+}

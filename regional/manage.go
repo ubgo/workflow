@@ -44,6 +44,8 @@ var (
 
 // need refuses a call when Capabilities lacks caps, so a method never
 // half-works on some regions.
+//
+//ds:def id=regional-client-need-7km6z6gj owner=@khanakia stability=stable
 func (c *Client) need(field string, caps workflow.Caps) error {
 	if missing := c.Capabilities().Missing(caps); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the regions cannot do it"}
@@ -53,6 +55,8 @@ func (c *Client) need(field string, caps workflow.Caps) error {
 
 // every returns each region as I, or an UnsupportedError naming caps when
 // Capabilities lacks them or a region does not implement I.
+//
+//ds:def id=regional-every-5grrqev2 owner=@khanakia stability=stable
 func every[I any](c *Client, field string, caps workflow.Caps) (map[string]I, error) {
 	if err := c.need(field, caps); err != nil {
 		return nil, err
@@ -104,6 +108,8 @@ func joinRegions(op string, names []string, errs map[string]error) error {
 // paging is stable. A Ref in q asks only the region it names (a ref
 // naming none matches no run); a LabelSchedule filter asks only the
 // region holding that schedule, with its own ID. Needs CapRunQuery.
+//
+//ds:def id=regional-client-runs-3cspegr3 owner=@khanakia stability=stable
 func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	qs, err := every[workflow.RunQuerier](c, "Runs", workflow.CapRunQuery)
 	if err != nil {
@@ -190,6 +196,8 @@ func encodeCursor(c runsCursor) string {
 
 // decodeCursor reads a cursor Runs made. A cursor naming a region this
 // client lacks, or a negative skip, was not made by this client.
+//
+//ds:def id=regional-client-decodecursor-wskf7am6 owner=@khanakia stability=stable
 func (c *Client) decodeCursor(s string) (runsCursor, error) {
 	cur := runsCursor{}
 	if s == "" {
@@ -283,6 +291,8 @@ func newer(a, b workflow.RunInfo) bool {
 
 // Retry re-runs a failed run in the region its ref names and returns the
 // ref prefixed the same way. Needs CapRetryRun.
+//
+//ds:def id=regional-client-retry-rye6hank owner=@khanakia stability=stable
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := onRegion(c, "Retry", workflow.CapRetryRun, ref, func(name string, r workflow.RunRetrier, inner workflow.RunRef) error {
@@ -337,6 +347,8 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 
 // EditRun edits a scheduled run in the region its ref names and returns
 // the ref prefixed the same way.
+//
+//ds:def id=regional-client-editrun-d4b8fp5g owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := onRegion(c, "EditRun", workflow.Caps{}, ref, func(name string, e workflow.RunEditor, inner workflow.RunRef) error {
@@ -352,6 +364,8 @@ func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow
 
 // ResetRun re-runs a failed run from step in the region its ref names and
 // returns the ref prefixed the same way.
+//
+//ds:def id=regional-client-resetrun-28bwdejv owner=@khanakia stability=stable
 func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := onRegion(c, "ResetRun", workflow.Caps{}, ref, func(name string, r workflow.RunResetter, inner workflow.RunRef) error {
@@ -371,6 +385,8 @@ func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string)
 // implement workflow.TransientSignaller; when one does not, nothing is
 // delivered. When a region fails, the others' deliveries stand and the
 // error names the failing region.
+//
+//ds:def id=regional-client-signalwaiting-uhckk3dw owner=@khanakia stability=stable
 func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	targets, err := c.signalTargets(ctx, ev)
 	if err != nil {
@@ -419,6 +435,8 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 // fails, the others' cancellations stand and the error names the failing
 // one. A LabelSchedule filter asks only the region holding the schedule.
 // Needs CapCancelAll.
+//
+//ds:def id=regional-client-cancelall-5e42krb4 owner=@khanakia stability=stable
 func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	cs, err := every[workflow.BulkCanceller](c, "CancelAll", workflow.CapCancelAll)
 	if err != nil {
@@ -475,6 +493,8 @@ func (c *Client) pauseAll(ctx context.Context, field string, t workflow.PauseTar
 // Paused returns the targets paused in any region, without repeats, in
 // the order Pauser documents. A target paused in some regions only (a
 // half-applied Pause) is listed, so it can be seen and resumed.
+//
+//ds:def id=regional-client-paused-2xv32ckf owner=@khanakia stability=stable
 func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 	ps, err := every[workflow.Pauser](c, "Paused", workflow.CapPauseWorkflow)
 	if err != nil {
@@ -519,6 +539,7 @@ func (c *Client) ResumeSchedule(ctx context.Context, t workflow.ScheduleTarget) 
 	return c.onSchedules(ctx, "ResumeSchedule", t, workflow.SchedulePauser.ResumeSchedule)
 }
 
+//ds:def id=regional-client-onschedules-bnah2mq9 owner=@khanakia stability=stable
 func (c *Client) onSchedules(ctx context.Context, field string, t workflow.ScheduleTarget, op func(workflow.SchedulePauser, context.Context, workflow.ScheduleTarget) error) error {
 	sps, err := every[workflow.SchedulePauser](c, field, workflow.CapSchedulePause)
 	if err != nil {
@@ -543,6 +564,8 @@ func (c *Client) onSchedules(ctx context.Context, field string, t workflow.Sched
 
 // Schedules lists every region's schedules, each ID prefixed by its
 // region, sorted by Workflow, then Name, then ID. Needs CapScheduleList.
+//
+//ds:def id=regional-client-schedules-d4dagre2 owner=@khanakia stability=stable
 func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	ls, err := every[workflow.ScheduleLister](c, "Schedules", workflow.CapScheduleList)
 	if err != nil {
@@ -613,6 +636,8 @@ func (c *Client) OnTick(fn workflow.TickObserver) error {
 
 // Drain drains every region at once and returns when all have stopped or
 // ctx ends; the error joins each region's. Needs CapDrain.
+//
+//ds:def id=regional-client-drain-prwun7hu owner=@khanakia stability=stable
 func (c *Client) Drain(ctx context.Context) error {
 	ds, err := every[workflow.Drainer](c, "Drain", workflow.CapDrain)
 	if err != nil {
@@ -673,6 +698,8 @@ func (c *Client) parallel(fn func(name string) error) map[string]error {
 
 // Done is closed once every region has stopped. Without CapDrain it
 // returns a nil channel, which never closes, as workflow.Forward does.
+//
+//ds:def id=regional-client-done-xsnqwcx9 owner=@khanakia stability=stable
 func (c *Client) Done() <-chan struct{} {
 	ds, err := every[workflow.Drainer](c, "Done", workflow.CapDrain)
 	if err != nil {
@@ -705,6 +732,8 @@ func (c *Client) StopCause() error {
 
 // Supports reports an operation as done only when every region does it,
 // since a run, or a node, may sit in any of them.
+//
+//ds:def id=regional-client-supports-uuvevscq owner=@khanakia stability=stable
 func (c *Client) Supports(op workflow.Op) bool {
 	for _, name := range c.names {
 		if !workflow.Supports(c.regions[name], op) {
@@ -717,6 +746,8 @@ func (c *Client) Supports(op workflow.Op) bool {
 // Nodes lists every region's nodes, in region name order. A node ID is
 // the region's own; give each region's nodes distinct IDs to tell them
 // apart. Every region must implement workflow.NodeLister.
+//
+//ds:def id=regional-client-nodes-3hpfyegm owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	var out []workflow.NodeInfo
 	errs := map[string]error{}
@@ -736,6 +767,8 @@ func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // is ready: a job the router sends to a region that is not ready fails,
 // so the client as a whole is ready only when each region is. Each check
 // is named after its region.
+//
+//ds:def id=regional-client-health-jppkhpst owner=@khanakia stability=stable
 func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 	out := workflow.HealthReport{Live: true, Ready: true}
 	for _, name := range c.names {
@@ -786,6 +819,8 @@ func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 // PayloadLimit is the smallest of the regions' hard caps (a region
 // without one counts as no cap), since a job may land in any region.
 // Zero means no region has a cap.
+//
+//ds:def id=regional-client-payloadlimit-2a8uvxs3 owner=@khanakia stability=stable
 func (c *Client) PayloadLimit() int {
 	limit := 0
 	for _, name := range c.names {

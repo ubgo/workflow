@@ -1,0 +1,9 @@
+func FakeLike(c workflow.Client) FakeOption {
+	return func(f *Fake) {
+		FakeCaps(c.Capabilities())(f)
+		f.ops = map[workflow.Op]bool{}
+		for _, op := range fakeOps {
+			f.ops[op] = workflow.Supports(c, op)
+		}
+	}
+}

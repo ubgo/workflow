@@ -1,0 +1,14 @@
+func decodeCursor(s string) (runsCursor, error) {
+	var c runsCursor
+	if s == "" {
+		return c, nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err == nil {
+		err = json.Unmarshal(b, &c)
+	}
+	if err != nil || c.P.Skip < 0 || c.S.Skip < 0 {
+		return runsCursor{}, fmt.Errorf("%w: failover: Runs cursor was not made by this client", workflow.ErrInvalid)
+	}
+	return c, nil
+}

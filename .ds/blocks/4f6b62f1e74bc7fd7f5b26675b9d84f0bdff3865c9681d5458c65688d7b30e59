@@ -1,0 +1,1 @@
+func Data(store DataStore) Plugin { return dataPlugin{store: store} }

@@ -21,6 +21,8 @@ import (
 
 // caps is what this driver proves against a real Hatchet engine; see
 // live_test.go for the test behind each one.
+//
+//ds:def id=hatchet-caps-d6x9fv8z owner=@khanakia stability=stable
 var caps = workflow.CapsOf(
 	workflow.CapDurable,
 	workflow.CapDelayedStart,
@@ -53,18 +55,22 @@ var caps = workflow.CapsOf(
 // Defaults for Config fields left zero.
 const (
 	// DefaultWorkerName is the worker name shown in Hatchet's dashboard.
+	//ds:def id=hatchet-defaultworkername-25wkdr2z owner=@khanakia stability=stable
 	DefaultWorkerName = "ubgo-workflow"
 	// DefaultStepTimeout stands in for "no timeout": Hatchet always
 	// applies an execution timeout, and its server default is short
 	// enough to kill a long job minutes in.
+	//ds:def id=hatchet-defaultsteptimeout-j3gvwcvw owner=@khanakia stability=stable
 	DefaultStepTimeout = 24 * time.Hour
 	// DefaultScheduleTimeout is how long a step may wait for a worker
 	// when Config.ScheduleTimeout is zero: a day, like DefaultStepTimeout,
 	// in place of the engine's five minutes (see Config.ScheduleTimeout).
+	//ds:def id=hatchet-defaultscheduletimeout-pw5yeefh owner=@khanakia stability=stable
 	DefaultScheduleTimeout = 24 * time.Hour
 	// DefaultIdempotencyMaxHold caps how long a key stays held when its
 	// run never finishes; normally the key is released when the run is
 	// terminal (Hatchet's STATUS method).
+	//ds:def id=hatchet-defaultidempotencymaxhold-9vxvg6ux owner=@khanakia stability=stable
 	DefaultIdempotencyMaxHold = 24 * time.Hour
 )
 
@@ -73,11 +79,13 @@ const (
 	// DefaultRegisterTimeout is how long Start waits for the engine to
 	// list the new worker. An engine that starts slowly (a cold pod on
 	// Kubernetes) may need longer.
+	//ds:def id=hatchet-defaultregistertimeout-3vqg4k5w owner=@khanakia stability=stable
 	DefaultRegisterTimeout = 30 * time.Second
 	// DefaultVisibilityLag is how long a run may be missing from the
 	// engine's read side right after it was created (see
 	// runDetailsLagged). It also sizes the run-finished notifier's list
 	// overlap and how long a batch waits after its coordinator ended.
+	//ds:def id=hatchet-defaultvisibilitylag-n7hzhafh owner=@khanakia stability=stable
 	DefaultVisibilityLag = 5 * time.Second
 )
 
@@ -92,6 +100,8 @@ const (
 
 // Config configures a Client. The zero value builds an SDK client from the
 // HATCHET_CLIENT_* environment variables at Start.
+//
+//ds:def id=hatchet-config-wdky3m9f owner=@khanakia stability=api
 type Config struct {
 	// Client is an SDK client the app already built. When nil, Start
 	// builds one with ClientOptions.
@@ -150,6 +160,8 @@ type Config struct {
 	ScheduleTimeout time.Duration
 
 	// IdempotencyMaxHold caps how long an idempotency key stays held.
+	// A delayed start with a key is refused when its RunAt is further
+	// ahead than this, since the key would lapse before the run starts.
 	IdempotencyMaxHold time.Duration
 
 	// Middleware wraps every step handler, outermost first.
@@ -308,6 +320,10 @@ type Client struct {
 	order     []string
 	sdk       *hatchetsdk.Client
 	workflows map[string]*hatchetsdk.Workflow
+	// delayed holds each workflow's delayed variant (delayedName), the
+	// copy with a start gate that runs a delayed start with an
+	// idempotency key; only workflows with hasStartGate have one.
+	delayed   map[string]*hatchetsdk.Workflow
 	observers []workflow.RunFinishedFunc
 	notify    *notifier // set by Start when observers exist
 
@@ -341,6 +357,8 @@ var _ workflow.Client = (*Client)(nil)
 
 // New returns a driver for cfg. It opens no connection and starts no
 // goroutine.
+//
+//ds:def id=hatchet-new-4dhudaw3 owner=@khanakia stability=stable
 func New(cfg Config) *Client {
 	if cfg.WorkerName == "" {
 		cfg.WorkerName = DefaultWorkerName
@@ -403,6 +421,7 @@ func New(cfg Config) *Client {
 		cfg:       cfg,
 		specs:     map[string]workflow.Workflow{},
 		workflows: map[string]*hatchetsdk.Workflow{},
+		delayed:   map[string]*hatchetsdk.Workflow{},
 		sdk:       cfg.Client,
 		done:      make(chan struct{}),
 	}
@@ -411,6 +430,8 @@ func New(cfg Config) *Client {
 // Native returns the Hatchet SDK client, the one escape hatch for anything
 // the workflow API does not cover. It is nil before Start when Config.Client
 // was not given. Do not start a second worker on it.
+//
+//ds:def id=hatchet-client-native-zq53xzxt owner=@khanakia stability=stable
 func (c *Client) Native() *hatchetsdk.Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -424,6 +445,8 @@ func (c *Client) Capabilities() workflow.Caps { return c.capabilities() }
 // and the exact fields, see doc.go) and records it; it returns an error
 // wrapping workflow.ErrUnsupported for anything the driver would otherwise
 // have to ignore or change. Its Hatchet declaration is built in Start.
+//
+//ds:def id=hatchet-client-register-zg59b2j4 owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -450,6 +473,8 @@ func (c *Client) Register(wf workflow.Workflow) error {
 
 // Start checks the Config tunings, connects, declares the workflows and
 // starts the worker. The worker runs until ctx is cancelled.
+//
+//ds:def id=hatchet-client-start-mjwjna3p owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -474,12 +499,28 @@ func (c *Client) Start(ctx context.Context) error {
 	if err := c.checkEngine(ctx); err != nil {
 		return err
 	}
+	// Each workflow's delayed variant joins the same worker as the
+	// workflow itself (same queue), so poolOrder and poolSpecs list it
+	// right after it.
+	poolOrder := make([]string, 0, 2*len(c.order))
+	poolSpecs := make(map[string]workflow.Workflow, 2*len(c.order))
+	declared := make(map[string]*hatchetsdk.Workflow, 2*len(c.order))
 	for _, name := range c.order {
 		hw, err := c.declare(c.specs[name])
 		if err != nil {
 			return err
 		}
 		c.workflows[name] = hw
+		poolOrder, poolSpecs[name], declared[name] = append(poolOrder, name), c.specs[name], hw
+		if hasStartGate(c.specs[name]) {
+			dw, err := c.declareDelayed(c.specs[name])
+			if err != nil {
+				return err
+			}
+			c.delayed[name] = dw
+			dn := delayedName(name)
+			poolOrder, poolSpecs[dn], declared[dn] = append(poolOrder, dn), c.specs[name], dw
+		}
 	}
 	if c.cfg.BatchCoordinator {
 		hw, err := c.declareCoordinator()
@@ -488,7 +529,7 @@ func (c *Client) Start(ctx context.Context) error {
 		}
 		c.coordinator = hw
 	}
-	pools := workerPools(c.cfg, c.order, c.specs, c.workflows, c.coordinator)
+	pools := workerPools(c.cfg, poolOrder, poolSpecs, declared, c.coordinator)
 	runCtx, cancel := context.WithCancel(ctx)
 	c.runCtx = runCtx
 	// The watch is set before any worker starts, so every handler sees it.
@@ -534,6 +575,8 @@ func (c *Client) Start(ctx context.Context) error {
 
 // startWorker starts one Hatchet worker for p and returns its stop
 // function and engine ID once the engine lists it.
+//
+//ds:def id=hatchet-client-startworker-kd28sgmy owner=@khanakia stability=stable
 func (c *Client) startWorker(ctx context.Context, p workerPool) (func() error, string, error) {
 	opts := []hatchetsdk.WorkerOption{hatchetsdk.WithWorkflows(p.workflows...), hatchetsdk.WithLabels(workerLabels(c.cfg.NodeID, p.queue))}
 	if p.slots > 0 {
@@ -562,6 +605,8 @@ func (c *Client) startWorker(ctx context.Context, p workerPool) (func() error, s
 
 // checkConfig refuses tunings the SDK or the engine cannot honour, before
 // anything connects.
+//
+//ds:def id=hatchet-checkconfig-wx933eq2 owner=@khanakia stability=stable
 func checkConfig(cfg Config) error {
 	if err := checkQueues(cfg.Queues); err != nil {
 		return err
@@ -585,6 +630,8 @@ func checkConfig(cfg Config) error {
 // returns the worker's engine ID. Engine readiness is wall-clock I/O, not
 // scheduling logic, so it uses a real ticker: on an injected fake clock
 // Start would never return.
+//
+//ds:def id=hatchet-client-registerwait-rum23crp owner=@khanakia stability=stable
 func (c *Client) registerWait(ctx context.Context, name string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.RegisterTimeout)
 	defer cancel()
@@ -625,6 +672,8 @@ func (c *Client) checkEngine(ctx context.Context) error {
 }
 
 // lookup returns the declared Hatchet workflow and spec for name.
+//
+//ds:def id=hatchet-client-lookup-ch832bcf owner=@khanakia stability=stable
 func (c *Client) lookup(name string) (*hatchetsdk.Workflow, workflow.Workflow, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -662,10 +711,18 @@ type preparedRun struct {
 	input    map[string]any
 	md       map[string]string
 	priority *hatchetsdk.RunPriority
+	// gated is a delayed start with an idempotency key: it is started at
+	// once as a run of the workflow's delayed variant (hw is that
+	// variant), so the engine holds the key, and the variant's start gate
+	// sleeps until the RunAt stamped as metaStartAt (checkDelayedKey,
+	// hasStartGate).
+	gated bool
 }
 
 // prepare checks job against its workflow's policies and builds the run
 // it becomes, so every way of starting a run stamps the same metadata.
+//
+//ds:def id=hatchet-client-prepare-z4xnsdmz owner=@khanakia stability=stable
 func (c *Client) prepare(job workflow.Job) (preparedRun, error) {
 	if err := workflow.ValidateJob(job); err != nil {
 		return preparedRun{}, err
@@ -696,7 +753,7 @@ func (c *Client) prepare(job workflow.Job) (preparedRun, error) {
 	case workflow.IdempotencyOff:
 		key = ""
 	}
-	if err := checkDelayedKey(key, job.RunAt); err != nil {
+	if err := checkDelayedKey(wf, c.isRegistered(wf.Name), key, job.RunAt, time.Now(), c.cfg.IdempotencyMaxHold); err != nil {
 		return preparedRun{}, err
 	}
 	priority, err := runPriority(job.Priority)
@@ -721,7 +778,14 @@ func (c *Client) prepare(job workflow.Job) (preparedRun, error) {
 		md[metaTenant] = job.Tenant
 	}
 	md[metaEnqueuedAt] = strconv.FormatInt(enqueueTime(job).UnixMilli(), 10)
-	return preparedRun{hw: hw, wf: wf, input: input, md: md, priority: priority}, nil
+	gated := key != "" && !job.RunAt.IsZero()
+	if gated {
+		md[metaStartAt] = strconv.FormatInt(job.RunAt.UnixMilli(), 10)
+		if hw, err = c.delayedHandle(wf.Name); err != nil {
+			return preparedRun{}, err
+		}
+	}
+	return preparedRun{hw: hw, wf: wf, input: input, md: md, priority: priority, gated: gated}, nil
 }
 
 // runOptions are the SDK options of an immediate run.
@@ -737,8 +801,21 @@ func (r preparedRun) runOptions() []hatchetsdk.RunOptFunc {
 // run, whose RunRef holds only the ScheduledID until it fires). A key held
 // by an unfinished run returns that run instead of starting another.
 //
+// A delayed start with an idempotency key cannot be a scheduled run: the
+// engine's scheduled runs take no key, and the key would be checked only
+// when the run fires. It is started at once instead, as a run of the
+// workflow's delayed variant (declareDelayed), so the engine holds the key
+// from the enqueue, with its RunAt stamped on the run; the variant's
+// start gate (a durable task before the first steps) sleeps on the engine
+// until then, and the run reads StatusScheduled meanwhile. Its RunRef
+// holds the RunID, a duplicate gets that same RunRef, and Cancel,
+// CancelAll and CancelChildren cancel it like any run. See
+// checkDelayedKey for when it is refused.
+//
 // A label under a reserved prefix is refused unless ctx allows it
 // (workflow.CheckJobLabels): only the package owning a prefix may set it.
+//
+//ds:def id=hatchet-client-enqueue-ym8nfcz9 owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := workflow.CheckJobLabels(ctx, job); err != nil {
 		return workflow.RunRef{}, err
@@ -748,6 +825,8 @@ func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 
 // enqueue is Enqueue without the reserved-label check, for the driver's
 // own jobs (TriggerSchedule), whose labels the library wrote.
+//
+//ds:def id=hatchet-client-enqueue-537mqp9q owner=@khanakia stability=stable
 func (c *Client) enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	run, err := c.prepare(job)
 	if err != nil {
@@ -755,7 +834,7 @@ func (c *Client) enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 	}
 	hw, wf, input, md, priority := run.hw, run.wf, run.input, run.md, run.priority
 
-	if !job.RunAt.IsZero() {
+	if !job.RunAt.IsZero() && !run.gated {
 		// A time-ordered (v7) token records when the run was scheduled,
 		// which bounds the search for the run it fires after Reschedule
 		// moved it earlier (findRunByToken).
@@ -877,6 +956,8 @@ func (l sdkLookup) firedRun(ctx context.Context, sid scheduledRef) (string, erro
 // moved start cancelled in the moment between its record's delete and
 // its run's listing (seen under load by the conformance case "Reschedule
 // moves a delayed run earlier").
+//
+//ds:def id=hatchet-resolvescheduled-65msmc9t owner=@khanakia stability=stable
 func resolveScheduled(ctx context.Context, look scheduleLookup, sid scheduledRef, lag time.Duration, deletedHere func(token string) bool) (string, runState, error) {
 	sched, err := look.schedule(ctx, sid.token)
 	switch {
@@ -981,6 +1062,8 @@ func tokenTime(token string) (time.Time, bool) {
 
 // Status reports where the run is. A run whose only unstarted work is a
 // wait or sleep step, with nothing queued or running, is StatusWaiting.
+//
+//ds:def id=hatchet-client-status-ykkq4x58 owner=@khanakia stability=stable
 func (c *Client) Status(ctx context.Context, ref workflow.RunRef) (workflow.Status, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -1004,7 +1087,7 @@ func (c *Client) Status(ctx context.Context, ref workflow.RunRef) (workflow.Stat
 		return "", engineErr(err, "run status")
 	}
 	st, err := c.endStatus(d)
-	if err != nil || st.IsTerminal() {
+	if err != nil || st.IsTerminal() || st == workflow.StatusScheduled {
 		return st, err
 	}
 	if c.suspended(d) {
@@ -1050,6 +1133,8 @@ func (c *Client) suspended(d *rest.V1WorkflowRunDetails) bool {
 // side lists the run, so a run enqueued a moment ago reads as missing. A
 // run still missing after the window is reported as not found. The
 // deadline is wall-clock: it measures the engine's own lag.
+//
+//ds:def id=hatchet-rundetailslagged-fm92bjc9 owner=@khanakia stability=stable
 func runDetailsLagged(ctx context.Context, sdk *hatchetsdk.Client, runID string, lag time.Duration) (*rest.V1WorkflowRunDetails, error) {
 	deadline := time.Now().Add(lag)
 	for {
@@ -1079,6 +1164,8 @@ func runDetailsLagged(ctx context.Context, sdk *hatchetsdk.Client, runID string,
 // (unless it already ended) and returns ErrCancelTooLate, which matches
 // workflow.ErrWrongState. So a nil Cancel of a delayed start means it
 // will not run.
+//
+//ds:def id=hatchet-client-cancel-mvr63tkp owner=@khanakia stability=stable
 func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 	sdk, err := c.ready()
 	if err != nil {
@@ -1130,6 +1217,8 @@ func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 // it. A trigger of that name made before this ID form is replaced on the
 // next Schedule call. An unnamed schedule always creates a new trigger,
 // whose ID is the engine's.
+//
+//ds:def id=hatchet-client-schedule-ug2ype7f owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if err := workflow.ValidateSchedule(s); err != nil {
 		return "", err
@@ -1253,4 +1342,25 @@ func (c *Client) deleteCron(ctx context.Context, sdk *hatchetsdk.Client, cronID 
 		return engineErr(err, "delete cron")
 	}
 	return nil
+}
+
+// delayedHandle returns the handle that triggers workflow name's delayed
+// variant: the one Start declared, or, on an enqueue-only client, a handle
+// by the variant's name (the worker processes declared it).
+func (c *Client) delayedHandle(name string) (*hatchetsdk.Workflow, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if hw, ok := c.delayed[name]; ok {
+		return hw, nil
+	}
+	if c.cfg.EnqueueOnly {
+		sdk, err := c.enqueueOnlySDK()
+		if err != nil {
+			return nil, err
+		}
+		hw := sdk.NewWorkflow(delayedName(name))
+		c.delayed[name] = hw
+		return hw, nil
+	}
+	return nil, fmt.Errorf("hatchet driver: workflow %q has no delayed variant", name)
 }

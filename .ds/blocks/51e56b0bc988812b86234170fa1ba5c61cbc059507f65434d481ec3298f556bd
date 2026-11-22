@@ -1,0 +1,14 @@
+func (m *MemoryStream) evictClosed() bool {
+	var oldest RunID
+	var at time.Time
+	for id, rs := range m.runs {
+		if !rs.closedAt.IsZero() && (oldest.IsZero() || rs.closedAt.Before(at)) {
+			oldest, at = id, rs.closedAt
+		}
+	}
+	if oldest.IsZero() {
+		return false
+	}
+	delete(m.runs, oldest)
+	return true
+}

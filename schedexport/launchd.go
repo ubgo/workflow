@@ -12,6 +12,8 @@ import (
 )
 
 // LaunchdOptions are the parts of a launchd job a Schedule does not carry.
+//
+//ds:def id=schedexport-launchdoptions-9rtf8g3q owner=@khanakia stability=stable
 type LaunchdOptions struct {
 	// Zone is the time zone of the Mac the plist is installed on.
 	// Required: launchd reads StartCalendarInterval on the machine's own
@@ -24,6 +26,8 @@ type LaunchdOptions struct {
 // maxIntervals bounds the StartCalendarInterval entries one plist gets:
 // an expression like "* 9-17 * * 1-5" with minutes listed one by one
 // would need thousands.
+//
+//ds:def id=schedexport-maxintervals-szcdhs5a owner=@khanakia stability=stable
 const maxIntervals = 1000
 
 var launchdLabel = regexp.MustCompile(`^[A-Za-z0-9._\-]{1,200}$`)
@@ -47,6 +51,8 @@ var launchdLabel = regexp.MustCompile(`^[A-Za-z0-9._\-]{1,200}$`)
 //     off, which no policy describes.
 //   - Active and Windows are refused, and so is a schedule needing more
 //     than 1000 entries.
+//
+//ds:def id=schedexport-launchd-354shg5d owner=@khanakia stability=stable
 func Launchd(s workflow.Schedule, t Target, o LaunchdOptions) (File, error) {
 	const f = FormatLaunchd
 	j, err := launchdPrepare(s, t, o)
@@ -85,6 +91,8 @@ func Launchd(s workflow.Schedule, t Target, o LaunchdOptions) (File, error) {
 // (launchd starts jobs on the minute). Misfire must be the zero policy,
 // as for Launchd. It returns ErrNoNextFire when the schedule never fires
 // again.
+//
+//ds:def id=schedexport-launchdnextfire-nynthf6k owner=@khanakia stability=stable
 func LaunchdNextFire(s workflow.Schedule, t Target, o LaunchdOptions, clk clock.Clock) (File, error) {
 	j, err := launchdPrepare(s, t, o)
 	if err != nil {
@@ -103,6 +111,7 @@ func LaunchdNextFire(s workflow.Schedule, t Target, o LaunchdOptions, clk clock.
 	}}), nil
 }
 
+//ds:def id=schedexport-launchdprepare-h3ujpqu4 owner=@khanakia stability=stable
 func launchdPrepare(s workflow.Schedule, t Target, o LaunchdOptions) (job, error) {
 	const f = FormatLaunchd
 	j, err := prepare(f, s, t)

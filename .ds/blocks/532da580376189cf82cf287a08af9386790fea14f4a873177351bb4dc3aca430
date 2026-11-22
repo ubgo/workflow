@@ -1,0 +1,12 @@
+type Backoff struct {
+	Initial time.Duration
+	Factor  float64 // below 1 is treated as 1 (constant backoff)
+	Max     time.Duration
+
+	// Jitter spreads retries that failed together (an outage failing
+	// thousands of runs at once) so they do not all retry at the same
+	// instant: a delay d becomes a uniform value in [d*(1-Jitter), d].
+	// It is a fraction in [0, 1]; zero means no jitter (the exact delay,
+	// as before). Needs CapRetryJitter.
+	Jitter float64
+}

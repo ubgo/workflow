@@ -60,6 +60,8 @@ type ExpireResult struct {
 // CapDueQuery included.
 // A maxWait of zero or less is refused with ErrInvalid, as is an invalid
 // q.
+//
+//ds:def id=expirewaiting-hrmqsdw8 owner=@khanakia stability=stable
 func ExpireWaiting(ctx context.Context, c Client, q RunQuery, maxWait time.Duration, now time.Time) (ExpireResult, error) {
 	var res ExpireResult
 	if maxWait <= 0 {
@@ -140,6 +142,8 @@ func ExpireWaiting(ctx context.Context, c Client, q RunQuery, maxWait time.Durat
 
 // overdue reports whether info has waited more than maxWait to start at
 // now, measured from the later of its enqueue and its due time.
+//
+//ds:def id=overdue-wdx474y6 owner=@khanakia stability=stable
 func overdue(info RunInfo, maxWait time.Duration, now time.Time) bool {
 	if info.Status != StatusQueued && info.Status != StatusScheduled {
 		return false
@@ -156,6 +160,8 @@ func overdue(info RunInfo, maxWait time.Duration, now time.Time) bool {
 
 // cancelWaiting cancels one run: through bulk, guarded by its listed
 // status, when the client offers it, else through Cancel.
+//
+//ds:def id=cancelwaiting-wa88bcgj owner=@khanakia stability=stable
 func cancelWaiting(ctx context.Context, c Client, bulk BulkCanceller, info RunInfo) (bool, error) {
 	if bulk == nil {
 		return true, c.Cancel(ctx, info.Ref)

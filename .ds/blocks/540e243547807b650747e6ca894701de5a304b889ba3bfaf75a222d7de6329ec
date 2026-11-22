@@ -1,0 +1,4 @@
+type PromiseRejectedError struct {
+	ID     string
+	Reason string
+}

@@ -1,0 +1,82 @@
+func New(opts ...Option) (*Instrumentation, error) {
+	cfg := config{}
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
+	if cfg.tp == nil {
+		cfg.tp = gotel.GetTracerProvider()
+	}
+	if cfg.mp == nil {
+		cfg.mp = gotel.GetMeterProvider()
+	}
+	if cfg.prop == nil {
+		cfg.prop = propagation.TraceContext{}
+	}
+	if cfg.clk == nil {
+		cfg.clk = clock.Real{}
+	}
+	switch cfg.parenting {
+	case "":
+		cfg.parenting = ParentChild
+	case ParentChild, ParentLink, ParentNewRootLink:
+	default:
+		return nil, fmt.Errorf("%w: workflow/otel: unknown Parenting %q", workflow.ErrInvalid, cfg.parenting)
+	}
+	for _, k := range cfg.metricLabels {
+		if k == "" || strings.HasPrefix(k, LabelPrefix) {
+			return nil, fmt.Errorf("%w: workflow/otel: metric label key %q is empty or reserved", workflow.ErrInvalid, k)
+		}
+	}
+	meter := cfg.mp.Meter(ScopeName)
+	dur, err := meter.Float64Histogram(MetricStepDuration,
+		metric.WithUnit("s"), metric.WithDescription("Duration of each workflow step attempt."))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricStepDuration, err)
+	}
+	outcomes, err := meter.Int64Counter(MetricStepOutcomes,
+		metric.WithUnit("{attempt}"), metric.WithDescription("Workflow step attempts by outcome."))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricStepOutcomes, err)
+	}
+	enq, err := meter.Int64Counter(MetricEnqueueCount,
+		metric.WithUnit("{job}"), metric.WithDescription("Workflow enqueues by outcome."))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricEnqueueCount, err)
+	}
+	wait, err := meter.Float64Histogram(MetricQueueWait,
+		metric.WithUnit("s"), metric.WithDescription("Time a workflow step attempt waited for a worker after it became ready."),
+		metric.WithExplicitBucketBoundaries(QueueWaitBuckets()...))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricQueueWait, err)
+	}
+	depth, err := meter.Int64ObservableGauge(MetricQueueDepth,
+		metric.WithUnit("{run}"), metric.WithDescription("Workflow runs waiting for a worker, per queue."))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricQueueDepth, err)
+	}
+	finished, err := meter.Int64Counter(MetricRunsFinished,
+		metric.WithUnit("{run}"), metric.WithDescription("Workflow runs that ended, by status."))
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricRunsFinished, err)
+	}
+	return &Instrumentation{
+		tracer:       cfg.tp.Tracer(ScopeName),
+		prop:         cfg.prop,
+		labels:       cfg.labels,
+		clk:          cfg.clk,
+		parenting:    cfg.parenting,
+		stepName:     cfg.stepName,
+		enqueueName:  cfg.enqueueName,
+		metricLabels: cfg.metricLabels,
+		tenant:       cfg.tenant,
+		stepDuration: dur,
+		stepOutcomes: outcomes,
+		enqueues:     enq,
+		queueWait:    wait,
+		queueDepth:   depth,
+		runsFinished: finished,
+		meter:        meter,
+	}, nil
+}

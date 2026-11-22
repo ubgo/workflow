@@ -1,0 +1,8 @@
+type QueueBounds struct {
+	// Min is the fewest workers the queue keeps, however idle it is.
+	// Zero means one.
+	Min int
+	// Max is the most workers it gets, however busy. Zero means the
+	// whole budget (BalanceConfig.Total).
+	Max int
+}

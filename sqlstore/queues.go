@@ -14,6 +14,8 @@ import (
 // queueOf is the SQL expression for the queue of the step row aliased st:
 // its run's run_ext row, or the default queue for a run written before
 // migration 003 (which has no row).
+//
+//ds:def id=sql-queueof-xtfmjesa owner=@khanakia stability=stable
 const queueOf = "COALESCE((SELECT rq.queue FROM {run_ext} rq WHERE rq.run_id = st.run_id), '" + workflow.DefaultQueue + "')"
 
 // queueOfAs is queueOf for the step row aliased alias.

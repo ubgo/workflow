@@ -1,0 +1,6 @@
+func New(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Outbox, error) {
+	if db == nil || d == nil {
+		return nil, fmt.Errorf("%w: outbox.New needs a *sql.DB and a dialect", workflow.ErrInvalid)
+	}
+	return build(db, d, opts)
+}

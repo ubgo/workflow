@@ -13,9 +13,13 @@ import (
 // MaxMetricsPoints bounds how many points one Metrics call returns, so a
 // chart request over a year at one-minute steps is refused rather than
 // answered with half a million points.
+//
+//ds:def id=admin-maxmetricspoints-h8muc4a2 owner=@khanakia stability=stable
 const MaxMetricsPoints = 1440
 
 // MetricsQuery asks for run ends over [From, To) in steps of Step.
+//
+//ds:def id=admin-metricsquery-9vrthtgv owner=@khanakia stability=stable
 type MetricsQuery struct {
 	From, To time.Time
 	// Step is the width of one point. A source with a coarser resolution
@@ -42,6 +46,8 @@ func (p MetricsPoint) Total() int64 { return p.Succeeded + p.Failed + p.Cancelle
 
 // MetricsSeries is the answer to a MetricsQuery: one point per step from
 // From to To, zero-filled where nothing ended, oldest first.
+//
+//ds:def id=admin-metricsseries-7khmydj7 owner=@khanakia stability=stable
 type MetricsSeries struct {
 	Step   time.Duration
 	Points []MetricsPoint
@@ -62,6 +68,8 @@ type MetricsSource interface {
 }
 
 // MetricsSourceFunc adapts a function to MetricsSource.
+//
+//ds:def id=admin-metricssourcefunc-7vzxeevm owner=@khanakia stability=stable
 type MetricsSourceFunc func(ctx context.Context, q MetricsQuery) (MetricsSeries, error)
 
 // Series calls f.
@@ -72,6 +80,8 @@ func (f MetricsSourceFunc) Series(ctx context.Context, q MetricsQuery) (MetricsS
 // WithMetrics lets Admin.Metrics, the metrics route and the UI's charts
 // read run-end history from src. Without it they report that no metrics
 // source is wired.
+//
+//ds:def id=admin-withmetrics-fkp3gpb8 owner=@khanakia stability=stable
 func WithMetrics(src MetricsSource) Option { return func(a *Admin) { a.metrics = src } }
 
 // HasMetrics reports whether a MetricsSource is wired (WithMetrics).
@@ -82,6 +92,8 @@ var errNoMetrics = &workflow.UnsupportedError{Field: "admin.metrics", Reason: "n
 
 // ValidateMetricsQuery checks q's shape: From before To, a positive Step,
 // and at most MaxMetricsPoints points. Errors wrap workflow.ErrInvalid.
+//
+//ds:def id=admin-validatemetricsquery-4gnxh43g owner=@khanakia stability=stable
 func ValidateMetricsQuery(q MetricsQuery) error {
 	if q.From.IsZero() || q.To.IsZero() || !q.From.Before(q.To) {
 		return fmt.Errorf("%w: admin: metrics: From must be set and before To", workflow.ErrInvalid)
@@ -97,6 +109,8 @@ func ValidateMetricsQuery(q MetricsQuery) error {
 
 // Metrics returns run ends over q from the wired MetricsSource. Without
 // WithMetrics it returns an error matching workflow.ErrUnsupported.
+//
+//ds:def id=admin-admin-metrics-2dnpra6m owner=@khanakia stability=stable
 func (a *Admin) Metrics(ctx context.Context, q MetricsQuery) (MetricsSeries, error) {
 	if a.metrics == nil {
 		return MetricsSeries{}, errNoMetrics
@@ -108,6 +122,8 @@ func (a *Admin) Metrics(ctx context.Context, q MetricsQuery) (MetricsSeries, err
 }
 
 // The MemoryMetrics defaults.
+//
+//ds:def id=admin-defaultmetrics-y9c6jgan owner=@khanakia stability=stable
 const (
 	DefaultMetricsBucket = time.Minute
 	DefaultMetricsKeep   = 24 * time.Hour
@@ -118,6 +134,8 @@ const (
 
 // MemoryMetricsConfig configures NewMemoryMetrics. Zero or less in a
 // duration or count keeps its default.
+//
+//ds:def id=admin-memorymetricsconfig-cq7cakge owner=@khanakia stability=stable
 type MemoryMetricsConfig struct {
 	// Bucket is the resolution counts are kept at (DefaultMetricsBucket).
 	Bucket time.Duration
@@ -143,6 +161,8 @@ type counts struct{ succeeded, failed, cancelled, discarded int64 }
 // where ends are delivered to one process it shows that process; it
 // starts empty on every restart (Series.Since says when). An app that
 // needs history across restarts wires its own MetricsSource.
+//
+//ds:def id=admin-memorymetrics-qvstnt3u owner=@khanakia stability=stable
 type MemoryMetrics struct {
 	cfg     MemoryMetricsConfig
 	mu      sync.Mutex
@@ -161,6 +181,8 @@ type dedupeKey struct {
 }
 
 // NewMemoryMetrics returns an empty MemoryMetrics.
+//
+//ds:def id=admin-newmemorymetrics-7pfvw8c4 owner=@khanakia stability=stable
 func NewMemoryMetrics(cfg MemoryMetricsConfig) *MemoryMetrics {
 	if cfg.Bucket <= 0 {
 		cfg.Bucket = DefaultMetricsBucket

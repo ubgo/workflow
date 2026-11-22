@@ -35,6 +35,8 @@ func startPair(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
 // TestResetAndSignalFlows runs the shared ResetRun and signal suites
 // through failover, so ResetRun and SignalWaiting keep their driver
 // semantics behind the wrapper.
+//
+//ds:def id=failover-testresetandsignalflows-nts7g6ss owner=@khanakia stability=stable
 func TestResetAndSignalFlows(t *testing.T) {
 	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: startPair})
 	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: startPair,

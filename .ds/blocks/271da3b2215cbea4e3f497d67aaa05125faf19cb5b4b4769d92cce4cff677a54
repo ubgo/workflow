@@ -1,0 +1,23 @@
+func TestParentLink_KeepsCtxSpan(t *testing.T) {
+	for _, p := range []wfotel.Parenting{wfotel.ParentLink, wfotel.ParentNewRootLink} {
+		h := newHarness(t, wfotel.WithParenting(p))
+		_, enq := h.tp.Tracer("test").Start(context.Background(), "enqueue")
+		labels := map[string]string{}
+		inject(trace.ContextWithSpan(context.Background(), enq), labels)
+		ctx, engine := h.tp.Tracer("test").Start(context.Background(), "engine")
+		ctx = workflow.WithStepInfo(ctx, workflow.StepInfo{Workflow: "w", Step: "a", Labels: labels})
+		if _, err := h.inst.Step()(func(context.Context, []byte) ([]byte, error) { return nil, nil })(ctx, nil); err != nil {
+			t.Fatal(err)
+		}
+		engine.End()
+		enq.End()
+		s := spanNamed(t, h.spans.GetSpans(), "workflow.step w/a")[0]
+		underEngine := s.Parent.SpanID() == engine.SpanContext().SpanID()
+		if underEngine != (p == wfotel.ParentLink) {
+			t.Fatalf("%s: parent is the engine span = %v", p, underEngine)
+		}
+		if len(s.Links) != 1 || s.Links[0].SpanContext.SpanID() != enq.SpanContext().SpanID() {
+			t.Fatalf("%s: links = %+v", p, s.Links)
+		}
+	}
+}

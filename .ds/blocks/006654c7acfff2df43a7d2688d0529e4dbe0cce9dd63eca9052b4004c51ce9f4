@@ -1,0 +1,50 @@
+func parseRunQuery(r *http.Request, withStatus bool) (workflow.RunQuery, error) {
+	v := r.URL.Query()
+	q := workflow.RunQuery{Workflow: v.Get("workflow"), Queue: v.Get("queue"), Tenant: v.Get("tenant"), Cursor: v.Get("cursor")}
+	for _, raw := range v["status"] {
+		if !withStatus {
+			return q, errors.New("this route lists one status; use /runs to filter by status")
+		}
+		for _, s := range strings.Split(raw, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				q.Statuses = append(q.Statuses, workflow.Status(s))
+			}
+		}
+	}
+	for _, raw := range v["label"] {
+		k, val, ok := strings.Cut(raw, "=")
+		if !ok || k == "" {
+			return q, fmt.Errorf("label %q: want key=value or key=prefix*", raw)
+		}
+		if prefix, isPrefix := strings.CutSuffix(val, labelPrefixMark); isPrefix {
+			if q.LabelPrefixes == nil {
+				q.LabelPrefixes = map[string]string{}
+			}
+			q.LabelPrefixes[k] = prefix
+			continue
+		}
+		if q.Labels == nil {
+			q.Labels = map[string]string{}
+		}
+		q.Labels[k] = val
+	}
+	var err error
+	if q.From, err = parseTime(v.Get("from"), "from"); err != nil {
+		return q, err
+	}
+	if q.To, err = parseTime(v.Get("to"), "to"); err != nil {
+		return q, err
+	}
+	if q.DueFrom, err = parseTime(v.Get("due_from"), "due_from"); err != nil {
+		return q, err
+	}
+	if q.DueTo, err = parseTime(v.Get("due_to"), "due_to"); err != nil {
+		return q, err
+	}
+	if s := v.Get("limit"); s != "" {
+		if q.Limit, err = strconv.Atoi(s); err != nil {
+			return q, fmt.Errorf("limit %q is not a number", s)
+		}
+	}
+	return q, workflow.ValidateRunQuery(q)
+}

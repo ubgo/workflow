@@ -1,0 +1,4 @@
+	sharedCaps = workflow.CapsOf(workflow.CapCancel, workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun,
+		workflow.CapCancelAll, workflow.CapRunStates, workflow.CapErrorHistory, workflow.CapLabelPrefix,
+		workflow.CapDueQuery, workflow.CapResult, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
+		workflow.CapDrain, workflow.CapRunFinished, workflow.CapNodeIdentity)

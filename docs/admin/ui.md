@@ -1,18 +1,18 @@
 # Admin web UI
 
-The admin handler serves a web UI for the people who run your workers: queue depths and waits, runs filtered by status, workflow, queue and label, one run's attempts and error, failed and discarded runs to retry or delete one at a time or all matching a filter, schedules, pause and resume of queues, workflows and schedules, charts of run ends over time, and the client's health and online nodes. It is part of the [admin JSON API](http-api.md) handler, behind the same login and authorization, so mounting the API mounts the UI. It is three small files embedded in the `admin` module, written for it, with no third-party code and nothing fetched from the internet when it runs.
+The admin handler serves a web UI for the people who run your workers: queue depths and waits, runs filtered by status, workflow, queue and label, one run's attempts and error, failed and discarded runs to retry or delete one at a time or all matching a filter, schedules, pause and resume of queues, workflows and schedules, charts of run ends over time, and the client's health and online nodes. It is part of the [admin JSON API](http-api.md) handler, behind the same login and authorization, so mounting the API mounts the UI. It is three small files embedded in the `admin` module ([`uiFiles`](ds:block?id=admin-uifiles-r5cepbub)), written for it, with no third-party code and nothing fetched from the internet when it runs ([`TestUI_NoThirdPartyOrInlineCode`](ds:block?id=admin-testui-nothirdpartyorinlinecode-gqz4ejqd)).
 
 ![The runs screen filtered to failed runs of one tenant](../assets/admin-ui/runs-filtered-light.png)
 
 ## Before you start
 
-- The admin handler mounted in your app ([Admin JSON API](http-api.md)).
-- A login that sets a session cookie. A browser that opens a page sends its cookies but no `Authorization` header, so the UI only opens when your `Identify` accepts the session cookie.
+- The admin handler, [`admin.NewHandler`](ds:block?id=admin-newhandler-np68g63j), mounted in your app ([Admin JSON API](http-api.md)).
+- A login that sets a session cookie. A browser that opens a page sends its cookies but no `Authorization` header, so the UI only opens when your [`Identify`](ds:block?id=admin-auth-sq9pywcz) accepts the session cookie.
 - The example is [`examples/admin-ui`](../../examples/admin-ui). Run it with `go run ./admin-ui` from `examples/`; with `ADMIN_UI_ADDR=127.0.0.1:8090` it keeps serving so you can click through it.
 
 ## Step 1: accept the session cookie in Identify
 
-`Identify` is the same function the JSON API uses; reading the cookie is the only change a UI needs. The UI page itself is the action `admin.ActionUI` (`ui.read`), which is read-only, so a role allowed every read-only action can open it:
+`Identify` is the same function the JSON API uses; reading the cookie is the only change a UI needs. The UI page itself is the action [`admin.ActionUI`](ds:block?id=admin-actions-fvf66fmr) (`ui.read`), which is read-only ([`Action.ReadOnly`](ds:block?id=admin-action-readonly-fgxr6xzq)), so a role allowed every read-only action can open it:
 
 <!-- snippet: examples/admin-ui/main.go#auth -->
 ```go
@@ -61,7 +61,7 @@ mux.Handle("/admin/", http.StripPrefix("/admin", admin.NewHandler(admin.New(c), 
 // Open /admin/ in a browser: it redirects to /admin/ui/.
 ```
 
-`GET /admin/` and `GET /admin/ui` redirect to `ui/`. The redirect is relative, so it keeps whatever prefix you mount the handler under. The page, its style sheet and its script are served at `ui/`, `ui/app.css` and `ui/app.js`.
+`GET /admin/` and `GET /admin/ui` redirect to `ui/` ([`uiRedirect`](ds:block?id=admin-handler-uiredirect-8c8s8gay)). The redirect is relative ([`uiRedirectTarget`](ds:block?id=admin-uiredirecttarget-wxganz64)), so it keeps whatever prefix you mount the handler under ([`TestUI_RedirectKeepsPrefix`](ds:block?id=admin-testui-redirectkeepsprefix-wunj6kcr)). The page, its style sheet and its script are served at `ui/`, `ui/app.css` and `ui/app.js` ([`uiFile`](ds:block?id=admin-handler-uifile-f5sjqcca), [`TestUI_FilesEmbedded`](ds:block?id=admin-testui-filesembedded-zh3z2hw8)).
 
 ```text
 anonymous GET /admin/ui/: 401
@@ -71,23 +71,25 @@ viewer GET /admin/ui/: 200 text/html; charset=utf-8, page true
 
 ## What it is safe against
 
-The UI adds no new way in. Every file is served only after `Identify` and `Authorize`, like every API route, so an anonymous caller cannot even learn that the UI exists. Every button is a request to the JSON API, authorized on its own action, so a viewer sees every screen and is refused every write:
+The UI adds no new way in. Every file is served only after `Identify` and `Authorize`, like every API route ([`uiFile`](ds:block?id=admin-handler-uifile-f5sjqcca), [`ServeHTTP`](ds:block?id=admin-handler-servehttp-zmec7tcc)), so an anonymous caller cannot even learn that the UI exists. Every button is a request to the JSON API, authorized on its own action, so a viewer sees every screen and is refused every write:
 
 ```text
 viewer pauses the schedule: 403
 admin pauses the schedule: 200
 ```
 
-Writes keep the API's rule that the body is `application/json`, which a cross-site form cannot send. The pages carry a strict Content-Security-Policy: only the UI's own files may load, requests go only to the same origin, inline script and style are not allowed, and no site may put the UI in a frame. They also carry `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`:
+Writes keep the API's rule that the body is `application/json`, which a cross-site form cannot send ([`ServeHTTP`](ds:block?id=admin-handler-servehttp-zmec7tcc)). The pages carry a strict Content-Security-Policy ([`uiCSP`](ds:block?id=admin-uicsp-jbxyk6qc)): only the UI's own files may load, requests go only to the same origin, inline script and style are not allowed, and no site may put the UI in a frame. They also carry `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store` ([`uiFile`](ds:block?id=admin-handler-uifile-f5sjqcca)):
 
 ```text
 CSP: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
 X-Frame-Options: DENY
 ```
 
-Payloads are shown on a run's page only when the handler is built with `admin.WithPayloads()`, as in the API.
+Payloads are shown on a run's page only when the handler is built with [`admin.WithPayloads()`](ds:block?id=admin-withpayloads-zq6ghfjc), as in the API.
 
 ## The screens
+
+Each screen reads the JSON API routes of [`NewHandler`](ds:block?id=admin-newhandler-np68g63j); what a screen shows of a run is what [`runJSON`](ds:block?id=admin-handler-runjson-3xmkf4pw) sends.
 
 | Screen | What it shows | Actions |
 |---|---|---|
@@ -138,7 +140,7 @@ Payloads are shown on a run's page only when the handler is built with `admin.Wi
 
 These five are captured by `task docs:screenshots` (the program in `scripts/admin-screenshots`, over an in-memory client with dummy data and a headless Chrome); rerun it after a change to the run screen.
 
-The label box takes space-separated `key=value` pairs that must all match, and `key=prefix*` for a value that starts with a prefix (`key=*` for "has the key"), the API's `label` filter. A prefix needs a driver with `CapLabelPrefix` ([Search by label](../jobs/manage-runs.md#search-by-label)). The page numbers come from the API's `count=1`, which counts within the handler's max scan:
+The label box takes space-separated `key=value` pairs that must all match, and `key=prefix*` for a value that starts with a prefix (`key=*` for "has the key"), the API's `label` filter. A prefix needs a driver with `CapLabelPrefix` ([Search by label](../jobs/manage-runs.md#search-by-label); [`TestHandler_LabelPrefix`](ds:block?id=admin-testhandler-labelprefix-qhvc6pdb)). The page numbers come from the API's `count=1`, which counts within the handler's max scan ([`Admin.CountRuns`](ds:block?id=admin-admin-countruns-ukw2h48m)):
 
 <!-- snippet: examples/admin-ui/main.go#count -->
 ```go
@@ -150,7 +152,7 @@ _, body, err = call("GET", "/admin/runs?label=tenant=acme*&count=1&limit=50", "s
 viewer runs tenant=acme*: 2 runs, total 2
 ```
 
-Buttons for an operation the driver does not support are hidden: the UI reads the API's `capabilities` route, which answers for the client underneath a wrapper too. Every "all matching" button first asks the server for a dry run with the current filters and shows how many runs it would touch and the first few IDs; only the confirming click acts. A call that hits the server's bulk bound says so, and the same button does the next batch. The charts are drawn as inline SVG under the page's strict content security policy, in colours checked for colour-blind readers in light and dark. Keys: `1` to `7` switch screens, `/` focuses the filter, `←` and `→` change page, `Esc` clears the filters, `r` refreshes and `t` switches between light and dark. Without a choice it follows the system's setting.
+Buttons for an operation the driver does not support are hidden: the UI reads the API's `capabilities` route ([`Admin.Support`](ds:block?id=admin-admin-support-mwceu2g5)), which answers for the client underneath a wrapper too. Every "all matching" button first asks the server for a dry run with the current filters and shows how many runs it would touch and the first few IDs; only the confirming click acts. A call that hits the server's bulk bound says so, and the same button does the next batch. The charts are drawn as inline SVG under the page's strict content security policy, in colours checked for colour-blind readers in light and dark. Keys: `1` to `7` switch screens, `/` focuses the filter, `←` and `→` change page, `Esc` clears the filters, `r` refreshes and `t` switches between light and dark. Without a choice it follows the system's setting.
 
 ![The runs screen in dark mode](../assets/admin-ui/runs-dark.png)
 
@@ -183,16 +185,16 @@ As the viewer every screen opens and every button answers 403; as the admin the 
 
 ## Pitfalls
 
-- **A bearer-token-only `Identify` locks the UI out.** The API works from scripts, but every page load is answered 401. Accept the session cookie as well.
+- **A bearer-token-only `Identify` locks the UI out.** The API works from scripts, but every page load is answered 401 ([`ServeHTTP`](ds:block?id=admin-handler-servehttp-zmec7tcc)). Accept the session cookie as well.
 - **Set the cookie `SameSite=Lax` or `Strict` and `HttpOnly`.** The JSON-only rule stops cross-site form posts; the cookie flags stop the rest.
 - **Scope by tenant in `Authorize`, not in the UI.** The UI shows what the API returns. A tenant admin who may only see their own runs needs an `Authorize` that checks `Resource.Query` labels, as for the API ([Admin JSON API › Pitfalls](http-api.md#pitfalls)).
-- **Large deployments see "of N+" totals.** The count reads at most the handler's max scan of runs (`WithMaxScan`); past it the total is a lower bound and the last pages are not numbered.
-- **Stacks are off by default.** A stack trace names files and functions of your code; build the handler with `admin.WithStacks()` only where the people who open the UI may see that.
-- **Run now on a skipping schedule shows an error, not a run.** The overlap policy applies to a manual trigger as it does to a tick, so the button answers 409 while the last run is unfinished.
-- **An exact label value that ends in `*` cannot be searched**, since the trailing `*` means a prefix.
-- **The charts need a metrics source.** Without `admin.WithMetrics` the Charts screen says none is wired; `admin.MemoryMetrics` starts empty at every restart ([Admin operations › Run-end history for charts](operations.md#run-end-history-for-charts)).
-- **A bulk action is several requests.** It acts on at most the handler's bulk bound (`WithMaxBulk`, 1,000) per click, and runs that changed since the preview are skipped and counted.
-- **The System screen is not a probe.** It reads the same report as `workflow.CheckHealth` behind the admin login; probes use their own route ([Nodes and health](../operations/nodes.md#health-and-readiness-probes)).
+- **Large deployments see "of N+" totals.** The count reads at most the handler's max scan of runs ([`WithMaxScan`](ds:block?id=admin-withmaxscan-5bhjrurh)); past it the total is a lower bound ([`TestAdmin_CountRunsBounded`](ds:block?id=admin-testadmin-countrunsbounded-vrdk95qe)) and the last pages are not numbered.
+- **Stacks are off by default.** A stack trace names files and functions of your code; build the handler with [`admin.WithStacks()`](ds:block?id=admin-withstacks-p2zf9mau) only where the people who open the UI may see that.
+- **Run now on a skipping schedule shows an error, not a run.** The overlap policy applies to a manual trigger as it does to a tick, so the button answers 409 while the last run is unfinished (`workflow.ErrOverlap`, mapped by [`fail`](ds:block?id=admin-handler-fail-nf9d8sqp)).
+- **An exact label value that ends in `*` cannot be searched**, since the trailing `*` means a prefix ([`parseRunQuery`](ds:block?id=admin-parserunquery-6qprr62n)).
+- **The charts need a metrics source.** Without [`admin.WithMetrics`](ds:block?id=admin-withmetrics-fkp3gpb8) the Charts screen says none is wired; [`admin.MemoryMetrics`](ds:block?id=admin-memorymetrics-qvstnt3u) starts empty at every restart ([Admin operations › Run-end history for charts](operations.md#run-end-history-for-charts)).
+- **A bulk action is several requests.** It acts on at most the handler's bulk bound ([`WithMaxBulk`](ds:block?id=admin-withmaxbulk-ety2e74q), 1,000: [`DefaultMaxBulk`](ds:block?id=admin-defaultmaxbulk-dtm2uzhk)) per click, and runs that changed since the preview are skipped and counted.
+- **The System screen is not a probe.** It reads the same report as `workflow.CheckHealth` behind the admin login ([`health`](ds:block?id=admin-handler-health-czcfdgkm)); probes use their own route ([Nodes and health](../operations/nodes.md#health-and-readiness-probes)).
 
 ## Related
 

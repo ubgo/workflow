@@ -1,0 +1,18 @@
+func recordFinish(st *State, idx int, status workflow.Status, now time.Time) effects {
+	var eff effects
+	if idx < 0 || idx >= len(st.Jobs) || !status.IsTerminal() || st.Jobs[idx].Status.IsTerminal() {
+		return eff
+	}
+	st.Jobs[idx].Status = status
+	eff.recorded = true
+	if st.counted(status) == workflow.StatusFailed && !st.CatchFired {
+		st.CatchFired = true
+		eff.catch = true
+		if !st.AllowFailures && !st.Cancelled {
+			st.Cancelled, st.CancelledAt, st.FailCancelled = true, now, true
+			eff.cancelRest = true
+		}
+	}
+	finish(st, now, &eff)
+	return eff
+}

@@ -1,0 +1,13 @@
+func TestPermanent(t *testing.T) {
+	base := errors.New("bad input")
+	p := workflow.Permanent(base)
+	if !workflow.IsPermanent(p) || !errors.Is(p, base) {
+		t.Fatal("Permanent does not mark or wrap")
+	}
+	if !workflow.IsPermanent(errors.Join(errors.New("ctx"), p)) {
+		t.Fatal("wrapped permanent error not found")
+	}
+	if workflow.IsPermanent(base) || workflow.Permanent(nil) != nil {
+		t.Fatal("plain error or nil treated as permanent")
+	}
+}

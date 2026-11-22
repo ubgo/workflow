@@ -1,0 +1,15 @@
+func checkPartitionSet(client Client, set PartitionSet) error {
+	switch {
+	case client == nil:
+		return invalidf("partition set %q: client is nil", set.Name)
+	case set.Name == "":
+		return invalidf("partition set has no Name")
+	case set.Workflow == "" && set.Job == nil:
+		return invalidf("partition set %q needs a Workflow or a Job", set.Name)
+	}
+	if !set.AllowDuplicates && !client.Capabilities().Has(CapIdempotencyKey) {
+		return &UnsupportedError{Field: "EnqueuePartitions", Missing: CapIdempotencyKey,
+			Reason: "enqueueing a set again would start an unfinished partition twice; set PartitionSet.AllowDuplicates to accept that"}
+	}
+	return nil
+}

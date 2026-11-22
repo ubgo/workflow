@@ -16,6 +16,8 @@ import (
 // client was not built with the Journal plugin or the WithJournal
 // middleware, or the call is not inside a step. It is returned marked
 // Permanent, because retrying the step cannot wire a journal in.
+//
+//ds:def id=errnojournal-7dxyqv7a owner=@khanakia stability=stable
 var ErrNoJournal = errors.New("workflow: no journal on this context (use the Journal plugin)")
 
 // JournalStore keeps the results of memoised work inside a run (XM-02), so
@@ -29,6 +31,8 @@ var ErrNoJournal = errors.New("workflow: no journal on this context (use the Jou
 // of an existing key replaces it. MemoryJournal is the in-process
 // default; a durable store (SQL, Redis) makes the memo survive a crash of
 // the process, which an in-process journal cannot.
+//
+//ds:def id=journalstore-tyc8j5tt owner=@khanakia stability=stable
 type JournalStore interface {
 	// Load returns the value saved under key for run, and false when
 	// there is none.
@@ -46,12 +50,16 @@ type JournalStore interface {
 // process only and are lost when it exits, so the memo holds across step
 // retries and RunRetrier retries in one process, not across a crash.
 // The zero value is ready to use.
+//
+//ds:def id=memoryjournal-3th6qamq owner=@khanakia stability=stable
 type MemoryJournal struct {
 	mu   sync.Mutex
 	runs map[RunID]map[string][]byte
 }
 
 // NewMemoryJournal returns an empty MemoryJournal.
+//
+//ds:def id=newmemoryjournal-cvvh3zbe owner=@khanakia stability=stable
 func NewMemoryJournal() *MemoryJournal { return &MemoryJournal{} }
 
 // Load returns a copy of the value saved under key for run.
@@ -86,6 +94,8 @@ func (m *MemoryJournal) Forget(_ context.Context, run RunID) error {
 
 // Runs returns the runs that hold at least one entry, sorted, for tests
 // and for checking that finished runs were forgotten.
+//
+//ds:def id=memoryjournal-runs-gpxgnwd4 owner=@khanakia stability=stable
 func (m *MemoryJournal) Runs() []RunID {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -113,6 +123,8 @@ type journalKey struct{}
 // there returns ErrNoJournal. The Journal plugin bundles this with the
 // cleanup of finished runs; use WithJournal alone only when something
 // else forgets runs.
+//
+//ds:def id=withjournal-efjn2ybg owner=@khanakia stability=stable
 func WithJournal(store JournalStore) Middleware {
 	return func(next Handler) Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -136,6 +148,8 @@ type JournalOption func(*journalPlugin)
 // or the store's own retention). By default every finished run is
 // forgotten, failed ones included, so an in-process journal never grows
 // without bound.
+//
+//ds:def id=journalkeepfailed-zngp4v2c owner=@khanakia stability=stable
 func JournalKeepFailed() JournalOption { return func(p *journalPlugin) { p.keepFailed = true } }
 
 type journalPlugin struct {
@@ -147,6 +161,8 @@ type journalPlugin struct {
 // store on every step's ctx (WithJournal) and forgets a run's entries
 // when the run finishes. Pass it to Use before Register and Start; it
 // needs a client with RunNotifier, as every run-finished plugin does.
+//
+//ds:def id=journal-pr52wnjp owner=@khanakia stability=stable
 func Journal(store JournalStore, opts ...JournalOption) Plugin {
 	p := &journalPlugin{store: store}
 	for _, o := range opts {
@@ -164,6 +180,8 @@ func (p *journalPlugin) StepMiddleware() []Middleware { return []Middleware{With
 // RunFinishedObservers forgets a finished run's entries. A Forget error
 // is dropped: observers have no caller to report to, and a leftover entry
 // only costs space, never a wrong result (a RunID is never reused).
+//
+//ds:def id=journalplugin-runfinishedobservers-r6wrb7jb owner=@khanakia stability=stable
 func (p *journalPlugin) RunFinishedObservers() []RunFinishedFunc {
 	return []RunFinishedFunc{func(ctx context.Context, ev RunEvent) {
 		if ev.Ref.RunID.IsZero() || (p.keepFailed && ev.Status == StatusFailed) {
@@ -175,6 +193,8 @@ func (p *journalPlugin) RunFinishedObservers() []RunFinishedFunc {
 
 // journalFrom returns the scope WithJournal set, or a Permanent
 // ErrNoJournal.
+//
+//ds:def id=journalfrom-qywwa6tc owner=@khanakia stability=stable
 func journalFrom(ctx context.Context) (*journalScope, error) {
 	j, ok := ctx.Value(journalKey{}).(*journalScope)
 	if !ok {
@@ -186,6 +206,8 @@ func journalFrom(ctx context.Context) (*journalScope, error) {
 // claim records that name was used in this attempt and builds its key.
 // The key carries the step name's length, so step "a/b" with name "c"
 // and step "a" with name "b/c" can never share an entry.
+//
+//ds:def id=journalscope-claim-gbk3qw9q owner=@khanakia stability=stable
 func (j *journalScope) claim(name string) (string, error) {
 	if name == "" {
 		return "", Permanent(invalidf("memo name is empty"))
@@ -222,6 +244,8 @@ func (j *journalScope) claim(name string) (string, error) {
 // Memo needs the Journal plugin (or WithJournal) on the client, and
 // returns a Permanent ErrNoJournal without it. Memo is safe to call from
 // several goroutines of one step with different names.
+//
+//ds:def id=memo-wg47wmpf owner=@khanakia stability=stable
 func Memo[T any](ctx context.Context, name string, fn func(ctx context.Context) (T, error)) (T, error) {
 	var zero T
 	j, err := journalFrom(ctx)
@@ -236,6 +260,8 @@ func Memo[T any](ctx context.Context, name string, fn func(ctx context.Context) 
 }
 
 // memoKey is Memo after the name is claimed.
+//
+//ds:def id=memokey-hp675s5s owner=@khanakia stability=stable
 func memoKey[T any](ctx context.Context, j *journalScope, key, name string, fn func(ctx context.Context) (T, error)) (T, error) {
 	var zero T
 	raw, ok, err := j.store.Load(ctx, j.run, key)

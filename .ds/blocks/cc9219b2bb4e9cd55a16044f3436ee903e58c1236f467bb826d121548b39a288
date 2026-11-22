@@ -1,0 +1,48 @@
+func (s StepDef) validate(path string) error {
+	if s.Name == "" {
+		return fieldErr(at(path, "name"), "is empty")
+	}
+	kinds := 0
+	if s.Handler != "" {
+		kinds++
+	}
+	if s.Wait != nil {
+		kinds++
+	}
+	if s.Sleep != "" {
+		kinds++
+	}
+	if kinds != 1 {
+		return fieldErr(path, "step %q sets %d of handler, wait and sleep; exactly one is needed", s.Name, kinds)
+	}
+	if _, err := duration(at(path, "timeout"), s.Timeout); err != nil {
+		return err
+	}
+	if s.Sleep != "" {
+		d, err := duration(at(path, "sleep"), s.Sleep)
+		if err != nil {
+			return err
+		}
+		if d <= 0 {
+			return fieldErr(at(path, "sleep"), "%q is not a positive duration", s.Sleep)
+		}
+	}
+	if w := s.Wait; w != nil {
+		wp := at(path, "wait")
+		if w.Event == "" {
+			return fieldErr(at(wp, "event"), "is empty")
+		}
+		if w.Key != "" && w.KeyLabel != "" {
+			return fieldErr(wp, "sets both key and key_label; a wait has a fixed key or one read from a label")
+		}
+		if _, err := duration(at(wp, "timeout"), w.Timeout); err != nil {
+			return err
+		}
+	}
+	if s.Retry != nil {
+		if _, err := s.Retry.policy(at(path, "retry")); err != nil {
+			return err
+		}
+	}
+	return nil
+}

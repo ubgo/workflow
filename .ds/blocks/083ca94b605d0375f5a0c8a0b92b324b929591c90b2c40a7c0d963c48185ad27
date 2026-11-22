@@ -1,0 +1,15 @@
+type RunSignalReader interface {
+	// PendingSignals lists the signals addressed to run (Key
+	// RunKey(run)) whose name is in names, sent after the run was
+	// enqueued and not yet taken by it, oldest first, at most limit (a
+	// limit of zero or less means no limit). An unknown or finished run
+	// has none.
+	PendingSignals(ctx context.Context, run RunID, names []string, limit int) ([]RunSignal, error)
+
+	// TakeSignal records that run took the signal id, as a wait step
+	// taking it would, and reports whether this call took it: false when
+	// the run had already taken it (a wait step or another handler got
+	// there first). An id that is not a pending signal addressed to run
+	// returns ErrNotFound.
+	TakeSignal(ctx context.Context, run RunID, id string) (bool, error)
+}

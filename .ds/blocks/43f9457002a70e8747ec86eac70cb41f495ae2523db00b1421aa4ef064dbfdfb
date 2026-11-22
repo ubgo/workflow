@@ -1,0 +1,12 @@
+func (c *Client) OnTick(fn workflow.TickObserver) error {
+	if fn == nil {
+		return fmt.Errorf("%w: OnTick with a nil func", workflow.ErrInvalid)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	c.tickObserver = append(c.tickObserver, fn)
+	return nil
+}

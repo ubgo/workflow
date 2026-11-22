@@ -1,0 +1,30 @@
+func (h *handler[P]) uiFile(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("file")
+	if name == "" {
+		name = "index.html"
+	}
+	if !h.authorize(w, r, ActionUI, Resource{File: name}) {
+		return
+	}
+	ctype, ok := uiTypes[name]
+	if !ok {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such UI file")
+		return
+	}
+	body, err := fs.ReadFile(uiFiles, path.Join("ui", name))
+	if err != nil {
+		// Unreachable: every name in uiTypes is embedded, which
+		// TestUI_FilesEmbedded checks.
+		h.fail(w, ActionUI, err)
+		return
+	}
+	hd := w.Header()
+	hd.Set("Content-Type", ctype)
+	hd.Set("Content-Security-Policy", uiCSP)
+	hd.Set("X-Content-Type-Options", "nosniff")
+	hd.Set("X-Frame-Options", "DENY")
+	hd.Set("Referrer-Policy", "no-referrer")
+	hd.Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+}

@@ -1,0 +1,64 @@
+func (f *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	pq, sq, err := both[workflow.RunQuerier](f, "Runs", workflow.CapRunQuery)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.ValidateRunQuery(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.CheckRunQuery(f.Capabilities(), q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	cur, err := decodeCursor(q.Cursor)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	feeds := []*feed{
+		{side: primarySide, src: pq, pos: cur.P},
+		{side: secondarySide, src: sq, pos: cur.S},
+	}
+	// A Ref names one backend by its prefix: only that backend is asked,
+	// with the driver's own ref, and the run comes back re-prefixed by
+	// load. A ref this client did not make (no prefix, or two IDs naming
+	// different backends) decodes to unknownSide, so no feed is asked and
+	// it matches no run, as an unknown ref does on a driver.
+	if !q.Ref.RunID.IsZero() || !q.Ref.ScheduledID.IsZero() {
+		sd, inner, _ := decodeRef(q.Ref)
+		q.Ref = inner
+		for _, fd := range feeds {
+			if fd.side != sd {
+				fd.pos = feedPos{Done: true}
+			}
+		}
+	}
+	limit := q.PageLimit()
+	for _, fd := range feeds {
+		var holds bool
+		if fd.q, holds = sideQuery(q, fd.side); !holds {
+			fd.pos = feedPos{Done: true}
+		}
+		if err := fd.load(ctx, fd.q, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("failover: %s: %w", fd.side, err)
+		}
+	}
+	var page workflow.RunPage
+	for len(page.Runs) < limit {
+		var pick *feed
+		for _, fd := range feeds {
+			if len(fd.buf) > 0 && (pick == nil || newer(fd.head(), pick.head())) {
+				pick = fd
+			}
+		}
+		if pick == nil {
+			break
+		}
+		page.Runs = append(page.Runs, pick.head())
+		if err := pick.take(ctx, pick.q, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("failover: %s: %w", pick.side, err)
+		}
+	}
+	if feeds[0].more() || feeds[1].more() {
+		page.Next = encodeCursor(runsCursor{P: feeds[0].pos, S: feeds[1].pos})
+	}
+	return page, nil
+}

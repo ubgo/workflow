@@ -1,0 +1,1 @@
+func WithTenant() Option { return func(c *config) { c.tenant = true } }

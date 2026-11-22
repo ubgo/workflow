@@ -11,16 +11,16 @@ Staging and production share one Postgres server, or two products share one Redi
 
 | Driver | How to isolate | What is shared otherwise |
 |---|---|---|
-| memory | One `memory.New()` per namespace | Nothing: every client is its own process-local store |
-| sqlstore | `sqlstore.WithTablePrefix("staging_")` per namespace on one database; on Postgres also `sqlstore.WithSchema("staging")` for grants, backups or a schema per tenant | Two clients with the same prefix (and schema) share every run and schedule, which is how a fleet of workers is built |
-| Redis | `redis.WithPrefix("staging")` | Two clients with the same prefix share every run and schedule |
-| Hatchet | A Hatchet namespace on the SDK client (`HATCHET_CLIENT_NAMESPACE` or the client option) and the same value in `hatchet.Config.Namespace` | Workflows are scoped by the namespace the engine knows them by |
+| memory | One [`memory.New()`](ds:block?id=memory-new-8g6tnkkg) per namespace | Nothing: every client is its own process-local store |
+| sqlstore | [`sqlstore.WithTablePrefix("staging_")`](ds:block?id=sql-withtableprefix-27tumk8t) per namespace on one database; on Postgres also [`sqlstore.WithSchema("staging")`](ds:block?id=sql-withschema-es3gsbyz) for grants, backups or a schema per tenant | Two clients with the same prefix (and schema) share every run and schedule, which is how a fleet of workers is built |
+| Redis | [`redis.WithPrefix("staging")`](ds:block?id=redis-withprefix-h97vgfbr) | Two clients with the same prefix share every run and schedule |
+| Hatchet | A Hatchet namespace on the SDK client (`HATCHET_CLIENT_NAMESPACE` or the client option) and the same value in [`hatchet.Config.Namespace`](ds:block?id=hatchet-config-wdky3m9f) | Workflows are scoped by the namespace the engine knows them by ([`engineName`](ds:block?id=hatchet-enginename-q6x5kbtp)) |
 
-The stores beside a driver take the same options: the durable unique, debounce, journal, bucket and batch stores of sqlstore and Redis live under the client's prefix (or the prefix given to their standalone constructors), so a unique lock in staging never blocks production.
+The stores beside a driver take the same options: the durable unique, debounce, journal, bucket and batch stores of sqlstore and Redis live under the client's prefix (or the prefix given to their standalone constructors, such as [`sqlstore.NewUniqueStore`](ds:block?id=sql-newuniquestore-65hb2yyu)), so a unique lock in staging never blocks production.
 
 ## Step 1 — Give each SQL namespace a table prefix
 
-`sqlstore.WithTablePrefix(p)` replaces the default prefix `wf_` on every table the client creates and reads. Clients with the same prefix are one namespace:
+[`sqlstore.WithTablePrefix(p)`](ds:block?id=sql-withtableprefix-27tumk8t) replaces the default prefix `wf_` ([`defaultTablePrefix`](ds:block?id=sql-defaulttableprefix-2cbmbc9h)) on every table the client creates and reads. Clients with the same prefix are one namespace:
 
 <!-- snippet: examples/namespaces/main.go#sql -->
 ```go
@@ -39,9 +39,9 @@ if err != nil {
 }
 ```
 
-`start` builds the client with `sqlstore.New`, runs `Migrate`, registers the workflow and calls `Start`. Each prefix gets its own full set of tables and its own migration ledger (`<prefix>migrations`), so each namespace migrates on its own and can run a different library version during a rollout.
+`start` builds the client with `sqlstore.New`, runs `Migrate`, registers the workflow and calls `Start`. Each prefix gets its own full set of tables and its own migration ledger (`<prefix>migrations`, [`ledger`](ds:block?id=sql-store-ledger-79jdgppv)), so each namespace migrates on its own and can run a different library version during a rollout.
 
-On Postgres, `sqlstore.WithSchema("staging")` puts the tables in a schema (`"staging"."wf_runs"`) without changing the pool's `search_path`. The schema must exist already (`Migrate` does not create it). Use it when the namespaces need separate grants or backups; combine it with a prefix or not. See [Table names and schemas](migrations.md#table-names-and-schemas).
+On Postgres, [`sqlstore.WithSchema("staging")`](ds:block?id=sql-withschema-es3gsbyz) puts the tables in a schema (`"staging"."wf_runs"`) without changing the pool's `search_path`. The schema must exist already (`Migrate` does not create it). Use it when the namespaces need separate grants or backups; combine it with a prefix or not. See [Table names and schemas](migrations.md#table-names-and-schemas).
 
 ## Step 2 — Check that the namespaces do not meet
 
@@ -77,11 +77,11 @@ for _, c := range []struct {
 }
 ```
 
-The staging worker sees the run and the schedule; production answers `workflow.ErrNotFound` for the run and lists no schedule. The same holds for signals, pauses, unique locks and the admin API built on either client.
+The staging worker sees the run and the schedule; production answers `workflow.ErrNotFound` for the run and lists no schedule. The same holds for signals, pauses, unique locks and the admin API built on either client: every statement names its tables through the client's prefix and schema ([`table`](ds:block?id=sql-store-table-mg4f34za), [`redis.New`](ds:block?id=redis-new-mhng6crc) for the Redis key base).
 
 ## Step 3 — Do the same on Redis
 
-`redis.WithPrefix(p)` replaces the default key prefix `wf`; keys look like `<prefix>:run:<id>`:
+[`redis.WithPrefix(p)`](ds:block?id=redis-withprefix-h97vgfbr) replaces the default key prefix `wf` ([`defaultPrefix`](ds:block?id=redis-defaultprefix-jge3n5vw)); keys look like `{<prefix>}:run:<id>`, the prefix wrapped in a Redis Cluster hash tag ([`redis.New`](ds:block?id=redis-new-mhng6crc)):
 
 <!-- snippet: examples/namespaces/main.go#redis -->
 ```go
@@ -109,7 +109,7 @@ if err != nil {
 }
 ```
 
-The example adds a unique suffix so repeated runs on a shared test server never meet; an app uses a fixed name per environment. On Hatchet, set the namespace on the SDK client and the same value in `hatchet.Config.Namespace`, as the [Hatchet driver](../drivers/hatchet.md#create-the-client) shows: the driver scopes idempotency keys, rate limits and its lookups of a workflow by the name the engine knows each workflow by (the namespace plus the workflow name), so a mismatch breaks them.
+The example adds a unique suffix so repeated runs on a shared test server never meet; an app uses a fixed name per environment. On Hatchet, set the namespace on the SDK client and the same value in [`hatchet.Config.Namespace`](ds:block?id=hatchet-config-wdky3m9f), as the [Hatchet driver](../drivers/hatchet.md#create-the-client) shows: the driver scopes idempotency keys, rate limits and its lookups of a workflow by the name the engine knows each workflow by (the namespace plus the workflow name, [`engineName`](ds:block?id=hatchet-enginename-q6x5kbtp)), so a mismatch breaks them.
 
 ## Try it
 
@@ -139,12 +139,12 @@ fmt.Fprintf(w, "schema on SQLite: unsupported %t\n", errors.Is(err, workflow.Err
 
 ## Pitfalls
 
-- A table prefix must match `^[a-z][a-z0-9_]{0,30}$`: lower case, starting with a letter. `sqlstore.New` refuses anything else with `workflow.ErrInvalid`, so `Staging-` or `prod.` fail at build time, not at the first query. A schema name follows the same pattern.
-- `WithSchema` is Postgres only. `sqlstore.New` refuses it on SQLite (no schemas) and on MySQL (the schema is the database: point the pool at another database instead) with `workflow.ErrUnsupported`.
-- A namespace is not a tenant. Inside one namespace, `Job.Tenant` (with `CapTenant`) scopes runs, queries and quotas per customer; use a namespace for environments or products that must never share anything, and [tenants](../jobs/tenants.md) for customers of one product.
-- The migration ledger of sqlstore is per table prefix (`<prefix>migrations`), so each namespace migrates on its own. Running `Migrate` for staging never touches production's tables.
+- A table prefix must match `^[a-z][a-z0-9_]{0,30}$` ([`prefixPattern`](ds:block?id=sql-prefixpattern-yghnagrg)): lower case, starting with a letter. `sqlstore.New` refuses anything else with `workflow.ErrInvalid` ([`build`](ds:block?id=sql-build-8nb2xeb9)), so `Staging-` or `prod.` fail at build time, not at the first query. A schema name follows the same pattern.
+- [`WithSchema`](ds:block?id=sql-withschema-es3gsbyz) is Postgres only. `sqlstore.New` refuses it on SQLite (no schemas) and on MySQL (the schema is the database: point the pool at another database instead) with `workflow.ErrUnsupported` ([`build`](ds:block?id=sql-build-8nb2xeb9)).
+- A namespace is not a tenant. Inside one namespace, `Job.Tenant` (with [`CapTenant`](ds:block?id=captenant-wgqeku2w)) scopes runs, queries and quotas per customer; use a namespace for environments or products that must never share anything, and [tenants](../jobs/tenants.md) for customers of one product.
+- The migration ledger of sqlstore is per table prefix (`<prefix>migrations`, [`ledger`](ds:block?id=sql-store-ledger-79jdgppv)), so each namespace migrates on its own. Running `Migrate` for staging never touches production's tables.
 - Every client of a namespace must use the same prefix (and schema). A worker deployed with a typo in its prefix silently becomes a namespace of its own: it migrates fresh tables and never sees the work. Read the prefix from one config value shared by every process.
-- On Redis, every client of one server with the default prefix shares one namespace. Give each app and each test its own prefix.
+- On Redis, every client of one server with the default prefix shares one namespace ([`WithPrefix`](ds:block?id=redis-withprefix-h97vgfbr)). Give each app and each test its own prefix.
 
 ## Related
 

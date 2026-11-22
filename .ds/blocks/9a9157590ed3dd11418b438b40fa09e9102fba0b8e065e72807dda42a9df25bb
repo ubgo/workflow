@@ -1,0 +1,20 @@
+func DefineObject[S any](spec ObjectSpec[S]) (Workflow, error) {
+	if spec.Name == "" || len(spec.Methods) == 0 || spec.Store == nil {
+		return Workflow{}, invalidf("object needs a Name, Methods and a Store")
+	}
+	for name, m := range spec.Methods {
+		if name == "" || m == nil {
+			return Workflow{}, invalidf("object %q: every method needs a name and a function", spec.Name)
+		}
+	}
+	return Workflow{
+		Name:  spec.Name,
+		Retry: spec.Retry,
+		Concurrency: &Concurrency{
+			Key:     KeyFunc(func(j Job) string { return j.Labels[LabelObjectKey] }),
+			MaxRuns: 1,
+			FIFO:    spec.Ordered,
+		},
+		Steps: []Step{{Name: "call", Run: objectStep(spec)}},
+	}, nil
+}

@@ -1,0 +1,12 @@
+func (p *thenPlugin) EnqueueMiddleware() []EnqueueMiddleware {
+	slot := &thenSlot{}
+	p.mu.Lock()
+	p.last = slot
+	p.mu.Unlock()
+	return []EnqueueMiddleware{func(next EnqueueFunc) EnqueueFunc {
+		slot.mu.Lock()
+		slot.enq = next
+		slot.mu.Unlock()
+		return next
+	}}
+}

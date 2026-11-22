@@ -1,0 +1,12 @@
+func DepthFromRuns(c workflow.Client) (DepthFunc, error) {
+	rq, err := runQuerier(c, "DepthFromRuns", workflow.Caps{})
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context, job workflow.Job) (int, error) {
+		return countRuns(ctx, rq, workflow.RunQuery{
+			Queue:    jobQueue(job),
+			Statuses: []workflow.Status{workflow.StatusQueued, workflow.StatusScheduled},
+		})
+	}, nil
+}

@@ -1,0 +1,34 @@
+func (c *Client) watchHeartbeat(ctx context.Context, cancel context.CancelCauseFunc, d time.Duration, timedOut error) workflow.Heartbeater {
+	if d <= 0 {
+		return workflow.HeartbeatFunc(func(context.Context, []byte) error { return nil })
+	}
+	var lastBeat atomic.Int64 // the clock's UnixNano at the latest beat; the start counts as one
+	lastBeat.Store(c.clk.Now().UnixNano())
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		wait := d
+		for {
+			tm := c.clk.NewTimer(wait)
+			select {
+			case <-tm.C():
+			case <-ctx.Done():
+				tm.Stop()
+				return
+			}
+			since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
+			if since >= d {
+				cancel(timedOut)
+				return
+			}
+			wait = d - since
+		}
+	}()
+	return workflow.HeartbeatFunc(func(context.Context, []byte) error {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("%w: the attempt has ended", workflow.ErrCancelled)
+		}
+		lastBeat.Store(c.clk.Now().UnixNano())
+		return nil
+	})
+}

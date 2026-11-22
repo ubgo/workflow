@@ -23,6 +23,8 @@ import (
 // a and b are two handles on the same backing data (two processes); pass
 // the same store twice for an in-process one. The store must start empty
 // for the names used here (each test should use its own prefix or table).
+//
+//ds:def id=workflowtest-datastorecontract-c64azeur owner=@khanakia stability=stable
 func DataStoreContract(t *testing.T, a, b workflow.DataStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -138,6 +140,8 @@ func DataStoreContract(t *testing.T, a, b workflow.DataStore) {
 // a and b are two handles on the same backing data (two processes); pass
 // the same inbox twice for an in-process one. The inbox must start empty
 // for the keys used here.
+//
+//ds:def id=workflowtest-inboxcontract-94cnbp8v owner=@khanakia stability=stable
 func InboxContract(t *testing.T, a, b workflow.Inbox) {
 	t.Helper()
 	ctx := context.Background()

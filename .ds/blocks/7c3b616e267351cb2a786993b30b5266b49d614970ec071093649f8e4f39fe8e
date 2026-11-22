@@ -1,0 +1,19 @@
+func (f *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	if err := f.need("Retry", workflow.CapRetryRun); err != nil {
+		return workflow.RunRef{}, err
+	}
+	var out workflow.RunRef
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.RunRetrier)
+		if !ok {
+			return &workflow.UnsupportedError{Field: "Retry", Missing: workflow.CapRetryRun, Reason: "the " + sd.String() + " backend does not implement it"}
+		}
+		got, err := r.Retry(ctx, inner)
+		out = encodeRef(sd, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}

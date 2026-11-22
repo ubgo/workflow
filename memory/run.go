@@ -129,6 +129,8 @@ func (r *run) ref() workflow.RunRef { return workflow.RunRef{RunID: r.id, Schedu
 // any attempt executes, Retrying while a step waits on its retry backoff,
 // Queued while an attempt waits for a worker, Waiting while only waits
 // and sleeps are in progress.
+//
+//ds:def id=memory-run-statuslocked-7dr9vd6u owner=@khanakia stability=stable
 func (r *run) statusLocked() workflow.Status {
 	if r.status.IsTerminal() || !r.admitted {
 		return r.status
@@ -157,6 +159,8 @@ func (c *Client) endLocked(r *run, st workflow.Status) {
 // terminal is left alone, which is what makes Cancel idempotent. It does
 // not admit other runs, so a caller can free several slots before the
 // newest run claims one; most callers want endLocked.
+//
+//ds:def id=memory-client-finishlocked-7txxf6we owner=@khanakia stability=stable
 func (c *Client) finishLocked(r *run, st workflow.Status) {
 	if r.status.IsTerminal() {
 		return
@@ -205,6 +209,8 @@ var errRunDone = errors.New("memory: run finished")
 // admitLocked starts every pending run its concurrency bucket and rate
 // limits allow, highest priority first, and arms a timer for the earliest
 // moment a rate-limited run could start.
+//
+//ds:def id=memory-client-admitlocked-g322u8vq owner=@khanakia stability=stable
 func (c *Client) admitLocked() {
 	if c.stopped || len(c.pending) == 0 {
 		return
@@ -263,6 +269,8 @@ func (c *Client) admitLocked() {
 
 // rateCheckLocked prunes r's rate windows and reports whether a start is
 // allowed now; when not, it returns when the earliest window frees.
+//
+//ds:def id=memory-client-ratechecklocked-ce6n2ccw owner=@khanakia stability=stable
 func (c *Client) rateCheckLocked(r *run, now time.Time) (time.Time, bool) {
 	var wake time.Time
 	ok := true
@@ -319,6 +327,8 @@ func (c *Client) armRateLocked(at time.Time) {
 
 // readyLocked reports whether step s of r has not succeeded and every
 // parent has.
+//
+//ds:def id=memory-run-readylocked-amuukcsg owner=@khanakia stability=stable
 func (r *run) readyLocked(s workflow.Step) bool {
 	if _, done := r.outputs[s.Name]; done {
 		return false
@@ -547,6 +557,8 @@ func (c *Client) discard(r *run, step string, err error) {
 // cannot be enqueued (its workflow not registered, the client stopping)
 // ends the chain; the reason goes to the logger, since the run that
 // carried the chain has already succeeded.
+//
+//ds:def id=memory-client-continuechainlocked-gbb7zhe2 owner=@khanakia stability=stable
 func (c *Client) continueChainLocked(r *run) {
 	next, ok := workflow.NextInChain(r.chain)
 	if !ok {
@@ -563,6 +575,8 @@ func (c *Client) continueChainLocked(r *run) {
 // marks the run StatusFailed with cause wrapped in a workflow.RunError. A
 // run a Cancel or a RunForcer already ended keeps its status and does not
 // run OnFailure.
+//
+//ds:def id=memory-client-fail-6tqmatzt owner=@khanakia stability=stable
 func (c *Client) fail(r *run, step string, attempt int, in []byte, cause error) {
 	cause = &workflow.RunError{RunID: r.id, Workflow: r.reg.wf.Name, Step: step, Attempt: attempt, Err: cause}
 	r.cancel(cause)
@@ -588,6 +602,8 @@ func (c *Client) fail(r *run, step string, attempt int, in []byte, cause error) 
 }
 
 // startStep begins one step of r according to its kind.
+//
+//ds:def id=memory-client-startstep-zfm8phve owner=@khanakia stability=stable
 func (c *Client) startStep(r *run, s workflow.Step, ss *stepState) {
 	switch s.Kind() {
 	case workflow.StepRun:
@@ -725,6 +741,8 @@ type signal struct {
 
 // consumeLocked returns the first kept signal for k that r may take: sent
 // after r was enqueued and not taken by r before. It marks it taken.
+//
+//ds:def id=memory-client-consumelocked-c6c5ddtp owner=@khanakia stability=stable
 func (c *Client) consumeLocked(r *run, k eventKey) ([]byte, bool) {
 	for _, sg := range c.signals[k] {
 		if sg.seq > r.seq && !r.consumed[sg.seq] {
@@ -742,6 +760,7 @@ func (r *run) markConsumedLocked(seq uint64) {
 	r.consumed[seq] = true
 }
 
+//ds:def id=memory-client-startwait-6hz3d5h6 owner=@khanakia stability=stable
 func (c *Client) startWait(r *run, s workflow.Step) {
 	key, err := s.Wait.ResolveKeyFor(r.job, r.id) // Start refused Expr keys, so this is Func, the fixed Key or the run address
 	if err != nil {
@@ -837,6 +856,8 @@ func (c *Client) pushTaskLocked(r *run, s workflow.Step, in []byte, attempt int)
 // before reports whether task a goes before b: the higher queue priority
 // (QueueConfig.Priority), then the higher Job.Priority, then arrival.
 // Round robin (fairPick) then reorders inside a workflow's place.
+//
+//ds:def id=memory-client-before-2xjrartk owner=@khanakia stability=stable
 func (c *Client) before(a, b *task) bool {
 	if qa, qb := c.queues[a.r.queue].Priority, c.queues[b.r.queue].Priority; qa != qb {
 		return qa > qb
@@ -970,6 +991,8 @@ func (c *Client) pickLocked() *task {
 // every time) and returns that queue's first task in c.before order. It
 // returns -1 when fewer than two such queues have work or none of them
 // has a weight, which keeps the strict order. Callers hold c.mu.
+//
+//ds:def id=memory-client-weightedlocked-q4unsb6m owner=@khanakia stability=stable
 func (c *Client) weightedLocked(eligible []int, prio int) int {
 	byQueue := map[string]int{} // queue -> index of its first task
 	weighted := false
@@ -1010,6 +1033,8 @@ func (c *Client) heldLocked(r *run) bool {
 }
 
 // worker executes step attempts until the client stops.
+//
+//ds:def id=memory-client-worker-n9cqe2pc owner=@khanakia stability=stable
 func (c *Client) worker() {
 	defer c.wg.Done()
 	for {
@@ -1079,17 +1104,11 @@ func (c *Client) worker() {
 	}
 }
 
-// errStepTimeout is the context cause of an attempt that ran past its
-// timeout; errHeartbeat of one that went its HeartbeatTimeout without a
-// Heartbeat.
-var (
-	errStepTimeout = errors.New("memory: step attempt timed out")
-	errHeartbeat   = errors.New("memory: step attempt missed its heartbeat")
-)
-
 // exec runs one attempt with its timeout on the injected clock, and
 // returns the chain edits the attempt made (nil for a closure run, which
 // is never chained).
+//
+//ds:def id=memory-client-exec-g88wsrmp owner=@khanakia stability=stable
 func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 	h := t.r.reg.handlers[t.step.Name]
 	var edits *workflow.ChainEdits
@@ -1130,12 +1149,21 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 	actx = workflow.WithProgressReporter(actx, workflow.ProgressFunc(func(_ context.Context, p workflow.Progress) error {
 		return c.reportProgress(t, p)
 	}))
-	beat := c.watchHeartbeat(actx, cancel, t.step.HeartbeatTimeout)
-	actx = workflow.WithHeartbeater(actx, beat)
+	// The attempt's own deadlines cancel it with the timeout errors it
+	// fails with, so context.Cause in the handler matches
+	// workflow.ErrStepTimeout or ErrHeartbeatTimeout; the driver tells them
+	// from any other cause (a failing run's *RunError around another
+	// step's timeout) by identity.
 	d := t.step.Timeout
 	if d == 0 {
 		d = t.r.reg.wf.Timeout
 	}
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("memory: step %q attempt %d after %s", t.step.Name, t.attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("memory: step %q attempt %d went %s without a heartbeat", t.step.Name, t.attempt, t.step.HeartbeatTimeout))
+	beat := c.watchHeartbeat(actx, cancel, t.step.HeartbeatTimeout, errHeartbeat)
+	actx = workflow.WithHeartbeater(actx, beat)
 	if d > 0 {
 		tm := c.clk.NewTimer(d)
 		c.wg.Add(1)
@@ -1143,20 +1171,23 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 			defer c.wg.Done()
 			select {
 			case <-tm.C():
-				cancel(errStepTimeout)
+				cancel(errStep)
 			case <-actx.Done():
 				tm.Stop()
 			}
 		}()
 	}
-	out, err := safeCall(h, actx, t.in)
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err := safeCall(h, hctx, t.in)
 	switch cause := context.Cause(actx); {
-	case errors.Is(cause, errStepTimeout):
-		return nil, edits, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrStepTimeout,
-			fmt.Sprintf("memory: step %q attempt %d after %s", t.step.Name, t.attempt, d)), context.DeadlineExceeded)
-	case errors.Is(cause, errHeartbeat):
-		return nil, edits, workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
-			fmt.Sprintf("memory: step %q attempt %d went %s without a heartbeat", t.step.Name, t.attempt, t.step.HeartbeatTimeout))
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		// Step middleware (a tolerated step) turned the timeout into its
+		// result (workflow.ClaimTimeout).
+		return out, edits, err
+	case cause == errStep:
+		return nil, edits, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded)
+	case cause == errHeartbeat:
+		return nil, edits, errHeartbeat
 	}
 	return out, edits, err
 }

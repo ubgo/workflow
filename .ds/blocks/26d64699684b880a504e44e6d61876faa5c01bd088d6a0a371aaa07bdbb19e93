@@ -1,0 +1,1 @@
+type ObjectMethod[S any] func(ctx context.Context, state S, args []byte) (next S, result []byte, err error)

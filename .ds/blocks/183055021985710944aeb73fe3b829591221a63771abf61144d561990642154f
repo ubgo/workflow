@@ -1,0 +1,12 @@
+func PartitionOf(ctx context.Context) (set, key string, ok bool) {
+	info, found := StepInfoFrom(ctx)
+	if !found {
+		return "", "", false
+	}
+	set, okSet := info.Labels[LabelPartitionSet]
+	key, okKey := info.Labels[LabelPartitionKey]
+	if !okSet || !okKey {
+		return "", "", false
+	}
+	return set, key, true
+}

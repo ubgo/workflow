@@ -1,0 +1,3 @@
+func NewRecorder(inner workflow.Client) *Recorder {
+	return &Recorder{inner: inner, Forward: workflow.Forward{Inner: inner}, refs: map[workflow.RunRef]bool{}, wfs: map[string]workflow.Workflow{}}
+}

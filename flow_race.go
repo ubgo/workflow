@@ -12,6 +12,8 @@ import (
 // branch runs, and the first decision to arrive wins. Every party that
 // can decide sends SignalChoice with its branch; the run takes the first
 // one and later ones never reach it.
+//
+//ds:def id=racespec-y4vx6fbj owner=@khanakia stability=stable
 type RaceSpec struct {
 	// Name is the name of the join step carrying the chosen branch's
 	// output; later steps put it in After. The wait step is
@@ -55,6 +57,8 @@ type raceSignal struct {
 // signal sent before the run reaches its wait is kept, so a quick answer
 // is not lost. A signal naming no branch fails the run (Permanent,
 // ErrInvalid).
+//
+//ds:def id=race-mu522hb9 owner=@khanakia stability=stable
 func Race(r RaceSpec) ([]Step, error) {
 	if r.Name == "" || r.Event == "" {
 		return nil, invalidf("race %q needs a Name and an Event", r.Name)
@@ -96,6 +100,8 @@ func Race(r RaceSpec) ([]Step, error) {
 // SignalChoice sends branch, with payload for the branch, to the runs
 // racing on event and key (Race). The first signal a run takes decides;
 // a later one is dropped by that run.
+//
+//ds:def id=signalchoice-uf7du8cs owner=@khanakia stability=stable
 func SignalChoice(ctx context.Context, c Client, event, key, branch string, payload []byte) error {
 	if branch == "" {
 		return invalidf("SignalChoice needs a branch")
@@ -111,6 +117,8 @@ func SignalChoice(ctx context.Context, c Client, event, key, branch string, payl
 // ref names when it races on event with RaceSpec.OwnRun, through
 // SignalRun. As with SignalChoice, the first signal the run takes
 // decides.
+//
+//ds:def id=signalchoicerun-6pdrsj34 owner=@khanakia stability=stable
 func SignalChoiceRun(ctx context.Context, c Client, ref RunRef, event, branch string, payload []byte) error {
 	if branch == "" {
 		return invalidf("SignalChoiceRun needs a branch")

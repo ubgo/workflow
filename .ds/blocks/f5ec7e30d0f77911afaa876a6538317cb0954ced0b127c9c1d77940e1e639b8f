@@ -1,0 +1,10 @@
+func RetryLadder(delays ...time.Duration) func(err error, retry int) (time.Duration, bool) {
+	ladder := slices.Clone(delays)
+	return func(_ error, retry int) (time.Duration, bool) {
+		if len(ladder) == 0 {
+			return 0, false
+		}
+		i := min(max(retry, 1), len(ladder)) - 1
+		return max(ladder[i], 0), true
+	}
+}

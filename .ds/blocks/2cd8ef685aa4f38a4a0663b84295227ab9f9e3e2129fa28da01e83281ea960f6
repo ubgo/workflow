@@ -1,0 +1,15 @@
+type TriggerRun struct {
+	// Trigger is the trigger's name.
+	Trigger string
+
+	// Versions are the dataset versions the run was started for.
+	Versions map[string]string
+
+	// Ref is the run; with an unfinished run already started for the
+	// same versions, that run.
+	Ref workflow.RunRef
+
+	// Err is why the run could not be started or its consumption not
+	// recorded; announce the version again to retry.
+	Err error
+}

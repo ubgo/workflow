@@ -14,10 +14,14 @@ import (
 // the batch over. It must exceed the longest single Enqueue or RunGroup
 // call, since the lease is renewed between calls, and the engine's run
 // list lag, so a RunFinder sees every run the dead process started.
+//
+//ds:def id=batch-defaultdispatchlease-w6vmr8mw owner=@khanakia stability=stable
 const DefaultDispatchLease = 5 * time.Minute
 
 // WithDispatchLease sets the dispatch lease; see DefaultDispatchLease for
 // what it must exceed. A value that is not positive keeps the default.
+//
+//ds:def id=batch-withdispatchlease-4ub23ekp owner=@khanakia stability=stable
 func WithDispatchLease(d time.Duration) Option {
 	return func(m *Manager) {
 		if d > 0 {
@@ -33,6 +37,8 @@ func WithDispatchLease(d time.Duration) Option {
 // with every job's payload, so a dispatch of n jobs writes O(n²) payload
 // bytes to the Store; without it, those never-started jobs are recorded
 // as cancelled instead.
+//
+//ds:def id=batch-withresumabledispatch-24ve64q7 owner=@khanakia stability=stable
 func WithResumableDispatch() Option { return func(m *Manager) { m.resumable = true } }
 
 // RunFinder is an optional interface a workflow.Client implements to list
@@ -43,6 +49,8 @@ func WithResumableDispatch() Option { return func(m *Manager) { m.resumable = tr
 // CreatedAt; an implementation widens it for clock skew as it needs.
 // A delayed start that has not fired need not be found, and a job with a
 // RunAt is therefore never restarted on the finder's word alone.
+//
+//ds:def id=batch-runfinder-dzutmed6 owner=@khanakia stability=stable
 type RunFinder interface {
 	FindBatchRuns(ctx context.Context, id ID, since time.Time) (map[int]workflow.RunRef, error)
 }
@@ -70,6 +78,8 @@ type RunFinder interface {
 // then ignored, since a job's first recorded status wins. A cancelled
 // batch starts nothing: its unstarted jobs are recorded as cancelled and
 // the found runs are cancelled.
+//
+//ds:def id=batch-manager-resumedispatches-w57mk3c5 owner=@khanakia stability=stable
 func (m *Manager) ResumeDispatches(ctx context.Context) error {
 	open, err := m.store.Unfinished(ctx)
 	if err != nil {
@@ -87,6 +97,8 @@ func (m *Manager) ResumeDispatches(ctx context.Context) error {
 }
 
 // resume takes over one batch's dispatch; see ResumeDispatches.
+//
+//ds:def id=batch-manager-resume-6eaudf94 owner=@khanakia stability=stable
 func (m *Manager) resume(ctx context.Context, id ID) error {
 	ownerID, err := newID()
 	if err != nil {

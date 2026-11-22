@@ -23,10 +23,12 @@ import (
 const (
 	// DefaultGroupChunkRuns is the default and the largest
 	// Config.GroupChunkRuns: the SDK's own bulk-trigger run limit.
+	//ds:def id=hatchet-defaultgroupchunkruns-7excax35 owner=@khanakia stability=stable
 	DefaultGroupChunkRuns = 1000
 	// DefaultGroupChunkBytes is the default and the largest
 	// Config.GroupChunkBytes: 2 MiB of JSON stays under the SDK's 3 MiB
 	// protobuf split and the engine's default 4 MiB gRPC message.
+	//ds:def id=hatchet-defaultgroupchunkbytes-nf3tst7q owner=@khanakia stability=stable
 	DefaultGroupChunkBytes = 2 << 20
 )
 
@@ -44,6 +46,8 @@ var _ batch.GroupRunner = (*Client)(nil)
 // refs with Enqueue's error for that job. When a chunk fails, the chunks
 // already started keep their refs, the rest are zero, and the error is
 // returned, so the caller can cancel what started.
+//
+//ds:def id=hatchet-client-rungroup-mjs85udq owner=@khanakia stability=stable
 func (c *Client) RunGroup(ctx context.Context, group string, jobs []workflow.Job) ([]workflow.RunRef, error) {
 	runs := make([]preparedRun, len(jobs))
 	for i, job := range jobs {

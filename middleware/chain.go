@@ -10,6 +10,8 @@ import (
 // outermost: Chain(a, b)(h) runs a, then b, then h, the order the list is
 // read in. Nil entries are skipped, so a caller can build the list with
 // optional pieces. An empty chain returns the handler unchanged.
+//
+//ds:def id=mw-chain-xz7pjtss owner=@khanakia stability=stable
 func Chain(mws ...workflow.Middleware) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		for i := len(mws) - 1; i >= 0; i-- {
@@ -23,6 +25,8 @@ func Chain(mws ...workflow.Middleware) workflow.Middleware {
 
 // ChainEnqueue composes enqueue middleware with the same ordering rule as
 // Chain: the first argument sees the job first.
+//
+//ds:def id=mw-chainenqueue-bebyqvsx owner=@khanakia stability=stable
 func ChainEnqueue(mws ...workflow.EnqueueMiddleware) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		for i := len(mws) - 1; i >= 0; i-- {
@@ -45,6 +49,8 @@ func ChainEnqueue(mws ...workflow.EnqueueMiddleware) workflow.EnqueueMiddleware 
 // ScheduleLister, TickNotifier, Drainer and the rest) are forwarded to c
 // through workflow.Forward, and refused with an UnsupportedError when c
 // lacks one, so a wrapper never hides them either.
+//
+//ds:def id=mw-wrapclient-nqppp3fu owner=@khanakia stability=stable
 func WrapClient(c workflow.Client, mws ...workflow.EnqueueMiddleware) workflow.Client {
 	return &wrappedClient{Client: c, Forward: workflow.Forward{Inner: c}, enqueue: ChainEnqueue(mws...)(c.Enqueue)}
 }
@@ -68,6 +74,8 @@ func (w *wrappedClient) OnRunFinished(fn workflow.RunFinishedFunc) error {
 // so the honest answer for an inner client without the hook is an
 // UnsupportedError naming CapRunFinished, never a silent no-op that would
 // let a caller believe its observer is registered.
+//
+//ds:def id=mw-forwardrunfinished-e6rtfsuk owner=@khanakia stability=stable
 func forwardRunFinished(c workflow.Client, fn workflow.RunFinishedFunc) error {
 	n, ok := c.(workflow.RunNotifier)
 	if !ok {

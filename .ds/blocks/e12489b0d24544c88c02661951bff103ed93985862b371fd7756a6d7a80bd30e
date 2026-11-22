@@ -1,0 +1,24 @@
+func (h *handler[P]) editRun(w http.ResponseWriter, r *http.Request) {
+	var body editJSON
+	if err := decodeBody(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
+		return
+	}
+	edit := workflow.JobEdit{Priority: body.Priority, RunAt: body.RunAt}
+	if len(body.Payload) > 0 {
+		p := []byte(body.Payload)
+		edit.Payload = &p
+	}
+	ref := pathRef(r)
+	if !h.authorize(w, r, ActionEditRun, Resource{Run: ref, Edit: &edit}) {
+		return
+	}
+	out, err := h.a.EditRun(r.Context(), ref, edit)
+	if err != nil {
+		h.fail(w, ActionEditRun, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Ref refJSON `json:"ref"`
+	}{toRefJSON(out)})
+}

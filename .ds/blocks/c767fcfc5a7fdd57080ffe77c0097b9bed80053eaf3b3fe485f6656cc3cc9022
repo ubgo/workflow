@@ -1,0 +1,21 @@
+func batchesOf(jobs []workflow.Job) []FakeBatch {
+	var out []FakeBatch
+	at := map[batch.ID]int{}
+	for _, j := range jobs {
+		id := batch.ID(j.Labels[batch.LabelBatch])
+		if id == "" {
+			continue
+		}
+		i, ok := at[id]
+		if !ok {
+			i = len(out)
+			at[id] = i
+			out = append(out, FakeBatch{ID: id})
+		}
+		out[i].Jobs = append(out[i].Jobs, j)
+	}
+	for i := range out {
+		slices.SortStableFunc(out[i].Jobs, func(a, b workflow.Job) int { return batchIndex(a) - batchIndex(b) })
+	}
+	return out
+}

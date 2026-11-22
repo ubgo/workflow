@@ -1,0 +1,81 @@
+func TestAudit_ResourceAndOutcome(t *testing.T) {
+	cases := []struct {
+		name         string
+		setup        func(f *fakeClient)
+		who          string // "" means the admin
+		method, path string
+		body         string
+		check        func(t *testing.T, e AuditEntry)
+	}{
+		{name: "retry names the run", method: "POST", path: "/runs/r2/retry", check: func(t *testing.T, e AuditEntry) {
+			if e.Resource.Run.RunID != "r2" || e.Err != nil || e.Status != 200 {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+		{name: "refused write is recorded", who: "viewer", method: "POST", path: "/runs/r2/cancel", check: func(t *testing.T, e AuditEntry) {
+			if e.Allowed || e.Status != http.StatusForbidden || e.Err == nil || e.Who != (user{"vic", "viewer"}) {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+		{name: "conflict keeps the sentinel", setup: func(f *fakeClient) {
+			f.refErr = map[workflow.RunID]error{"r1": workflow.ErrWrongState}
+		}, method: "POST", path: "/runs/r1/retry", check: func(t *testing.T, e AuditEntry) {
+			if !errors.Is(e.Err, workflow.ErrWrongState) || e.Status != http.StatusConflict {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+		{name: "internal error kept in full", setup: func(f *fakeClient) {
+			f.err = errors.New("dial tcp 10.0.0.7:5432: refused")
+		}, method: "DELETE", path: "/runs/r2", check: func(t *testing.T, e AuditEntry) {
+			if e.Err == nil || !strings.Contains(e.Err.Error(), "10.0.0.7") || e.Status != 500 {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+		{name: "dry run says so", method: "POST", path: "/runs/delete", body: `{"workflow":"w","statuses":["failed"],"dry_run":true}`, check: func(t *testing.T, e AuditEntry) {
+			if !e.Resource.DryRun || e.Resource.Query == nil || e.Resource.Query.Workflow != "w" {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+		{name: "force fail carries the reason", method: "POST", path: "/runs/r1/fail", body: `{"reason":"stuck"}`, check: func(t *testing.T, e AuditEntry) {
+			if e.Resource.Reason != "stuck" || e.Action != ActionForceFail {
+				t.Errorf("entry %+v", e)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := seeded()
+			if tc.setup != nil {
+				tc.setup(f)
+			}
+			auth := bearerAuth()
+			auth.Identify = func(r *http.Request) (user, error) {
+				if r.Header.Get("X-Role") == "viewer" {
+					return user{"vic", "viewer"}, nil
+				}
+				return user{"ann", "admin"}, nil
+			}
+			auth.Authorize = func(_ context.Context, req Request[user]) error {
+				if req.Who.role == "viewer" && !req.Action.ReadOnly() {
+					return errors.New("read only")
+				}
+				return nil
+			}
+			audit := &MemoryAudit{}
+			h := NewHandler(New(f), auth, WithAudit(audit))
+			req := httptestRequest(tc.method, tc.path, tc.body)
+			if tc.who == "viewer" {
+				req.Header.Set("X-Role", "viewer")
+			}
+			rec := serve(h, req)
+			if strings.Contains(rec.Body.String(), "10.0.0.7") {
+				t.Fatal("the internal error reached the response")
+			}
+			got := audit.Entries()
+			if len(got) != 1 {
+				t.Fatalf("%d entries, response %d %s", len(got), rec.Code, rec.Body)
+			}
+			tc.check(t, got[0])
+		})
+	}
+}

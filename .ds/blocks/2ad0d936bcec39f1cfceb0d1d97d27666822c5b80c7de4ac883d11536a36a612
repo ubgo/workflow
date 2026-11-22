@@ -1,0 +1,20 @@
+func TestLatestOnlyRunsRequestedRuns(t *testing.T) {
+	clk := clock.NewFake(at(17, 5))
+	lister := fakeLister{{ID: "s1", Cron: "0 * * * *", Location: time.UTC}}
+	due := func(context.Context, workflow.StepInfo, time.Time) (time.Time, bool, error) {
+		return at(17, 0), true, nil
+	}
+	for _, trigger := range []string{workflow.LabelTriggerBackfill, workflow.LabelTriggerManual, workflow.LabelTriggerStartup} {
+		extra := map[string]string{workflow.LabelTrigger: trigger}
+		if !latestCase(t, middleware.LatestOnlyConfig{Schedules: lister, Clock: clk}, at(9, 0), extra) {
+			t.Errorf("%s run skipped (lookup)", trigger)
+		}
+		if !latestCase(t, middleware.LatestOnlyConfig{Next: due, Clock: clk}, at(9, 0), extra) {
+			t.Errorf("%s run skipped (Next)", trigger)
+		}
+	}
+	// A cron fire with the same tick is stale.
+	if latestCase(t, middleware.LatestOnlyConfig{Schedules: lister, Clock: clk}, at(9, 0), nil) {
+		t.Error("a stale cron fire ran")
+	}
+}

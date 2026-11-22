@@ -14,6 +14,8 @@ import (
 // It is opt-in: a schedule written in it runs only on drivers built with
 // it (memory, sqlstore and redis through their WithCronParser); an engine
 // with its own five-field dialect (Hatchet) refuses the expressions.
+//
+//ds:def id=cron-extended-b3hq94dx owner=@khanakia stability=stable
 var Extended Parser = ParseExtended
 
 // ParseExtended parses the standard five fields (everything Parse
@@ -41,6 +43,8 @@ var Extended Parser = ParseExtended
 // and on every Friday. Next-run maths and the DST rules are Parse's.
 // Every error is a *ParseError naming the field. An expression without a
 // special item parses to the same schedule Parse returns.
+//
+//ds:def id=cron-parseextended-tbb99h8z owner=@khanakia stability=stable
 func ParseExtended(expr string) (Schedule, error) {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" || strings.HasPrefix(trimmed, "@") {
@@ -119,6 +123,8 @@ type dowItem struct {
 
 // splitDOM separates the special items of a day-of-month field from the
 // ordinary ones, which it rejoins for parseField.
+//
+//ds:def id=cron-splitdom-bur6fbx6 owner=@khanakia stability=stable
 func splitDOM(text string) (string, []domItem, *ParseError) {
 	f := fields[2]
 	var plain []string
@@ -152,6 +158,8 @@ func splitDOM(text string) (string, []domItem, *ParseError) {
 }
 
 // splitDOW separates the "d#n" and "dL" items of a day-of-week field.
+//
+//ds:def id=cron-splitdow-9sq56utt owner=@khanakia stability=stable
 func splitDOW(text string) (string, []dowItem, *ParseError) {
 	f := fields[4]
 	var plain []string
@@ -210,6 +218,8 @@ func lastDay(day time.Time) int {
 
 // nearestWeekday is the weekday of day's month nearest day n, or 0 when the
 // month has no day n.
+//
+//ds:def id=cron-nearestweekday-fgn3shjq owner=@khanakia stability=stable
 func nearestWeekday(day time.Time, n int) int {
 	last := lastDay(day)
 	if n > last {
@@ -242,6 +252,7 @@ func lastWeekday(day time.Time) int {
 	return last
 }
 
+//ds:def id=cron-extspec-daymatches-8gz3bb2u owner=@khanakia stability=stable
 func (s *extSpec) dayMatches(day time.Time) bool {
 	d := day.Day()
 	domOK := s.spec.dom&(1<<uint(d)) != 0

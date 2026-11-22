@@ -1,0 +1,11 @@
+type filterJSON struct {
+	Workflow string            `json:"workflow,omitempty"`
+	Queue    string            `json:"queue,omitempty"`
+	Tenant   string            `json:"tenant,omitempty"`
+	Statuses []workflow.Status `json:"statuses,omitempty"`
+	Labels   map[string]string `json:"labels,omitempty"`
+	// LabelPrefixes is RunQuery.LabelPrefixes: key to value prefix.
+	LabelPrefixes map[string]string `json:"label_prefixes,omitempty"`
+	From          time.Time         `json:"from,omitzero"`
+	To            time.Time         `json:"to,omitzero"`
+}

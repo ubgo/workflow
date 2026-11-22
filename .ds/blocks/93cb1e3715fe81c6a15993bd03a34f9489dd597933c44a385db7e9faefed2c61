@@ -1,0 +1,10 @@
+type SecretRules struct {
+	// AllowKeys are JSON object keys and label keys never reported by the
+	// key rule, compared after the same folding the rule applies
+	// (lower case, "_", "-" and "." removed), such as "pagetoken".
+	AllowKeys []string
+
+	// AllowRules are value rules turned off by name, such as "jwt" for
+	// an app that passes signed links.
+	AllowRules []string
+}

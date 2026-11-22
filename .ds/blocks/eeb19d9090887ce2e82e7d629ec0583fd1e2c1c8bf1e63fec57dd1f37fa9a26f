@@ -1,0 +1,7 @@
+func WithMaxAttempts(n int) RelayOption {
+	return func(r *Relay) {
+		if n >= 0 {
+			r.maxAttempts = n
+		}
+	}
+}

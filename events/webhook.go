@@ -16,11 +16,15 @@ import (
 
 // DefaultWebhookMaxBody caps a webhook body when WebhookConfig.MaxBody is
 // zero: 1 MiB.
+//
+//ds:def id=events-defaultwebhookmaxbody-kdm3hgb3 owner=@khanakia stability=stable
 const DefaultWebhookMaxBody = 1 << 20
 
 // WebhookConfig configures NewWebhook. Exactly one target is set: Bus with
 // Event (publish the delivery as an event), or Client with Workflow
 // (enqueue one run).
+//
+//ds:def id=events-webhookconfig-7atgkns7 owner=@khanakia stability=stable
 type WebhookConfig struct {
 	// Verifier authenticates each request. Required unless Unsigned.
 	Verifier Verifier
@@ -84,6 +88,8 @@ type webhook struct {
 //
 // It returns an error wrapping ErrInvalid when the config has no target,
 // two targets, or no Verifier without Unsigned.
+//
+//ds:def id=events-newwebhook-gweyfedm owner=@khanakia stability=stable
 func NewWebhook(cfg WebhookConfig) (http.Handler, error) {
 	byBus, byClient := cfg.Bus != nil || cfg.Event != "", cfg.Client != nil || cfg.Workflow != ""
 	switch {
@@ -108,6 +114,8 @@ func NewWebhook(cfg WebhookConfig) (http.Handler, error) {
 }
 
 // ServeHTTP handles one delivery.
+//
+//ds:def id=events-webhook-servehttp-vwuu8jtt owner=@khanakia stability=stable
 func (h *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -154,6 +162,7 @@ func (h *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"id": id}) // the response is already committed
 }
 
+//ds:def id=events-webhook-deliveryid-egxfcpng owner=@khanakia stability=stable
 func (h *webhook) deliveryID(r *http.Request, body []byte) string {
 	if h.cfg.ID != nil {
 		if id := h.cfg.ID(r, body); id != "" {
@@ -165,6 +174,8 @@ func (h *webhook) deliveryID(r *http.Request, body []byte) string {
 }
 
 // deliver enqueues the delivery, once per ID when an Inbox is set.
+//
+//ds:def id=events-webhook-deliver-e8x8hcsu owner=@khanakia stability=stable
 func (h *webhook) deliver(ctx context.Context, id string, body []byte, labels map[string]string) error {
 	if h.cfg.Inbox == nil {
 		return h.enqueue(ctx, id, body, labels)
@@ -173,6 +184,7 @@ func (h *webhook) deliver(ctx context.Context, id string, body []byte, labels ma
 	return err
 }
 
+//ds:def id=events-webhook-enqueue-kem7sxby owner=@khanakia stability=stable
 func (h *webhook) enqueue(ctx context.Context, id string, body []byte, labels map[string]string) error {
 	if h.cfg.Bus != nil {
 		_, err := h.cfg.Bus.Publish(ctx, Message{ID: id, Name: h.cfg.Event, Payload: body, Labels: labels})
@@ -187,6 +199,8 @@ func (h *webhook) enqueue(ctx context.Context, id string, body []byte, labels ma
 
 // fail logs err and answers 503 for an outage or a delivery another
 // request is processing, 500 otherwise; the body never carries the error.
+//
+//ds:def id=events-webhook-fail-qxvpc8yk owner=@khanakia stability=stable
 func (h *webhook) fail(ctx context.Context, w http.ResponseWriter, err error) {
 	h.cfg.Logger.ErrorContext(ctx, "webhook: enqueue failed", slog.Any("err", err))
 	if errors.Is(err, workflow.ErrUnavailable) || errors.Is(err, workflow.ErrInboxBusy) {

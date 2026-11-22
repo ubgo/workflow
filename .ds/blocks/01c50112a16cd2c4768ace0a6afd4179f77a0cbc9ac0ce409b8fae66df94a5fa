@@ -1,0 +1,6 @@
+func (b *Bus) checkChain(m Message) error {
+	if !b.correlate && (m.Correlation != "" || m.Causation != "") {
+		return fmt.Errorf("%w: events: message %q sets Correlation or Causation on a bus without WithCorrelation", workflow.ErrInvalid, m.Name)
+	}
+	return nil
+}

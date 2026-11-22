@@ -1,0 +1,26 @@
+func Stages(stages ...[]Step) ([]Step, error) {
+	var out []Step
+	var prev []string
+	for i, stage := range stages {
+		if len(stage) == 0 {
+			return nil, invalidf("stage %d has no steps", i)
+		}
+		names := make([]string, 0, len(stage))
+		for _, s := range stage {
+			if s.Name == "" {
+				return nil, invalidf("stage %d has a step without a name", i)
+			}
+			after := slices.Clone(s.After)
+			for _, p := range prev {
+				if !slices.Contains(after, p) {
+					after = append(after, p)
+				}
+			}
+			s.After = after
+			out = append(out, s)
+			names = append(names, s.Name)
+		}
+		prev = names
+	}
+	return out, nil
+}

@@ -1,0 +1,1 @@
+func Quarterly() Builder { return builderFields("0", "0", "1", quarterDays, wild, true) }

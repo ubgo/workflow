@@ -1,0 +1,1 @@
+type AuditFunc func(ctx context.Context, e AuditEntry) error

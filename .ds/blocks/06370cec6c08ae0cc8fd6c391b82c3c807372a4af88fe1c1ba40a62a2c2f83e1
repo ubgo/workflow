@@ -1,0 +1,7 @@
+func WithSignalRouter(fn SignalRouter) Option {
+	return func(c *config) {
+		if fn != nil {
+			c.signal = fn
+		}
+	}
+}

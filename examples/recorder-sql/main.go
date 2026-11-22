@@ -5,7 +5,10 @@
 // top of DefaultRetryable), and two-stage retention with an archive hook:
 // step rows go after a week, run rows after a month once the archive took
 // them, a billing workflow keeps its runs for a year, and an archive that
-// is down stops the prune with nothing deleted. Time moves on a fake clock,
+// is down stops the prune with nothing deleted. A second store in the same
+// database moves expired runs into an archive table instead
+// (WithArchiveTable): exactly once, read back a page at a time with
+// ArchivedRuns and one run with ArchivedRun. Time moves on a fake clock,
 // so a month passes in a millisecond and the output never varies.
 //
 // It is the program behind the SQL store and retention sections of
@@ -19,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -74,6 +78,24 @@ const (
 	finishWait = 5 * time.Second
 	// finishPoll is how often that wait reads the store.
 	finishPoll = 5 * time.Millisecond
+)
+
+// The archive-table store, the second half of the demo.
+const (
+	// archivePrefix keeps the second store's tables apart from the first's
+	// in the same database: arch_runs and the rest, plus arch_archive, the
+	// table WithArchiveTable adds.
+	archivePrefix = "arch_"
+
+	// exportWorkflow is the workflow whose runs the archive table takes.
+	exportWorkflow = "export"
+
+	// exportRuns is how many runs it records and moves.
+	exportRuns = 3
+
+	// archivePageSize is the page size the archive is read with: smaller
+	// than exportRuns, so the listing takes two pages.
+	archivePageSize = 2
 )
 
 // workflows are the two workflows the demo runs: report follows the default
@@ -191,7 +213,7 @@ func run(ctx context.Context, w io.Writer) (err error) {
 		return err
 	}
 	// snippet:end
-	tables, err := tableNames(ctx, db)
+	tables, err := tableNames(ctx, db, tablePrefix)
 	if err != nil {
 		return err
 	}
@@ -289,12 +311,124 @@ func run(ctx context.Context, w io.Writer) (err error) {
 	if err := <-done; err != nil {
 		return err
 	}
-	return show("after PruneEvery")
+	if err := show("after PruneEvery"); err != nil {
+		return err
+	}
+	return archiveTable(ctx, w, db, clk)
 }
 
-// tableNames lists the history's tables, to show the prefix at work.
-func tableNames(ctx context.Context, db *sql.DB) ([]string, error) {
-	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ?`, tablePrefix+"%")
+// archiveTable is the second half of the demo: a store whose prune moves
+// each expired run into the arch_archive table in the same transaction as
+// the delete, then reads the archive back a page at a time and one run by
+// its reference.
+func archiveTable(ctx context.Context, w io.Writer, db *sql.DB, clk *clock.Fake) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// snippet:archive-store
+	store, err := sqlrecorder.New(db, sqlrecorder.SQLite,
+		sqlrecorder.WithTablePrefix(archivePrefix),
+		sqlrecorder.WithClock(clk),
+		// Retention decides what moves and when; the table is where it goes.
+		sqlrecorder.WithRetention(recorder.Retention{RetentionRule: recorder.RetentionRule{Runs: runsAge}}),
+		sqlrecorder.WithArchiveTable(), // Migrate also creates arch_archive
+	)
+	if err != nil {
+		return err
+	}
+	if err := store.Migrate(ctx); err != nil {
+		return err
+	}
+	// snippet:end
+	tables, err := tableNames(ctx, db, archivePrefix)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "archive store: migration statements: %d, tables: %s\n", len(store.MigrationScripts()), strings.Join(tables, " "))
+
+	rec, err := recorder.New(store, recorder.WithClock(clk))
+	if err != nil {
+		return err
+	}
+	driver := memory.New(memory.WithClock(clk))
+	defer driver.Stop()
+	c, err := workflow.Use(driver, rec.Plugin())
+	if err != nil {
+		return err
+	}
+	if err := c.Register(workflow.Workflow{Name: exportWorkflow, Steps: []workflow.Step{{Name: "write", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+		workflow.RecordEvent(ctx, "file written", slog.String("format", "csv"))
+		return []byte(`"ok"`), nil
+	}}}}); err != nil {
+		return err
+	}
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	// Every run ends at the same fake instant, so the archive's paging has
+	// to break the ties by run key.
+	var first workflow.RunRef
+	for i := 1; i <= exportRuns; i++ {
+		ref, err := c.Enqueue(ctx, workflow.WithSource(workflow.Job{Workflow: exportWorkflow}, "api", fmt.Sprintf("exp-%d", i)))
+		if err != nil {
+			return err
+		}
+		if err := waitFinished(ctx, store, ref); err != nil {
+			return err
+		}
+		if i == 1 {
+			first = ref
+		}
+	}
+	clk.Advance(runsAge + time.Hour)
+
+	// snippet:archive-read
+	res, err := store.Prune(ctx) // stage two moves each expired run, exactly once
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(w, "archive prune: runs deleted=%d moved=%d\n", res.RunsDeleted, res.Archived)
+
+	// Read the archive a page at a time, oldest finish first.
+	var sizes, sources []string
+	q := sqlrecorder.ArchiveQuery{Workflow: exportWorkflow, Limit: archivePageSize}
+	for {
+		page, err := store.ArchivedRuns(ctx, q)
+		if err != nil {
+			return err
+		}
+		sizes = append(sizes, fmt.Sprint(len(page.Runs)))
+		for _, r := range page.Runs {
+			sources = append(sources, r.SourceRef)
+		}
+		if page.Next == "" { // the last page
+			break
+		}
+		q.Cursor = page.Next
+	}
+	slices.Sort(sources)
+	fmt.Fprintf(w, "archived runs, pages of %d: %s runs: %s\n", archivePageSize, strings.Join(sizes, "+"), strings.Join(sources, " "))
+
+	// One run, as Run returned it before the move.
+	r, err := store.ArchivedRun(ctx, first)
+	if err != nil {
+		return err
+	}
+	events := 0
+	for _, st := range r.Steps {
+		events += len(st.Events)
+	}
+	fmt.Fprintf(w, "archived run %s: %s steps=%d events=%d\n", r.SourceRef, r.Status, len(r.Steps), events)
+	_, err = store.Run(ctx, first) // the runs table no longer holds it
+	fmt.Fprintln(w, "still in the runs table:", !errors.Is(err, workflow.ErrNotFound))
+	// snippet:end
+	return nil
+}
+
+// tableNames lists the tables of one store, by its prefix, to show the
+// prefix at work.
+func tableNames(ctx context.Context, db *sql.DB, prefix string) ([]string, error) {
+	rows, err := db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE ?`, prefix+"%")
 	if err != nil {
 		return nil, err
 	}

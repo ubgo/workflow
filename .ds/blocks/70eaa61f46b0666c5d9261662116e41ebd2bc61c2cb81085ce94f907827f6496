@@ -1,0 +1,1 @@
+func (c Caps) IsZero() bool { return c == Caps{} }

@@ -1,0 +1,8 @@
+func TestTenantScope_PrincipalTypeMismatch(t *testing.T) {
+	ts := newTenants(t)
+	other := WithTenantScope(func(*http.Request, string) (string, error) { return "a", nil })
+	h := NewHandler(New(ts.c), scopedAuth(), other)
+	if rec := as(t, h, "a", "GET", "/runs", ""); rec.Code != http.StatusForbidden {
+		t.Fatalf("mismatched scope = %d %s, want 403", rec.Code, rec.Body)
+	}
+}

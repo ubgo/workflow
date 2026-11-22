@@ -1,0 +1,8 @@
+func RunOutput(wf Workflow, outs map[string][]byte) []byte {
+	sinks := Sinks(wf)
+	out := StepInput(nil, sinks, outs)
+	if len(sinks) == 1 && out != nil {
+		out = slices.Clone(out)
+	}
+	return out
+}

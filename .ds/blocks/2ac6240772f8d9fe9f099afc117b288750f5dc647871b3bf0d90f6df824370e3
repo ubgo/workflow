@@ -1,0 +1,4 @@
+type AggregateStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}

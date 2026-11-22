@@ -1,0 +1,88 @@
+func TestForeignInsert(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, prefix := e.open(t)
+			c := newClient(t, e, db, prefix)
+			var mu sync.Mutex
+			got := map[string]string{} // run id -> payload the step saw
+			if err := c.Register(workflow.Workflow{Name: "report", Queue: "reports", Steps: []workflow.Step{{Name: "build",
+				Run: func(ctx context.Context, in []byte) ([]byte, error) {
+					info, _ := workflow.StepInfoFrom(ctx)
+					mu.Lock()
+					got[string(info.RunID)] = string(in)
+					mu.Unlock()
+					return nil, nil
+				}}}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			seen := func(id string) string {
+				mu.Lock()
+				defer mu.Unlock()
+				return got[id]
+			}
+
+			now := foreignJob{id: "run_" + randHex(16), workflow: "report", payload: []byte(`{"month":"2026-11"}`),
+				labels: `{"source":"billing"}`, labelPairs: [][2]string{{"source", "billing"}}, tenant: "acme"}
+			if err := insertForeign(ctx, db, e.dialect, prefix, now); err != nil {
+				t.Fatalf("insert a run by SQL: %v", err)
+			}
+			ref := workflow.RunRef{RunID: workflow.RunID(now.id)}
+			waitFor(t, 10*time.Second, "the SQL-inserted run to succeed", func() bool {
+				st, err := c.Status(ctx, ref)
+				return err == nil && st == workflow.StatusSucceeded
+			})
+			if p := seen(now.id); p != string(now.payload) {
+				t.Fatalf("step saw payload %q, want %q", p, now.payload)
+			}
+			page, err := c.Runs(ctx, workflow.RunQuery{Labels: map[string]string{"source": "billing"}})
+			if err != nil || len(page.Runs) != 1 || page.Runs[0].Ref.RunID != ref.RunID {
+				t.Fatalf("label query found %+v, %v; want the inserted run", page.Runs, err)
+			}
+			if info := page.Runs[0]; info.Queue != "reports" || info.Tenant != "acme" {
+				t.Fatalf("run queue %q tenant %q, want the workflow's queue (filled in at admission) and acme", info.Queue, info.Tenant)
+			}
+
+			later := foreignJob{id: "run_" + randHex(16), scheduledID: "sched_" + randHex(16), workflow: "report",
+				payload: []byte(`{"month":"2026-12"}`), labels: `{}`, runAt: time.Now().Add(300 * time.Millisecond)}
+			if err := insertForeign(ctx, db, e.dialect, prefix, later); err != nil {
+				t.Fatalf("insert a delayed run by SQL: %v", err)
+			}
+			if st, err := c.Status(ctx, workflow.RunRef{ScheduledID: workflow.ScheduledID(later.scheduledID)}); err != nil || st != workflow.StatusScheduled {
+				t.Fatalf("delayed run %s, %v; want scheduled", st, err)
+			}
+			waitFor(t, 10*time.Second, "the delayed run to succeed", func() bool {
+				st, err := c.Status(ctx, workflow.RunRef{RunID: workflow.RunID(later.id)})
+				return err == nil && st == workflow.StatusSucceeded
+			})
+			if seen(later.id) == "" {
+				t.Fatal("the delayed run's step never ran")
+			}
+
+			// A key held by an unfinished run: the second writer's insert
+			// fails on the unique index (its transaction rolls back) and
+			// Enqueue returns the held run. The run waits an hour, so it
+			// holds the key for the whole test.
+			keyed := foreignJob{id: "run_" + randHex(16), scheduledID: "sched_" + randHex(16), workflow: "report", labels: `{}`,
+				key: "report-2027-01", runAt: time.Now().Add(time.Hour)}
+			if err := insertForeign(ctx, db, e.dialect, prefix, keyed); err != nil {
+				t.Fatalf("insert a keyed run by SQL: %v", err)
+			}
+			dup := keyed
+			dup.id, dup.scheduledID = "run_"+randHex(16), "sched_"+randHex(16)
+			if err := insertForeign(ctx, db, e.dialect, prefix, dup); err == nil {
+				t.Fatal("a second SQL insert of a held key succeeded; want a unique violation")
+			}
+			held, err := c.Enqueue(ctx, workflow.Job{Workflow: "report", IdempotencyKey: keyed.key})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if held.ScheduledID != workflow.ScheduledID(keyed.scheduledID) {
+				t.Fatalf("Enqueue with the held key returned %+v, want the SQL-inserted run", held)
+			}
+		})
+	}
+}

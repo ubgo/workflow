@@ -2,6 +2,8 @@ package workflow
 
 // maxTenant bounds a tenant ID so every store (a SQL column, a Redis key,
 // an engine label) accepts it.
+//
+//ds:def id=maxtenant-jd3pv9gz owner=@khanakia stability=stable
 const maxTenant = 128
 
 // ValidateTenant checks a Job.Tenant or RunQuery.Tenant: 1 to 128
@@ -9,6 +11,8 @@ const maxTenant = 128
 // characters are the queue-name set plus "@", so a tenant ID can be put
 // into a key, a label or a log line without escaping. Errors wrap
 // ErrInvalid.
+//
+//ds:def id=validatetenant-954zv4ud owner=@khanakia stability=stable
 func ValidateTenant(tenant string) error {
 	if tenant == "" {
 		return invalidf("tenant is empty")

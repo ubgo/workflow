@@ -1,0 +1,74 @@
+func (a *Admin) QueueStats(ctx context.Context) (QueueReport, error) {
+	if err := a.check(OpQueues); err != nil {
+		return QueueReport{}, err
+	}
+	rq, _ := a.reader()
+	byQueue := map[string]*QueueStat{}
+	q := workflow.RunQuery{Statuses: []workflow.Status{workflow.StatusQueued}, Limit: min(workflow.MaxRunsLimit, a.maxScan)}
+	scanned := 0
+	truncated := false
+	for {
+		page, err := rq.Runs(ctx, q)
+		if err != nil {
+			return QueueReport{}, err
+		}
+		for _, r := range page.Runs {
+			if scanned == a.maxScan {
+				truncated = true
+				break
+			}
+			scanned++
+			s := byQueue[r.Queue]
+			if s == nil {
+				s = &QueueStat{Queue: r.Queue}
+				byQueue[r.Queue] = s
+			}
+			s.Depth++
+			if s.OldestEnqueuedAt.IsZero() || r.EnqueuedAt.Before(s.OldestEnqueuedAt) {
+				s.OldestEnqueuedAt = r.EnqueuedAt
+			}
+		}
+		if truncated || page.Next == "" {
+			break
+		}
+		if scanned == a.maxScan {
+			truncated = true
+			break
+		}
+		q.Cursor = page.Next
+	}
+	scaler, scales := a.c.(workflow.WorkerScaler)
+	scales = scales && a.c.Capabilities().Has(workflow.CapWorkerScale)
+	if scales {
+		loads, err := scaler.QueueLoads(ctx)
+		if err != nil {
+			return QueueReport{}, err
+		}
+		for _, l := range loads {
+			s := byQueue[l.Queue]
+			if s == nil {
+				s = &QueueStat{Queue: l.Queue}
+				byQueue[l.Queue] = s
+			}
+			s.Workers, s.Running = l.Workers, l.Running
+		}
+	}
+	now := a.clk.Now()
+	rep := QueueReport{Truncated: truncated, At: now, Workers: scales}
+	for _, s := range byQueue {
+		if !s.OldestEnqueuedAt.IsZero() {
+			s.OldestWait = max(now.Sub(s.OldestEnqueuedAt), 0)
+		}
+		rep.Queues = append(rep.Queues, *s)
+	}
+	slices.SortFunc(rep.Queues, func(x, y QueueStat) int {
+		switch {
+		case x.Queue < y.Queue:
+			return -1
+		case x.Queue > y.Queue:
+			return 1
+		}
+		return 0
+	})
+	return rep, nil
+}

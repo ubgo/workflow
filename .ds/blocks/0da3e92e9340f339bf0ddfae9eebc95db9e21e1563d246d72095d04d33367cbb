@@ -1,0 +1,9 @@
+func (c *Client) askWhen(when func(context.Context, workflow.Tick) bool, tk workflow.Tick) (ok bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			c.log.Error("memory: ScheduleWhen panicked; the tick is skipped", "workflow", tk.Workflow, "schedule", tk.ScheduleID, "panic", p)
+			ok = false
+		}
+	}()
+	return when(c.ctx, tk)
+}

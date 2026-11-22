@@ -1,0 +1,6 @@
+func (a *Admin) Delete(ctx context.Context, ref workflow.RunRef) error {
+	if err := a.check(OpDelete); err != nil {
+		return err
+	}
+	return a.c.(workflow.RunDeleter).Delete(ctx, ref)
+}

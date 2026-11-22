@@ -1,0 +1,17 @@
+type Recorder struct {
+	inner workflow.Client
+
+	// Forward implements the optional client interfaces (run query,
+	// pause, schedule listing, drain and the rest) by forwarding to inner
+	// and refusing in the fake mode, so wrapping a client never hides one.
+	workflow.Forward
+
+	mu        sync.Mutex
+	jobs      []workflow.Job
+	refs      map[workflow.RunRef]bool
+	wfs       map[string]workflow.Workflow // every definition registered successfully
+	retries   []workflow.RunRef            // successful Retry calls, in order
+	deletes   []workflow.RunRef            // successful Delete calls, in order
+	started   bool
+	schedules int
+}

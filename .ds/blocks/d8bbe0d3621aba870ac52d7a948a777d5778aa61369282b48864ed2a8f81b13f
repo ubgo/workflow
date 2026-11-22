@@ -1,0 +1,60 @@
+var lifecycleCases = []testCase{
+	{"Enqueue before Start is ErrNotStarted", func(e *env) {
+		var c counter
+		e.register(oneStep(e.name("w"), c.echo()))
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if _, err := e.c.Enqueue(ctx, workflow.Job{Workflow: e.name("w")}); !errors.Is(err, workflow.ErrNotStarted) {
+			e.t.Fatalf("Enqueue before Start: err = %v, want ErrNotStarted", err)
+		}
+	}},
+	{"Register after Start and a second Start are ErrAlreadyStarted", func(e *env) {
+		var c counter
+		e.up(oneStep(e.name("w"), c.echo()))
+		if err := e.c.Register(oneStep(e.name("late"), c.echo())); !errors.Is(err, workflow.ErrAlreadyStarted) {
+			e.t.Errorf("Register after Start: err = %v, want ErrAlreadyStarted", err)
+		}
+		if err := e.tryStart(); !errors.Is(err, workflow.ErrAlreadyStarted) {
+			e.t.Errorf("second Start: err = %v, want ErrAlreadyStarted", err)
+		}
+	}},
+	{"an invalid workflow is ErrInvalid", func(e *env) {
+		if err := e.c.Register(workflow.Workflow{Name: e.name("w")}); !errors.Is(err, workflow.ErrInvalid) {
+			e.t.Fatalf("Register of a workflow with no steps: err = %v, want ErrInvalid", err)
+		}
+	}},
+	{"an unknown workflow is ErrNotFound", func(e *env) {
+		var c counter
+		e.up(oneStep(e.name("w"), c.echo()))
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if _, err := e.c.Enqueue(ctx, workflow.Job{Workflow: e.name("never-registered")}); !errors.Is(err, workflow.ErrNotFound) {
+			e.t.Fatalf("Enqueue of an unknown workflow: err = %v, want ErrNotFound", err)
+		}
+	}},
+	{"an unknown run is ErrNotFound", func(e *env) {
+		var c counter
+		e.up(oneStep(e.name("w"), c.echo()))
+		// UUID-shaped, so an engine that validates the ID format still
+		// has to look it up.
+		ref := workflow.RunRef{RunID: "00000000-0000-4000-8000-000000000000"}
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if _, err := e.c.Status(ctx, ref); !errors.Is(err, workflow.ErrNotFound) {
+			e.t.Errorf("Status of an unknown run: err = %v, want ErrNotFound", err)
+		}
+		if e.c.Capabilities().Has(workflow.CapCancel) {
+			if err := e.c.Cancel(ctx, ref); !errors.Is(err, workflow.ErrNotFound) {
+				e.t.Errorf("Cancel of an unknown run: err = %v, want ErrNotFound", err)
+			}
+		}
+	}},
+	{"Capabilities never change", func(e *env) {
+		before := e.c.Capabilities()
+		var c counter
+		e.up(oneStep(e.name("w"), c.echo()))
+		if after := e.c.Capabilities(); after != before {
+			e.t.Fatalf("Capabilities changed across Start: %s, then %s", before, after)
+		}
+	}},
+}

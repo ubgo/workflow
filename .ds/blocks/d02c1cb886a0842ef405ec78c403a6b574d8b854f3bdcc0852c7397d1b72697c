@@ -1,0 +1,13 @@
+type Attributes struct {
+	// Limits is what the transport accepts. The zero value accepts
+	// anything.
+	Limits AttributeLimits
+	// Prefix starts every name but the trace ones; empty means
+	// DefaultAttributePrefix.
+	Prefix string
+	// Trace maps label keys to attribute names; nil means
+	// DefaultTraceAttributes.
+	Trace map[string]string
+	// PackLabels always packs labels into one attribute.
+	PackLabels bool
+}

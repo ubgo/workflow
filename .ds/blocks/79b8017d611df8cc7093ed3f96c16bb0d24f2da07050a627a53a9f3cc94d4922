@@ -1,0 +1,7 @@
+func (a *Admin) Resume(ctx context.Context, t workflow.PauseTarget) error {
+	p, err := a.pauser(t)
+	if err != nil {
+		return err
+	}
+	return p.Resume(ctx, t)
+}

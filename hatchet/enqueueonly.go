@@ -12,6 +12,8 @@ import (
 // startEnqueueOnly is Start for Config.EnqueueOnly: no worker, no
 // poller, only the stop when ctx ends, so Done and ErrNotStarted mean
 // what they mean on a worker client. Called with c.mu held.
+//
+//ds:def id=hatchet-client-startenqueueonly-ddszquvp owner=@khanakia stability=stable
 func (c *Client) startEnqueueOnly(ctx context.Context) {
 	runCtx, cancel := context.WithCancel(ctx)
 	c.runCtx, c.stop, c.started = runCtx, cancel, true
@@ -63,6 +65,8 @@ func newSDK(opts []hatchetsdk.ClientOpt) (sdk *hatchetsdk.Client, err error) {
 // and policies on the engine) and the registered spec, or a spec with
 // only the name for a workflow this client never registered. Called with
 // c.mu held.
+//
+//ds:def id=hatchet-client-enqueueonlylookup-btua7kah owner=@khanakia stability=stable
 func (c *Client) enqueueOnlyLookup(name string) (*hatchetsdk.Workflow, workflow.Workflow, error) {
 	sdk, err := c.enqueueOnlySDK()
 	if err != nil {

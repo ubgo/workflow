@@ -15,6 +15,8 @@ var requireLine = regexp.MustCompile(`^\s*(?:require\s+)?([a-zA-Z0-9.\-_/]+\.[a-
 // modules, so an app that never uses one never downloads it. A package in
 // the core that imports a third-party module makes go mod tidy add a
 // require line, and this test fails with its name.
+//
+//ds:def id=testguard-coremoduleisstdlibonly-pje3bjqj owner=@khanakia stability=stable
 func TestGuard_CoreModuleIsStdlibOnly(t *testing.T) {
 	b, err := os.ReadFile("go.mod")
 	if err != nil {

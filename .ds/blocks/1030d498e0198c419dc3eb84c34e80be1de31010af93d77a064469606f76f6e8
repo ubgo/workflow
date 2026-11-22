@@ -1,0 +1,16 @@
+func (f *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	var out workflow.RunRef
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.RunResetter)
+		if !ok {
+			return workflow.Unsupported("ResetRun", "the "+sd.String()+" backend does not implement it")
+		}
+		got, err := r.ResetRun(ctx, inner, step)
+		out = encodeRef(sd, got)
+		return err
+	})
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return out, nil
+}

@@ -234,6 +234,7 @@ func TestDebounce(t *testing.T) {
 	}
 }
 
+//ds:def id=mw-testdebounce-refuseswithoutcapabilities-m46rn3wv owner=@khanakia stability=stable
 func TestDebounce_RefusesWithoutCapabilities(t *testing.T) {
 	key := func(workflow.Job) string { return "k" }
 	_, err := middleware.Debounce(&stubClient{caps: workflow.CapDelayedStart}, nil, key, time.Second, 0)

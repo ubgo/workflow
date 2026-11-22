@@ -1,0 +1,29 @@
+func (l BalanceLoop) Once(ctx context.Context) error {
+	if l.Scaler == nil || l.Balancer == nil {
+		return invalidf("balance loop: Scaler and Balancer are required")
+	}
+	loads, err := l.Scaler.QueueLoads(ctx)
+	if err != nil {
+		return fmt.Errorf("balance loop: queue loads: %w", err)
+	}
+	current := make(map[string]int, len(loads))
+	for _, ld := range loads {
+		current[ld.Queue] = ld.Workers
+	}
+	want := l.Balancer.Balance(loads)
+	names := make([]string, 0, len(want))
+	for q := range want {
+		names = append(names, q)
+	}
+	slices.Sort(names)
+	var errs []error
+	for _, q := range names {
+		if cur, ok := current[q]; ok && cur == want[q] {
+			continue
+		}
+		if err := l.Scaler.SetWorkers(ctx, q, want[q]); err != nil {
+			errs = append(errs, fmt.Errorf("balance loop: queue %q to %d workers: %w", q, want[q], err))
+		}
+	}
+	return errors.Join(errs...)
+}

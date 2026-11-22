@@ -1,0 +1,13 @@
+func readBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, DefaultWebhookMaxBody+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: cloudevent: read body: %v", workflow.ErrInvalid, err)
+	}
+	if len(body) > DefaultWebhookMaxBody {
+		return nil, fmt.Errorf("%w: cloudevent: body is over %d bytes", workflow.ErrInvalid, DefaultWebhookMaxBody)
+	}
+	return body, nil
+}

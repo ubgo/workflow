@@ -1,0 +1,17 @@
+func (m *Manager) retryLoop(ctx context.Context) {
+	for {
+		t := m.clk.NewTimer(m.callbackRetry)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return
+		case <-t.C():
+		}
+		if err := m.RetryCallbacks(ctx); err != nil {
+			m.log.ErrorContext(ctx, "batch: retry callbacks", "error", err)
+		}
+		if err := m.ResumeDispatches(ctx); err != nil {
+			m.log.ErrorContext(ctx, "batch: resume dispatches", "error", err)
+		}
+	}
+}

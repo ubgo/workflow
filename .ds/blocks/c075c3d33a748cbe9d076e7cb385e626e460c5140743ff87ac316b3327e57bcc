@@ -1,0 +1,1 @@
+	DefaultStreamTTL = time.Hour

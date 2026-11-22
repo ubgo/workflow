@@ -1,0 +1,23 @@
+func (d stockDetector) walk(out []SecretFinding, where string, v any) []SecretFinding {
+	switch x := v.(type) {
+	case map[string]any:
+		for _, k := range slices.Sorted(maps.Keys(x)) {
+			p := where + "." + k
+			if s, ok := x[k].(string); ok {
+				if k == secretRefKey {
+					continue // a SecretRef's name, not a secret
+				}
+				out = d.keyed(out, p, k, s)
+				continue
+			}
+			out = d.walk(out, p, x[k])
+		}
+	case []any:
+		for i, e := range x {
+			out = d.walk(out, where+"["+strconv.Itoa(i)+"]", e)
+		}
+	case string:
+		out = d.value(out, where, x)
+	}
+	return out
+}

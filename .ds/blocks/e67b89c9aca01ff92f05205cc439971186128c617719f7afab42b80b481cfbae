@@ -1,0 +1,6 @@
+func (a *Admin) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
+	if err := a.check(OpPause); err != nil {
+		return nil, err
+	}
+	return a.c.(workflow.Pauser).Paused(ctx)
+}

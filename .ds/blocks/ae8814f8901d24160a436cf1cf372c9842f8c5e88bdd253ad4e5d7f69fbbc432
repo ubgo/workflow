@@ -1,0 +1,29 @@
+func (h *handler[P]) listSchedules(w http.ResponseWriter, r *http.Request) {
+	limit, offset, err := parsePage(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
+		return
+	}
+	if !h.authorize(w, r, ActionListSchedules, Resource{}) {
+		return
+	}
+	all, err := h.a.Schedules(r.Context())
+	if err != nil {
+		h.fail(w, ActionListSchedules, err)
+		return
+	}
+	all = scopeSchedules(r.Context(), all)
+	out := struct {
+		Schedules []scheduleJSON `json:"schedules"`
+		Next      string         `json:"next,omitempty"`
+		Total     int            `json:"total"`
+	}{Schedules: []scheduleJSON{}, Total: len(all)}
+	end := min(offset+limit, len(all))
+	for _, s := range all[min(offset, len(all)):end] {
+		out.Schedules = append(out.Schedules, toScheduleJSON(s))
+	}
+	if end < len(all) {
+		out.Next = strconv.Itoa(end)
+	}
+	writeJSON(w, http.StatusOK, out)
+}

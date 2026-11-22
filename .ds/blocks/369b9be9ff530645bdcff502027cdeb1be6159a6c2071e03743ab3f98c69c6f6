@@ -1,0 +1,20 @@
+type ThenRule struct {
+	// Name identifies the rule in the next job's idempotency key and in
+	// errors; stable across deploys. Empty means When + ">" + the next
+	// job's Workflow, which is enough unless two rules for one When start
+	// the same workflow.
+	Name string
+
+	// When is the workflow whose run ends trigger the rule. Required.
+	When string
+
+	// On is the terminal statuses that trigger it; nil means
+	// StatusSucceeded only. A status that is not terminal is refused.
+	On []Status
+
+	// Start builds the next job from the finished run's event: the
+	// output is not in the event, so a job that needs it reads it with
+	// ResultReader or passes the run ref on. Returning false starts
+	// nothing (a condition on the outcome or labels). Required.
+	Start func(RunEvent) (Job, bool, error)
+}

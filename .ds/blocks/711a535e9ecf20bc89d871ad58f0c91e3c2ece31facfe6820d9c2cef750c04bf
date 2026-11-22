@@ -1,0 +1,6 @@
+func (f Forward) PayloadLimit() int {
+	if i, ok := f.Inner.(PayloadLimiter); ok {
+		return i.PayloadLimit()
+	}
+	return 0
+}

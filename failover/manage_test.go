@@ -95,6 +95,8 @@ func TestRuns_RefNamesOneBackend(t *testing.T) {
 
 // TestRetryAndDelete_RouteByPrefix uses two runs whose driver IDs collide,
 // so a call routed to the wrong backend acts on the other run.
+//
+//ds:def id=failover-testretryanddelete-routebyprefix-e9yct8z5 owner=@khanakia stability=stable
 func TestRetryAndDelete_RouteByPrefix(t *testing.T) {
 	fx := newFixture(t)
 	var healed atomic.Bool
@@ -243,6 +245,8 @@ func TestScheduleFamily_IsThePrimarys(t *testing.T) {
 
 // TestRefusesWhatOneBackendLacks hides each run-family capability from
 // the secondary and checks the call is refused, not half done.
+//
+//ds:def id=failover-testrefuseswhatonebackendlacks-2552bz8p owner=@khanakia stability=stable
 func TestRefusesWhatOneBackendLacks(t *testing.T) {
 	ctx := t.Context()
 	cases := []struct {

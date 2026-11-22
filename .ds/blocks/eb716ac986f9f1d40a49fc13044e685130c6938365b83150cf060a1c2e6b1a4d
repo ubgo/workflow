@@ -1,0 +1,15 @@
+func (m *Manager) RetryCallbacks(ctx context.Context) error {
+	open, err := m.store.Unfinished(ctx)
+	if err != nil {
+		return fmt.Errorf("batch: list batches with pending callbacks: %w", err)
+	}
+	now := m.clk.Now()
+	var errs []error
+	for _, st := range open {
+		if !hasDue(st, now) {
+			continue
+		}
+		errs = append(errs, m.retryBatch(ctx, st.ID))
+	}
+	return errors.Join(errs...)
+}

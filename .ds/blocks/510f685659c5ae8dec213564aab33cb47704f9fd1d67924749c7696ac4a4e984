@@ -1,0 +1,14 @@
+func (c *Client) applyChainEdits(ctx context.Context, tx *sql.Tx, a *attempt) error {
+	if a.edits == nil {
+		return nil
+	}
+	ed, ok := a.edits.changed()
+	if !ok {
+		return nil
+	}
+	chain, err := c.loadChain(ctx, tx, a.runID)
+	if err != nil {
+		return err
+	}
+	return c.saveChain(ctx, tx, a.runID, ed.Apply(chain))
+}

@@ -1,0 +1,1 @@
+func WithSchedulerOnly() Option { return func(cl *Client) { cl.schedulerOnly = true } }

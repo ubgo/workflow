@@ -1,0 +1,30 @@
+func TestTenantScope_BulkPinned(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
+
+	rec := as(t, h, "a", "POST", "/runs/retry", `{"dry_run":true}`)
+	var res bulkJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil || res.Matched != 1 || res.Sample[0].RunID != string(ts.aFail.RunID) {
+		t.Fatalf("a's retry preview = %+v, %v (%s)", res, err, rec.Body)
+	}
+	rec = as(t, h, "a", "POST", "/runs/cancel", `{"workflow":"wait","statuses":["waiting"]}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"cancelled":1`) {
+		t.Fatalf("a's cancel = %d %s", rec.Code, rec.Body)
+	}
+	if st, _ := ts.c.Status(t.Context(), ts.bWait); st != workflow.StatusWaiting {
+		t.Fatalf("b's waiting run is %s after a's cancel", st)
+	}
+	for _, body := range []string{`{"tenant":"b"}`, `{"Tenant":"b"}`, `{"TENANT":"b","workflow":"wait"}`, `{"tenant":7}`} {
+		if rec := as(t, h, "a", "POST", "/runs/delete", body); rec.Code != http.StatusForbidden {
+			t.Errorf("a POST /runs/delete %s = %d, want 403", body, rec.Code)
+		}
+	}
+	for _, body := range []string{``, `[1]`, `{"a":1}{"b":2}`, `null`} {
+		if rec := as(t, h, "a", "POST", "/runs/delete", body); rec.Code != http.StatusBadRequest {
+			t.Errorf("a POST /runs/delete %q = %d, want 400", body, rec.Code)
+		}
+	}
+	if rec := as(t, h, "a", "POST", "/runs/delete", `{"tenant":"a","workflow":"boom","dry_run":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("own tenant named = %d %s", rec.Code, rec.Body)
+	}
+}

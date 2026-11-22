@@ -1,0 +1,16 @@
+func (p shapePlugin) StepMiddleware() []Middleware {
+	return []Middleware{func(next Handler) Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := StepInfoFrom(ctx)
+			if !ok {
+				return next(ctx, in)
+			}
+			stamped, has := info.Labels[LabelShape]
+			want, known := p.shapes[info.Workflow]
+			if has && known && stamped != want {
+				return nil, Permanent(fmt.Errorf("%w: run %s of %q was enqueued with steps %s, now %s (step %q)", ErrShapeChanged, info.RunID, info.Workflow, stamped, want, info.Step))
+			}
+			return next(ctx, in)
+		}
+	}}
+}

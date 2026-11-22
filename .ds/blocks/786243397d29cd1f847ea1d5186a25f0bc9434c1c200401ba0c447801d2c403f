@@ -1,0 +1,16 @@
+func (c *Client) enqueueOnlyLookup(name string) (*hatchetsdk.Workflow, workflow.Workflow, error) {
+	sdk, err := c.enqueueOnlySDK()
+	if err != nil {
+		return nil, workflow.Workflow{}, err
+	}
+	hw, ok := c.workflows[name]
+	if !ok {
+		hw = sdk.NewWorkflow(name)
+		c.workflows[name] = hw
+	}
+	spec, ok := c.specs[name]
+	if !ok {
+		spec = workflow.Workflow{Name: name}
+	}
+	return hw, spec, nil
+}

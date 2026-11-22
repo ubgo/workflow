@@ -10,6 +10,8 @@ import (
 
 // ReportConfig configures Report. The zero value reports final failures
 // only.
+//
+//ds:def id=mw-reportconfig-g4r7cjry owner=@khanakia stability=stable
 type ReportConfig struct {
 	// Attempts also reports every failed step attempt (Failure.Final
 	// false), from step middleware on the worker that ran it. The last
@@ -26,6 +28,8 @@ type ReportConfig struct {
 
 // ReportFailures returns a run-finished observer that hands every run that
 // ends failed (and discarded, when cfg.Discarded) to r.
+//
+//ds:def id=mw-reportfailures-4q3d5vu6 owner=@khanakia stability=stable
 func ReportFailures(r workflow.Reporter, cfg ReportConfig) workflow.RunFinishedFunc {
 	clk := reportClock(cfg)
 	return func(ctx context.Context, ev workflow.RunEvent) {
@@ -39,6 +43,8 @@ func ReportFailures(r workflow.Reporter, cfg ReportConfig) workflow.RunFinishedF
 // to r as a Failure with Final false and Status StatusRetrying, then
 // returns the step's result unchanged. A released step (ErrReleased) is
 // not a failure and is not reported.
+//
+//ds:def id=mw-reportattempts-xh7hgryn owner=@khanakia stability=stable
 func ReportAttempts(r workflow.Reporter, cfg ReportConfig) workflow.Middleware {
 	clk := reportClock(cfg)
 	return func(next workflow.Handler) workflow.Handler {
@@ -65,6 +71,8 @@ func ReportAttempts(r workflow.Reporter, cfg ReportConfig) workflow.Middleware {
 
 // Report bundles ReportFailures (and ReportAttempts when cfg.Attempts) as
 // a plugin named "report" for workflow.Use.
+//
+//ds:def id=mw-report-2f8kksvg owner=@khanakia stability=stable
 func Report(r workflow.Reporter, cfg ReportConfig) workflow.Plugin {
 	p := observerPlugin{name: "report", fn: ReportFailures(r, cfg)}
 	if cfg.Attempts {

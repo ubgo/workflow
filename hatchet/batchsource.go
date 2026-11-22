@@ -35,6 +35,8 @@ const batchListLag = time.Minute
 // A nil log means Config.Logger. Ticks come from Config.Clock, so a test
 // on a fake clock drives them with Advance. Its Attach fails with
 // workflow.ErrInvalid for an interval that is not positive.
+//
+//ds:def id=hatchet-client-batchsource-prb3q7d4 owner=@khanakia stability=stable
 func (c *Client) BatchSource(store batch.Store, interval time.Duration, log *slog.Logger) batch.Source {
 	if log == nil {
 		log = c.cfg.Logger
@@ -72,6 +74,8 @@ func (s *batchSource) loop(ctx context.Context, m *batch.Manager) {
 }
 
 // poll is one tick: every unfinished batch with a job still open.
+//
+//ds:def id=hatchet-batchsource-poll-7fkufb6p owner=@khanakia stability=stable
 func (s *batchSource) poll(ctx context.Context, m *batch.Manager) {
 	if _, err := s.c.ready(); err != nil {
 		return
@@ -276,6 +280,8 @@ var (
 // of a bulk trigger whose refs were never saved). A delayed start that
 // has not fired is a schedule, not a run, and is not listed; the batch
 // package never restarts such a job on this answer alone.
+//
+//ds:def id=hatchet-client-findbatchruns-nrt6zerp owner=@khanakia stability=stable
 func (c *Client) FindBatchRuns(ctx context.Context, id batch.ID, since time.Time) (map[int]workflow.RunRef, error) {
 	noPayloads := false
 	rows, err := c.listRuns(ctx, rest.V1WorkflowRunListParams{

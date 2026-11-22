@@ -1,0 +1,13 @@
+func TestAudit_NotBeforeAuthorize(t *testing.T) {
+	audit := &MemoryAudit{}
+	h := NewHandler(New(seeded()), bearerAuth(), WithAudit(audit))
+	req := httptestRequest("POST", "/runs/r2/retry", "")
+	req.Header.Del("Authorization")
+	serve(h, req)
+	req = httptestRequest("POST", "/runs/r2/retry", "")
+	req.Header.Del("Content-Type")
+	serve(h, req)
+	if n := len(audit.Entries()); n != 0 {
+		t.Fatalf("%d entries", n)
+	}
+}

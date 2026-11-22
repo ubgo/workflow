@@ -1,0 +1,1 @@
+func WithAudit(sink AuditSink) HandlerOption { return func(c *handlerConfig) { c.audit = sink } }

@@ -1,0 +1,7 @@
+func InlineNow(now func() time.Time) InlineOption {
+	return func(c *inlineConfig) {
+		if now != nil {
+			c.now = now
+		}
+	}
+}

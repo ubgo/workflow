@@ -1,0 +1,7 @@
+func WithWorkers(n int) Option {
+	return func(m *Client) {
+		if n >= 1 {
+			m.workers = n
+		}
+	}
+}

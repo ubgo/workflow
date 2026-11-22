@@ -1,0 +1,27 @@
+func TestRoutes_CoverEveryAction(t *testing.T) {
+	var got []Action
+	for _, r := range routes {
+		got = append(got, r.action)
+	}
+	for _, a := range Actions {
+		if !slices.Contains(got, a) {
+			t.Errorf("action %s has no row in routes", a)
+		}
+	}
+	// Every row really reaches its route and authorizes its action.
+	for _, r := range routes {
+		var seen []Action
+		auth := bearerAuth()
+		auth.Authorize = func(_ context.Context, req Request[user]) error {
+			seen = append(seen, req.Action)
+			if req.Who.name != "ann" {
+				t.Errorf("%s %s: Who = %+v", r.method, r.path, req.Who)
+			}
+			return nil
+		}
+		do(t, NewHandler(New(seeded()), auth), r.method, r.path, r.body)
+		if len(seen) != 1 || seen[0] != r.action {
+			t.Errorf("%s %s authorized %v, want [%s]", r.method, r.path, seen, r.action)
+		}
+	}
+}

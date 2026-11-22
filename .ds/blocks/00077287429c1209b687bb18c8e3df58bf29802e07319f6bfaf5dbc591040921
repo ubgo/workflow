@@ -1,0 +1,7 @@
+func (d *DisableStore) Fail(ctx context.Context, key string, after int) (bool, error) {
+	n, err := disableFailScript.Run(ctx, d.rdb, []string{d.key(key)}, after).Int64()
+	if err != nil {
+		return false, fmt.Errorf("redis: disable fail: %w", classify(err))
+	}
+	return n == 1, nil
+}

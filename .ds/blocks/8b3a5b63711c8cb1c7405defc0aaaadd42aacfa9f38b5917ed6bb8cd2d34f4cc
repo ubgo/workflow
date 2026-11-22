@@ -1,0 +1,1 @@
+	ErrHeartbeatTimeout = errors.New("workflow: heartbeat timed out")

@@ -1,0 +1,23 @@
+func New(client workflow.Client, opts ...Option) (*Bus, error) {
+	if client == nil {
+		return nil, fmt.Errorf("%w: events: client is nil", workflow.ErrInvalid)
+	}
+	b := &Bus{client: client, newID: randomID, clk: clock.Real{}}
+	for _, o := range opts {
+		o(b)
+	}
+	if b.optErr != nil {
+		return nil, b.optErr
+	}
+	if b.newID == nil {
+		b.newID = randomID
+	}
+	if b.clk == nil {
+		b.clk = clock.Real{}
+	}
+	if !b.allowDup && !client.Capabilities().Has(workflow.CapIdempotencyKey) {
+		return nil, &workflow.UnsupportedError{Field: "events.Bus", Missing: workflow.CapIdempotencyKey,
+			Reason: "a republished event would start its runs twice; pass AllowDuplicates to accept that"}
+	}
+	return b, nil
+}

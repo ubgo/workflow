@@ -1,0 +1,9 @@
+type MetricsQuery struct {
+	From, To time.Time
+	// Step is the width of one point. A source with a coarser resolution
+	// rounds it up to a multiple of its own (MetricsSeries.Step says what
+	// was used).
+	Step time.Duration
+	// Workflow narrows the counts to one workflow; empty counts all.
+	Workflow string
+}

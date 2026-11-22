@@ -1,0 +1,9 @@
+const (
+	// EnvURL is the admin API's mount point, the default of --url.
+	EnvURL = "WORKFLOW_ADMIN_URL"
+	// EnvToken is a bearer token, the default of --token.
+	EnvToken = "WORKFLOW_ADMIN_TOKEN"
+	// EnvHeader is one extra header, "Name: value", added before any
+	// --header flag.
+	EnvHeader = "WORKFLOW_ADMIN_HEADER"
+)

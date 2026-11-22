@@ -1,0 +1,43 @@
+type Resource struct {
+	// Run is the run for ActionShowRun, ActionRetryRun, ActionCancelRun,
+	// ActionDeleteRun, ActionForceComplete, ActionForceFail,
+	// ActionShowOutput, ActionRescheduleRun, ActionCancelStep,
+	// ActionEditRun, ActionResetRun and ActionForkRun (the original).
+	Run workflow.RunRef
+	// Query is the filter for ActionListRuns, ActionListFailures,
+	// ActionCancelRuns, ActionRetryRuns and ActionDeleteRuns, so an
+	// Authorizer can scope a caller to its own workflows, queues or labels
+	// (a tenant label, for example).
+	Query *workflow.RunQuery
+	// DryRun is true when a bulk action (ActionCancelRuns,
+	// ActionRetryRuns, ActionDeleteRuns) only previews, so an Authorizer
+	// can let more people preview than act.
+	DryRun bool
+	// Metrics is the query for ActionMetrics.
+	Metrics *MetricsQuery
+	// Step is the step for ActionCancelStep, and the step ActionResetRun
+	// and ActionForkRun start from.
+	Step string
+	// At is the new time for ActionRescheduleRun.
+	At time.Time
+	// Edit is the change for ActionEditRun, so an Authorizer can allow
+	// some fields and not others.
+	Edit *workflow.JobEdit
+	// Reset is the options of ActionResetRun, so an Authorizer can allow
+	// resetting a failed run and not redoing one that succeeded.
+	Reset *workflow.ResetOptions
+	// Fork is the options of ActionForkRun (the fork's key and labels).
+	Fork *workflow.ForkOptions
+	// Event is the event for ActionSignalWaiting.
+	Event *workflow.Event
+	// Pause is the target for ActionPause and ActionResume.
+	Pause *workflow.PauseTarget
+	// Schedule is the schedule for ActionPauseSchedule,
+	// ActionResumeSchedule, ActionShowSchedule and ActionTriggerSchedule.
+	Schedule workflow.ScheduleID
+	// Reason is the operator's reason for ActionForceFail, so an
+	// Authorizer can require one or write it to an audit log.
+	Reason string
+	// File is the UI file for ActionUI ("index.html", "app.js", "app.css").
+	File string
+}

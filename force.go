@@ -8,6 +8,8 @@ import (
 // ErrForced is the context cause of a step attempt cut short because an
 // operator forced its run to end (RunForcer), and the error a
 // force-failed run reports (it matches ErrForced).
+//
+//ds:def id=errforced-2cdhp8xs owner=@khanakia stability=stable
 var ErrForced = errors.New("workflow: run ended by an operator")
 
 // RunForcer ends a run from outside, for an operator handling a work
@@ -33,6 +35,8 @@ var ErrForced = errors.New("workflow: run ended by an operator")
 // Both return ErrNotFound for an unknown ref. Neither moves a run to
 // another worker or queue: re-running a failed run elsewhere is
 // RunRetrier (any worker may pick it up).
+//
+//ds:def id=runforcer-8jsm3gc9 owner=@khanakia stability=stable
 type RunForcer interface {
 	ForceComplete(ctx context.Context, ref RunRef) error
 	ForceFail(ctx context.Context, ref RunRef, reason string) error
@@ -53,11 +57,17 @@ func (e *forcedError) Unwrap() error { return ErrForced }
 // ForcedFailure returns the error a force-failed run carries: it matches
 // ErrForced and its message ends with reason. Drivers store its message
 // as RunInfo.Error.
+//
+//ds:def id=forcedfailure-c4nm5c52 owner=@khanakia stability=stable
 func ForcedFailure(reason string) error { return &forcedError{reason: reason} }
 
 // CanForceComplete reports whether ForceComplete accepts a run in status
 // st. Every driver decides with it.
+//
+//ds:def id=canforcecomplete-ttxafdxp owner=@khanakia stability=stable
 func CanForceComplete(st Status) bool { return !st.IsTerminal() || st == StatusFailed }
 
 // CanForceFail reports whether ForceFail accepts a run in status st.
+//
+//ds:def id=canforcefail-4hmwjp3r owner=@khanakia stability=stable
 func CanForceFail(st Status) bool { return !st.IsTerminal() }

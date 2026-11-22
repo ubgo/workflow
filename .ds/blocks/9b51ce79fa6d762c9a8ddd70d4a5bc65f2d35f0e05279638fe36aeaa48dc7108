@@ -1,0 +1,6 @@
+type FakeObjectCall struct {
+	Key    string
+	Method string
+	Args   []byte
+	Job    workflow.Job
+}

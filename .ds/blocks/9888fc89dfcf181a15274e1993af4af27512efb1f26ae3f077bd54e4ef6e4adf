@@ -1,0 +1,25 @@
+type StepDef struct {
+	// Name is Step.Name, unique within the definition.
+	Name string `json:"name"`
+
+	// After names the parent steps (Step.After).
+	After []string `json:"after,omitempty"`
+
+	// Handler names the registered workflow.Handler the step runs
+	// (Step.Run).
+	Handler string `json:"handler,omitempty"`
+
+	// Retry is Step.Retry. Absent means the definition's Retry; {"max": 0}
+	// means never retry, as workflow.RetriesNone does.
+	Retry *RetryDef `json:"retry,omitempty"`
+
+	// Timeout is Step.Timeout, as a duration string.
+	Timeout string `json:"timeout,omitempty"`
+
+	// Sleep makes this a durable sleep step (Step.Sleep), as a positive
+	// duration string. Needs CapDurableSleep.
+	Sleep string `json:"sleep,omitempty"`
+
+	// Wait makes this a wait step (Step.Wait). Needs CapWaitForEvent.
+	Wait *WaitDef `json:"wait,omitempty"`
+}

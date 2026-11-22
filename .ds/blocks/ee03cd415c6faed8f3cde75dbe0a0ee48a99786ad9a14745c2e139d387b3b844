@@ -1,0 +1,4 @@
+func (o outcomeSetter) SetOutcome(ctx context.Context, oc workflow.Outcome, note string) error {
+	w := OutcomeWrite{Ref: o.ref, Outcome: oc, Note: note, At: o.r.clk.Now()}
+	return o.r.guarded(ctx, OpSetOutcome, o.ref, func(wctx context.Context) error { return o.r.store.SetOutcome(wctx, w) })
+}

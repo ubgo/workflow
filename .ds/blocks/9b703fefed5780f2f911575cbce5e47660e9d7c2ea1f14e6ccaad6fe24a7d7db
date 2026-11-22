@@ -1,0 +1,1 @@
+func (c *Client) DebounceStore() *DebounceStore { return &DebounceStore{st: c.st, clk: c.clk} }

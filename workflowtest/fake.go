@@ -23,6 +23,8 @@ import (
 // the memory driver accepts. It includes the declarative fields the Fake
 // only validates (queues, per-job retry, Discard, schedule conditions)
 // and the calls it records (RunRetrier, RunDeleter, Pauser).
+//
+//ds:def id=workflowtest-fakedefaultcaps-cgj8yc2b owner=@khanakia stability=stable
 var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
 	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
@@ -49,6 +51,8 @@ var fakeDefaultCaps = workflow.CapsOf(
 // fails), cannot be stopped mid-step, and has no enqueue-only mode. Nor
 // does it run steps, so it cannot snooze one, name a node, keep a result,
 // list due runs or stamp a tick time.
+//
+//ds:def id=workflowtest-fakeunserved-jwdtfx8n owner=@khanakia stability=stable
 var fakeUnserved = workflow.CapsOf(
 	workflow.CapRunFinished, workflow.CapRunQuery, workflow.CapCancelAll,
 	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents, workflow.CapDrain,
@@ -67,6 +71,8 @@ type FakeOption func(*Fake)
 // dropped: the Fake reports no run ends; so are the run query (and its
 // label prefix filter), bulk cancel, schedule pause, schedule listing,
 // tick and drain capabilities, which the Fake does not serve itself.
+//
+//ds:def id=workflowtest-fakecaps-grfyqkrc owner=@khanakia stability=stable
 func FakeCaps(c workflow.Caps) FakeOption {
 	return func(f *Fake) { f.caps = c.Without(fakeUnserved) }
 }
@@ -76,6 +82,8 @@ func FakeCaps(c workflow.Caps) FakeOption {
 // optional operations the Fake records without a capability (ResetRun,
 // SignalWaiting: workflow.Supports), so the Fake refuses them where c
 // would. It reads only c.Capabilities and c's method set.
+//
+//ds:def id=workflowtest-fakelike-my3v73nf owner=@khanakia stability=stable
 func FakeLike(c workflow.Client) FakeOption {
 	return func(f *Fake) {
 		FakeCaps(c.Capabilities())(f)
@@ -89,11 +97,15 @@ func FakeLike(c workflow.Client) FakeOption {
 // FakeKeyExpr makes the Fake accept expression keys (workflow.KeyExpr), as
 // an engine such as Hatchet does. By default it refuses them at Start, as
 // the in-process memory driver does.
+//
+//ds:def id=workflowtest-fakekeyexpr-zuk9bsd4 owner=@khanakia stability=stable
 func FakeKeyExpr() FakeOption { return func(f *Fake) { f.keyExpr = true } }
 
 // FakeCronParser makes the Fake check cron expressions with p instead of
 // cron.Parse, matching a production driver built with a custom parser
 // (memory.WithCronParser). Nil is ignored.
+//
+//ds:def id=workflowtest-fakecronparser-ya9dw96t owner=@khanakia stability=stable
 func FakeCronParser(p cron.Parser) FakeOption {
 	return func(f *Fake) {
 		if p != nil {
@@ -109,12 +121,16 @@ func FakeCronParser(p cron.Parser) FakeOption {
 // Fake's assertions cover only what it faked. Start starts inner too,
 // Status and Cancel of a ref the Fake did not issue go to inner, and
 // Signal is recorded and also delivered to inner. A nil inner is ignored.
+//
+//ds:def id=workflowtest-fakeexcept-aubjjne6 owner=@khanakia stability=stable
 func FakeExcept(inner workflow.Client, workflows ...string) FakeOption {
 	return fakePass(inner, workflows, true)
 }
 
 // FakeOnly fakes only the named workflows and passes every other one
 // through to inner; see FakeExcept.
+//
+//ds:def id=workflowtest-fakeonly-xp78nstd owner=@khanakia stability=stable
 func FakeOnly(inner workflow.Client, workflows ...string) FakeOption {
 	return fakePass(inner, workflows, false)
 }
@@ -213,6 +229,8 @@ type fakeRun struct {
 }
 
 // FakeSchedule is one recorded Schedule call and whether it was removed.
+//
+//ds:def id=workflowtest-fakeschedule-8axpktae owner=@khanakia stability=api
 type FakeSchedule struct {
 	ID          workflow.ScheduleID
 	Schedule    workflow.Schedule
@@ -227,6 +245,8 @@ var _ workflow.Client = (*Fake)(nil)
 
 // NewFake returns an unstarted Fake claiming the memory driver's
 // capabilities unless FakeCaps or FakeLike says otherwise.
+//
+//ds:def id=workflowtest-newfake-5kxdhuwb owner=@khanakia stability=stable
 func NewFake(opts ...FakeOption) *Fake {
 	f := &Fake{
 		caps:   fakeDefaultCaps,
@@ -266,6 +286,8 @@ func (f *Fake) passes(wf string) bool { return f.pass != nil && f.pass(wf) }
 // Register validates wf, including its cron expressions, and stores it. A
 // passed-through workflow (FakeExcept, FakeOnly) is registered with the
 // real client instead.
+//
+//ds:def id=workflowtest-fake-register-vntnszv5 owner=@khanakia stability=stable
 func (f *Fake) Register(wf workflow.Workflow) error {
 	if f.passes(wf.Name) {
 		if err := f.inner.Register(wf); err != nil {
@@ -296,6 +318,8 @@ func (f *Fake) Register(wf workflow.Workflow) error {
 // Start checks every workflow against the capabilities and, unless
 // FakeKeyExpr, refuses expression keys. It starts nothing of its own; a
 // pass-through client (FakeExcept, FakeOnly) is started with ctx.
+//
+//ds:def id=workflowtest-fake-start-cvjbp2vf owner=@khanakia stability=stable
 func (f *Fake) Start(ctx context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -343,6 +367,8 @@ func refuseKeyExpr(wf workflow.Workflow) error {
 // Enqueue records job and returns a synthetic RunRef: a ScheduledID for a
 // RunAt job, a RunID otherwise. It refuses what a real driver refuses (see
 // Fake).
+//
+//ds:def id=workflowtest-fake-enqueue-at6ywx4h owner=@khanakia stability=stable
 func (f *Fake) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -406,6 +432,8 @@ func copyJob(j workflow.Job) workflow.Job { return workflow.CloneJob(j) }
 
 // Status reports a recorded run's status; a ref the Fake did not issue
 // goes to the pass-through client, or is ErrNotFound without one.
+//
+//ds:def id=workflowtest-fake-status-7afzbsy4 owner=@khanakia stability=stable
 func (f *Fake) Status(ctx context.Context, ref workflow.RunRef) (workflow.Status, error) {
 	f.mu.Lock()
 	r, ok := f.byRef[ref]
@@ -426,6 +454,8 @@ func (f *Fake) Status(ctx context.Context, ref workflow.RunRef) (workflow.Status
 // Cancel records the call and marks a recorded run cancelled. It needs
 // CapCancel; cancelling a finished run is a no-op; a ref the Fake did not
 // issue goes to the pass-through client, or is ErrNotFound without one.
+//
+//ds:def id=workflowtest-fake-cancel-qt74g66m owner=@khanakia stability=stable
 func (f *Fake) Cancel(ctx context.Context, ref workflow.RunRef) error {
 	if !f.caps.Has(workflow.CapCancel) {
 		return &workflow.UnsupportedError{Field: "Cancel", Missing: workflow.CapCancel}
@@ -449,6 +479,8 @@ func (f *Fake) Cancel(ctx context.Context, ref workflow.RunRef) error {
 // idempotency key, so a test can model a run that completed. It returns
 // ErrNotFound for an unknown ref and ErrInvalid for a status that is not
 // terminal; finishing a finished run is a no-op.
+//
+//ds:def id=workflowtest-fake-finish-5tm457hs owner=@khanakia stability=stable
 func (f *Fake) Finish(ref workflow.RunRef, st workflow.Status) error {
 	if !st.IsTerminal() {
 		return fmt.Errorf("%w: Finish needs a terminal status, got %q", workflow.ErrInvalid, st)
@@ -480,6 +512,8 @@ func (f *Fake) finishLocked(r *fakeRun, st workflow.Status) {
 // Signal records ev. Nothing waits on the Fake, so nothing resumes; with a
 // pass-through client, ev is also delivered to it, where passed-through
 // runs may wait.
+//
+//ds:def id=workflowtest-fake-signal-jwnzmf47 owner=@khanakia stability=stable
 func (f *Fake) Signal(ctx context.Context, ev workflow.Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -560,6 +594,8 @@ func (f *Fake) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
 
 // Workflow returns the registered definition of name, faked or passed
 // through, and whether there is one.
+//
+//ds:def id=workflowtest-fake-workflow-sg3v3jrr owner=@khanakia stability=stable
 func (f *Fake) Workflow(name string) (workflow.Workflow, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -572,9 +608,13 @@ func (f *Fake) Workflow(name string) (workflow.Workflow, bool) {
 
 // Batches returns the batches dispatched through the Fake (see
 // FakeBatch), in the order their first job was recorded.
+//
+//ds:def id=workflowtest-fake-batches-beb63n2s owner=@khanakia stability=stable
 func (f *Fake) Batches() []FakeBatch { return batchesOf(f.Jobs()) }
 
 // AssertBatched fails t unless a dispatched batch matches every m.
+//
+//ds:def id=workflowtest-fake-assertbatched-67j3y3rv owner=@khanakia stability=stable
 func (f *Fake) AssertBatched(t testing.TB, m ...BatchMatcher) {
 	t.Helper()
 	assertBatched(t, f.Batches(), m)
@@ -600,6 +640,8 @@ func (f *Fake) AssertNothingBatched(t testing.TB) {
 // the chain assertion for a chain written as one workflow; a
 // passed-through workflow's graph is checked, but its enqueues are not
 // recorded, so it never passes.
+//
+//ds:def id=workflowtest-fake-assertchained-fqr42bgd owner=@khanakia stability=stable
 func (f *Fake) AssertChained(t testing.TB, wf string, steps ...string) {
 	t.Helper()
 	def, ok := f.Workflow(wf)
@@ -618,6 +660,8 @@ func (f *Fake) AssertChained(t testing.TB, wf string, steps ...string) {
 
 // Jobs returns a copy of every recorded job, in enqueue order. A deduped
 // enqueue is not a job: it created no run.
+//
+//ds:def id=workflowtest-fake-jobs-guvdgzvt owner=@khanakia stability=stable
 func (f *Fake) Jobs() []workflow.Job {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -629,6 +673,8 @@ func (f *Fake) Jobs() []workflow.Job {
 }
 
 // Enqueued returns the recorded jobs of workflow wf matching every m.
+//
+//ds:def id=workflowtest-fake-enqueued-c4m22sth owner=@khanakia stability=stable
 func (f *Fake) Enqueued(wf string, m ...JobMatcher) []workflow.Job {
 	var out []workflow.Job
 	for _, j := range f.Jobs() {
@@ -654,6 +700,8 @@ func (f *Fake) Signals() []workflow.Event {
 }
 
 // Cancels returns every ref passed to a successful Cancel, in order.
+//
+//ds:def id=workflowtest-fake-cancels-76gev567 owner=@khanakia stability=stable
 func (f *Fake) Cancels() []workflow.RunRef {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -663,6 +711,8 @@ func (f *Fake) Cancels() []workflow.RunRef {
 // JobMatcher narrows an assertion to jobs with a property. Build it with
 // HasPayload, HasPayloadJSON, HasLabel, HasKey, HasRunAt, HasPriority or
 // Where; its description appears in failure messages.
+//
+//ds:def id=workflowtest-jobmatcher-r7u5c3zs owner=@khanakia stability=api
 type JobMatcher struct {
 	desc  string
 	match func(workflow.Job) bool
@@ -673,11 +723,15 @@ func (m JobMatcher) String() string { return m.desc }
 
 // Where matches jobs for which fn is true; desc names the condition in
 // failure messages.
+//
+//ds:def id=workflowtest-where-tncub2zg owner=@khanakia stability=stable
 func Where(desc string, fn func(workflow.Job) bool) JobMatcher {
 	return JobMatcher{desc: desc, match: fn}
 }
 
 // HasPayload matches a payload byte for byte.
+//
+//ds:def id=workflowtest-haspayload-kg4y94uj owner=@khanakia stability=stable
 func HasPayload(p []byte) JobMatcher {
 	return Where(fmt.Sprintf("payload %q", p), func(j workflow.Job) bool { return bytes.Equal(j.Payload, p) })
 }
@@ -685,6 +739,8 @@ func HasPayload(p []byte) JobMatcher {
 // HasPayloadJSON matches a JSON payload equal to v once both are decoded,
 // so key order and spacing do not matter. A v that does not marshal
 // matches nothing.
+//
+//ds:def id=workflowtest-haspayloadjson-vtj3etqv owner=@khanakia stability=stable
 func HasPayloadJSON(v any) JobMatcher {
 	want, err := json.Marshal(v)
 	return Where("JSON payload "+string(want), func(j workflow.Job) bool {
@@ -700,6 +756,8 @@ func HasPayloadJSON(v any) JobMatcher {
 }
 
 // HasLabel matches a job whose Labels[k] is v.
+//
+//ds:def id=workflowtest-haslabel-maagycr6 owner=@khanakia stability=stable
 func HasLabel(k, v string) JobMatcher {
 	return Where(fmt.Sprintf("label %s=%s", k, v), func(j workflow.Job) bool {
 		got, ok := j.Labels[k]
@@ -708,16 +766,22 @@ func HasLabel(k, v string) JobMatcher {
 }
 
 // HasKey matches a job's IdempotencyKey.
+//
+//ds:def id=workflowtest-haskey-23epubf5 owner=@khanakia stability=stable
 func HasKey(key string) JobMatcher {
 	return Where("idempotency key "+strconv.Quote(key), func(j workflow.Job) bool { return j.IdempotencyKey == key })
 }
 
 // HasRunAt matches a job delayed to exactly t.
+//
+//ds:def id=workflowtest-hasrunat-eesgqgck owner=@khanakia stability=stable
 func HasRunAt(t time.Time) JobMatcher {
 	return Where("RunAt "+t.Format(time.RFC3339Nano), func(j workflow.Job) bool { return j.RunAt.Equal(t) })
 }
 
 // HasPriority matches a job's Priority.
+//
+//ds:def id=workflowtest-haspriority-kjn8xnx5 owner=@khanakia stability=stable
 func HasPriority(p int) JobMatcher {
 	return Where("priority "+strconv.Itoa(p), func(j workflow.Job) bool { return j.Priority == p })
 }
@@ -725,6 +789,8 @@ func HasPriority(p int) JobMatcher {
 // HasChain matches jobs whose Job.Chain runs exactly the named workflows,
 // in order, nested chains flattened as the driver would run them
 // (workflow.NextInChain). HasChain() matches a job with no chain.
+//
+//ds:def id=workflowtest-haschain-fjhj8q6e owner=@khanakia stability=stable
 func HasChain(workflows ...string) JobMatcher {
 	return Where(fmt.Sprintf("chain %v", workflows), func(j workflow.Job) bool {
 		return slices.Equal(chainNames(j.Chain), workflows)
@@ -751,6 +817,8 @@ func matchAll(j workflow.Job, ms []JobMatcher) bool {
 
 // AssertEnqueued fails t unless at least one job of workflow wf matching
 // every m was enqueued.
+//
+//ds:def id=workflowtest-fake-assertenqueued-n5676er6 owner=@khanakia stability=stable
 func (f *Fake) AssertEnqueued(t testing.TB, wf string, m ...JobMatcher) {
 	t.Helper()
 	if len(f.Enqueued(wf, m...)) == 0 {
@@ -760,6 +828,8 @@ func (f *Fake) AssertEnqueued(t testing.TB, wf string, m ...JobMatcher) {
 
 // AssertEnqueuedTimes fails t unless exactly n jobs of workflow wf
 // matching every m were enqueued.
+//
+//ds:def id=workflowtest-fake-assertenqueuedtimes-7prj4tmr owner=@khanakia stability=stable
 func (f *Fake) AssertEnqueuedTimes(t testing.TB, wf string, n int, m ...JobMatcher) {
 	t.Helper()
 	if got := len(f.Enqueued(wf, m...)); got != n {
@@ -769,6 +839,8 @@ func (f *Fake) AssertEnqueuedTimes(t testing.TB, wf string, n int, m ...JobMatch
 
 // AssertNotEnqueued fails t if any job of workflow wf matching every m was
 // enqueued.
+//
+//ds:def id=workflowtest-fake-assertnotenqueued-hjegr7xr owner=@khanakia stability=stable
 func (f *Fake) AssertNotEnqueued(t testing.TB, wf string, m ...JobMatcher) {
 	t.Helper()
 	if got := len(f.Enqueued(wf, m...)); got != 0 {
@@ -777,6 +849,8 @@ func (f *Fake) AssertNotEnqueued(t testing.TB, wf string, m ...JobMatcher) {
 }
 
 // AssertNothingEnqueued fails t if any job was enqueued.
+//
+//ds:def id=workflowtest-fake-assertnothingenqueued-e93w6zmg owner=@khanakia stability=stable
 func (f *Fake) AssertNothingEnqueued(t testing.TB) {
 	t.Helper()
 	if len(f.Jobs()) != 0 {
@@ -786,6 +860,8 @@ func (f *Fake) AssertNothingEnqueued(t testing.TB) {
 
 // AssertScheduled fails t unless a schedule of workflow wf is in place
 // (recorded and not unscheduled).
+//
+//ds:def id=workflowtest-fake-assertscheduled-yr8ajjxt owner=@khanakia stability=stable
 func (f *Fake) AssertScheduled(t testing.TB, wf string) {
 	t.Helper()
 	var all []string
@@ -800,6 +876,8 @@ func (f *Fake) AssertScheduled(t testing.TB, wf string) {
 
 // AssertSignalled fails t unless an event named name with key key was
 // signalled.
+//
+//ds:def id=workflowtest-fake-assertsignalled-xwkf74yb owner=@khanakia stability=stable
 func (f *Fake) AssertSignalled(t testing.TB, name, key string) {
 	t.Helper()
 	var all []string
@@ -813,6 +891,8 @@ func (f *Fake) AssertSignalled(t testing.TB, name, key string) {
 }
 
 // AssertCancelled fails t unless ref was cancelled.
+//
+//ds:def id=workflowtest-fake-assertcancelled-eksm5xdn owner=@khanakia stability=stable
 func (f *Fake) AssertCancelled(t testing.TB, ref workflow.RunRef) {
 	t.Helper()
 	cancels := f.Cancels()

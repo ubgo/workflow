@@ -1,0 +1,7 @@
+func LeaderLease(d time.Duration) LeaderOption {
+	return func(e *LeaderElector) {
+		if d > 0 {
+			e.lease = d
+		}
+	}
+}

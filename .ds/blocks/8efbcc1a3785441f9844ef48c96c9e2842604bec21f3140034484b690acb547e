@@ -1,0 +1,9 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if s.Overlap == workflow.OverlapSkip {
+		return "", workflow.Unsupported("Schedule.Overlap", "hybrid: the scheduler sees only its forwarder runs")
+	}
+	if s.KeepRuns > 0 {
+		return "", workflow.Unsupported("Schedule.KeepRuns", "hybrid: the jobs client keeps the runs; use its retention")
+	}
+	return c.sched.Schedule(ctx, s)
+}

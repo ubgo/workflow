@@ -1,0 +1,7 @@
+func WithTenantScope[P any](fn TenantScope[P]) HandlerOption {
+	return func(c *handlerConfig) {
+		if fn != nil {
+			c.tenant = fn
+		}
+	}
+}

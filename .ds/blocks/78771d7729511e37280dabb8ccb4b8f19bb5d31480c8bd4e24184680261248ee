@@ -1,0 +1,10 @@
+func (m *Manager) defaultSources() []Source {
+	_, notifier := m.client.(workflow.RunNotifier)
+	switch {
+	case notifier && m.client.Capabilities().Has(workflow.CapRunFinished):
+		return []Source{HookSource()}
+	case notifier:
+		return []Source{HookSource(), PollSource(m.pollEvery)}
+	}
+	return []Source{PollSource(m.pollEvery)}
+}

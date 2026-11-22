@@ -1,0 +1,10 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	on, ook := c.old.(workflow.NodeLister)
+	nn, nok := c.new.(workflow.NodeLister)
+	if !ook || !nok {
+		return nil, workflow.Unsupported("Nodes", "both cutover backends must implement workflow.NodeLister")
+	}
+	o, oerr := on.Nodes(ctx)
+	n, nerr := nn.Nodes(ctx)
+	return append(o, n...), joinSides("Nodes", oerr, nerr)
+}

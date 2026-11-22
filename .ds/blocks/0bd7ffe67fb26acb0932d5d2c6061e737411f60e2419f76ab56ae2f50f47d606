@@ -1,0 +1,11 @@
+func safeLink(s string) bool {
+	if strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+		return false
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Host == "" || u.Opaque != "" {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return scheme == "http" || scheme == "https"
+}

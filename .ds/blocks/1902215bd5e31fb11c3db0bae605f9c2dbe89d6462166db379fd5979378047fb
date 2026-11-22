@@ -1,0 +1,10 @@
+func (e *ChainEdits) Prepend(jobs ...Job) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	cp, err := e.check(jobs)
+	if err != nil {
+		return err
+	}
+	e.prepend = append(cp, e.prepend...)
+	return nil
+}

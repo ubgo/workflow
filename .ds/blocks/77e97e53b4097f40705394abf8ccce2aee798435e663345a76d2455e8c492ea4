@@ -1,0 +1,9 @@
+func EffectiveRetriesFor(step Step, wf Workflow, job Job) RetryPolicy {
+	switch {
+	case job.Retry != nil:
+		return *job.Retry
+	case step.Retry != nil:
+		return *step.Retry
+	}
+	return wf.Retry
+}

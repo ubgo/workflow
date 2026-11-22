@@ -1,0 +1,30 @@
+func AttachScheduleHooks(c Client, hooks ...ScheduleHooks) error {
+	var ticks, runs bool
+	for i, h := range hooks {
+		if h.Workflow == "" {
+			return invalidf("schedule hooks %d have no Workflow", i)
+		}
+		ticks = ticks || h.wantsTicks()
+		runs = runs || h.wantsRuns()
+	}
+	tn, hasTicks := c.(TickNotifier)
+	rn, hasRuns := c.(RunNotifier)
+	if ticks && !hasTicks {
+		return &UnsupportedError{Field: "ScheduleHooks", Missing: CapTickEvents, Reason: "the client does not implement workflow.TickNotifier"}
+	}
+	if runs && !hasRuns {
+		return &UnsupportedError{Field: "ScheduleHooks", Missing: CapRunFinished, Reason: "the client does not implement workflow.RunNotifier"}
+	}
+	hs := append([]ScheduleHooks(nil), hooks...)
+	if ticks {
+		if err := tn.OnTick(func(ctx context.Context, t Tick) { dispatchTick(ctx, hs, t) }); err != nil {
+			return err
+		}
+	}
+	if runs {
+		if err := rn.OnRunFinished(func(ctx context.Context, ev RunEvent) { dispatchRun(ctx, hs, ev) }); err != nil {
+			return err
+		}
+	}
+	return nil
+}

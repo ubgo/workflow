@@ -1,0 +1,11 @@
+func (c *Client) recycleNow(hit *workflow.RecycleError) {
+	c.mu.Lock()
+	first := c.stopCause == nil && !c.stopped
+	if first {
+		c.stopCause = hit
+	}
+	c.mu.Unlock()
+	if first {
+		go func() { _ = c.Drain(context.Background()) }() // not in wg: Drain waits for wg
+	}
+}

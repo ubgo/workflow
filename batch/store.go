@@ -18,6 +18,8 @@ func (id ID) String() string { return string(id) }
 
 // State is everything a Store keeps for one batch. The Manager is the only
 // writer; a Store persists it as one record and never interprets it.
+//
+//ds:def id=batch-state-wkxyjant owner=@khanakia stability=stable
 type State struct {
 	ID   ID
 	Name string
@@ -108,6 +110,8 @@ type State struct {
 }
 
 // JobState is one job of a batch.
+//
+//ds:def id=batch-jobstate-pbbfqagq owner=@khanakia stability=stable
 type JobState struct {
 	// Ref is the run, set once Enqueue returns; zero before that or when
 	// the job was never enqueued.
@@ -127,10 +131,14 @@ type JobState struct {
 // Open reports whether the batch still needs the Manager: a job has not
 // finished, or a callback is pending. Store.Unfinished returns exactly the
 // open batches.
+//
+//ds:def id=batch-state-open-v97c8cfq owner=@khanakia stability=stable
 func (s State) Open() bool { return !s.Finished || len(s.Pending) > 0 }
 
 // clone returns a deep copy, so a Store never shares a slice with a
 // caller.
+//
+//ds:def id=batch-state-clone-pc2d5yyh owner=@khanakia stability=stable
 func (s State) clone() State {
 	s.Labels = maps.Clone(s.Labels)
 	s.Jobs = append([]JobState(nil), s.Jobs...)
@@ -145,6 +153,8 @@ func (s State) clone() State {
 // or a version column), because the once-only latches in State rely on it.
 // The guarantee a batch gives across processes is exactly the store's:
 // MemoryStore holds only inside one process.
+//
+//ds:def id=batch-store-vp7qhnme owner=@khanakia stability=stable
 type Store interface {
 	// Create saves a new batch. An existing ID is an error.
 	Create(ctx context.Context, st State) error
@@ -171,6 +181,8 @@ type Store interface {
 // An implementation deletes exactly the batches PruneFilter.Matches
 // accepts (a SQL store may express the same rule in its WHERE clause) and
 // returns how many it deleted.
+//
+//ds:def id=batch-pruner-pwtv99bt owner=@khanakia stability=stable
 type Pruner interface {
 	Prune(ctx context.Context, f PruneFilter) (int, error)
 }
@@ -179,6 +191,8 @@ type Pruner interface {
 // one rule, and a batch matching any rule is deleted: finished, unfinished
 // and cancelled batches each have their own age. A filter with every time zero matches nothing, and
 // Manager.Prune refuses it as a mistake.
+//
+//ds:def id=batch-prunefilter-rcz4uavc owner=@khanakia stability=stable
 type PruneFilter struct {
 	// FinishedBefore deletes closed batches (every job finished and no
 	// callback pending) that finished before it.
@@ -201,6 +215,8 @@ func (f PruneFilter) IsZero() bool {
 
 // Matches reports whether Prune deletes st under f. It is the whole
 // pruning decision, so every Store applies the same rule.
+//
+//ds:def id=batch-prunefilter-matches-q5pfp8mf owner=@khanakia stability=stable
 func (f PruneFilter) Matches(st State) bool {
 	switch {
 	case !f.FinishedBefore.IsZero() && !st.Open() && st.FinishedAt.Before(f.FinishedBefore):
@@ -215,15 +231,21 @@ func (f PruneFilter) Matches(st State) bool {
 
 // MemoryStore is an in-process Store, for tests and the memory driver. The
 // zero value is not usable; call NewMemoryStore.
+//
+//ds:def id=batch-memorystore-hjud4syz owner=@khanakia stability=stable
 type MemoryStore struct {
 	mu      sync.Mutex
 	batches map[ID]State
 }
 
 // NewMemoryStore returns an empty MemoryStore.
+//
+//ds:def id=batch-newmemorystore-xy8h2erx owner=@khanakia stability=stable
 func NewMemoryStore() *MemoryStore { return &MemoryStore{batches: map[ID]State{}} }
 
 // Create implements Store.
+//
+//ds:def id=batch-memorystore-create-uxe6zyqx owner=@khanakia stability=stable
 func (m *MemoryStore) Create(_ context.Context, st State) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

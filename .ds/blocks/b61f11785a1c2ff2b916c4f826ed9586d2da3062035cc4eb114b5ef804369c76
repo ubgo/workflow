@@ -1,0 +1,13 @@
+func (f *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
+	var out []workflow.RunSignal
+	err := f.onRef(workflow.RunRef{RunID: run}, func(c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.RunSignalReader)
+		if !ok {
+			return workflow.Unsupported("PendingSignals", "the backend does not implement workflow.RunSignalReader")
+		}
+		var err error
+		out, err = r.PendingSignals(ctx, inner.RunID, names, limit)
+		return err
+	})
+	return out, err
+}

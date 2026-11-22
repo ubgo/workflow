@@ -1,0 +1,18 @@
+func (c *Client) cancelledBeforeFire(ref workflow.RunRef, sched *rest.ScheduledWorkflows) {
+	c.mu.Lock()
+	n := c.notify
+	c.mu.Unlock()
+	if n == nil {
+		return
+	}
+	labels := metadataStrings(sched.AdditionalMetadata)
+	n.call(workflow.RunEvent{
+		Ref:        workflow.RunRef{ScheduledID: ref.ScheduledID},
+		Workflow:   labels[metaWorkflow],
+		Status:     workflow.StatusCancelled,
+		Err:        workflow.ErrCancelled,
+		Labels:     jobLabels(labels),
+		Tenant:     labels[metaTenant],
+		FinishedAt: c.cfg.Clock.Now(),
+	})
+}

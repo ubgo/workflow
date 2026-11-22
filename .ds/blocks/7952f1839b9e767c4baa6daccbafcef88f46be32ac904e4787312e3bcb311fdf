@@ -1,0 +1,55 @@
+func TestAutoDisable(t *testing.T) {
+	store := middleware.NewMemoryDisable()
+	var disabled []string
+	var mu sync.Mutex
+	key := func(_ workflow.StepInfo, in []byte) string { return strings.SplitN(string(in), "|", 2)[0] }
+	ran := 0
+	h := middleware.AutoDisable(store, key, 3, func(_ context.Context, k string) {
+		mu.Lock()
+		disabled = append(disabled, k)
+		mu.Unlock()
+	})(func(_ context.Context, in []byte) ([]byte, error) {
+		ran++
+		switch strings.SplitN(string(in), "|", 2)[1] {
+		case "ok":
+			return nil, nil
+		case "snooze":
+			return nil, workflow.Snooze(time.Second)
+		}
+		return nil, errors.New("endpoint returned 500")
+	})
+	ctx := guardStepCtx(workflow.StepInfo{Step: "deliver", Attempt: 1})
+	send := func(in string) error { _, err := h(ctx, []byte(in)); return err }
+
+	for _, in := range []string{"a|fail", "a|fail", "a|ok", "a|fail", "a|snooze", "a|fail"} {
+		_ = send(in)
+	}
+	if len(disabled) != 0 {
+		t.Fatalf("disabled after a reset: %v", disabled)
+	}
+	_ = send("a|fail") // third in a row
+	_ = send("b|fail") // another key is counted apart
+	if len(disabled) != 1 || disabled[0] != "a" {
+		t.Fatalf("disabled %v, want [a]", disabled)
+	}
+	before := ran
+	if err := send("a|ok"); !workflow.IsDiscarded(err) || !errors.Is(err, middleware.ErrEndpointDisabled) || ran != before {
+		t.Fatalf("disabled key: %v, ran %d more", err, ran-before)
+	}
+	if err := send("b|ok"); err != nil {
+		t.Fatalf("other key: %v", err)
+	}
+	if err := store.Enable(context.Background(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := send("a|ok"); err != nil || len(disabled) != 1 {
+		t.Fatalf("after Enable: %v, disabled %v", err, disabled)
+	}
+	// An empty key is never counted or switched.
+	for range 5 {
+		_ = send("|fail")
+	}
+	if off, _ := store.Disabled(context.Background(), ""); off {
+		t.Fatal("an empty key was disabled")
+	}
+}

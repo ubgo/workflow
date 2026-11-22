@@ -28,6 +28,8 @@ import (
 // once, the loser's transaction is tried again and finds the winner's row,
 // so the cost of both is counted. The time is the now the caller passes
 // (never the database's clock), so an injected clock drives it.
+//
+//ds:def id=sql-bucketstore-n5uzhgv2 owner=@khanakia stability=stable
 type BucketStore struct {
 	st *store
 }
@@ -37,10 +39,14 @@ var _ workflow.BucketStore = (*BucketStore)(nil)
 // BucketMigrationOwner is the ledger owner of BucketStore's migrations: a
 // list of its own, so NewBucketStore(...).Migrate creates only the buckets
 // table, while Client.Migrate applies it too.
+//
+//ds:def id=sql-bucketmigrationowner-vr3u74kv owner=@khanakia stability=stable
 const BucketMigrationOwner = "ubgo/workflow/sqlstore/bucket"
 
 // bucketMigrations is every BucketStore schema change, in order, under the
 // same rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-bucketmigrations-tva2x5qu owner=@khanakia stability=stable
 func (s *store) bucketMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(BucketMigrationOwner), Name: "001_buckets", Script: s.script(s.render(bucketDefs(typesFor(s.engine))))},
@@ -49,6 +55,8 @@ func (s *store) bucketMigrations() []migrate.Migration {
 
 // bucketDefs is BucketStore's table. Its rendered text is frozen once
 // released, like ddl.
+//
+//ds:def id=sql-bucketdefs-sdj7yu7m owner=@khanakia stability=stable
 func bucketDefs(t sqlTypes) []tableDef {
 	return []tableDef{{stem: tblBuckets, lines: []string{
 		// key_hash is the SHA-256 of the key in hex, as in unique_locks. The
@@ -75,6 +83,8 @@ func bucketDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Take.
+//
+//ds:def id=sql-newbucketstore-3dydanaz owner=@khanakia stability=stable
 func NewBucketStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*BucketStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -85,6 +95,8 @@ func NewBucketStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*BucketStore, e
 
 // BucketStore returns the bucket store in this client's database and
 // prefix. Client.Migrate creates its table.
+//
+//ds:def id=sql-client-bucketstore-wtdv6ta9 owner=@khanakia stability=stable
 func (c *Client) BucketStore() *BucketStore { return &BucketStore{st: c.st} }
 
 // Migrate creates the buckets table (its own migration list, under the same
@@ -170,6 +182,8 @@ func (s *BucketStore) Take(ctx context.Context, key string, spec workflow.Bucket
 
 // Observe implements workflow.BucketStore: the level is set to what the
 // upstream reported, clamped to [0, Capacity].
+//
+//ds:def id=sql-bucketstore-observe-v4zx8etz owner=@khanakia stability=stable
 func (s *BucketStore) Observe(ctx context.Context, key string, spec workflow.BucketSpec, level float64, now time.Time) error {
 	_, err := s.locked(ctx, key, spec, now, func(float64, time.Time, bool) (float64, time.Duration) {
 		return min(max(level, 0), spec.Capacity), 0

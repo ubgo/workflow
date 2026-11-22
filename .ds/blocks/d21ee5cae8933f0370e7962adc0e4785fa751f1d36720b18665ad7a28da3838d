@@ -1,0 +1,1 @@
+func (a *Admin) Supports(op Operation) bool { return a.check(op) == nil }

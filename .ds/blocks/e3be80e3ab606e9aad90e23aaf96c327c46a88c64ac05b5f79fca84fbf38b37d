@@ -1,0 +1,11 @@
+func waitTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration, now time.Time) time.Duration {
+	w := s.Wait
+	d := fallback
+	switch {
+	case w.Timeout > 0:
+		d = wholeSeconds(w.Timeout) + engineTimeoutMargin
+	case !w.Deadline.IsZero():
+		d = wholeSeconds(max(w.Deadline.Sub(now), 0)) + engineTimeoutMargin
+	}
+	return max(d, wholeSeconds(userTimeout(s, wf)))
+}

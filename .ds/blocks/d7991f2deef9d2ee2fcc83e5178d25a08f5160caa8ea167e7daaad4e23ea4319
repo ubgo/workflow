@@ -1,0 +1,8 @@
+func SortRecords(rs []RunRecord) {
+	slices.SortFunc(rs, func(a, b RunRecord) int {
+		if c := b.EnqueuedAt.Compare(a.EnqueuedAt); c != 0 {
+			return c
+		}
+		return strings.Compare(b.Key(), a.Key())
+	})
+}

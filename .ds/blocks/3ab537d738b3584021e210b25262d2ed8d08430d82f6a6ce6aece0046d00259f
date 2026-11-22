@@ -1,0 +1,17 @@
+func Recover(l *slog.Logger) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) (out []byte, err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := string(debug.Stack())
+					if l != nil {
+						l.ErrorContext(ctx, "workflow step panicked",
+							slog.Any("panic", r), slog.String("stack", stack))
+					}
+					out, err = nil, &panicError{msg: fmt.Sprintf("%v: %v", ErrPanic, r), stack: stack}
+				}
+			}()
+			return next(ctx, in)
+		}
+	}
+}

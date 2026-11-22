@@ -1,0 +1,1 @@
+var ErrSignature = errors.New("events: signature does not verify")

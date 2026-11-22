@@ -1,0 +1,1 @@
+	Status(ctx context.Context, ref RunRef) (Status, error)

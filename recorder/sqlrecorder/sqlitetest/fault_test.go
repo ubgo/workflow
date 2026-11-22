@@ -47,6 +47,10 @@ type fault struct {
 	// col and val are the column opCorrupt replaces and its new value.
 	col int
 	val driver.Value
+	// before, when set, runs when the rule fires on an opExec, and the
+	// statement then runs normally unless err is set too: a test cancels
+	// a context at an exact statement this way.
+	before func()
 
 	seen  int // matching calls
 	fired int // calls it failed
@@ -150,7 +154,12 @@ func (c *conn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, e
 
 func (c *conn) ExecContext(ctx context.Context, q string, args []driver.NamedValue) (driver.Result, error) {
 	if f := c.in.fire(opExec, q); f != nil {
-		return nil, f.err
+		if f.before != nil {
+			f.before()
+		}
+		if f.err != nil {
+			return nil, f.err
+		}
 	}
 	return c.Conn.(driver.ExecerContext).ExecContext(ctx, q, args)
 }

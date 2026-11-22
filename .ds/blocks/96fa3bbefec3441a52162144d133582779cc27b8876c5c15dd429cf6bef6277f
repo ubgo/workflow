@@ -1,0 +1,10 @@
+func cutText(s string, max int) (string, bool) {
+	if len(s) <= max {
+		return s, false
+	}
+	n := max
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n], true
+}

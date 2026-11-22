@@ -1,0 +1,4 @@
+var p4Caps = workflow.CapsOf(
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapEnqueueOnly, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapForceRun, p5Caps,
+)

@@ -1,17 +1,19 @@
 # Change a batch after dispatch
 
-A batch is not frozen once `Dispatch` returns. A job of the batch can add more jobs to it, a finished batch with failed jobs can run them again, two extra callbacks report when the batch starts and as each job ends, and old batch state can be pruned. Each works on every driver.
+A batch is not frozen once `Dispatch` returns. A job of the batch can add more jobs to it ([`Manager.Add`](ds:block?id=batch-manager-add-gy9xjhce)), a finished batch with failed jobs can run them again ([`Manager.RetryFailed`](ds:block?id=batch-manager-retryfailed-6h3uccfy)), two extra callbacks report when the batch starts and as each job ends ([`Batch`](ds:block?id=batch-batch-sbryq3mb)), and old batch state can be pruned ([`Manager.Prune`](ds:block?id=batch-manager-prune-6ccvsyas)). Each works on every driver, except `Add` and `RetryFailed` on a batch the Hatchet coordinator started (see Pitfalls).
 
 ## Before you start
 
 - A `batch.Manager` with `Attach` called before `Start`, as on [Batches](batches.md).
-- For `RetryFailed`, a Manager built with `batch.WithRetryableJobs()`, which keeps every job's spec in the batch state.
-- For `Prune`, a `batch.Store` that implements `batch.Pruner`. `batch.MemoryStore` does.
+- For `RetryFailed`, a Manager built with [`batch.WithRetryableJobs()`](ds:block?id=batch-withretryablejobs-2wtz6azn), which keeps every job's spec in the batch state.
+- For `Prune`, a `batch.Store` that implements [`batch.Pruner`](ds:block?id=batch-pruner-pwtv99bt). [`batch.MemoryStore`](ds:block?id=batch-memorystore-hjud4syz) does, and so does the SQL driver's [`BatchStore`](ds:block?id=sql-batchstore-v9emeksp).
 - The runnable program for this page is [examples/batch-lifecycle](../../examples/batch-lifecycle/).
 
 ## Step 1: report the start and every job end
 
-`Batch.Before` names a workflow enqueued once when the batch is created, before its jobs start. `Batch.Progress` names a workflow enqueued once per job end that a run reports, whatever the status. Both receive the batch's `batch.Progress` as their JSON payload, carry `Batch.Labels`, and are retried like `Then`, `Catch` and `Finally` when their enqueue fails.
+[`Batch.Before`](ds:block?id=batch-batch-sbryq3mb) names a workflow enqueued once when the batch is created, before its jobs start ([`dispatch`](ds:block?id=batch-manager-dispatch-6uvrxrj7)). [`Batch.Progress`](ds:block?id=batch-batch-sbryq3mb) names a workflow enqueued once per job end that a run reports, whatever the status ([`record`](ds:block?id=batch-manager-record-b8sf5qgn)). Both receive the batch's `batch.Progress` as their JSON payload, carry `Batch.Labels`, and are retried like `Then`, `Catch` and `Finally` when their enqueue fails ([`PendingCallback`](ds:block?id=batch-pendingcallback-pyn7sbnr)).
+
+Each callback has a kind, a [`batch.CallbackKind`](ds:block?id=batch-callbackkind-5r8x6fah): [`CallbackBefore`](ds:block?id=batch-callbackbefore-d986qtrv) (`before`), [`CallbackProgress`](ds:block?id=batch-callbackprogress-eywrye2f) (`progress`), [`CallbackCatch`](ds:block?id=batch-callbackcatch-74vwxmp8) (`catch`), [`CallbackThen`](ds:block?id=batch-callbackthen-jyx77yuy) (`then`) and [`CallbackFinally`](ds:block?id=batch-callbackfinally-9jyaqs46) (`finally`), the order in which they are enqueued when several are decided at once ([`claimCallbacks`](ds:block?id=batch-manager-claimcallbacks-z2a8hfdx)). The kind is `PendingCallback.Kind` in the batch state, and the `<kind>` of every callback's idempotency key [`batch:<id>:<kind>`](ds:block?id=batch-callbackkey-agsg3nsq); a `Progress` key adds `:<job>`, the index of the job whose end decided it, so one key per job end.
 
 <!-- snippet: examples/batch-lifecycle/main.go#before -->
 ```go
@@ -24,11 +26,11 @@ _, err := m.Dispatch(ctx, batch.Batch{
 })
 ```
 
-A progress callback that fired only on successes would miss failed jobs. Here it fires on every job end; the payload's `Succeeded`, `Failed` and `CancelledJobs` counts tell them apart. A job recorded as cancelled without a run (a dispatch that failed part-way) fires no `Progress`.
+A progress callback that fired only on successes would miss failed jobs. Here it fires on every job end; the payload's `Succeeded`, `Failed` and `CancelledJobs` counts tell them apart. A job recorded as cancelled without a run (a dispatch that failed part-way, [`abortJobs`](ds:block?id=batch-manager-abortjobs-h5p9xpfp)) fires no `Progress`.
 
 ## Step 2: add jobs from inside the batch
 
-`Manager.Add(ctx, id, jobs...)` starts more jobs in a batch that is still running. A job finds its own batch through the `batch.LabelBatch` label on its `workflow.StepInfo`:
+[`Manager.Add(ctx, id, jobs...)`](ds:block?id=batch-manager-add-gy9xjhce) starts more jobs in a batch that is still running. A job finds its own batch through the [`batch.LabelBatch`](ds:block?id=batch-labelbatch-qsurvmc8) label on its `workflow.StepInfo`:
 
 <!-- snippet: examples/batch-lifecycle/main.go#add -->
 ```go
@@ -39,11 +41,11 @@ A progress callback that fired only on successes would miss failed jobs. Here it
 }}}},
 ```
 
-The new jobs take the next indexes, count in `Progress` from then on, and keep `Then`, `Catch` and `Finally` waiting until they end too. `Add` refuses a batch that has finished or was cancelled with `batch.ErrClosed`, and a batch whose own dispatch is still running with `batch.ErrDispatching`. The second is transient: return it from the step and the step's retry policy calls `Add` again.
+The new jobs take the next indexes, count in `Progress` from then on, and keep `Then`, `Catch` and `Finally` waiting until they end too. `Add` refuses a batch that has finished or was cancelled with [`batch.ErrClosed`](ds:block?id=batch-errclosed-2uqeatej), and a batch whose own dispatch is still running with [`batch.ErrDispatching`](ds:block?id=batch-errdispatching-rr7bhna5) ([`claimChange`](ds:block?id=batch-manager-claimchange-6dvwuu8g)). The second is transient: return it from the step and the step's retry policy calls `Add` again.
 
 ## Step 3: retry the failed jobs
 
-`Manager.RetryFailed(ctx, id)` starts the failed jobs of a finished batch again, under the same batch, and returns how many it started. It needs `WithRetryableJobs`:
+[`Manager.RetryFailed(ctx, id)`](ds:block?id=batch-manager-retryfailed-6h3uccfy) starts the failed jobs of a finished batch again, under the same batch, and returns how many it started. It needs [`WithRetryableJobs`](ds:block?id=batch-withretryablejobs-2wtz6azn):
 
 <!-- snippet: examples/batch-lifecycle/main.go#retryable -->
 ```go
@@ -79,15 +81,15 @@ print(2) // then and finally: this time every job succeeded
 
 What it does:
 
-- It restarts every job whose status is failed. When a failure cancelled the batch (no `AllowFailures`), it also restarts the jobs that cancel stopped, since `Then` cannot run without them.
-- It clears the batch's cancellation and its `Catch`, `Then` and `Finally` latches, so `Catch` fires again on a new failure and `Then` or `Finally` once the retried jobs end. Those callbacks carry a new idempotency key, `batch:<id>:<kind>:r<round>`, so an engine does not drop them as duplicates of the first round's.
-- Each retried run carries the label `batch.LabelAttempt`. A late end of the replaced run, which has no such label or an older value, is ignored, so it cannot fail the new attempt.
+- It restarts every job whose status is failed (a discarded job too, when [`DiscardedAs`](ds:block?id=batch-state-counted-ezrpnwzb) counts it as failed). When a failure cancelled the batch (no `AllowFailures`), it also restarts the jobs that cancel stopped, since `Then` cannot run without them ([`retryable`](ds:block?id=batch-retryable-6r4ca9cr)).
+- It clears the batch's cancellation and its `Catch`, `Then` and `Finally` latches, so `Catch` fires again on a new failure and `Then` or `Finally` once the retried jobs end. Those callbacks carry a new idempotency key, [`batch:<id>:<kind>:r<round>`](ds:block?id=batch-callbackkey-agsg3nsq), so an engine does not drop them as duplicates of the first round's.
+- Each retried run carries the label [`batch.LabelAttempt`](ds:block?id=batch-labelattempt-ppud3ep6). A late end of the replaced run, which has no such label or an older value, is ignored ([`record`](ds:block?id=batch-manager-record-b8sf5qgn)), so it cannot fail the new attempt.
 
-It refuses a batch that has not finished and one cancelled by `Manager.Cancel` (`workflow.ErrInvalid`), and a Manager without `WithRetryableJobs` (an `UnsupportedError`). A batch with nothing to retry returns 0.
+It refuses a batch that has not finished and one cancelled by `Manager.Cancel` or by a failed dispatch (`workflow.ErrInvalid`), one whose dispatch is still running (`ErrDispatching`), and a Manager without `WithRetryableJobs` (an `UnsupportedError`). A batch with nothing to retry returns 0 and changes nothing ([`RetryFailed`](ds:block?id=batch-manager-retryfailed-6h3uccfy)).
 
 ## Step 4: prune old batches
 
-`Manager.Prune(ctx, batch.PruneFilter{...})` deletes batch state the filter matches and returns how many batches it deleted. Each non-zero time is one rule, and a batch matching any rule is deleted:
+[`Manager.Prune(ctx, batch.PruneFilter{...})`](ds:block?id=batch-manager-prune-6ccvsyas) deletes batch state the filter matches and returns how many batches it deleted. Each non-zero time is one rule, and a batch matching any rule is deleted ([`PruneFilter`](ds:block?id=batch-prunefilter-rcz4uavc)); a filter with no rule is refused with `workflow.ErrInvalid`, and a store without `Pruner` with an `UnsupportedError`:
 
 | Field | Deletes |
 |---|---|
@@ -107,7 +109,7 @@ if err != nil {
 fmt.Println("pruned", pruned)
 ```
 
-The Manager runs no pruning of its own; call `Prune` from a schedule the app owns. `PruneFilter.Matches(state)` is the whole rule, so a custom `Store` implements `Pruner` by deleting exactly the states it accepts.
+The Manager runs no pruning of its own; call `Prune` from a schedule the app owns. [`PruneFilter.Matches(state)`](ds:block?id=batch-prunefilter-matches-q5pfp8mf) is the whole rule, so a custom `Store` implements `Pruner` by deleting exactly the states it accepts.
 
 ## Try it
 
@@ -144,10 +146,10 @@ The second batch dispatched one `split` job, which added two `resize` jobs, so i
 
 ## Pitfalls
 
-- **`WithRetryableJobs` stores payloads.** Every write of the batch state carries every job's spec, so keep payloads small in a batch that uses it (a [claim check](../reliability/claim-check.md) reference rather than the data).
-- **`Add` and `RetryFailed` on a coordinated batch.** A batch started as one coordinator run on Hatchet (`GroupSpawner`) refuses both with an `UnsupportedError`, because only the coordinator starts its jobs.
-- **A failed enqueue in `Add` cancels the batch.** As for `Dispatch`, the jobs not yet started are recorded as cancelled and the batch is cancelled, so `Then` will not run; `RetryFailed` can bring a batch back only when a job failure cancelled it.
-- **Pruning an open batch stops its tracking.** The ends of its jobs arrive for a batch that no longer exists and are ignored, and its pending callbacks are never enqueued.
+- **`WithRetryableJobs` stores payloads.** Every write of the batch state carries every job's spec ([`WithRetryableJobs`](ds:block?id=batch-withretryablejobs-2wtz6azn)), so keep payloads small in a batch that uses it (a [claim check](../reliability/claim-check.md) reference rather than the data).
+- **`Add` and `RetryFailed` on a coordinated batch.** A batch started as one coordinator run on Hatchet ([`GroupSpawner`](ds:block?id=batch-groupspawner-wdpwa8xv)) refuses both with an `UnsupportedError`, because only the coordinator starts its jobs ([`claimChange`](ds:block?id=batch-manager-claimchange-6dvwuu8g)).
+- **A failed enqueue in `Add` cancels the batch.** As for `Dispatch`, the jobs not yet started are recorded as cancelled and the batch is cancelled ([`abortJobs`](ds:block?id=batch-manager-abortjobs-h5p9xpfp)), so `Then` will not run; [`RetryFailed`](ds:block?id=batch-manager-retryfailed-6h3uccfy) can bring a batch back only when a job failure cancelled it.
+- **Pruning an open batch stops its tracking.** The ends of its jobs arrive for a batch that no longer exists and are ignored ([`record`](ds:block?id=batch-manager-record-b8sf5qgn)), and its pending callbacks are never enqueued.
 
 ## Related
 

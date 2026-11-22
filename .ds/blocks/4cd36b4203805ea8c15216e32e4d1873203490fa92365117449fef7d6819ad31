@@ -1,0 +1,9 @@
+func (f *Fake) Jobs() []workflow.Job {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]workflow.Job, len(f.runs))
+	for i, r := range f.runs {
+		out[i] = copyJob(r.job)
+	}
+	return out
+}

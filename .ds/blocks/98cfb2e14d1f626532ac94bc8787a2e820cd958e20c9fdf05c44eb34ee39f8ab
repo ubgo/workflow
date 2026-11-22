@@ -1,0 +1,11 @@
+type AggregateStore interface {
+	// Append adds item to the end of group and returns how many items the
+	// group holds now (this one included) and when its oldest pending
+	// item was appended. now is the caller's clock reading, stored with
+	// the item; a store never reads a clock of its own.
+	Append(ctx context.Context, group string, item []byte, now time.Time) (count int, first time.Time, err error)
+	// Take removes and returns up to max of group's oldest items, in the
+	// order they were appended; max of zero or less takes them all. A
+	// group with no items returns none and no error.
+	Take(ctx context.Context, group string, max int) ([][]byte, error)
+}

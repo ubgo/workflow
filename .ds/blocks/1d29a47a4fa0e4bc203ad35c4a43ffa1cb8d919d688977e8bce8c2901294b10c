@@ -1,0 +1,3 @@
+type RunEditor interface {
+	EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef, error)
+}

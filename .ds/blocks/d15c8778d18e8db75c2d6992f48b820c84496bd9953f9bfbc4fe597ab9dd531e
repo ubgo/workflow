@@ -1,0 +1,23 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	var out []workflow.NodeInfo
+	var id, mode, queues string
+	var workers, running, started, seen int64
+	err := c.st.each(ctx, c.st.db, "SELECT id, mode, queues, workers, running, started_at, last_seen FROM {nodes} WHERE last_seen >= ?",
+		[]any{c.leaseNanos() - int64(defaultNodesTTL)}, func() error {
+			n := workflow.NodeInfo{ID: id, Mode: workflow.NodeMode(mode), Workers: int(workers), Running: int(running),
+				StartedAt: unixTime(started), LastSeen: unixTime(seen)}
+			if err := json.Unmarshal([]byte(queues), &n.Queues); err != nil {
+				c.log.Error("sqlstore: unreadable node queues", "node", id, "error", err)
+			}
+			if len(n.Queues) == 0 {
+				n.Queues = nil
+			}
+			out = append(out, n)
+			return nil
+		}, &id, &mode, &queues, &workers, &running, &started, &seen)
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: list nodes: %w", err)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}

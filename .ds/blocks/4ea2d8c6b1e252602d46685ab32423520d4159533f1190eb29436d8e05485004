@@ -1,0 +1,39 @@
+func Expire(clk clock.Clock, opts ...ExpireOption) workflow.Middleware {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	var cfg expireConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	end := func(err error) error {
+		if cfg.fail {
+			return workflow.Permanent(err)
+		}
+		return workflow.Discard(err)
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := workflow.StepInfoFrom(ctx)
+			if !ok || (len(cfg.steps) > 0 && !slices.Contains(cfg.steps, info.Step)) {
+				return next(ctx, in)
+			}
+			now := clk.Now()
+			if v, ok := info.Labels[LabelExpiresAt]; ok && info.Attempt <= 1 {
+				at, err := parseExpiry(v)
+				if err != nil {
+					return nil, workflow.Permanent(err)
+				}
+				if now.After(at) {
+					return nil, end(fmt.Errorf("%w: step %q started at %s, after the run's expiry %s", ErrExpired, info.Step, now.UTC().Format(time.RFC3339Nano), v))
+				}
+			}
+			if cfg.maxWait > 0 && !info.ReadyAt.IsZero() {
+				if waited := now.Sub(info.ReadyAt); waited > cfg.maxWait {
+					return nil, end(fmt.Errorf("%w: step %q waited %s for a worker, more than %s", ErrExpired, info.Step, waited, cfg.maxWait))
+				}
+			}
+			return next(ctx, in)
+		}
+	}
+}

@@ -1,0 +1,20 @@
+type MachineResult struct {
+	// Handled reports whether the event took a transition.
+	Handled bool `json:"handled"`
+
+	// Started reports that this run started the instance.
+	Started bool `json:"started,omitempty"`
+
+	// Stale reports a timer whose state was left before it fired.
+	Stale bool `json:"stale,omitempty"`
+
+	// States are the active atomic states after the event, in document
+	// order.
+	States []string `json:"states"`
+
+	// Done reports that the instance reached a top-level final state.
+	Done bool `json:"done,omitempty"`
+
+	// Seq is the instance's microstep sequence number after the event.
+	Seq uint64 `json:"seq"`
+}

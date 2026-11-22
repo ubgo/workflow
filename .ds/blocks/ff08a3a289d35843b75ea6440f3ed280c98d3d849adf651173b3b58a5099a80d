@@ -1,0 +1,41 @@
+func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.usable(); err != nil {
+		return nil, err
+	}
+	if len(c.queues) == 0 {
+		return nil, nil
+	}
+	now := c.nowNanos()
+	type depth struct {
+		n      int64
+		oldest int64
+	}
+	depths := map[string]depth{}
+	var q string
+	var d depth
+	err := c.st.each(ctx, c.st.db, "SELECT "+queueOf+", COUNT(*), MIN(st.due) FROM {steps} st WHERE st.workflow IN ("+inList(len(c.names))+
+		") AND st.status IN (?, ?) AND st.due <= ? GROUP BY 1", c.nameArgs(stepReady, stepSnoozed, now),
+		func() error { depths[q] = d; return nil }, &q, &d.n, &d.oldest)
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: read queue depths: %w", err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]workflow.QueueLoad, 0, len(c.queues))
+	for _, qc := range c.queues {
+		l := workflow.QueueLoad{Queue: qc.Name, Workers: qc.Workers, Running: c.running[qc.Name]}
+		if l.Workers == 0 {
+			l.Workers = c.workers
+		}
+		if dp, ok := depths[qc.Name]; ok {
+			l.Depth = int(dp.n)
+			l.OldestWait = time.Duration(now - dp.oldest)
+		}
+		out = append(out, l)
+	}
+	slices.SortFunc(out, func(a, b workflow.QueueLoad) int { return strings.Compare(a.Queue, b.Queue) })
+	return out, nil
+}

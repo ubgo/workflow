@@ -1,0 +1,8 @@
+type Heartbeater interface {
+	// Heartbeat records liveness. details is an optional progress marker
+	// the driver may keep (nil is fine). An error means the beat was not
+	// recorded (the backend is unreachable, or the attempt has lost its
+	// lease and will be run elsewhere); a handler that gets
+	// ErrCancelled should stop.
+	Heartbeat(ctx context.Context, details []byte) error
+}

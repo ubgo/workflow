@@ -14,12 +14,16 @@ import (
 // run is deleted or pruned by retention. A run that is not
 // StatusSucceeded returns ErrWrongState (ErrNotFound when unknown), so a
 // caller can tell "not done" from "done with an empty result".
+//
+//ds:def id=resultreader-8cjugqbr owner=@khanakia stability=stable
 type ResultReader interface {
 	Result(ctx context.Context, ref RunRef) ([]byte, error)
 }
 
 // Sinks returns the names of wf's final steps: the steps no other step
 // lists in After, in declaration order.
+//
+//ds:def id=sinks-jnxkcnss owner=@khanakia stability=stable
 func Sinks(wf Workflow) []string {
 	parent := make(map[string]bool, len(wf.Steps))
 	for _, s := range wf.Steps {
@@ -41,6 +45,8 @@ func Sinks(wf Workflow) []string {
 // a JSON object keyed by step name, built by the StepInput rule. Every
 // driver with CapResult computes the result with it, so a one-step job's
 // result is simply its handler's return value everywhere.
+//
+//ds:def id=runoutput-hvt3unpt owner=@khanakia stability=stable
 func RunOutput(wf Workflow, outs map[string][]byte) []byte {
 	sinks := Sinks(wf)
 	out := StepInput(nil, sinks, outs)
@@ -52,6 +58,8 @@ func RunOutput(wf Workflow, outs map[string][]byte) []byte {
 
 // RunFailedError is what AwaitResult returns for a run that ended without
 // succeeding. It matches ErrCancelled for a cancelled or discarded run.
+//
+//ds:def id=runfailederror-nzegsjbf owner=@khanakia stability=stable
 type RunFailedError struct {
 	Ref    RunRef
 	Status Status
@@ -69,6 +77,8 @@ func (e *RunFailedError) Error() string {
 }
 
 // Is makes a cancelled or discarded run match ErrCancelled.
+//
+//ds:def id=runfailederror-is-zxcskcjw owner=@khanakia stability=stable
 func (e *RunFailedError) Is(target error) bool {
 	return target == ErrCancelled && (e.Status == StatusCancelled || e.Status == StatusDiscarded)
 }
@@ -82,9 +92,13 @@ func refString(r RunRef) string {
 
 // DefaultAwaitPoll is how often Await asks Status when no AwaitOptions.Poll
 // is given.
+//
+//ds:def id=defaultawaitpoll-ydpf9j3f owner=@khanakia stability=stable
 const DefaultAwaitPoll = 500 * time.Millisecond
 
 // AwaitOptions tunes Await.
+//
+//ds:def id=awaitoptions-ssb9n85j owner=@khanakia stability=stable
 type AwaitOptions struct {
 	// Poll is the wait between Status calls; zero means DefaultAwaitPoll.
 	Poll time.Duration
@@ -117,6 +131,8 @@ func (o AwaitOptions) sleep(ctx context.Context) error {
 // Client.Status, so it works on every driver; it holds no worker, but it
 // does hold the caller, so call it from a request handler or a CLI, never
 // from a step (use AwaitChild there).
+//
+//ds:def id=await-c22rhzy9 owner=@khanakia stability=stable
 func Await(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) (Status, error) {
 	for {
 		st, err := c.Status(ctx, ref)
@@ -135,6 +151,8 @@ func Await(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) (Status
 // AwaitResult waits like Await and returns the run's result: Result when
 // the run succeeded (c must implement ResultReader, else an
 // UnsupportedError), a *RunFailedError when it ended otherwise.
+//
+//ds:def id=awaitresult-h9zwfuxa owner=@khanakia stability=stable
 func AwaitResult(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) ([]byte, error) {
 	st, err := Await(ctx, c, ref, opts)
 	if err != nil {
@@ -145,6 +163,8 @@ func AwaitResult(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) (
 
 // resultOf turns a terminal status into the run's result or a
 // RunFailedError.
+//
+//ds:def id=resultof-47y497xy owner=@khanakia stability=stable
 func resultOf(ctx context.Context, c Client, ref RunRef, st Status) ([]byte, error) {
 	if st != StatusSucceeded {
 		return nil, &RunFailedError{Ref: ref, Status: st, Err: runError(ctx, c, ref)}
@@ -157,6 +177,8 @@ func resultOf(ctx context.Context, c Client, ref RunRef, st Status) ([]byte, err
 }
 
 // runError reads RunInfo.Error when the client can list runs.
+//
+//ds:def id=runerror-we6rtrsq owner=@khanakia stability=stable
 func runError(ctx context.Context, c Client, ref RunRef) string {
 	q, ok := c.(RunQuerier)
 	if !ok {

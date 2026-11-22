@@ -1,0 +1,11 @@
+func (j job) argvQuoted() string {
+	var out []string
+	for _, a := range j.target.argv() {
+		esc := strings.NewReplacer("%", "%%", "$", "$$").Replace(a)
+		if a == "" || strings.ContainsAny(a, " \t\"'\\;") {
+			esc = `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(esc) + `"`
+		}
+		out = append(out, esc)
+	}
+	return strings.Join(out, " ")
+}

@@ -1,0 +1,15 @@
+type MultiChoiceSpec struct {
+	// Name is the name of the join step; later steps put it in After.
+	Name string
+
+	// After lists the steps the choice waits for, as Step.After.
+	After []string
+
+	// Decide returns the names of the branches to run: at least one, each
+	// a branch, none twice. Anything else fails the run (Permanent,
+	// ErrInvalid); an error retries the decide step.
+	Decide func(ctx context.Context, in []byte) ([]string, error)
+
+	// Branches are the paths; at least one.
+	Branches []Branch
+}

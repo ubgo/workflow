@@ -1,0 +1,9 @@
+func (b *Bus) Subscriptions() []string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	names := make([]string, len(b.subs))
+	for i, s := range b.subs {
+		names[i] = s.Name
+	}
+	return names
+}

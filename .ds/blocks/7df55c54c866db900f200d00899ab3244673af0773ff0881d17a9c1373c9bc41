@@ -1,0 +1,8 @@
+func (f *Fake) Advance(d time.Duration) {
+	if d < 0 {
+		return
+	}
+	f.mu.Lock()
+	f.setLocked(f.now.Add(d))
+	f.mu.Unlock()
+}

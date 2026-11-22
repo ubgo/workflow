@@ -1,0 +1,9 @@
+func DrainTimeoutReport(ctx context.Context, d Drainer, grace time.Duration) (report DrainReport, detailed bool, err error) {
+	dctx, cancel := DrainContext(ctx, grace)
+	defer cancel()
+	if rd, ok := d.(ReportingDrainer); ok {
+		report, err = rd.DrainWithReport(dctx)
+		return report, true, err
+	}
+	return DrainReport{}, false, d.Drain(dctx)
+}

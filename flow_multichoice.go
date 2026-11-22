@@ -11,6 +11,8 @@ import (
 // branches run, picked at run time by Decide, and a join waits only for
 // the branches taken (WC-07, structured synchronizing merge; WC-05, simple
 // merge, is the same join with one branch taken).
+//
+//ds:def id=multichoicespec-tjvnntqy owner=@khanakia stability=stable
 type MultiChoiceSpec struct {
 	// Name is the name of the join step; later steps put it in After.
 	Name string
@@ -41,6 +43,8 @@ type multiRoute struct {
 // object keyed by branch name holding the outputs of the branches taken
 // (valid JSON embedded, anything else as a string), in branch order.
 // No capability is needed.
+//
+//ds:def id=multichoice-5d9vshey owner=@khanakia stability=stable
 func MultiChoice(c MultiChoiceSpec) ([]Step, error) {
 	if c.Name == "" || c.Decide == nil || len(c.Branches) == 0 {
 		return nil, invalidf("multi-choice %q needs a Name, a Decide and branches", c.Name)
@@ -69,6 +73,7 @@ func MultiChoice(c MultiChoiceSpec) ([]Step, error) {
 	return append(steps, Step{Name: c.Name, After: branchSteps, Run: multiJoin(c.Name, names, branchSteps)}), nil
 }
 
+//ds:def id=multidecide-mmex4jpe owner=@khanakia stability=stable
 func multiDecide(choice string, decide func(context.Context, []byte) ([]string, error), branches []string) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		picked, err := decide(ctx, in)
@@ -90,6 +95,7 @@ func multiDecide(choice string, decide func(context.Context, []byte) ([]string, 
 	}
 }
 
+//ds:def id=multibranch-x5xhz9st owner=@khanakia stability=stable
 func multiBranch(choice, branch string, run Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		var r multiRoute
@@ -107,6 +113,7 @@ func multiBranch(choice, branch string, run Handler) Handler {
 	}
 }
 
+//ds:def id=multijoin-3etse6jd owner=@khanakia stability=stable
 func multiJoin(choice string, names, branchSteps []string) Handler {
 	return func(_ context.Context, in []byte) ([]byte, error) {
 		outs := map[string]json.RawMessage{}

@@ -18,6 +18,8 @@ import (
 // measured by Redis, and a lock nobody releases disappears on its own.
 // Acquire, Release and SetHolder are each one script, so two processes
 // racing on one key get one lock.
+//
+//ds:def id=redis-uniquestore-h4nzhmyb owner=@khanakia stability=stable
 type UniqueStore struct {
 	rdb  goredis.UniversalClient
 	base string
@@ -26,6 +28,8 @@ type UniqueStore struct {
 // NewUniqueStore returns a UniqueStore over rdb whose keys start with
 // prefix (WithPrefix's rules; a Client of the same prefix shares the
 // hash tag, so on a Redis Cluster the locks live beside its runs).
+//
+//ds:def id=redis-newuniquestore-a9qb67fh owner=@khanakia stability=stable
 func NewUniqueStore(rdb goredis.UniversalClient, prefix string) (*UniqueStore, error) {
 	if rdb == nil {
 		return nil, fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)

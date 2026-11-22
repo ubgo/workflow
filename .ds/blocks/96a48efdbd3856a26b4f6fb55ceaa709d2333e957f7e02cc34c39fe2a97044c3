@@ -1,0 +1,23 @@
+func pinBodyTenant(body io.Reader, tenant string) (out []byte, status int, msg string) {
+	dec := json.NewDecoder(body)
+	var obj map[string]json.RawMessage
+	if err := dec.Decode(&obj); err != nil || obj == nil {
+		return nil, http.StatusBadRequest, "body: want one JSON object"
+	}
+	if dec.More() {
+		return nil, http.StatusBadRequest, "body: more than one JSON value"
+	}
+	for k, raw := range obj {
+		if !strings.EqualFold(k, "tenant") {
+			continue
+		}
+		var t string
+		if json.Unmarshal(raw, &t) != nil || (t != "" && t != tenant) {
+			return nil, http.StatusForbidden, "not allowed: another tenant"
+		}
+		delete(obj, k)
+	}
+	obj["tenant"], _ = json.Marshal(tenant) // a string always marshals
+	out, _ = json.Marshal(obj)              // raw JSON values and string keys always marshal
+	return out, 0, ""
+}

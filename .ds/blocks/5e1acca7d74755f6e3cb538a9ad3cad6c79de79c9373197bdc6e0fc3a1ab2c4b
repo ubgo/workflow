@@ -1,0 +1,1 @@
+	CapRetryJitter = defineCap(10, "RetryJitter")

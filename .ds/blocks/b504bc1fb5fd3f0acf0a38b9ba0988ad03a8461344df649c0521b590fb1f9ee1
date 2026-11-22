@@ -1,0 +1,7 @@
+func (f *Fake) Set(t time.Time) {
+	f.mu.Lock()
+	if t.After(f.now) {
+		f.setLocked(t)
+	}
+	f.mu.Unlock()
+}

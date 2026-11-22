@@ -1,0 +1,1 @@
+func WithTracerProvider(tp trace.TracerProvider) Option { return func(c *config) { c.tp = tp } }

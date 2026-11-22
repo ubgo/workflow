@@ -12,12 +12,16 @@ import (
 // its own (a holiday API, a table it maintains) by implementing the one
 // method. Excluded must be safe for concurrent use and return quickly: it
 // runs on the firing node before every tick.
+//
+//ds:def id=exclusioncalendar-suamhx2m owner=@khanakia stability=stable
 type ExclusionCalendar interface {
 	Excluded(t time.Time) bool
 }
 
 // ExcludeFunc adapts a function to ExclusionCalendar. A nil function
 // excludes nothing.
+//
+//ds:def id=excludefunc-hb33v5a7 owner=@khanakia stability=stable
 type ExcludeFunc func(t time.Time) bool
 
 // Excluded implements ExclusionCalendar.
@@ -37,6 +41,8 @@ func (d dateSet) Excluded(t time.Time) bool { return d.dates[t.In(d.loc).Format(
 // Berlin. loc is required and time.Local is refused, as for
 // Schedule.Location; usually it is the schedule's own zone. A date that
 // does not parse is refused. Errors wrap ErrInvalid.
+//
+//ds:def id=excludedates-es3upkf3 owner=@khanakia stability=stable
 func ExcludeDates(loc *time.Location, dates ...string) (ExclusionCalendar, error) {
 	if err := calendarZone("ExcludeDates", loc); err != nil {
 		return nil, err
@@ -65,6 +71,8 @@ func (w weekdaySet) Excluded(t time.Time) bool { return w.days[t.In(w.loc).Weekd
 // keeps a schedule to working days). loc is required and time.Local is
 // refused; a weekday outside Sunday to Saturday is refused. Errors wrap
 // ErrInvalid.
+//
+//ds:def id=excludeweekdays-5ypgwzrh owner=@khanakia stability=stable
 func ExcludeWeekdays(loc *time.Location, days ...time.Weekday) (ExclusionCalendar, error) {
 	if err := calendarZone("ExcludeWeekdays", loc); err != nil {
 		return nil, err
@@ -101,6 +109,8 @@ func (a anyCalendar) Excluded(t time.Time) bool {
 // AnyExcluded returns a calendar excluding an instant when any of cals
 // does (holidays plus weekends). Nil calendars are ignored; with none it
 // excludes nothing.
+//
+//ds:def id=anyexcluded-fzuhe3ty owner=@khanakia stability=stable
 func AnyExcluded(cals ...ExclusionCalendar) ExclusionCalendar {
 	return anyCalendar(append([]ExclusionCalendar(nil), cals...))
 }
@@ -122,6 +132,8 @@ func AnyExcluded(cals ...ExclusionCalendar) ExclusionCalendar {
 // ticks silently. It applies to every schedule of the workflow, declared
 // Cron and Client.Schedule alike; switch on Tick.Name inside an
 // ExcludeFunc for a calendar per schedule.
+//
+//ds:def id=skipexcluded-rsnzrkzv owner=@khanakia stability=stable
 func SkipExcluded(cal ExclusionCalendar) func(context.Context, Tick) bool {
 	return func(_ context.Context, t Tick) bool {
 		return cal == nil || !cal.Excluded(t.At)

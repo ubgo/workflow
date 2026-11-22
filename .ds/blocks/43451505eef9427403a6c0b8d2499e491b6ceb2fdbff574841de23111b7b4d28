@@ -1,0 +1,52 @@
+func (c *Client) waitFunc(s workflow.Step, wf workflow.Workflow) func(hatchetsdk.DurableContext, any) (any, error) {
+	wait := *s.Wait
+	return func(dctx hatchetsdk.DurableContext, input any) (any, error) {
+		key, err := memoString(dctx, "wf_wait_key", func() (string, error) {
+			payload, err := decodeEnvelope(input, payloadField)
+			if err != nil {
+				return "", err
+			}
+			job := workflow.Job{Workflow: wf.Name, Payload: payload, Labels: jobLabels(dctx.AdditionalMetadata())}
+			return wait.ResolveKeyFor(job, workflow.RunID(dctx.WorkflowRunId())) // OwnRun: the engine's run ID, the RunID refs and StepInfo carry
+		})
+		if err != nil {
+			return nil, finalErr(err)
+		}
+		evKey := eventKey(wait.Event, key)
+		// Look-back needs a scope; Signal pushes with the same one.
+		evOpts := []hatchetsdk.UserEventConditionOpt{hatchetsdk.WithEventScope(evKey)}
+		if since, ok := enqueuedAt(dctx.AdditionalMetadata()); ok {
+			evOpts = append(evOpts, hatchetsdk.WithConsiderEventsSince(since))
+		}
+		cond := hatchetsdk.UserEventCondition(evKey, "", evOpts...)
+		limit, err := waitLimit(dctx, wait)
+		if err != nil {
+			return nil, finalErr(err)
+		}
+		if limit > 0 {
+			cond = hatchetsdk.OrCondition(cond, hatchetsdk.SleepCondition(limit))
+		}
+		res, err := dctx.WaitFor(cond)
+		if err != nil {
+			return nil, err
+		}
+		trigger, ok := eventTrigger(res.Keys())
+		if !ok {
+			// The same error the other drivers report: it matches
+			// workflow.ErrWaitTimeout and ErrTimeout, and its text starts
+			// with ErrWaitTimeout's, so runError can rebuild it from the
+			// engine's stored message.
+			return nil, finalErr(fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrWaitTimeout,
+				fmt.Sprintf("hatchet: wait step %q for event %q key %q", s.Name, wait.Event, key)), context.DeadlineExceeded))
+		}
+		var doc map[string]any
+		if err := res.Unmarshal(trigger, &doc); err != nil {
+			return nil, finalErr(err)
+		}
+		payload, err := decodeEnvelope(doc, eventPayloadField)
+		if err != nil {
+			return nil, finalErr(err)
+		}
+		return encodeOutput(payload), nil
+	}
+}

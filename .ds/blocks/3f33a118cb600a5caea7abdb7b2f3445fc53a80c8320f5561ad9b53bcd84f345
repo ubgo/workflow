@@ -1,0 +1,3 @@
+func New(scheduler, jobs workflow.Client) *Client {
+	return &Client{Forward: workflow.Forward{Inner: jobs}, sched: scheduler, jobs: jobs}
+}

@@ -1,0 +1,15 @@
+type StuckConfig struct {
+	// After is how long an attempt of a step may run before it counts as
+	// stuck; zero or less means never. Nil means Default for every step.
+	After func(workflow.StepInfo) time.Duration
+
+	// Default is the threshold when After is nil.
+	Default time.Duration
+
+	// OnStuck is told once per attempt, on its own goroutine, while the
+	// attempt keeps running. Required.
+	OnStuck func(ctx context.Context, ev StuckEvent)
+
+	// Clock times the attempts; nil means clock.Real.
+	Clock clock.Clock
+}

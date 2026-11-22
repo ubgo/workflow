@@ -1,0 +1,39 @@
+func (c *Client) claimOnce() (*held, error) {
+	token := c.newID()
+	args := []any{c.base, c.clk.Now().UnixMilli(), c.leaseClk.Now().UnixMilli(),
+		c.leaseClk.Now().Add(c.lease).UnixMilli(), token, c.clk.Now().UnixNano()}
+	qa := c.queueArgs()
+	if qa[0] == "some" && qa[1] == 0 {
+		return nil, nil // every served queue is at its cap
+	}
+	args = append(args, qa...)
+	for _, n := range c.names {
+		lo, hi := c.versionRange(n)
+		args = append(args, n, lo, hi)
+	}
+	res, err := claimScript.Run(c.ctx, c.rdb, c.keys(), args...).Slice()
+	if errors.Is(err, goredis.Nil) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, classify(err)
+	}
+	id := str(res[0])
+	flat, _ := res[1].([]any)
+	m := make(map[string]string, len(flat)/2)
+	for i := 0; i+1 < len(flat); i += 2 {
+		m[str(flat[i])] = str(flat[i+1])
+	}
+	r, err := decodeRun(id, m)
+	if err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	reg := c.wfs[r.wf]
+	ctx, cancel := context.WithCancelCause(c.ctx)
+	h := &held{stored: r, reg: reg, token: token, ctx: ctx, cancel: cancel, live: map[string]context.CancelCauseFunc{}}
+	c.running[id] = h
+	c.heldQ[r.queue]++
+	c.mu.Unlock()
+	return h, nil
+}

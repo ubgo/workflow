@@ -1,0 +1,9 @@
+func (a Action) ReadOnly() bool {
+	switch a {
+	case ActionCapabilities, ActionListRuns, ActionShowRun, ActionListFailures, ActionListDiscarded,
+		ActionListPauses, ActionListSchedules, ActionQueueStats, ActionShowSchedule, ActionShowOutput, ActionUI, ActionMetrics,
+		ActionListNodes, ActionHealth:
+		return true
+	}
+	return false
+}

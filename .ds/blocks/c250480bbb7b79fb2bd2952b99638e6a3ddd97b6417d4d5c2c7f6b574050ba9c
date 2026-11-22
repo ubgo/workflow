@@ -1,0 +1,13 @@
+func callbackLabels(labels map[string]string) map[string]string {
+	var out map[string]string
+	for k, v := range labels {
+		if k == LabelBatch || k == LabelIndex {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string, len(labels))
+		}
+		out[k] = v
+	}
+	return out
+}

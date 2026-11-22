@@ -1,0 +1,20 @@
+func RetryFailedPartitions(ctx context.Context, client Client, set PartitionSet) ([]string, []RunRef, error) {
+	if err := checkPartitionSet(client, set); err != nil {
+		return nil, nil, err
+	}
+	runs, err := PartitionStatus(ctx, client, set.Name)
+	if err != nil {
+		return nil, nil, err
+	}
+	var keys []string
+	for _, p := range runs {
+		if p.Run.Status == StatusFailed {
+			keys = append(keys, p.Key)
+		}
+	}
+	if len(keys) == 0 {
+		return nil, nil, nil
+	}
+	refs, err := EnqueuePartitions(ctx, client, set, keys)
+	return keys, refs, err
+}

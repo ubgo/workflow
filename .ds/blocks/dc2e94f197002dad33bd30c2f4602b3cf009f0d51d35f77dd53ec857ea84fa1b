@@ -1,0 +1,7 @@
+func (c *Client) Migrate(ctx context.Context) error {
+	if err := c.st.migrate(ctx, c.st.allMigrations()); err != nil {
+		return err
+	}
+	_, err := c.IndexLabels(ctx)
+	return err
+}

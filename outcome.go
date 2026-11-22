@@ -6,6 +6,8 @@ import "context"
 // caller asks for it with WithEnqueueOutcome; drivers and enqueue
 // middleware fill it with MarkDuplicate and MarkInserted, so it passes
 // through any stack of wrappers without changing Enqueue's signature.
+//
+//ds:def id=enqueueoutcome-m8eut4rc owner=@khanakia stability=stable
 type EnqueueOutcome struct {
 	// Reported is true when something below the caller reported the
 	// outcome. False means the client cannot tell (a driver without the
@@ -29,6 +31,8 @@ type outcomeKey struct{}
 //
 // Use a fresh one per Enqueue: an Enqueue of a chain or a batch made with
 // the same ctx reports its first job only.
+//
+//ds:def id=withenqueueoutcome-er5nfn38 owner=@khanakia stability=stable
 func WithEnqueueOutcome(ctx context.Context) (context.Context, *EnqueueOutcome) {
 	out := &EnqueueOutcome{}
 	return context.WithValue(ctx, outcomeKey{}, out), out
@@ -38,6 +42,8 @@ func WithEnqueueOutcome(ctx context.Context) (context.Context, *EnqueueOutcome) 
 // existing run. Drivers call it when an idempotency key returns the
 // holder's run; middleware.Unique calls it when it returns the holder
 // instead of ErrDuplicate. It does nothing when the caller did not ask.
+//
+//ds:def id=markduplicate-zvp7c76h owner=@khanakia stability=stable
 func MarkDuplicate(ctx context.Context) {
 	if out, ok := ctx.Value(outcomeKey{}).(*EnqueueOutcome); ok && !out.Reported {
 		out.Reported, out.Duplicate = true, true
@@ -47,6 +53,8 @@ func MarkDuplicate(ctx context.Context) {
 // MarkInserted records that the Enqueue handling ctx started a new run.
 // Drivers call it once the run is stored. The first mark wins, so a
 // middleware that marked a duplicate is not overwritten.
+//
+//ds:def id=markinserted-j4ft23cj owner=@khanakia stability=stable
 func MarkInserted(ctx context.Context) {
 	if out, ok := ctx.Value(outcomeKey{}).(*EnqueueOutcome); ok && !out.Reported {
 		out.Reported = true

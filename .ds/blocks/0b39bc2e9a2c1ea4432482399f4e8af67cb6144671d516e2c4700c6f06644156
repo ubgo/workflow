@@ -1,0 +1,48 @@
+type MachineSpec[D any] struct {
+	// Name is the machine's name and the name of the workflow
+	// DefineMachine returns.
+	Name string
+
+	// Initial is the top-level state an instance starts in.
+	Initial string
+
+	// States lists every state; their order is the document order that
+	// breaks ties (which region's transition is tried first, the order
+	// of entry and exit actions among siblings).
+	States []MachineState[D]
+
+	// Transitions lists every transition; for one source, earlier
+	// transitions are tried first.
+	Transitions []MachineTransition[D]
+
+	// Store keeps each instance's record. Use the driver's durable
+	// JournalStore (sqlstore, Redis) so instances survive restarts and
+	// every worker sees them; MemoryJournal keeps them in this process.
+	// Records are never forgotten by the Journal plugin (their run id is
+	// not a run's).
+	Store JournalStore
+
+	// Client sends the machine's timers (delayed runs of itself). It is
+	// required when a state has timers, and must have CapDelayedStart
+	// and CapIdempotencyKey; pass the client the machine is registered
+	// on.
+	Client Client
+
+	// Clock times timers and the log; nil means clock.Real.
+	Clock clock.Clock
+
+	// Ordered handles a key's events in the order they were sent
+	// (Concurrency.FIFO, CapKeyFIFO); without it events of one key are
+	// still handled one at a time, in the order the driver claims them.
+	Ordered bool
+
+	// Retry is the event runs' retry policy, as Workflow.Retry.
+	Retry RetryPolicy
+
+	// KeepLog is how many handled events the instance's log keeps:
+	// zero means DefaultMachineLog, negative keeps none.
+	KeepLog int
+
+	// Unhandled says what an event no active state handles does.
+	Unhandled UnhandledPolicy
+}

@@ -21,6 +21,8 @@ import (
 // NewHandler registers, read from its source: a route added without a
 // tenant rule would be refused to every scoped caller (the default deny),
 // and one removed would leave a stale rule.
+//
+//ds:def id=admin-testtenantroutes-covereveryroute-fg2ywua7 owner=@khanakia stability=stable
 func TestTenantRoutes_CoverEveryRoute(t *testing.T) {
 	src, err := os.ReadFile("http.go")
 	if err != nil {
@@ -175,6 +177,7 @@ func ids(refs ...workflow.RunRef) []string {
 	return out
 }
 
+//ds:def id=admin-testtenantscope-listspinned-umru9eeq owner=@khanakia stability=stable
 func TestTenantScope_ListsPinned(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
@@ -215,6 +218,7 @@ func TestTenantScope_ListsPinned(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testtenantscope-bulkpinned-vurwbhtu owner=@khanakia stability=stable
 func TestTenantScope_BulkPinned(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
@@ -246,6 +250,7 @@ func TestTenantScope_BulkPinned(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testtenantscope-onerun-74avd33p owner=@khanakia stability=stable
 func TestTenantScope_OneRun(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
@@ -286,6 +291,7 @@ func TestTenantScope_OneRun(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testtenantscope-schedules-rqpxmf4k owner=@khanakia stability=stable
 func TestTenantScope_Schedules(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
@@ -321,6 +327,7 @@ func TestTenantScope_Schedules(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testtenantscope-systemroutesrefused-xs5gfv48 owner=@khanakia stability=stable
 func TestTenantScope_SystemRoutesRefused(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c, WithMetrics(NewMemoryMetrics(MemoryMetricsConfig{}))), scopedAuth(), WithTenantScope(byName))
@@ -377,6 +384,7 @@ func tenantRouteOf(r route) tenantRoute {
 	return tr
 }
 
+//ds:def id=admin-testtenantscope-failsclosed-2558p8wz owner=@khanakia stability=stable
 func TestTenantScope_FailsClosed(t *testing.T) {
 	ts := newTenants(t)
 	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
@@ -409,6 +417,7 @@ func (n noTenant) Capabilities() workflow.Caps {
 	return n.Client.Capabilities().Without(workflow.CapTenant)
 }
 
+//ds:def id=admin-testtenantscope-refusedwithoutcaptenant-p5864kjk owner=@khanakia stability=stable
 func TestTenantScope_RefusedWithoutCapTenant(t *testing.T) {
 	c := noTenant{memory.New()}
 	h := NewHandler(New(c), scopedAuth(), WithTenantScope(byName))
@@ -428,6 +437,7 @@ func TestTenantScope_RefusedWithoutCapTenant(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testtenantscope-principaltypemismatch-m2uw22tb owner=@khanakia stability=stable
 func TestTenantScope_PrincipalTypeMismatch(t *testing.T) {
 	ts := newTenants(t)
 	other := WithTenantScope(func(*http.Request, string) (string, error) { return "a", nil })

@@ -1,0 +1,15 @@
+func ApprovalStep(a ApprovalSpec) (Step, error) {
+	if a.Name == "" {
+		return Step{}, invalidf("approval step has no Name")
+	}
+	set := 0
+	for _, b := range []bool{a.Key != "", !a.KeyFrom.IsZero(), a.OwnRun} {
+		if b {
+			set++
+		}
+	}
+	if set != 1 {
+		return Step{}, invalidf("approval step %q needs exactly one of Key, KeyFrom and OwnRun", a.Name)
+	}
+	return Step{Name: a.Name, After: a.After, Wait: &WaitSpec{Event: ApprovalEvent, Key: a.Key, KeyFrom: a.KeyFrom, OwnRun: a.OwnRun, Timeout: a.Timeout}}, nil
+}

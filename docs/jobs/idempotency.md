@@ -1,10 +1,10 @@
 # Idempotency keys
 
-The same job often arrives twice: a client retries an HTTP request that timed out, a broker redelivers a message, a user double-clicks "pay". An idempotency key makes the second enqueue a no-op: while a run holding the key has not finished, `Enqueue` with the same key starts nothing and returns that run's `RunRef`.
+The same job often arrives twice: a client retries an HTTP request that timed out, a broker redelivers a message, a user double-clicks "pay". An idempotency key makes the second enqueue a no-op: while a run holding the key has not finished, `Enqueue` with the same key starts nothing and returns that run's `RunRef` (on memory, [`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)).
 
 ## Before you start
 
-- A driver with `workflow.CapIdempotencyKey`. The memory, SQL, Redis and Hatchet drivers all have it.
+- A driver with `workflow.CapIdempotencyKey`. The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers all have it.
 - The example is [`examples/idempotency`](../../examples/idempotency). Run it with `go run ./idempotency` from `examples/`.
 
 ## Idempotency keys
@@ -25,9 +25,9 @@ if err != nil {
 fmt.Println("second enqueue returned the first run:", second == first)
 ```
 
-The second `Enqueue` returns the first run's `RunRef` and a nil error: the caller cannot tell, and does not need to, whether it started the run or found it. Keys are scoped to the workflow, so `invoice:order-42` on two workflows is two keys.
+The second `Enqueue` returns the first run's `RunRef` and a nil error: the caller cannot tell, and does not need to, whether it started the run or found it. Keys are scoped to the workflow, so `invoice:order-42` on two workflows is two keys (the [memory](ds:block?id=memory-client-enqueuelocked-z3x2cytk) driver keys its index by workflow and key, the [SQL](ds:block?id=sql-tabledefs-cgz8s9k6) driver has a unique index on both).
 
-The key is held until the run is terminal (succeeded, failed or cancelled). After that the same key starts a new run, which is what you want for "rebuild the report" but not for "charge the card":
+The key is held until the run is terminal (succeeded, failed or cancelled; the SQL driver's `idem_active` column in [`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6) is cleared then). After that the same key starts a new run, which is what you want for "rebuild the report" but not for "charge the card":
 
 <!-- snippet: examples/idempotency/main.go#released -->
 ```go
@@ -44,9 +44,9 @@ Each workflow says how keys are treated, with `Workflow.Idempotency`:
 
 | Policy | Effect |
 |---|---|
-| `IdempotencyOptional` (the default, also the empty value) | A key is honoured when the job has one |
-| `IdempotencyRequired` | An enqueue without a key fails with an error matching `workflow.ErrInvalid` |
-| `IdempotencyOff` | Keys are ignored: every enqueue is a run |
+| [`IdempotencyOptional`](ds:block?id=idempotencyoptional-4p96k58e) (the default, also the empty value) | A key is honoured when the job has one |
+| [`IdempotencyRequired`](ds:block?id=idempotencyrequired-g889m7p8) | An enqueue without a key fails with an error matching `workflow.ErrInvalid` (on memory, [`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)) |
+| [`IdempotencyOff`](ds:block?id=idempotencyoff-n73f93jz) | Keys are ignored: every enqueue is a run |
 
 <!-- snippet: examples/idempotency/main.go#policies -->
 ```go
@@ -94,7 +94,7 @@ if err != nil {
 fmt.Println("ping with the same key twice, two runs:", a != b)
 ```
 
-A key is never dropped silently. A driver without `CapIdempotencyKey` refuses a job that carries one, even under `IdempotencyOff`, because the key is the caller's request; and `IdempotencyRequired` makes `Start` refuse such a driver. The example uses the test `Fake`, told to claim every capability but this one, to stand for such a driver:
+A key is never dropped silently. A driver without `CapIdempotencyKey` refuses a job that carries one, even under `IdempotencyOff`, because the key is the caller's request ([`RequiresJob`](ds:block?id=requiresjob-mrfs7vqd)); and `IdempotencyRequired` makes `Start` refuse such a driver ([`Requires`](ds:block?id=requires-6tcjbcfj)). The example uses the test `Fake`, told to claim every capability but this one, to stand for such a driver:
 
 <!-- snippet: examples/idempotency/main.go#refusal -->
 ```go
@@ -113,7 +113,7 @@ fmt.Println("no CapIdempotencyKey:", err)
 
 ## Once per period
 
-Some work must happen once per customer per period: charge customer 42 once a month, send one weekly digest per user. `workflow.OncePerPeriod(job, scope, period, t, loc)` returns the job with the idempotency key `period/<scope>/<period key>`, so every enqueue of the same scope in the same period, from any node and any number of schedule fires, carries the same key. The example is [`examples/upstream-limits`](../../examples/upstream-limits):
+Some work must happen once per customer per period: charge customer 42 once a month, send one weekly digest per user. [`workflow.OncePerPeriod`](ds:block?id=onceperperiod-6wfss2ur)`(job, scope, period, t, loc)` returns the job with the idempotency key `period/<scope>/<period key>`, so every enqueue of the same scope in the same period, from any node and any number of schedule fires, carries the same key. The example is [`examples/upstream-limits`](../../examples/upstream-limits):
 
 <!-- snippet: examples/upstream-limits/main.go#period -->
 ```go
@@ -131,13 +131,13 @@ if err != nil {
 }
 ```
 
-The period key comes from `workflow.PeriodKey(t, period, loc)`: `"2026-11-01"` for `workflow.PeriodDay`, `"2026-W44"` for `PeriodWeek` (the ISO 8601 week, Monday first, so the last days of December can belong to week 1 of the next year), `"2026-11"` for `PeriodMonth`, `"2026-Q4"` for `PeriodQuarter` and `"2026"` for `PeriodYear`. It is read on `loc`'s wall clock, which is required: `nil` and `time.Local` are refused with `ErrInvalid`, because a period boundary depends on the zone and the host's zone differs from machine to machine. In the example, 23:30 UTC on 31 October is already November in Berlin. `OncePerPeriod` refuses an empty scope, and a job that already has an `IdempotencyKey` rather than overwriting it, both with `ErrInvalid`; it needs `CapIdempotencyKey` like any key.
+The period key comes from [`workflow.PeriodKey`](ds:block?id=periodkey-jn3g3p9u)`(t, period, loc)`: `"2026-11-01"` for `workflow.PeriodDay`, `"2026-W44"` for `PeriodWeek` (the ISO 8601 week, Monday first, so the last days of December can belong to week 1 of the next year), `"2026-11"` for `PeriodMonth`, `"2026-Q4"` for `PeriodQuarter` and `"2026"` for `PeriodYear`. It is read on `loc`'s wall clock, which is required: `nil` and `time.Local` are refused with `ErrInvalid`, because a period boundary depends on the zone and the host's zone differs from machine to machine. In the example, 23:30 UTC on 31 October is already November in Berlin. [`OncePerPeriod`](ds:block?id=onceperperiod-6wfss2ur) refuses an empty scope, and a job that already has an `IdempotencyKey` rather than overwriting it, both with `ErrInvalid`; it needs `CapIdempotencyKey` like any key.
 
-The key dedups only while the run holding it is unfinished, as every idempotency key does. To keep a later enqueue in the same period from charging again after the first run succeeded, also pass the period key to the payment provider's own idempotency key (`PeriodKey` alone is the stable value for that), and wrap the charge in [`workflow.Memo`](../workflows/memoisation.md#memoise-a-call-with-memo) so a retried step does not charge twice.
+The key dedups only while the run holding it is unfinished, as every idempotency key does. To keep a later enqueue in the same period from charging again after the first run succeeded, also pass the period key to the payment provider's own idempotency key ([`PeriodKey`](ds:block?id=periodkey-jn3g3p9u) alone is the stable value for that), and wrap the charge in [`workflow.Memo`](../workflows/memoisation.md#memoise-a-call-with-memo) so a retried step does not charge twice.
 
 ## Drop redelivered messages with an inbox
 
-An idempotency key drops a duplicate enqueue while the run holding it is unfinished. A message source that delivers at least once (a broker redelivering after a lost ack, a webhook sender retrying, an outbox relay resending after a crash) can deliver the same message long after that, and code that consumes messages without enqueueing a run has no key at all. The inbox records the IDs each consumer has processed, for as long as you choose, so the work runs once per message ID. `workflow.InboxConsumer` runs a function once per ID:
+An idempotency key drops a duplicate enqueue while the run holding it is unfinished. A message source that delivers at least once (a broker redelivering after a lost ack, a webhook sender retrying, an outbox relay resending after a crash) can deliver the same message long after that, and code that consumes messages without enqueueing a run has no key at all. The inbox records the IDs each consumer has processed, for as long as you choose, so the work runs once per message ID. `workflow.InboxConsumer` runs a function once per ID ([`InboxConsumer.Once`](ds:block?id=inboxconsumer-once-mta79w6e)):
 
 <!-- snippet: examples/consumer-inbox/main.go#consumer -->
 ```go
@@ -155,11 +155,11 @@ for range 3 { // an at-least-once source delivers msg-1 three times
 }
 ```
 
-`Once` claims the ID for a lease (`Lease`, default `DefaultInboxLease`, five minutes), runs the function, and marks the ID processed for `Keep` (default `DefaultInboxKeep`, seven days). A redelivery of a processed ID returns false with no error: drop it. When the function fails, the claim is released, so the next delivery runs it again. An ID another worker is processing returns `ErrInboxBusy`, which is not permanent: nack it and it comes back. Each consumer name keeps its own record, so a mailer and an indexer reading one message each process it once. Times come from `InboxConsumer.Clock` (the real clock when nil), so a fake clock drives the keep window in tests.
+[`Once`](ds:block?id=inboxconsumer-once-mta79w6e) claims the ID for a lease (`Lease`, default [`DefaultInboxLease`](ds:block?id=defaultinboxlease-s3zfehbn), five minutes), runs the function, and marks the ID processed for `Keep` (default [`DefaultInboxKeep`](ds:block?id=defaultinboxkeep-kzbwa4qr), seven days). A redelivery of a processed ID returns false with no error: drop it. When the function fails, the claim is released, so the next delivery runs it again. An ID another worker is processing returns [`ErrInboxBusy`](ds:block?id=errinboxbusy-qtu9arf9), which is not permanent: nack it and it comes back. Each consumer name keeps its own record, so a mailer and an indexer reading one message each process it once. Times come from `InboxConsumer.Clock` (the real clock when nil), so a fake clock drives the keep window in tests.
 
-`workflow.MemoryInbox` keeps the record in one process. For a fleet, use `sqlstore.Inbox` (`NewInbox(db, dialect)` or `Client.Inbox()`, a row per consumer and message in `<prefix>inbox`, its own migration list, expired rows pruned by the dispatcher's housekeeping or `PruneExpired`) or `redis.Inbox` (`NewInbox(rdb, prefix)` or `Client.Inbox()`, a hash per message, each step one script). Of two workers claiming one message on either, exactly one wins.
+[`workflow.MemoryInbox`](ds:block?id=memoryinbox-c3zuf7tj) keeps the record in one process. For a fleet, use `sqlstore.Inbox` ([`NewInbox`](ds:block?id=sql-newinbox-rz7tpwct)`(db, dialect)` or `Client.Inbox()`, a row per consumer and message in `<prefix>inbox`, its own migration list, expired rows pruned by the dispatcher's housekeeping or [`PruneExpired`](ds:block?id=sql-inbox-pruneexpired-s434c38w)) or `redis.Inbox` ([`NewInbox`](ds:block?id=redis-newinbox-dk4wc654)`(rdb, prefix)` or `Client.Inbox()`, a hash per message, each step one script). Of two workers claiming one message on either, exactly one wins (the [`Inbox`](ds:block?id=inbox-kq8jz7jg) contract).
 
-`Once` is at least once: a worker that dies after the work and before the record is saved leaves its claim to expire, and the redelivery runs the work again. When the work writes to the database the inbox lives in, make it exactly once with `sqlstore.Inbox.MarkTx`, which records the message inside your own transaction, so the record and your writes commit or roll back together:
+`Once` is at least once: a worker that dies after the work and before the record is saved leaves its claim to expire, and the redelivery runs the work again. When the work writes to the database the inbox lives in, make it exactly once with [`sqlstore.Inbox.MarkTx`](ds:block?id=sql-inbox-marktx-s8saadjk), which records the message inside your own transaction, so the record and your writes commit or roll back together:
 
 <!-- snippet: examples/consumer-inbox/main.go#marktx -->
 ```go
@@ -181,7 +181,7 @@ handle := func(ctx context.Context, msgID string, total int) error {
 }
 ```
 
-`MarkTx` returns false for a message already recorded, and runs its insert under a savepoint, so a duplicate never aborts your transaction. Of two transactions marking one message, the second waits for the first and then finds the record. An inbound webhook takes an inbox too (see [webhooks](../events/webhooks.md#drop-redeliveries-with-an-inbox)). A store of your own implements `workflow.Inbox` (`Claim`, `Complete`, `Release`, each given the caller's `now`); `workflowtest.InboxContract(t, a, b)` checks it against the contract the shipped stores pass.
+[`MarkTx`](ds:block?id=sql-inbox-marktx-s8saadjk) returns false for a message already recorded, and runs its insert under a savepoint, so a duplicate never aborts your transaction. Of two transactions marking one message, the second waits for the first and then finds the record (on Postgres and MySQL; on SQLite it cannot begin writing until the first ends). An inbound webhook takes an inbox too (see [webhooks](../events/webhooks.md#drop-redeliveries-with-an-inbox)). A store of your own implements [`workflow.Inbox`](ds:block?id=inbox-kq8jz7jg) (`Claim`, `Complete`, `Release`, each given the caller's `now`); [`workflowtest.InboxContract`](ds:block?id=workflowtest-inboxcontract-94cnbp8v)`(t, a, b)` checks it against the contract the shipped stores pass.
 
 ## Try it
 
@@ -200,11 +200,11 @@ no CapIdempotencyKey: workflow: Job.IdempotencyKey unsupported by this driver (m
 
 ## Pitfalls
 
-- **A key dedups while the run is unfinished, not forever.** Once the run is terminal the key is free. For "at most once per order, ever", record the fact in your own database inside the step, or use [unique jobs](../reliability/unique-jobs.md) with a time window.
+- **A key dedups while the run is unfinished, not forever.** Once the run is terminal the key is free ([`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk), [`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)). For "at most once per order, ever", record the fact in your own database inside the step, or use [unique jobs](../reliability/unique-jobs.md) with a time window.
 - **A key dedups within one backend.** Two clients on different backends (a [failover](../reliability/failover.md) pair, two databases) each honour the key on their own; that is why the failover client requires a key and dedups only as well as each side does.
-- **Hatchet holds a key for at most `Config.IdempotencyMaxHold`**, and refuses `IdempotencyKey` together with `RunAt`.
-- **An inbox forgets an ID after `Keep`.** Set it longer than the longest redelivery your source can make (SQS keeps a message up to 14 days, Pub/Sub up to 31 with retention).
-- **On the SQL driver the key is a unique index**, so it holds across every process sharing the database; on the memory driver it holds within the process.
+- **Hatchet holds a key until the run's first step ends, and at most `Config.IdempotencyMaxHold`** (default [`DefaultIdempotencyMaxHold`](ds:block?id=hatchet-defaultidempotencymaxhold-9vxvg6ux), a day). The engine releases a key when the first task created with the run ends, so during a multi-step run's later steps the same key starts a second run; use [unique jobs](../reliability/unique-jobs.md) when the hold must last until the run ends. A delayed job with a key starts at once there and sleeps in a start gate until `RunAt`, holding the key until then; it is refused when `RunAt` is further ahead than `IdempotencyMaxHold` or the workflow has a `Concurrency` ([`checkDelayedKey`](ds:block?id=hatchet-checkdelayedkey-8s6en9y6)). See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- **An inbox forgets an ID after `Keep`** ([`InboxConsumer.Once`](ds:block?id=inboxconsumer-once-mta79w6e)). Set it longer than the longest redelivery your source can make (SQS keeps a message up to 14 days, Pub/Sub up to 31 with retention).
+- **On the SQL driver the key is a unique index** ([`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)), so it holds across every process sharing the database; on the memory driver it holds within the process ([`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)).
 
 ## Related
 

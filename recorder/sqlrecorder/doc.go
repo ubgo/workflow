@@ -17,8 +17,10 @@
 // Tables (prefix "wf_rec_" by default, WithTablePrefix): runs (one row per
 // run), steps (one row per step attempt), events (one row per step event),
 // labels (one row per run label, for indexed label filters) and schema (the
-// applied SchemaVersion). Steps are rows of their own rather than an array
-// on the run row, so a busy run never rewrites one large row per event.
+// applied SchemaVersion), plus archive (one JSON row per pruned run) for a
+// store with WithArchiveTable. Steps are rows of their own rather than an
+// array on the run row, so a busy run never rewrites one large row per
+// event.
 //
 // Every write is one transaction that locks the run's row first and is
 // retried on contention; reads answer workflow.RunQuerier and the

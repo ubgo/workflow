@@ -1,0 +1,4 @@
+func StepInfoFrom(ctx context.Context) (StepInfo, bool) {
+	info, ok := ctx.Value(stepInfoKey{}).(StepInfo)
+	return info, ok
+}

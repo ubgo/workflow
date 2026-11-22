@@ -1,0 +1,8 @@
+type MetricsSeries struct {
+	Step   time.Duration
+	Points []MetricsPoint
+	// Since is the earliest time the source has data for; points before
+	// it read zero because nothing was recorded, not because nothing ran.
+	// Zero when the source cannot say.
+	Since time.Time
+}

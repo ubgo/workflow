@@ -7,6 +7,7 @@ import (
 	"github.com/ubgo/workflow"
 )
 
+//ds:def id=teststepinput-khb3gvzx owner=@khanakia stability=stable
 func TestStepInput(t *testing.T) {
 	outs := map[string][]byte{"a": []byte(`{"n":1}`), "b": []byte("plain text")}
 

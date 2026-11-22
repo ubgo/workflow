@@ -1,0 +1,21 @@
+var scheduleScript = goredis.NewScript(luaPrelude + `
+local b, id, f = ARGV[1], ARGV[2], ARGV[3]
+if f ~= '' then
+  local cur = redis.call('HGET', b .. ':schedname', f)
+  if cur then id = cur else redis.call('HSET', b .. ':schedname', f, id) end
+end
+local sk = b .. ':sched:' .. id
+redis.call('HSET', sk, 'name', f, 'wf', ARGV[5], 'cron', ARGV[6], 'loc', ARGV[7],
+  'input', ARGV[8], 'labels', ARGV[9], 'misfire', ARGV[10], 'sname', ARGV[13],
+  'declared', ARGV[14], 'overlap', ARGV[15], 'sec', ARGV[16], 'act', ARGV[17], 'keep', ARGV[18], 'win', ARGV[19], 'tn', ARGV[20])
+if tonumber(ARGV[18]) > 0 then
+  redis.call('SADD', b .. ':keepscheds', id)
+else
+  redis.call('SREM', b .. ':keepscheds', id)
+end
+if redis.call('HGET', sk, 'spec') ~= ARGV[4] or not redis.call('HGET', sk, 'next') then
+  redis.call('HSET', sk, 'spec', ARGV[4], 'last', ARGV[11], 'next', ARGV[12])
+  redis.call('ZADD', b .. ':scheds', ARGV[12], id)
+end
+return id
+`)

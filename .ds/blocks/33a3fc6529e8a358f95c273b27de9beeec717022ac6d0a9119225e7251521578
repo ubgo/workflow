@@ -1,0 +1,11 @@
+func (b *Bus) findDivert(ctx context.Context, s CancelSubscription, m Message) (workflow.RunRef, bool, error) {
+	q, ok := b.client.(workflow.RunQuerier)
+	if !ok {
+		return workflow.RunRef{}, false, &workflow.UnsupportedError{Field: "events.CancelSubscription.Divert", Missing: workflow.CapRunQuery}
+	}
+	page, err := q.Runs(ctx, workflow.RunQuery{Limit: 1, Labels: map[string]string{LabelSubscription: s.Name, LabelEventID: m.ID}})
+	if err != nil || len(page.Runs) == 0 {
+		return workflow.RunRef{}, false, err
+	}
+	return page.Runs[0].Ref, true, nil
+}

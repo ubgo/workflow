@@ -1,0 +1,17 @@
+type WaitDef struct {
+	// Event is the event name to wait for.
+	Event string `json:"event"`
+
+	// Key is a fixed key, the same for every run (WaitSpec.Key).
+	Key string `json:"key,omitempty"`
+
+	// KeyLabel names the job label whose value is the run's key: Build
+	// turns it into WaitSpec.KeyFrom with a workflow.KeyFunc reading
+	// Job.Labels[KeyLabel], so every run waits for its own event ("payment
+	// for THIS order"). A run without the label waits on the empty key.
+	KeyLabel string `json:"key_label,omitempty"`
+
+	// Timeout is WaitSpec.Timeout, how long the wait lasts from when it
+	// begins, as a duration string. Empty means wait forever.
+	Timeout string `json:"timeout,omitempty"`
+}

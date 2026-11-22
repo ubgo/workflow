@@ -1,0 +1,18 @@
+func (b *Bus) replayOne(ctx context.Context, querier workflow.RunQuerier, s Subscription, m Message, replayID string) ReplayDelivery {
+	d := ReplayDelivery{MessageID: m.ID, Subscription: s.Name}
+	if querier != nil {
+		page, err := querier.Runs(ctx, workflow.RunQuery{Limit: 1, Labels: map[string]string{
+			LabelEventID: m.ID, LabelSubscription: s.Name, LabelReplay: replayID,
+		}})
+		if err != nil {
+			d.Err = fmt.Errorf("look for an earlier replayed run: %w", err)
+			return d
+		}
+		if len(page.Runs) > 0 {
+			d.Ref, d.Existing = page.Runs[0].Ref, true
+			return d
+		}
+	}
+	d.Ref, d.Err = b.deliver(ctx, s, m, replayID)
+	return d
+}

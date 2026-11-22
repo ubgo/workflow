@@ -1,0 +1,25 @@
+func (cfg *deliverConfig) answer(resp *http.Response) ([]byte, error) {
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		out, err := io.ReadAll(io.LimitReader(resp.Body, cfg.max+1))
+		if err != nil {
+			return nil, fmt.Errorf("push: read response: %w", err)
+		}
+		if int64(len(out)) > cfg.max {
+			return nil, workflow.Permanent(fmt.Errorf("%w: more than %d bytes", ErrResponseTooLarge, cfg.max))
+		}
+		return out, nil
+	}
+	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	serr := &StatusError{Code: resp.StatusCode, Body: strings.TrimSpace(string(snippet))}
+	switch {
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable:
+		if d, ok := retryAfter(resp.Header.Get("Retry-After"), cfg.clk.Now()); ok {
+			return nil, workflow.RetryAfter(serr, d)
+		}
+		return nil, serr
+	case resp.StatusCode >= 500:
+		return nil, serr
+	default: // other 4xx, and a 1xx or 3xx the client did not follow
+		return nil, workflow.Permanent(serr)
+	}
+}

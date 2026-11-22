@@ -1,0 +1,11 @@
+func TaskSchedulerNextFire(s workflow.Schedule, t Target, clk clock.Clock) (File, error) {
+	j, err := taskPrepare(s, t)
+	if err != nil {
+		return File{}, err
+	}
+	next, err := j.nextFire(clk)
+	if err != nil {
+		return File{}, err
+	}
+	return j.task("    <TimeTrigger>\n      <StartBoundary>" + next.UTC().Format("2006-01-02T15:04:05Z") + "</StartBoundary>\n    </TimeTrigger>\n")
+}

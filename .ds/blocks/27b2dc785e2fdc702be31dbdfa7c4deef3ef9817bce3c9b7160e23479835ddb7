@@ -1,0 +1,16 @@
+func (c *Client) declareDelayed(wf workflow.Workflow) (*hatchetsdk.Workflow, error) {
+	plain := wf
+	plain.Cron, plain.CronSeconds = nil, false
+	opts, err := c.workflowOptions(plain)
+	if err != nil {
+		return nil, err
+	}
+	hw := c.sdk.NewWorkflow(delayedName(wf.Name), opts...)
+	gate := hw.NewDurableTask(startGateTask, startGateFunc,
+		// The sleep counts against a durable task's execution timeout
+		// (seen live on hatchet-lite v0.110.5), and a keyed delayed start
+		// is refused past IdempotencyMaxHold (checkDelayedKey).
+		hatchetsdk.WithExecutionTimeout(c.cfg.IdempotencyMaxHold+engineTimeoutMargin),
+		hatchetsdk.WithScheduleTimeout(c.cfg.ScheduleTimeout))
+	return c.declareSteps(hw, wf, gate)
+}

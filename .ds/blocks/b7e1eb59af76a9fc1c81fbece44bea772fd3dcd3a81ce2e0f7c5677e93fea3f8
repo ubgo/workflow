@@ -1,0 +1,67 @@
+func RunRedoFlows(t *testing.T, h FlowHarness) {
+	e := &redoETL{name: "redo-etl", next: "redo-next"}
+	c := h.Start(t, e.workflows()...)
+	if !workflow.Supports(c, workflow.OpResetSucceeded) {
+		t.Skip("driver does not reset a succeeded run")
+	}
+	rs := c.(workflow.RunResetterWith)
+	ctx := context.Background()
+	job := workflow.Job{Workflow: e.name, Labels: map[string]string{"app": "x"}}
+	chained := c.Capabilities().Has(workflow.CapChain)
+	if chained {
+		job.Chain = []workflow.Job{{Workflow: e.next}}
+	}
+	ref, err := c.Enqueue(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := flowAwait(t, c, ref); err != nil || string(out) != `"loaded rows raw"` {
+		t.Fatalf("first run: %q %v", out, err)
+	}
+	if chained {
+		waitCount(t, "chained runs", e.nextRuns.Load, 1)
+	}
+	if _, err := rs.ResetRunWith(ctx, ref, "transform", workflow.ResetOptions{}); !errors.Is(err, workflow.ErrWrongState) {
+		t.Fatalf("ResetRunWith without Succeeded on a succeeded run: %v, want ErrWrongState", err)
+	}
+	if r, ok := c.(workflow.RunResetter); ok {
+		if _, err := r.ResetRun(ctx, ref, "transform"); !errors.Is(err, workflow.ErrWrongState) {
+			t.Fatalf("ResetRun on a succeeded run: %v, want ErrWrongState", err)
+		}
+	}
+	if _, err := rs.ResetRunWith(ctx, ref, "nope", workflow.ResetOptions{Succeeded: true}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("unknown step: %v, want ErrInvalid", err)
+	}
+	e.fixed.Store(true)
+	again, err := rs.ResetRunWith(ctx, ref, "transform", workflow.ResetOptions{Succeeded: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.RunID != ref.RunID {
+		t.Fatalf("reset changed the run: %v -> %v", ref, again)
+	}
+	if out, err := flowAwait(t, c, again); err != nil || string(out) != `"loaded rows cleaned"` {
+		t.Fatalf("reset run: %q %v", out, err)
+	}
+	if got := e.counts(); got != [3]int32{1, 2, 2} {
+		t.Fatalf("extract, transform, load ran %v times, want [1 2 2]", got)
+	}
+	if rr, ok := c.(workflow.ResultReader); ok {
+		if out, err := rr.Result(ctx, ref); err != nil || string(out) != `"loaded rows cleaned"` {
+			t.Fatalf("Result after the reset: %q %v", out, err)
+		}
+	}
+	if l := runLabels(t, c, ref); l != nil && (l[workflow.LabelRedo] != "true" || l["app"] != "x") {
+		t.Fatalf("labels after the reset: %v, want %s=true and app=x", l, workflow.LabelRedo)
+	}
+	findByLabel(t, c, workflow.LabelRedo, "true", ref)
+	if chained {
+		time.Sleep(50 * time.Millisecond) // give a wrong second handoff time to show
+		if n := e.nextRuns.Load(); n != 1 {
+			t.Fatalf("the chain ran %d times, want 1: a reset of a succeeded run must not hand it on again", n)
+		}
+	}
+	if c.Capabilities().Has(workflow.CapWaitForEvent) {
+		redoWait(t, h)
+	}
+}

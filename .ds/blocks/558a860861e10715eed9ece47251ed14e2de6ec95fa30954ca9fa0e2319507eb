@@ -1,0 +1,12 @@
+func JSONRule[T any]() func([]byte) error {
+	return func(payload []byte) error {
+		var v T
+		if err := json.Unmarshal(payload, &v); err != nil {
+			return fmt.Errorf("decode as %T: %w", v, err)
+		}
+		if val, ok := any(&v).(Validator); ok {
+			return val.Validate()
+		}
+		return nil
+	}
+}

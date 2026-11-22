@@ -1,0 +1,1 @@
+func Transitions() []Transition { return append([]Transition(nil), transitions...) }

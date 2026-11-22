@@ -1,0 +1,24 @@
+func Pool(store UniqueStore, name string, slots int, ttl time.Duration, opts ...PoolOption) workflow.Middleware {
+	cfg := poolConfig{retry: DefaultPoolRetry}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	var bad error
+	switch {
+	case store == nil || name == "":
+		bad = fmt.Errorf("%w: Pool needs a store and a name", workflow.ErrInvalid)
+	case slots < 1 || ttl <= 0:
+		bad = fmt.Errorf("%w: Pool %q needs at least one slot and a positive ttl", workflow.ErrInvalid, name)
+	}
+	keys := func(workflow.StepInfo) ([]string, error) {
+		if bad != nil {
+			return nil, workflow.Permanent(bad)
+		}
+		out := make([]string, slots)
+		for i := range out {
+			out[i] = "pool/" + name + "/" + strconv.Itoa(i)
+		}
+		return out, nil
+	}
+	return slotGate(store, ttl, cfg, false, keys)
+}

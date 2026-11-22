@@ -15,6 +15,8 @@ import (
 // AttemptOutput is what one step attempt wrote, as an admin screen shows
 // it: the text middleware.CaptureOutput captured, how the attempt ended
 // and when.
+//
+//ds:def id=admin-attemptoutput-xhvn3aev owner=@khanakia stability=stable
 type AttemptOutput struct {
 	Step    string
 	Attempt int
@@ -41,6 +43,8 @@ type OutputSource interface {
 // OutputSourceFunc adapts a function to OutputSource: the glue that
 // maps another module's output store (one that does not import admin) to
 // AttemptOutput.
+//
+//ds:def id=admin-outputsourcefunc-ec2jthqp owner=@khanakia stability=stable
 type OutputSourceFunc func(ctx context.Context, run workflow.RunID) ([]AttemptOutput, error)
 
 // RunOutput calls f.
@@ -52,6 +56,8 @@ func (f OutputSourceFunc) RunOutput(ctx context.Context, run workflow.RunID) ([]
 // run page read captured output from src. Without it they report that
 // no output store is wired. Output can hold whatever a step logged, so
 // wiring a source is the opt-in that shows it to admin users.
+//
+//ds:def id=admin-withoutputs-3wpy64sj owner=@khanakia stability=stable
 func WithOutputs(src OutputSource) Option { return func(a *Admin) { a.outputs = src } }
 
 // HasOutputs reports whether an OutputSource is wired (WithOutputs).
@@ -64,6 +70,8 @@ var errNoOutputs = &workflow.UnsupportedError{Field: "admin.output", Reason: "no
 // first. Without WithOutputs it returns an error matching
 // workflow.ErrUnsupported. A ref with only a ScheduledID has not run yet
 // and has no output.
+//
+//ds:def id=admin-admin-runoutput-6sq3u3vk owner=@khanakia stability=stable
 func (a *Admin) RunOutput(ctx context.Context, ref workflow.RunRef) ([]AttemptOutput, error) {
 	if a.outputs == nil {
 		return nil, errNoOutputs
@@ -79,6 +87,8 @@ func (a *Admin) RunOutput(ctx context.Context, ref workflow.RunRef) ([]AttemptOu
 
 // MemoryOutputLimits bounds a MemoryOutputs. Zero or less in a field
 // keeps its default.
+//
+//ds:def id=admin-memoryoutputlimits-m4pfttd7 owner=@khanakia stability=stable
 type MemoryOutputLimits struct {
 	// Runs is how many runs' output is kept; past it the run whose output
 	// arrived first is forgotten. Default DefaultOutputRuns.
@@ -92,6 +102,8 @@ type MemoryOutputLimits struct {
 }
 
 // The MemoryOutputs defaults.
+//
+//ds:def id=admin-defaultoutput-qzbxy8u9 owner=@khanakia stability=stable
 const (
 	DefaultOutputRuns   = 1000
 	DefaultOutputPerRun = 20
@@ -104,6 +116,8 @@ const (
 // attempts that ran in this process, so it suits one process or a
 // development setup; a fleet stores output somewhere shared and writes
 // its own OutputSource over it.
+//
+//ds:def id=admin-memoryoutputs-aqj7h274 owner=@khanakia stability=stable
 type MemoryOutputs struct {
 	lim   MemoryOutputLimits
 	mu    sync.Mutex
@@ -112,6 +126,8 @@ type MemoryOutputs struct {
 }
 
 // NewMemoryOutputs returns an empty MemoryOutputs.
+//
+//ds:def id=admin-newmemoryoutputs-myceq94g owner=@khanakia stability=stable
 func NewMemoryOutputs(lim MemoryOutputLimits) *MemoryOutputs {
 	if lim.Runs <= 0 {
 		lim.Runs = DefaultOutputRuns

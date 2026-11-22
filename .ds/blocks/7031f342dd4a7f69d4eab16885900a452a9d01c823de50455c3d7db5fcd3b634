@@ -1,0 +1,18 @@
+type Schedule interface {
+	// Next returns the first fire time strictly after `after`, expressed in
+	// loc. A nil loc means UTC, never the host zone, so the same schedule
+	// behaves identically on every machine. It returns the zero time when no
+	// fire time exists within searchYears of `after` (for example "0 0 30 2
+	// *", February 30th); callers must check IsZero.
+	Next(after time.Time, loc *time.Location) time.Time
+
+	// Between returns the fire times t with from < t <= to, ascending, at
+	// most limit of them (limit <= 0 returns nil). The half-open range lets
+	// a caller chain windows (last checked, now] without double-counting a
+	// fire; limit bounds memory when a misfire window is unexpectedly long.
+	Between(from, to time.Time, loc *time.Location, limit int) []time.Time
+
+	// String returns the expression as parsed (trimmed), so a schedule can
+	// be stored and later re-parsed into an equivalent schedule.
+	String() string
+}

@@ -1,0 +1,31 @@
+func splitDOM(text string) (string, []domItem, *ParseError) {
+	f := fields[2]
+	var plain []string
+	var special []domItem
+	for _, item := range strings.Split(text, ",") {
+		up := strings.ToUpper(item)
+		switch {
+		case up == "L":
+			special = append(special, domItem{kind: domLast})
+		case up == "LW":
+			special = append(special, domItem{kind: domLastWeekday})
+		case strings.HasPrefix(up, "L-"):
+			n, err := strconv.Atoi(up[2:])
+			if err != nil || n < 0 || n > 30 {
+				return "", nil, &ParseError{Field: f.name, Value: item, Reason: "L-n needs n from 0 to 30"}
+			}
+			special = append(special, domItem{kind: domLast, n: n})
+		case strings.HasSuffix(up, "W"):
+			n, err := strconv.Atoi(up[:len(up)-1])
+			if err != nil || n < 1 || n > 31 {
+				return "", nil, &ParseError{Field: f.name, Value: item, Reason: "nW needs a day from 1 to 31"}
+			}
+			special = append(special, domItem{kind: domNearest, n: n})
+		case strings.Contains(up, "L") || strings.Contains(up, "#"):
+			return "", nil, &ParseError{Field: f.name, Value: item, Reason: "not a day-of-month item (L, L-n, nW and LW are the special ones)"}
+		default:
+			plain = append(plain, item)
+		}
+	}
+	return strings.Join(plain, ","), special, nil
+}

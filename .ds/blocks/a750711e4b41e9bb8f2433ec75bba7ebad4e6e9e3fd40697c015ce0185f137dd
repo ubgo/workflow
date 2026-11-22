@@ -1,0 +1,10 @@
+func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	ot, ook := c.old.(workflow.TransientSignaller)
+	nt, nok := c.new.(workflow.TransientSignaller)
+	if !ook || !nok {
+		return 0, workflow.Unsupported("SignalWaiting", "both cutover backends must implement workflow.TransientSignaller")
+	}
+	on, oerr := ot.SignalWaiting(ctx, ev)
+	nn, nerr := nt.SignalWaiting(ctx, ev)
+	return on + nn, joinSides("SignalWaiting", oerr, nerr)
+}

@@ -1,0 +1,12 @@
+func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
+	var out []workflow.RunSignal
+	err := onRegion(c, "PendingSignals", workflow.Caps{}, workflow.RunRef{RunID: run}, func(_ string, r workflow.RunSignalReader, inner workflow.RunRef) error {
+		var err error
+		out, err = r.PendingSignals(ctx, inner.RunID, names, limit)
+		return err
+	})
+	if errors.Is(err, workflow.ErrNotFound) {
+		return nil, nil
+	}
+	return out, err
+}

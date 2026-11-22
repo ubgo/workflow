@@ -1,0 +1,19 @@
+func Check(pre func(ctx context.Context, in []byte) error, post func(ctx context.Context, in, out []byte) error) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if pre != nil {
+				if err := pre(ctx, in); err != nil {
+					return nil, constraint("precondition", err)
+				}
+			}
+			out, err := next(ctx, in)
+			if err != nil || post == nil {
+				return out, err
+			}
+			if err := post(ctx, in, out); err != nil {
+				return nil, constraint("postcondition", err)
+			}
+			return out, nil
+		}
+	}
+}

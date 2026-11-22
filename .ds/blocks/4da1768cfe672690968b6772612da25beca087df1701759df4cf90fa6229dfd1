@@ -1,0 +1,71 @@
+func ruledHandler(step string, parents []string, rule TriggerRule, isFinally bool, next Handler) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		outs := map[string][]byte{}
+		switch len(parents) {
+		case 0:
+		case 1:
+			outs[parents[0]] = in
+		default:
+			raw := map[string]json.RawMessage{}
+			if err := json.Unmarshal(in, &raw); err != nil {
+				return nil, Permanent(fmt.Errorf("workflow: rules: step %q: input does not decode: %w", step, err))
+			}
+			for k, v := range raw {
+				if string(v) != "null" {
+					outs[k] = v
+				}
+			}
+		}
+		var failures []StepFailure
+		failed, skipped, succeeded := 0, 0, 0
+		matchedKind := false
+		for _, p := range parents {
+			rec, ok := parseRuleRecord(outs[p])
+			switch {
+			case !ok:
+				succeeded++
+				continue
+			case rec.Failed != nil:
+				failed++
+				failures = append(failures, *rec.Failed)
+				if strings.HasPrefix(string(rule), ruleFailedPrefix) && rec.Failed.Kind == string(rule)[len(ruleFailedPrefix):] {
+					matchedKind = true
+				}
+			default:
+				skipped++
+				failures = append(failures, rec.Upstream...)
+			}
+			delete(outs, p)
+		}
+		n := len(parents)
+		var run bool
+		switch rule {
+		case RuleAllSucceeded:
+			run = succeeded == n
+		case RuleNoneFailed:
+			run = failed == 0 && len(failures) == 0
+		case RuleAllDone:
+			run = true
+		case RuleOneFailed:
+			run = failed > 0
+		case RuleAllFailed:
+			run = n > 0 && failed == n
+		case RuleOneSucceeded:
+			run = succeeded > 0
+		default:
+			run = matchedKind
+		}
+		if !run {
+			return encodeJSON("rules step "+step, ruleRecord{Skipped: true, Upstream: failures})
+		}
+		out, err := next(context.WithValue(ctx, parentFailuresKey{}, failures), StepInput(nil, parents, outs))
+		if err != nil || !isFinally || len(failures) == 0 {
+			return out, err
+		}
+		msgs := make([]string, len(failures))
+		for i, f := range failures {
+			msgs[i] = fmt.Sprintf("step %q: %s", f.Step, f.Error)
+		}
+		return out, Permanent(fmt.Errorf("%w: %s", ErrStepsFailed, strings.Join(msgs, "; ")))
+	}
+}

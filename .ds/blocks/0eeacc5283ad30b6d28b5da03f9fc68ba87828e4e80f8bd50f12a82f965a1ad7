@@ -1,0 +1,58 @@
+func TestDebounceAcrossProcesses(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, prefix := e.open(t)
+			var mu sync.Mutex
+			var ran []string
+			m := memory.New()
+			if err := m.Register(workflow.Workflow{Name: "reindex", Steps: []workflow.Step{{Name: "a", Run: func(_ context.Context, in []byte) ([]byte, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				ran = append(ran, string(in))
+				return in, nil
+			}}}}); err != nil {
+				t.Fatal(err)
+			}
+			mctx, cancel := context.WithCancel(ctx)
+			t.Cleanup(func() { cancel(); m.Stop() })
+			if err := m.Start(mctx); err != nil {
+				t.Fatal(err)
+			}
+			byPayload := func(workflow.Job) string { return "product-7" }
+			var clients []workflow.Client
+			for i := range 2 {
+				s, err := sqlstore.NewDebounceStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if i == 0 {
+					if err := s.Migrate(ctx); err != nil {
+						t.Fatal(err)
+					}
+				}
+				mw, err := middleware.Debounce(m, nil, byPayload, 300*time.Millisecond, 0, middleware.WithDebounceStore(s))
+				if err != nil {
+					t.Fatal(err)
+				}
+				clients = append(clients, middleware.WrapClient(m, mw))
+			}
+			for i := range 6 {
+				if _, err := clients[i%2].Enqueue(ctx, workflow.Job{Workflow: "reindex", Payload: []byte(fmt.Sprintf(`"%d"`, i))}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			waitFor(t, 5*time.Second, "the debounced run", func() bool {
+				mu.Lock()
+				defer mu.Unlock()
+				return len(ran) > 0
+			})
+			time.Sleep(500 * time.Millisecond)
+			mu.Lock()
+			defer mu.Unlock()
+			if len(ran) != 1 || ran[0] != `"5"` {
+				t.Fatalf("ran %v across two processes, want only the last job once", ran)
+			}
+		})
+	}
+}

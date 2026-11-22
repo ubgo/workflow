@@ -1,0 +1,7 @@
+func toBulkJSON(r BulkResult, dry bool) bulkJSON {
+	out := bulkJSON{Matched: r.Matched, Done: r.Done, Skipped: r.Skipped, Truncated: r.Truncated, DryRun: dry, Sample: make([]refJSON, 0, len(r.Sample))}
+	for _, ref := range r.Sample {
+		out.Sample = append(out.Sample, toRefJSON(ref))
+	}
+	return out
+}

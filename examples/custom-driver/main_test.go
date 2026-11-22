@@ -57,3 +57,22 @@ func TestConformance(t *testing.T) {
 }
 
 // snippet:end
+
+// snippet:handshake-suite
+// TestStepTimeoutHandshake runs the step-timeout cases on Tiny. Tiny
+// claims no CapRunTimeout, so TestConformance skips them, but its attempts
+// keep the handshake (attempt in driver.go): the harness says so, and the
+// cases of attemptcause and toleratedtimeout that need it run.
+func TestStepTimeoutHandshake(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	workflowtest.Run(t, workflowtest.Harness{
+		StepTimeoutHandshake: true,
+		Groups:               func(group string) bool { return group == "attemptcause" || group == "toleratedtimeout" },
+		New: func(t *testing.T) workflowtest.Instance {
+			clk := clock.NewFake(start)
+			return workflowtest.Instance{Client: NewTiny(clk), Clock: clk}
+		},
+	})
+}
+
+// snippet:end

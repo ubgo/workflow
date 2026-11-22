@@ -1,0 +1,1 @@
+func (s Status) CanTransitionTo(to Status) bool { return hasTransition(transitions, s, to) }

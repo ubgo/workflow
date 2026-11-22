@@ -1,0 +1,11 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	name, rc, err := c.route(ctx, workflow.Job{Workflow: s.Workflow, Payload: s.Input, Labels: s.Labels, Tenant: s.Tenant})
+	if err != nil {
+		return "", err
+	}
+	id, err := rc.Schedule(ctx, s)
+	if err != nil {
+		return "", fmt.Errorf("regional: %s: %w", name, err)
+	}
+	return encodeScheduleID(name, id), nil
+}

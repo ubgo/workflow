@@ -1,0 +1,22 @@
+func ValidateQueues(qs []QueueConfig) error {
+	seen := make(map[string]bool, len(qs))
+	for i, q := range qs {
+		if err := ValidateQueueName(q.Name); err != nil {
+			return fmt.Errorf("queues[%d]: %w", i, err)
+		}
+		if seen[q.Name] {
+			return invalidf("queue %q is configured twice", q.Name)
+		}
+		seen[q.Name] = true
+		if q.Workers < 0 {
+			return invalidf("queue %q: Workers is negative", q.Name)
+		}
+		if q.Limit < 0 {
+			return invalidf("queue %q: Limit is negative", q.Name)
+		}
+		if q.Weight < 0 {
+			return invalidf("queue %q: Weight is negative", q.Name)
+		}
+	}
+	return nil
+}

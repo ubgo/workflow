@@ -1,0 +1,13 @@
+func (c *Client) Health(ctx context.Context) workflow.HealthReport {
+	out := workflow.HealthReport{Live: true, Ready: true}
+	for _, name := range c.names {
+		rep := workflow.CheckHealth(ctx, c.regions[name])
+		out.Live = out.Live && rep.Live
+		out.Ready = out.Ready && rep.Ready
+		for _, ch := range rep.Checks {
+			ch.Name = name + " " + ch.Name
+			out.Checks = append(out.Checks, ch)
+		}
+	}
+	return out
+}

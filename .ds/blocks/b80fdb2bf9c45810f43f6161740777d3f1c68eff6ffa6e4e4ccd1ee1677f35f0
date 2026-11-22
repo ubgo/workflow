@@ -1,0 +1,6 @@
+func RetryAfter(err error, d time.Duration) error {
+	if err == nil {
+		return nil
+	}
+	return &retryAfterError{err: err, d: max(d, 0)}
+}

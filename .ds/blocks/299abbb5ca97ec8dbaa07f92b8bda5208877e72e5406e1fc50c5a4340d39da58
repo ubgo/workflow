@@ -1,0 +1,45 @@
+type Batch struct {
+	// Name is a human-readable name, shown in Progress.
+	Name string
+
+	// Jobs are enqueued in order. At least one is required.
+	Jobs []workflow.Job
+
+	// Then, Catch and Finally name registered workflows to enqueue when the
+	// batch succeeds, on its first failure, and when it finishes. Empty
+	// means none.
+	Then, Catch, Finally string
+
+	// Before names a workflow enqueued once when the batch is created,
+	// before its jobs start. Progress names a workflow
+	// enqueued once per job end that a run reports, whatever the status,
+	// after that end is recorded (not only successes; the payload's counts
+	// tell them apart). A job recorded as
+	// cancelled without a run (a dispatch that failed, a resumed dispatch)
+	// fires no Progress. Both get the same payload and labels as the
+	// other callbacks, and both are retried like them when their enqueue
+	// fails. Empty means none.
+	Before, Progress string
+
+	// AllowFailures keeps the other jobs running after a failure instead of
+	// cancelling them; Catch still runs on the first failure either way.
+	AllowFailures bool
+
+	// Labels are copied onto every Then, Catch and Finally job, so a
+	// callback carries what the batch was for (a tenant, a user) and passes
+	// enqueue middleware that requires a label or routes on one. They are
+	// saved in State, so a callback enqueued by another process or after a
+	// restart carries them too. A label under workflow.LabelPrefixBatch is
+	// refused by Dispatch, as on the jobs. They are not put on the batch's
+	// own jobs; set those on each Job.
+	Labels map[string]string
+
+	// DiscardedAs is how a job that ended workflow.StatusDiscarded (a step
+	// returned workflow.Discard, on a driver with CapRunStates) counts:
+	// workflow.StatusFailed (the zero value's meaning: it fires Catch and,
+	// without AllowFailures, cancels the rest), workflow.StatusCancelled
+	// (stops Then, fires no Catch) or workflow.StatusSucceeded (as if it
+	// had done its work). Any other value is refused by Dispatch. It is
+	// saved in State, so every process decides the same way.
+	DiscardedAs workflow.Status
+}

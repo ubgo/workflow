@@ -124,6 +124,7 @@ func seeded() *fakeClient {
 	}}
 }
 
+//ds:def id=admin-testroutes-covereveryaction-qbbzvu2k owner=@khanakia stability=stable
 func TestRoutes_CoverEveryAction(t *testing.T) {
 	var got []Action
 	for _, r := range routes {
@@ -154,6 +155,8 @@ func TestRoutes_CoverEveryAction(t *testing.T) {
 
 // TestHandler_ClosedByDefault: without Auth every route, and an unknown
 // path, is refused before any operation runs.
+//
+//ds:def id=admin-testhandler-closedbydefault-6z67u6yx owner=@khanakia stability=stable
 func TestHandler_ClosedByDefault(t *testing.T) {
 	for name, auth := range map[string]Auth[user]{
 		"zero":         {},
@@ -176,6 +179,8 @@ func TestHandler_ClosedByDefault(t *testing.T) {
 
 // TestHandler_AnonymousRefused walks every route without a token, with a
 // panicking Identify, and with a forged form post.
+//
+//ds:def id=admin-testhandler-anonymousrefused-vy9kxkyh owner=@khanakia stability=stable
 func TestHandler_AnonymousRefused(t *testing.T) {
 	f := seeded()
 	h := NewHandler(New(f), bearerAuth())
@@ -220,6 +225,8 @@ func TestHandler_AnonymousRefused(t *testing.T) {
 
 // TestHandler_AuthorizeFailsClosed: an error or a panic from Authorize
 // refuses every route, and a read-only role is refused every write.
+//
+//ds:def id=admin-testhandler-authorizefailsclosed-ftys37mz owner=@khanakia stability=stable
 func TestHandler_AuthorizeFailsClosed(t *testing.T) {
 	for name, fn := range map[string]func(context.Context, Request[user]) error{
 		"error": func(context.Context, Request[user]) error { return errors.New("policy store down") },
@@ -267,6 +274,8 @@ func TestHandler_AuthorizeFailsClosed(t *testing.T) {
 
 // TestHandler_ResourceScoping: the Authorizer sees the parsed filter, so
 // it can confine a caller to one tenant's runs.
+//
+//ds:def id=admin-testhandler-resourcescoping-5yy3zqwg owner=@khanakia stability=stable
 func TestHandler_ResourceScoping(t *testing.T) {
 	auth := bearerAuth()
 	auth.Authorize = func(_ context.Context, req Request[user]) error {
@@ -336,6 +345,7 @@ func TestHandler_Runs(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testhandler-errormapping-zzqkqr76 owner=@khanakia stability=stable
 func TestHandler_ErrorMapping(t *testing.T) {
 	for _, tc := range []struct {
 		err  error

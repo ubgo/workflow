@@ -1,0 +1,5 @@
+func Proportional(cfg BalanceConfig, weight func(QueueLoad) float64) Balancer {
+	return BalancerFunc(func(loads []QueueLoad) map[string]int {
+		return proportional(cfg, weight, loads)
+	})
+}

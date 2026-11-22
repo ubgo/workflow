@@ -22,6 +22,8 @@ import (
 // Place it before WithCodec or ClaimCheck in the chain (WrapClient
 // outside WithCodec), so it sees the payload the app wrote, not the
 // encrypted or offloaded bytes. It runs on every driver.
+//
+//ds:def id=mw-validatepayload-jyms93jq owner=@khanakia stability=stable
 func ValidatePayload(rules map[string]func([]byte) error) workflow.EnqueueMiddleware {
 	table := maps.Clone(rules)
 	var check func(job workflow.Job) error
@@ -58,6 +60,8 @@ type Validator interface {
 // decode as JSON into a T (encoding/json rules: unknown fields are
 // ignored, an empty payload is an error), and when *T implements
 // Validator, its Validate must return nil.
+//
+//ds:def id=mw-jsonrule-cgt26zfs owner=@khanakia stability=stable
 func JSONRule[T any]() func([]byte) error {
 	return func(payload []byte) error {
 		var v T

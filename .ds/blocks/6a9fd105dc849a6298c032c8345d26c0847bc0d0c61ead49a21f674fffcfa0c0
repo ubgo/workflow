@@ -1,0 +1,9 @@
+func (f *Fake) RunClosures(ctx context.Context) error {
+	var errs []error
+	for _, c := range f.Closures() {
+		if err := c.Fn(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("closure %q: %w", c.Name, err))
+		}
+	}
+	return errors.Join(errs...)
+}

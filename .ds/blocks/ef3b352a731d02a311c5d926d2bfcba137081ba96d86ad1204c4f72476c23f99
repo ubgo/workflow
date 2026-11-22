@@ -1,0 +1,23 @@
+func TestClaimCheck_OwnsItsLabel(t *testing.T) {
+	cc := newClaimCheck(t, middleware.NewMemoryBlobStore())
+	var seen []workflow.Job
+	enq := cc.Enqueue()(func(_ context.Context, job workflow.Job) (workflow.RunRef, error) {
+		seen = append(seen, job)
+		return workflow.RunRef{}, nil
+	})
+	for _, k := range []string{middleware.ClaimCheckLabel, workflow.LabelPrefixInternal + "other"} {
+		if _, err := enq(context.Background(), workflow.Job{Labels: map[string]string{k: "x"}}); !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("label %q: err = %v, want ErrInvalid", k, err)
+		}
+	}
+	if len(seen) != 0 {
+		t.Fatal("a job with a reserved label reached the driver")
+	}
+	labels := map[string]string{"tenant": "t1"}
+	if _, err := enq(context.Background(), workflow.Job{Labels: labels}); err != nil {
+		t.Fatal(err)
+	}
+	if seen[0].Labels[middleware.ClaimCheckLabel] == "" || seen[0].Labels["tenant"] != "t1" || len(labels) != 1 {
+		t.Fatalf("token not stamped, app labels lost or caller map mutated: %v", seen[0].Labels)
+	}
+}

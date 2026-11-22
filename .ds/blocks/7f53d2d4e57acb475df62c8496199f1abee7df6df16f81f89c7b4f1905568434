@@ -1,0 +1,21 @@
+func (r *stored) runError() error {
+	msg := r.err
+	switch r.status {
+	case workflow.StatusFailed:
+		cause := storedCause(msg, r.failedStep)
+		if r.forced {
+			rest := strings.TrimPrefix(msg, workflow.ErrForced.Error())
+			cause = workflow.ForcedFailure(strings.TrimPrefix(rest, ": "))
+		}
+		re := &workflow.RunError{RunID: workflow.RunID(r.id), Workflow: r.wf, Step: r.failedStep, Err: cause}
+		if s := r.steps[r.failedStep]; s != nil && r.failedStep != "" {
+			re.Attempt = s.N
+		}
+		return re
+	case workflow.StatusDiscarded:
+		return discardedError(msg)
+	case workflow.StatusCancelled:
+		return fmt.Errorf("%w: %s", workflow.ErrCancelled, msg)
+	}
+	return nil
+}

@@ -1,0 +1,1 @@
+func ForkStatusOK(st Status) bool { return st.IsTerminal() }

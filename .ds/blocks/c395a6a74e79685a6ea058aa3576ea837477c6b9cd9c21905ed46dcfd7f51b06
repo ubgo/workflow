@@ -1,0 +1,21 @@
+type ArchiveQuery struct {
+	// Workflow keeps one workflow's runs.
+	Workflow string
+	// RunID keeps one run.
+	RunID workflow.RunID
+	// FinishedBefore keeps runs that finished before it. To page, pass the
+	// previous page's last FinishedAt here and its RunID in AfterRunID:
+	// FinishedBefore alone is strict, so a run that finished at the same
+	// instant as the last one shown but did not fit on its page would be
+	// skipped.
+	FinishedBefore time.Time
+	// AfterRunID, with FinishedBefore, is the paging cursor's tie-breaker:
+	// runs that finished exactly at FinishedBefore are kept too when their
+	// ID orders after it. The page order is (finished_at DESC, id), so
+	// (FinishedBefore, AfterRunID) taken from a page's last run starts the
+	// next page right after it and no run is returned twice or skipped.
+	// Ignored without FinishedBefore.
+	AfterRunID workflow.RunID
+	// Limit caps the result; zero or less means 100.
+	Limit int
+}

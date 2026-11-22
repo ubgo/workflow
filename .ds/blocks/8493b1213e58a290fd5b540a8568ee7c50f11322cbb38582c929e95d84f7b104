@@ -1,0 +1,19 @@
+func CancelSteps(ctx context.Context, client Client, ref RunRef, steps ...string) error {
+	sc, ok := client.(StepCanceller)
+	if client == nil || !ok {
+		return &UnsupportedError{Field: "CancelSteps", Reason: "the driver cannot cancel one step of a run"}
+	}
+	if len(steps) == 0 {
+		return invalidf("CancelSteps: no steps")
+	}
+	var errs []error
+	for _, s := range steps {
+		if err := sc.CancelStep(ctx, ref, s); err != nil {
+			errs = append(errs, fmt.Errorf("step %q: %w", s, err))
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("workflow: cancel steps: %w", err)
+	}
+	return nil
+}

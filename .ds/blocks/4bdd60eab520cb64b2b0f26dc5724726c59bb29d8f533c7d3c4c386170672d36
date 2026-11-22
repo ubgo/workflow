@@ -1,0 +1,25 @@
+func (c *Client) startWorker(ctx context.Context, p workerPool) (func() error, string, error) {
+	opts := []hatchetsdk.WorkerOption{hatchetsdk.WithWorkflows(p.workflows...), hatchetsdk.WithLabels(workerLabels(c.cfg.NodeID, p.queue))}
+	if p.slots > 0 {
+		opts = append(opts, hatchetsdk.WithSlots(p.slots))
+	}
+	// A per-client suffix lets registerWait find this worker, and tells
+	// restarts apart in the dashboard.
+	name := p.name + "-" + uuid.NewString()[:8]
+	w, err := c.sdk.NewWorker(name, opts...)
+	if err != nil {
+		return nil, "", fmt.Errorf("hatchet driver: new worker: %w", err)
+	}
+	stop, err := w.Start()
+	if err != nil {
+		return nil, "", engineErr(err, "start worker")
+	}
+	// The SDK panics when a worker is stopped before it has registered
+	// (pkg/worker/worker.go Start), so Start returns only once the engine
+	// lists the worker; stopping after that is safe.
+	id, err := c.registerWait(ctx, name)
+	if err != nil {
+		return nil, "", err
+	}
+	return stop, id, nil
+}

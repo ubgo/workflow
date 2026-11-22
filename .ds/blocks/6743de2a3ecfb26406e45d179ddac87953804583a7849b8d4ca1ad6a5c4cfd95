@@ -1,0 +1,12 @@
+func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := c.usable(); err != nil {
+		return err
+	}
+	if err := signalScript.Run(ctx, c.rdb, c.keys(), c.base, sigKey(ev.Name, ev.Key), string(ev.Payload), c.clk.Now().UnixMilli()).Err(); err != nil {
+		return fmt.Errorf("redis: signal: %w", classify(err))
+	}
+	return nil
+}

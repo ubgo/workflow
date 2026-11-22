@@ -1,0 +1,3 @@
+func PoolSteps(steps ...string) PoolOption {
+	return func(c *poolConfig) { c.steps = append(c.steps, steps...) }
+}

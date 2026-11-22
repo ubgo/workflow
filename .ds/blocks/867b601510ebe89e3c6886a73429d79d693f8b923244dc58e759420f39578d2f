@@ -1,0 +1,13 @@
+type OperationSupport struct {
+	Operation Operation
+	Supported bool
+	// Missing is the capabilities the client lacks for the operation;
+	// zero when Supported. For OpPause it lists both pause capabilities
+	// when the client has neither. It is zero for an unsupported
+	// operation that needs no capability, only an interface; Reason then
+	// says so.
+	Missing workflow.Caps
+	// Reason says why an operation that needs no capability is
+	// unsupported (its interface is absent); empty otherwise.
+	Reason string
+}

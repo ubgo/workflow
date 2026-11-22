@@ -1,0 +1,3 @@
+func HasPayload(p []byte) JobMatcher {
+	return Where(fmt.Sprintf("payload %q", p), func(j workflow.Job) bool { return bytes.Equal(j.Payload, p) })
+}

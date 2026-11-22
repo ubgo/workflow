@@ -1,0 +1,5 @@
+type MemoryStream struct {
+	opt  MemoryStreamOptions
+	mu   sync.Mutex
+	runs map[RunID]*memRunStream
+}

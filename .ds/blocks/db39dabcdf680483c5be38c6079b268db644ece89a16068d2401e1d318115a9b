@@ -1,0 +1,34 @@
+func TestEnqueueTxCommitRuns(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			c, db, orders, runs := txSetup(t, e, workflow.IdempotencyOptional)
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = tx.Rollback() }) // a no-op after Commit; frees locks when a check fails first
+			if _, err := tx.Exec("INSERT INTO " + orders + " (id) VALUES ('o1')"); err != nil {
+				t.Fatal(err)
+			}
+			ref, err := c.EnqueueTx(ctx, tx, workflow.Job{Workflow: "ship"})
+			if err != nil {
+				t.Fatalf("EnqueueTx: %v", err)
+			}
+			if ref.RunID.IsZero() {
+				t.Fatalf("EnqueueTx returned no RunID: %+v", ref)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			c.Wake()
+			waitFor(t, 5*time.Second, "the committed run to succeed", func() bool {
+				st, err := c.Status(ctx, ref)
+				return err == nil && st == workflow.StatusSucceeded
+			})
+			if n := runs.Load(); n != 1 {
+				t.Fatalf("step ran %d times, want 1", n)
+			}
+		})
+	}
+}

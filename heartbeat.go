@@ -6,6 +6,8 @@ import "context"
 // CapHeartbeat sets one on the step's ctx (WithHeartbeater) before the
 // Middleware chain runs: it resets the attempt's HeartbeatTimeout clock
 // and, on a durable driver, extends the attempt's lease.
+//
+//ds:def id=heartbeater-7xmvzehy owner=@khanakia stability=stable
 type Heartbeater interface {
 	// Heartbeat records liveness. details is an optional progress marker
 	// the driver may keep (nil is fine). An error means the beat was not
@@ -16,6 +18,8 @@ type Heartbeater interface {
 }
 
 // HeartbeatFunc adapts a function to Heartbeater.
+//
+//ds:def id=heartbeatfunc-45wm6xnt owner=@khanakia stability=stable
 type HeartbeatFunc func(ctx context.Context, details []byte) error
 
 // Heartbeat calls f.
@@ -24,6 +28,8 @@ func (f HeartbeatFunc) Heartbeat(ctx context.Context, details []byte) error { re
 type heartbeaterKey struct{}
 
 // WithHeartbeater returns a ctx carrying h. Drivers call it.
+//
+//ds:def id=withheartbeater-rku3vrw5 owner=@khanakia stability=stable
 func WithHeartbeater(ctx context.Context, h Heartbeater) context.Context {
 	return context.WithValue(ctx, heartbeaterKey{}, h)
 }
@@ -34,6 +40,8 @@ func WithHeartbeater(ctx context.Context, h Heartbeater) context.Context {
 // loop. Outside a step, or on a driver without CapHeartbeat, it returns
 // nil and does nothing: liveness is a hint, and a portable handler must
 // not fail because one driver has no use for it.
+//
+//ds:def id=heartbeat-jrq6m57p owner=@khanakia stability=stable
 func Heartbeat(ctx context.Context, details []byte) error {
 	h, ok := ctx.Value(heartbeaterKey{}).(Heartbeater)
 	if !ok {

@@ -1,0 +1,35 @@
+type BackfillSpec struct {
+	// Schedule is the schedule to replay: its Workflow, Cron, Location,
+	// Seconds, Input, Labels and Tenant are used, its Active period and
+	// Windows limit the ticks (a tick they would skip is not replayed).
+	Schedule *Schedule
+
+	// ScheduleID is the live schedule's ID, when there is one: it goes
+	// into LabelSchedule of each run and into the dedup key. Optional.
+	ScheduleID ScheduleID
+
+	// Workflow, Cron, Location, Seconds, Input and Labels describe the
+	// ticks without a Schedule: a declared Workflow.Cron entry, or a
+	// schedule that no longer exists. Location is required (time.Local
+	// is refused); Labels under a reserved prefix are refused.
+	Workflow string
+	Cron     string
+	Location *time.Location
+	Seconds  bool
+	Input    []byte
+	Labels   map[string]string
+
+	// Parser reads Cron when Seconds is false; nil means cron.Parse. Pass
+	// the driver's custom dialect (cron.Extended) when the schedule uses
+	// one.
+	Parser cron.Parser
+
+	// From and To bound the ticks to [From, To): a tick exactly at From
+	// is replayed, one exactly at To is not, so consecutive ranges never
+	// replay a tick twice.
+	From, To time.Time
+
+	// Max caps the ticks; zero means DefaultBackfillMax. A range holding
+	// more is refused whole (ErrInvalid), never cut short silently.
+	Max int
+}

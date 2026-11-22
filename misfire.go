@@ -4,6 +4,8 @@ import "time"
 
 // TickSource lists a schedule's fire times. cron.Schedule satisfies it; the
 // core names only the one method it needs, so it does not import a parser.
+//
+//ds:def id=ticksource-8kbat78x owner=@khanakia stability=stable
 type TickSource interface {
 	// Between returns the fire times t with from < t <= to, ascending, at
 	// most limit of them.
@@ -13,6 +15,8 @@ type TickSource interface {
 // tickScanChunk is how many ticks Due asks a TickSource for at a time
 // while looking for the newest ones, so a long outage of a frequent cron
 // costs bounded memory however many ticks it missed.
+//
+//ds:def id=tickscanchunk-jppjg98q owner=@khanakia stability=stable
 const tickScanChunk = 1024
 
 // Due returns the ticks of src in (last, now] that m fires, oldest first,
@@ -29,6 +33,8 @@ const tickScanChunk = 1024
 //
 // The zero policy is the driver's own default, so Due returns nil for it
 // and the driver applies its documented behaviour instead.
+//
+//ds:def id=misfire-due-5butt4h7 owner=@khanakia stability=stable
 func (m Misfire) Due(src TickSource, last, now time.Time, loc *time.Location) []time.Time {
 	var limit time.Duration // the oldest a tick may be; zero means any age
 	keep := 1

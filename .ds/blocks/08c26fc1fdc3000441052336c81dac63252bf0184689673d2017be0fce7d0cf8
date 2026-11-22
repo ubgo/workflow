@@ -1,0 +1,7 @@
+func (c Calendar) Schedule() (Schedule, error) {
+	expr, err := c.Expr()
+	if err != nil {
+		return nil, err
+	}
+	return Parse(expr)
+}

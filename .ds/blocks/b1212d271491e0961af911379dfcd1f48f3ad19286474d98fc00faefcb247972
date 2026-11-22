@@ -1,0 +1,37 @@
+func (m *Manager) dispatchSpawn(ctx context.Context, sp GroupSpawner, id ID, owner string, jobs []workflow.Job) (handled bool, err error) {
+	if _, err := m.store.Update(ctx, id, func(s *State) error {
+		if err := m.renew(s, owner); err != nil {
+			return err
+		}
+		s.Coordinated = true
+		return nil
+	}); err != nil {
+		return true, fmt.Errorf("batch %s: mark coordinated: %w", id, err)
+	}
+	parent, spawnErr := sp.SpawnGroup(owned(ctx), string(id), jobs)
+	if errors.Is(spawnErr, workflow.ErrUnsupported) {
+		if _, err := m.store.Update(ctx, id, func(s *State) error {
+			if err := m.renew(s, owner); err != nil {
+				return err
+			}
+			s.Coordinated = false
+			return nil
+		}); err != nil {
+			return true, fmt.Errorf("batch %s: unmark coordinated: %w", id, err)
+		}
+		return false, nil
+	}
+	if spawnErr != nil {
+		// The trigger may have landed although the call failed (a timeout
+		// after the engine accepted it), so the group is cancelled by
+		// label as well, coordinator ref or not.
+		st, err := m.store.Get(ctx, id)
+		if err != nil {
+			return true, errors.Join(spawnErr, err)
+		}
+		return true, errors.Join(fmt.Errorf("batch %s: spawn group: %w", id, spawnErr),
+			m.abortJobs(ctx, id, owner, allIndexes(len(jobs)), nil, false),
+			sp.CancelGroup(ctx, string(id), workflow.RunRef{}, st.CreatedAt))
+	}
+	return true, m.saveParent(ctx, sp, id, owner, parent)
+}

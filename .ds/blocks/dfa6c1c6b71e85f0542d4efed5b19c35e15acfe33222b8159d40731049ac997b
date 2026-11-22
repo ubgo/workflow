@@ -1,0 +1,5 @@
+type UpstreamLimit struct {
+	store BucketStore
+	spec  BucketSpec
+	clk   clock.Clock
+}

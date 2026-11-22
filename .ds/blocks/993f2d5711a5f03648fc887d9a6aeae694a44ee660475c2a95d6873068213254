@@ -1,0 +1,8 @@
+type AwaitOptions struct {
+	// Poll is the wait between Status calls; zero means DefaultAwaitPoll.
+	Poll time.Duration
+
+	// Sleep waits d or until ctx ends; nil means a real timer. A test
+	// passes one driven by a fake clock.
+	Sleep func(ctx context.Context, d time.Duration) error
+}

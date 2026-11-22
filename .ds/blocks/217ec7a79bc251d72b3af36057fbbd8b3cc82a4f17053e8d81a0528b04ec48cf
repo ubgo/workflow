@@ -1,0 +1,41 @@
+func UpdateData[T any](ctx context.Context, scope DataScope, name string, fn func(cur T, ok bool) (T, error)) (T, error) {
+	var zero T
+	store, scope, err := dataFrom(ctx, scope, name)
+	if err != nil {
+		return zero, err
+	}
+	for range UpdateDataAttempts {
+		raw, ver, ok, err := store.Get(ctx, scope, name)
+		if err != nil {
+			return zero, fmt.Errorf("workflow: %s data %q: get: %w", scope, name, err)
+		}
+		var cur T
+		if ok {
+			if cur, err = decodeData[T](scope, name, raw); err != nil {
+				return zero, err
+			}
+		}
+		next, err := fn(cur, ok)
+		if err != nil {
+			return zero, err
+		}
+		b, err := encodeJSON(scope.String()+" data "+name, next)
+		if err != nil {
+			return zero, err
+		}
+		if !ok {
+			ver = 0
+		}
+		_, err = store.Put(ctx, scope, name, b, ver)
+		if err == nil {
+			return next, nil
+		}
+		if !errors.Is(err, ErrDataConflict) {
+			return zero, fmt.Errorf("workflow: %s data %q: put: %w", scope, name, err)
+		}
+		if ctx.Err() != nil {
+			return zero, ctx.Err()
+		}
+	}
+	return zero, fmt.Errorf("workflow: %s data %q: %w after %d attempts", scope, name, ErrDataConflict, UpdateDataAttempts)
+}

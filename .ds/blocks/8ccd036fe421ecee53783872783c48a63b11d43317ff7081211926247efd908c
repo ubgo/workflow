@@ -1,0 +1,6 @@
+func (e *RunError) Error() string {
+	if e.Err == nil {
+		return e.Describe()
+	}
+	return e.Err.Error()
+}

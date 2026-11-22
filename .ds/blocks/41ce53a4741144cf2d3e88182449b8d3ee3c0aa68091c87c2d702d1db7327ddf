@@ -1,0 +1,1 @@
+func WithErrorHandler(fn func(error)) MonitorOption { return func(m *Monitor) { m.onErr = fn } }

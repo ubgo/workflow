@@ -1,0 +1,4 @@
+type MigrationScript struct {
+	Owner, Name string
+	Statements  []string
+}

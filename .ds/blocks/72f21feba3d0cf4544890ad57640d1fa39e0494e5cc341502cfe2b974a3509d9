@@ -1,0 +1,37 @@
+func Race(r RaceSpec) ([]Step, error) {
+	if r.Name == "" || r.Event == "" {
+		return nil, invalidf("race %q needs a Name and an Event", r.Name)
+	}
+	branches := make([]Branch, len(r.Branches))
+	for i, b := range r.Branches {
+		run := b.Run
+		if run != nil {
+			run = func(ctx context.Context, in []byte) ([]byte, error) {
+				var s raceSignal
+				if err := json.Unmarshal(in, &s); err != nil {
+					return nil, Permanent(fmt.Errorf("workflow: race %q: signal does not decode: %w", r.Name, err))
+				}
+				return b.Run(ctx, s.Payload)
+			}
+		}
+		branches[i] = Branch{Name: b.Name, Run: run, Retry: b.Retry, Timeout: b.Timeout}
+	}
+	waitName := r.Name + ".wait"
+	choice, err := Choice(ChoiceSpec{
+		Name:  r.Name,
+		After: []string{waitName},
+		Decide: func(_ context.Context, in []byte) (string, error) {
+			var s raceSignal
+			if err := json.Unmarshal(in, &s); err != nil {
+				return "", Permanent(fmt.Errorf("workflow: race %q: signal does not decode: %w", r.Name, err))
+			}
+			return s.Branch, nil
+		},
+		Branches: branches,
+	})
+	if err != nil {
+		return nil, err
+	}
+	wait := Step{Name: waitName, After: slices.Clone(r.After), Wait: &WaitSpec{Event: r.Event, Key: r.Key, KeyFrom: r.KeyFrom, OwnRun: r.OwnRun, Timeout: r.Timeout}}
+	return append([]Step{wait}, choice...), nil
+}

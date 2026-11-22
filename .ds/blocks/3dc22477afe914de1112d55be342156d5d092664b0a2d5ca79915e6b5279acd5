@@ -1,0 +1,3 @@
+func (h ScheduleHooks) matchesTick(t Tick) bool {
+	return t.Workflow == h.Workflow && (h.Name == "" || t.Name == h.Name)
+}

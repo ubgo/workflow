@@ -1,0 +1,11 @@
+func TickTime(labels map[string]string) (time.Time, bool) {
+	v, ok := labels[LabelTickAt]
+	if !ok {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339Nano, v)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}

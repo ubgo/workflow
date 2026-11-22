@@ -1,0 +1,30 @@
+type MachineState[D any] struct {
+	// Name is unique within the machine.
+	Name string
+
+	// Parent is the compound or parallel state this one is a child of;
+	// empty for a top-level state.
+	Parent string
+
+	// Initial is the child entered when this compound state is entered
+	// without a more specific target. Required for a compound state,
+	// ignored for a parallel one.
+	Initial string
+
+	// Parallel makes the state's children orthogonal regions: all of
+	// them are active while it is (WP-24).
+	Parallel bool
+
+	// Final marks a final state: entering it raises DoneEvent(Parent),
+	// and a top-level final state ends the instance. A final state has
+	// no children.
+	Final bool
+
+	// Entry and Exit run when the state is entered and left (WP-27), in
+	// order. Ancestors are entered before descendants and left after
+	// them.
+	Entry, Exit []MachineAction[D]
+
+	// After are the state's timers.
+	After []StateTimer
+}

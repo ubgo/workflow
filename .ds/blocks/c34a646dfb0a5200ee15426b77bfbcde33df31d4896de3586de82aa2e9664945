@@ -1,0 +1,16 @@
+func (f *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error) {
+	if err := f.need("Result", workflow.CapResult); err != nil {
+		return nil, err
+	}
+	var out []byte
+	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
+		r, ok := c.(workflow.ResultReader)
+		if !ok {
+			return &workflow.UnsupportedError{Field: "Result", Missing: workflow.CapResult, Reason: "the " + sd.String() + " backend does not implement it"}
+		}
+		var err error
+		out, err = r.Result(ctx, inner)
+		return err
+	})
+	return out, err
+}

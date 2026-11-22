@@ -1,0 +1,8 @@
+func (s *spec) dayMatches(day time.Time) bool {
+	domOK := s.dom&(1<<uint(day.Day())) != 0
+	dowOK := s.dow&(1<<uint(day.Weekday())) != 0
+	if s.domStar || s.dowStar {
+		return domOK && dowOK
+	}
+	return domOK || dowOK
+}

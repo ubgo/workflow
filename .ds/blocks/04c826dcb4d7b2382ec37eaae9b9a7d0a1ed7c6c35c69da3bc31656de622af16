@@ -1,0 +1,14 @@
+func (cc *ClaimCheck) Enqueue() workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			prepared, err := cc.prepare(ctx)(job)
+			if err != nil {
+				return workflow.RunRef{}, err
+			}
+			if prepared.Chain, err = mapChain(job.Chain, cc.prepare(ctx)); err != nil {
+				return workflow.RunRef{}, err
+			}
+			return next(workflow.AllowReservedLabels(ctx, ClaimCheckLabel), prepared)
+		}
+	}
+}

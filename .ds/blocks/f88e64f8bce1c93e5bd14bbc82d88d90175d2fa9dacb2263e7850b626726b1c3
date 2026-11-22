@@ -1,0 +1,7 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	id, err := c.backend(c.sched).Schedule(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	return encodeScheduleID(c.sched, id), nil
+}

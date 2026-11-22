@@ -1,0 +1,4 @@
+type AggregateStore struct {
+	st    *store
+	names *strings.Replacer // {aggregate_items}, {aggregate_groups} -> quoted names
+}

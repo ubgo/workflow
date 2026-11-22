@@ -1,0 +1,11 @@
+func (f PruneFilter) Matches(st State) bool {
+	switch {
+	case !f.FinishedBefore.IsZero() && !st.Open() && st.FinishedAt.Before(f.FinishedBefore):
+		return true
+	case !f.UnfinishedBefore.IsZero() && st.Open() && st.CreatedAt.Before(f.UnfinishedBefore):
+		return true
+	case !f.CancelledBefore.IsZero() && st.Cancelled && st.CancelledAt.Before(f.CancelledBefore):
+		return true
+	}
+	return false
+}

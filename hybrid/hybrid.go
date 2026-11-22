@@ -29,11 +29,15 @@ import (
 
 // forwardRetry is the forwarder step's retry policy: a jobs backend that
 // is briefly unreachable must not lose a tick.
+//
+//ds:def id=hybrid-forwardretry-pzb2buv4 owner=@khanakia stability=stable
 var forwardRetry = workflow.RetryPolicy{Max: 5, Backoff: workflow.Backoff{Initial: time.Second, Max: 30 * time.Second, Factor: 2}}
 
 // scheduleCaps are the capabilities the scheduler client answers for. Run
 // history, triggers, tick events, overlap and KeepRuns are left out: on
 // the scheduler they would describe the forwarder runs, not the jobs.
+//
+//ds:def id=hybrid-schedulecaps-zx4gtwq7 owner=@khanakia stability=stable
 var scheduleCaps = workflow.CapsOf(
 	workflow.CapCron, workflow.CapCronZone, workflow.CapMisfireSkip, workflow.CapMisfireFireOnce,
 	workflow.CapMisfireFireAll, workflow.CapScheduleWhen, workflow.CapScheduleWindow, workflow.CapSchedulePause,
@@ -42,6 +46,8 @@ var scheduleCaps = workflow.CapsOf(
 
 // notForwarded are the schedule capabilities neither backend answers for
 // here, for the reason above.
+//
+//ds:def id=hybrid-notforwarded-zhj5fjwv owner=@khanakia stability=stable
 var notForwarded = workflow.CapsOf(
 	workflow.CapOverlapSkip, workflow.CapScheduleKeep, workflow.CapScheduleHistory,
 	workflow.CapScheduleTrigger, workflow.CapTickEvents,
@@ -49,6 +55,8 @@ var notForwarded = workflow.CapsOf(
 
 // Client is a workflow.Client whose schedules fire on one backend and whose
 // runs live on another. Build it with New.
+//
+//ds:def id=hybrid-client-spwwj95u owner=@khanakia stability=stable
 type Client struct {
 	workflow.Forward // run-side optional interfaces go to the jobs client
 	sched, jobs      workflow.Client
@@ -74,12 +82,16 @@ var (
 
 // New returns a client firing schedules on scheduler and running every
 // job on jobs. Neither is started; Start starts both.
+//
+//ds:def id=hybrid-new-2d822hfp owner=@khanakia stability=stable
 func New(scheduler, jobs workflow.Client) *Client {
 	return &Client{Forward: workflow.Forward{Inner: jobs}, sched: scheduler, jobs: jobs}
 }
 
 // Capabilities is the jobs client's, with the schedule family taken from
 // the scheduler client (see scheduleCaps and notForwarded).
+//
+//ds:def id=hybrid-client-capabilities-bvkxrkrc owner=@khanakia stability=stable
 func (c *Client) Capabilities() workflow.Caps {
 	return workflow.CapsOf(c.jobs.Capabilities().Without(scheduleCaps, notForwarded), c.sched.Capabilities().Intersect(scheduleCaps))
 }
@@ -87,6 +99,8 @@ func (c *Client) Capabilities() workflow.Caps {
 // Register registers wf on the jobs client without its schedule fields and,
 // as a forwarder, on the scheduler client. A workflow asking for what this
 // split cannot honour (CronOverlap, CronKeepRuns) is refused.
+//
+//ds:def id=hybrid-client-register-jx6a3asc owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -121,6 +135,8 @@ func (c *Client) Register(wf workflow.Workflow) error {
 }
 
 // forward enqueues the fired job onto the jobs client.
+//
+//ds:def id=hybrid-client-forward-7rk63s8a owner=@khanakia stability=stable
 func (c *Client) forward(name string) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		info, _ := workflow.StepInfoFrom(ctx)
@@ -145,6 +161,8 @@ func (c *Client) forward(name string) workflow.Handler {
 
 // forwardKey is the idempotency key of a forwarded fire: the schedule and
 // the tick it stands for, else the forwarder run.
+//
+//ds:def id=hybrid-forwardkey-2cvbbqq2 owner=@khanakia stability=stable
 func forwardKey(info workflow.StepInfo) string {
 	if at, ok := workflow.TickTime(info.Labels); ok {
 		return "hybrid/" + info.Labels[workflow.LabelSchedule] + "/" + at.Format(time.RFC3339Nano)
@@ -155,6 +173,8 @@ func forwardKey(info workflow.StepInfo) string {
 // Start starts the jobs client, then the scheduler client; when the
 // scheduler fails to start, the error names it (cancel ctx to stop the
 // jobs client).
+//
+//ds:def id=hybrid-client-start-rh2jjawu owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	if err := c.jobs.Start(ctx); err != nil {
 		return fmt.Errorf("hybrid: jobs: %w", err)
@@ -185,6 +205,8 @@ func (c *Client) Signal(ctx context.Context, ev workflow.Event) error { return c
 
 // Schedule adds a schedule on the scheduler client; it refuses what the
 // split cannot honour (Overlap, KeepRuns).
+//
+//ds:def id=hybrid-client-schedule-jhq7dbyv owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if s.Overlap == workflow.OverlapSkip {
 		return "", workflow.Unsupported("Schedule.Overlap", "hybrid: the scheduler sees only its forwarder runs")
@@ -201,6 +223,8 @@ func (c *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
 }
 
 // Schedules lists the scheduler client's schedules.
+//
+//ds:def id=hybrid-client-schedules-6xqqz6j6 owner=@khanakia stability=stable
 func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	return workflow.Forward{Inner: c.sched}.Schedules(ctx)
 }
@@ -217,17 +241,23 @@ func (c *Client) ResumeSchedule(ctx context.Context, t workflow.ScheduleTarget) 
 
 // TriggerSchedule is refused: a trigger would return the forwarder's run,
 // which the jobs client does not know.
+//
+//ds:def id=hybrid-client-triggerschedule-a3s2gemf owner=@khanakia stability=stable
 func (c *Client) TriggerSchedule(context.Context, workflow.ScheduleID) (workflow.RunRef, error) {
 	return workflow.RunRef{}, &workflow.UnsupportedError{Field: "TriggerSchedule", Missing: workflow.CapScheduleTrigger,
 		Reason: "hybrid: a trigger would return the scheduler's forwarder run"}
 }
 
 // OnTick is refused: ticks would name forwarder runs.
+//
+//ds:def id=hybrid-client-ontick-mrgvs8ed owner=@khanakia stability=stable
 func (c *Client) OnTick(workflow.TickObserver) error {
 	return &workflow.UnsupportedError{Field: "OnTick", Missing: workflow.CapTickEvents, Reason: "hybrid: ticks would name the scheduler's forwarder runs"}
 }
 
 // OnRunFinished observes the jobs client's run ends.
+//
+//ds:def id=hybrid-client-onrunfinished-7uaetk27 owner=@khanakia stability=stable
 func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	n, ok := c.jobs.(workflow.RunNotifier)
 	if !ok {

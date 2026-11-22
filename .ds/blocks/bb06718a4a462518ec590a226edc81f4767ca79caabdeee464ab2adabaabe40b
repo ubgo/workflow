@@ -1,0 +1,11 @@
+func parseClaimRef(v []byte, token string) (string, bool) {
+	var s string
+	if json.Unmarshal(v, &s) != nil {
+		return "", false
+	}
+	key, ok := strings.CutPrefix(s, claimRefPrefix)
+	if !ok || !strings.HasPrefix(key, token+claimKeySep) {
+		return "", false
+	}
+	return key, true
+}

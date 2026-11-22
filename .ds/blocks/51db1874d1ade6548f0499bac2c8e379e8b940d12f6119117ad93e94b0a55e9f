@@ -1,0 +1,25 @@
+func ValidatePayload(rules map[string]func([]byte) error) workflow.EnqueueMiddleware {
+	table := maps.Clone(rules)
+	var check func(job workflow.Job) error
+	check = func(job workflow.Job) error {
+		if rule := table[job.Workflow]; rule != nil {
+			if err := rule(job.Payload); err != nil {
+				return fmt.Errorf("%w: payload of workflow %q: %w", workflow.ErrInvalid, job.Workflow, err)
+			}
+		}
+		for _, next := range job.Chain {
+			if err := check(next); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if err := check(job); err != nil {
+				return workflow.RunRef{}, err
+			}
+			return next(ctx, job)
+		}
+	}
+}

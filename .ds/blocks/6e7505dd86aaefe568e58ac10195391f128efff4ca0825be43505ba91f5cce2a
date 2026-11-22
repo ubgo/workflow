@@ -1,0 +1,60 @@
+func (q RunQuery) Match(info RunInfo) bool {
+	if !q.Ref.RunID.IsZero() && info.Ref.RunID != q.Ref.RunID {
+		return false
+	}
+	if !q.Ref.ScheduledID.IsZero() && info.Ref.ScheduledID != q.Ref.ScheduledID {
+		return false
+	}
+	if q.Workflow != "" && info.Workflow != q.Workflow {
+		return false
+	}
+	if q.Queue != "" && info.Queue != q.Queue {
+		return false
+	}
+	if len(q.Statuses) > 0 {
+		found := false
+		for _, s := range q.Statuses {
+			if s == info.Status {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	for k, v := range q.Labels {
+		if got, ok := info.Labels[k]; !ok || got != v {
+			return false
+		}
+	}
+	for k, p := range q.LabelPrefixes {
+		if got, ok := info.Labels[k]; !ok || !strings.HasPrefix(got, p) {
+			return false
+		}
+	}
+	if !q.From.IsZero() && info.EnqueuedAt.Before(q.From) {
+		return false
+	}
+	if !q.To.IsZero() && !info.EnqueuedAt.Before(q.To) {
+		return false
+	}
+	if q.Tenant != "" && info.Tenant != q.Tenant {
+		return false
+	}
+	if len(q.Payload) > 0 && !payloadMatches(info.Payload, q.Payload) {
+		return false
+	}
+	if !q.DueFrom.IsZero() || !q.DueTo.IsZero() {
+		if info.RunAt.IsZero() {
+			return false
+		}
+		if !q.DueFrom.IsZero() && info.RunAt.Before(q.DueFrom) {
+			return false
+		}
+		if !q.DueTo.IsZero() && !info.RunAt.Before(q.DueTo) {
+			return false
+		}
+	}
+	return true
+}

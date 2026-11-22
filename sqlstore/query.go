@@ -82,6 +82,8 @@ func countKey(status string, backoff int64) string {
 // Retrying while one waits on its retry backoff, Queued while one waits for
 // a worker, Waiting while only waits and sleeps are in progress. That is
 // workflow.StatusRetrying's precedence.
+//
+//ds:def id=sql-stepstatus-3wp3p5q4 owner=@khanakia stability=stable
 func stepStatus(counts map[string]int64) workflow.Status {
 	switch {
 	case counts[stepRunning] > 0:
@@ -152,6 +154,8 @@ func (r *infoRow) targets() []any {
 // an admitted run (queued, running or waiting, from its steps) are checked
 // in Go, reading on until the page is full. Payload is the stored payload.
 // The cursor is opaque; one this driver did not issue wraps ErrInvalid.
+//
+//ds:def id=sql-client-runs-vc45txxc owner=@khanakia stability=stable
 func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	if err := workflow.ValidateRunQuery(q); err != nil {
 		return workflow.RunPage{}, err
@@ -414,8 +418,25 @@ func (c *Client) nextAttempts(ctx context.Context, infos []workflow.RunInfo, now
 // idempotency key is taken again (ErrDuplicate when another unfinished run
 // holds it), and its end is delivered to run-finished observers again. A
 // run that is not failed returns ErrWrongState.
+//
+//ds:def id=sql-client-retry-g8xttdeg owner=@khanakia stability=stable
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	return c.retryFrom(ctx, ref, nil, workflow.ResetOptions{})
+}
+
+// resetRefusal ends the ErrWrongState message of a Retry (reset false)
+// or a ResetRun of a run whose status is not accepted: a refused reset of
+// a succeeded run names the opt-in that would take it.
+func resetRefusal(succeeded, reset bool, opts workflow.ResetOptions) string {
+	switch {
+	case !reset:
+		return "only a failed run can be retried"
+	case opts.Succeeded:
+		return "only a failed or succeeded run can be reset"
+	case succeeded:
+		return "only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)"
+	}
+	return "only a failed run can be reset"
 }
 
 // retryFrom is Retry, and ResetRun when rerun lists steps: those steps
@@ -445,11 +466,7 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []str
 		}
 		redo := opts.Succeeded && row.status == runSucceeded
 		if row.status != runFailed && !redo {
-			what := "a failed run"
-			if opts.Succeeded {
-				what = "a failed or succeeded run"
-			}
-			return fmt.Errorf("%w: run %s is %s, only %s can be retried", workflow.ErrWrongState, row.id, row.status, what)
+			return fmt.Errorf("%w: run %s is %s, %s", workflow.ErrWrongState, row.id, row.status, resetRefusal(row.status == runSucceeded, len(rerun) > 0, opts))
 		}
 		if redo {
 			if err := c.markRedo(ctx, tx, row); err != nil {
@@ -510,6 +527,8 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, rerun []str
 
 // Delete forgets a finished run with its steps (workflow.RunDeleter). A
 // run that is not finished returns ErrWrongState.
+//
+//ds:def id=sql-client-delete-66sf2tgg owner=@khanakia stability=stable
 func (c *Client) Delete(ctx context.Context, ref workflow.RunRef) error {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {
@@ -536,6 +555,8 @@ func (c *Client) Delete(ctx context.Context, ref workflow.RunRef) error {
 // first and cancels them one by one, so a run that moved on in between
 // (finished, or started when only waiting runs were asked for) is left
 // alone and not counted.
+//
+//ds:def id=sql-client-cancelall-6kz9c3xk owner=@khanakia stability=stable
 func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	if err := workflow.ValidateCancelQuery(q); err != nil {
 		return 0, err

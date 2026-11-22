@@ -1,0 +1,21 @@
+type NodeInfo struct {
+	// ID is the node's identity (StepInfo.Node).
+	ID string
+
+	// Mode is what the node does.
+	Mode NodeMode
+
+	// Queues are the queues its workers serve; empty means every queue
+	// (or none for NodeScheduler and NodeEnqueueOnly).
+	Queues []string
+
+	// Workers is its worker pool size.
+	Workers int
+
+	// Running is how many step attempts it was running at LastSeen.
+	Running int
+
+	// StartedAt is when its client started; LastSeen when it last
+	// reported in, on the driver's clock.
+	StartedAt, LastSeen time.Time
+}

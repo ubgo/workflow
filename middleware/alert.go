@@ -13,11 +13,15 @@ import (
 // DefaultAlertDedup is how long Alerts stays quiet about a key it has
 // just alerted on, when AlertConfig.Limiter is nil: one page per broken
 // workflow every ten minutes, not one per failed run.
+//
+//ds:def id=mw-defaultalertdedup-77zvxtqb owner=@khanakia stability=stable
 const DefaultAlertDedup = 10 * time.Minute
 
 // Alert is one alert: the failure, the dedup key it was counted under
 // and how many alerts for that key the limiter held back since the last
 // one sent.
+//
+//ds:def id=mw-alert-9tefurat owner=@khanakia stability=stable
 type Alert struct {
 	workflow.Failure
 
@@ -32,6 +36,8 @@ type Alert struct {
 // Alerter sends an alert where a human sees it: Slack, email, a pager.
 // The sink is the app's; this package only decides when to call it.
 // It is called on a driver goroutine and should not block for long.
+//
+//ds:def id=mw-alerter-ahmy4cfa owner=@khanakia stability=stable
 type Alerter interface {
 	Alert(ctx context.Context, a Alert) error
 }
@@ -47,12 +53,16 @@ func (fn AlerterFunc) Alert(ctx context.Context, a Alert) error { return fn(ctx,
 // through (reset when it lets one through). A shared implementation (a
 // database row per key) makes the limit fleet-wide; MemoryAlertLimiter
 // holds only inside one process.
+//
+//ds:def id=mw-alertlimiter-hrqf7xs9 owner=@khanakia stability=stable
 type AlertLimiter interface {
 	Allow(ctx context.Context, key string, at time.Time) (ok bool, suppressed int, err error)
 }
 
 // AlertConfig configures Alerts. The zero value alerts on every final
 // failure, deduplicated per workflow and step for DefaultAlertDedup.
+//
+//ds:def id=mw-alertconfig-9ktudfq2 owner=@khanakia stability=stable
 type AlertConfig struct {
 	// Discarded also alerts on runs a step discarded.
 	Discarded bool
@@ -83,6 +93,8 @@ type AlertConfig struct {
 // lets through. A limiter error sends the alert anyway: a broken limit
 // store must not hide a failure. Register it with OnRunFinished, or use
 // AlertPlugin.
+//
+//ds:def id=mw-alerts-rzjg5fm2 owner=@khanakia stability=stable
 func Alerts(a Alerter, cfg AlertConfig) workflow.RunFinishedFunc {
 	clk := cfg.Clock
 	if clk == nil {
@@ -124,6 +136,8 @@ func Alerts(a Alerter, cfg AlertConfig) workflow.RunFinishedFunc {
 func defaultAlertKey(f workflow.Failure) string { return f.Workflow + "/" + f.Step }
 
 // AlertPlugin bundles Alerts as a plugin named "alerts" for workflow.Use.
+//
+//ds:def id=mw-alertplugin-ghaegmgy owner=@khanakia stability=stable
 func AlertPlugin(a Alerter, cfg AlertConfig) workflow.Plugin {
 	return observerPlugin{name: "alerts", fn: Alerts(a, cfg)}
 }
@@ -143,6 +157,8 @@ func (p observerPlugin) RunFinishedObservers() []workflow.RunFinishedFunc {
 
 // AlertLimits are MemoryAlertLimiter's rules. The zero value lets every
 // alert through.
+//
+//ds:def id=mw-alertlimits-war9yqvs owner=@khanakia stability=stable
 type AlertLimits struct {
 	// Dedup holds back an alert for a key that alerted less than Dedup
 	// ago. Zero turns dedup off.
@@ -156,6 +172,8 @@ type AlertLimits struct {
 
 // MemoryAlertLimiter is the in-process AlertLimiter. Its state lives in
 // one process: each replica of a fleet dedups on its own.
+//
+//ds:def id=mw-memoryalertlimiter-qwdthqtk owner=@khanakia stability=stable
 type MemoryAlertLimiter struct {
 	clk  clock.Clock
 	lim  AlertLimits
@@ -171,6 +189,8 @@ type alertKeyState struct {
 
 // NewMemoryAlertLimiter returns a limiter with rules l. clk prunes
 // state; nil means clock.Real.
+//
+//ds:def id=mw-newmemoryalertlimiter-pu22bgvx owner=@khanakia stability=stable
 func NewMemoryAlertLimiter(clk clock.Clock, l AlertLimits) *MemoryAlertLimiter {
 	if clk == nil {
 		clk = clock.Real{}
@@ -179,6 +199,8 @@ func NewMemoryAlertLimiter(clk clock.Clock, l AlertLimits) *MemoryAlertLimiter {
 }
 
 // Allow implements AlertLimiter. It never fails.
+//
+//ds:def id=mw-memoryalertlimiter-allow-xzz96b2r owner=@khanakia stability=stable
 func (m *MemoryAlertLimiter) Allow(_ context.Context, key string, at time.Time) (bool, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

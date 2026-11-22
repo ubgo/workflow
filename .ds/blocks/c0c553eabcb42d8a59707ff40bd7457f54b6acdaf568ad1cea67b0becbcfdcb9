@@ -1,0 +1,18 @@
+func checkConfig(cfg Config) error {
+	if err := checkQueues(cfg.Queues); err != nil {
+		return err
+	}
+	if err := workflow.ValidateRecycle(cfg.Recycle); err != nil {
+		return fmt.Errorf("hatchet driver: Recycle: %w", err)
+	}
+	if cfg.GroupChunkRuns > DefaultGroupChunkRuns {
+		return fmt.Errorf("%w: hatchet driver: GroupChunkRuns %d is over the SDK's bulk limit of %d", workflow.ErrInvalid, cfg.GroupChunkRuns, DefaultGroupChunkRuns)
+	}
+	if cfg.GroupChunkBytes > DefaultGroupChunkBytes {
+		return fmt.Errorf("%w: hatchet driver: GroupChunkBytes %d is over %d, past which the SDK re-splits a bulk trigger", workflow.ErrInvalid, cfg.GroupChunkBytes, DefaultGroupChunkBytes)
+	}
+	if _, err := coordinatorRetry(*cfg.BatchCoordinatorRetry); err != nil {
+		return fmt.Errorf("hatchet driver: BatchCoordinatorRetry: %w", err)
+	}
+	return nil
+}

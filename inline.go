@@ -8,9 +8,13 @@ import (
 )
 
 // InlineRunID is the RunID a step sees in its StepInfo under RunInline.
+//
+//ds:def id=inlinerunid-2qp9k38t owner=@khanakia stability=stable
 const InlineRunID RunID = "inline"
 
 // InlineResult is what RunInline returns, success or failure.
+//
+//ds:def id=inlineresult-xtz8vfn7 owner=@khanakia stability=stable
 type InlineResult struct {
 	// Outputs holds the output of every step that succeeded (a wait
 	// step's event payload, a sleep step's input), by step name.
@@ -35,6 +39,8 @@ type InlineOption func(*inlineConfig)
 // outermost, the way a driver's middleware option does. Pass the same
 // middleware the app gives its driver to run steps exactly as they run
 // there.
+//
+//ds:def id=inlinemiddleware-rkxqrjqg owner=@khanakia stability=stable
 func InlineMiddleware(mw ...Middleware) InlineOption {
 	return func(c *inlineConfig) { c.mw = append(c.mw, mw...) }
 }
@@ -43,6 +49,8 @@ func InlineMiddleware(mw ...Middleware) InlineOption {
 // steps). The default is a real timer that ends early with ctx. A test
 // passes a function that advances a fake clock, or one that returns at
 // once. Nil is ignored.
+//
+//ds:def id=inlinesleep-ds9j9c4m owner=@khanakia stability=stable
 func InlineSleep(sleep func(ctx context.Context, d time.Duration) error) InlineOption {
 	return func(c *inlineConfig) {
 		if sleep != nil {
@@ -53,6 +61,8 @@ func InlineSleep(sleep func(ctx context.Context, d time.Duration) error) InlineO
 
 // InlineNow replaces RunInline's clock, read for RetryPolicy.Until and
 // WaitSpec.Deadline. The default is time.Now. Nil is ignored.
+//
+//ds:def id=inlinenow-xbdv8jez owner=@khanakia stability=stable
 func InlineNow(now func() time.Time) InlineOption {
 	return func(c *inlineConfig) {
 		if now != nil {
@@ -65,11 +75,15 @@ func InlineNow(now func() time.Time) InlineOption {
 // the first event not yet taken whose name and resolved key match. A wait
 // step with no matching event fails as if it timed out. Without this
 // option a workflow with a wait step is refused.
+//
+//ds:def id=inlineevents-tu7pyhj2 owner=@khanakia stability=stable
 func InlineEvents(events ...Event) InlineOption {
 	return func(c *inlineConfig) { c.events = append(c.events, events...) }
 }
 
 // realSleep waits d on a real timer, or until ctx ends.
+//
+//ds:def id=realsleep-s9d4etq5 owner=@khanakia stability=stable
 func realSleep(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return ctx.Err()
@@ -104,6 +118,8 @@ func realSleep(ctx context.Context, d time.Duration) error {
 // RunAt shape how a driver schedules many runs; a single inline call has
 // nothing to schedule, so it ignores them. It validates wf and job first
 // (ErrInvalid).
+//
+//ds:def id=runinline-c8wjejut owner=@khanakia stability=stable
 func RunInline(ctx context.Context, wf Workflow, job Job, opts ...InlineOption) (InlineResult, error) {
 	cfg := inlineConfig{sleep: realSleep, now: time.Now}
 	for _, o := range opts {
@@ -149,6 +165,7 @@ type inlineRun struct {
 	wrap  func(Handler) Handler
 }
 
+//ds:def id=inlinerun-run-nn9zzxbq owner=@khanakia stability=stable
 func (r *inlineRun) run(ctx context.Context) error {
 	done := map[string]bool{}
 	for len(done) < len(r.wf.Steps) {
@@ -180,6 +197,8 @@ func (r *inlineRun) run(ctx context.Context) error {
 
 // nextReady is the first step in declaration order not yet done whose
 // parents are all done.
+//
+//ds:def id=inlinerun-nextready-hz8snv9f owner=@khanakia stability=stable
 func (r *inlineRun) nextReady(done map[string]bool) (Step, bool) {
 	for _, s := range r.wf.Steps {
 		if done[s.Name] {
@@ -200,6 +219,8 @@ func (r *inlineRun) nextReady(done map[string]bool) (Step, bool) {
 }
 
 // step runs one step of any kind.
+//
+//ds:def id=inlinerun-step-pd7pu96z owner=@khanakia stability=stable
 func (r *inlineRun) step(ctx context.Context, s Step, in []byte) ([]byte, error) {
 	switch s.Kind() {
 	case StepSleep:
@@ -252,6 +273,8 @@ func (r *inlineRun) step(ctx context.Context, s Step, in []byte) ([]byte, error)
 }
 
 // wait takes the first untaken event matching the wait step.
+//
+//ds:def id=inlinerun-wait-6ekbasev owner=@khanakia stability=stable
 func (r *inlineRun) wait(s Step) ([]byte, error) {
 	key, err := s.Wait.ResolveKeyFor(r.job, InlineRunID)
 	if err != nil {

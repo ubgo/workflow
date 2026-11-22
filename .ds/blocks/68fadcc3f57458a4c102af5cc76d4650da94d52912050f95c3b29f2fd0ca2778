@@ -1,0 +1,6 @@
+func Invariant(cond bool, format string, args ...any) error {
+	if cond {
+		return nil
+	}
+	return Permanent(fmt.Errorf("%w: %w", ErrConstraint, fmt.Errorf(format, args...)))
+}

@@ -20,7 +20,23 @@ import (
 //   - Stage two first: finished runs past their Runs age are read in full
 //     (steps and events included), handed to Archive when set, and deleted
 //     with their steps, events and labels. An Archive error stops the prune
-//     with that batch untouched.
+//     with that batch untouched. Once Archive accepted a batch its delete
+//     runs even if ctx is cancelled meanwhile (bounded by
+//     archivedDeleteTimeout), so cancelling a prune never makes the next
+//     one archive the same runs again.
+//
+// With WithArchiveTable each run of the batch is also moved into
+// <prefix>archive by the transaction that deletes it, so the archive copy
+// and the delete commit together: exactly once, and a cancelled or failed
+// prune rolls the batch back whole for the next prune to move.
+//
+// Archive delivery is at least once, not exactly once: an external archive
+// and this database cannot commit together. A run is handed over again only
+// when the process dies, or the delete fails, between Archive returning and
+// the delete committing, or when two processes prune the same tables at
+// once. A repeat carries the same records (the same RunRef and Key), so an
+// archive that writes by run ID (an upsert, an object named after the run)
+// is idempotent.
 //   - Then stage one: finished runs past their Steps age lose their step
 //     and event rows; the run row stays.
 //
@@ -112,19 +128,82 @@ func (s *Store) pruneRuns(ctx context.Context, cutoff time.Time, wf string, name
 			}
 			archived += len(recs)
 		}
-		err = s.inTx(ctx, func(tx *sql.Tx) error {
-			for _, v := range victims {
-				if err := s.deleteRun(ctx, tx, v); err != nil {
-					return err
-				}
+		if s.archiveTable {
+			moved, err := s.moveVictims(ctx, victims, s.retention.Archive != nil)
+			if err != nil {
+				return deleted, archived, fmt.Errorf("sqlrecorder: prune runs: %w", err)
 			}
-			return nil
-		})
-		if err != nil {
+			deleted += moved
+			if s.retention.Archive == nil {
+				archived += moved
+			}
+			continue
+		}
+		if err := s.deleteVictims(ctx, victims, s.retention.Archive != nil); err != nil {
 			return deleted, archived, fmt.Errorf("sqlrecorder: prune runs: %w", err)
 		}
 		deleted += len(victims)
 	}
+}
+
+// moveVictims moves one batch of runs into the archive table in one
+// transaction (WithArchiveTable) and returns how many it moved: a run
+// another process pruned first is skipped. Without a callback the batch
+// follows ctx, so a cancel rolls it back whole and the next prune moves
+// it; after an Archive callback accepted the batch (archived) it is
+// detached from ctx as deleteVictims is.
+func (s *Store) moveVictims(ctx context.Context, victims []victim, archived bool) (int, error) {
+	if archived {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), archivedDeleteTimeout)
+		defer cancel()
+	}
+	moved := 0
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		moved = 0 // a retried transaction counts again
+		for _, v := range victims {
+			ok, err := s.moveRun(ctx, tx, v)
+			if err != nil {
+				return err
+			}
+			if ok {
+				moved++
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return moved, nil
+}
+
+// archivedDeleteTimeout bounds the delete of a batch Archive has accepted,
+// which runs detached from the prune's cancellation: long enough for one
+// batch's transaction on a busy database, short enough that a stopping
+// process is not held up by a database that stopped answering.
+//
+//ds:def id=sqlrec-archiveddeletetimeout-66323gs2 owner=@khanakia stability=stable
+const archivedDeleteTimeout = 30 * time.Second
+
+// deleteVictims deletes one batch of runs in one transaction. After an
+// Archive accepted the batch (archived), the delete no longer follows ctx's
+// cancellation: the batch is out of the database's hands, and a delete
+// cancelled now would only make the next prune archive it again.
+func (s *Store) deleteVictims(ctx context.Context, victims []victim, archived bool) error {
+	if archived {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), archivedDeleteTimeout)
+		defer cancel()
+	}
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		for _, v := range victims {
+			if err := s.deleteRun(ctx, tx, v); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // pruneSteps drops, batch by batch, the step and event rows of the runs

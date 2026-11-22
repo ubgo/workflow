@@ -1,0 +1,12 @@
+func EndStatus(have Caps, err error) Status {
+	if !IsDiscarded(err) {
+		return StatusFailed
+	}
+	switch {
+	case have.Has(CapRunStates):
+		return StatusDiscarded
+	case have.Has(CapDiscard):
+		return StatusCancelled
+	}
+	return StatusFailed
+}

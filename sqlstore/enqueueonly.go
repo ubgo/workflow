@@ -27,6 +27,8 @@ import (
 //
 // With a Notifier (WithNotifier) each enqueue notifies the workers before
 // it returns, since there is no background sender on this client.
+//
+//ds:def id=sql-withenqueueonly-z8xgtkdr owner=@khanakia stability=stable
 func WithEnqueueOnly() Option {
 	return func(cl *Client) { cl.enqueueOnly = true }
 }
@@ -34,6 +36,8 @@ func WithEnqueueOnly() Option {
 // enqueueReg is the registration an enqueue of workflow name uses: the
 // registered one, or on an enqueue-only client a definition-free stand-in
 // (registered.stub) whose keys the admitting worker evaluates.
+//
+//ds:def id=sql-client-enqueuereg-pzaxh9eg owner=@khanakia stability=stable
 func (c *Client) enqueueReg(name string) (*registered, error) {
 	if reg := c.reg(name); reg != nil {
 		return reg, nil
@@ -58,12 +62,16 @@ func (c *Client) admitEnqueued(ctx context.Context, reg *registered) error {
 // unevaluatedKeys is the rate_keys value of a run enqueued without its
 // workflow's definition: its bucket, rate keys and default queue are
 // written by the first worker that admits it (evaluateKeys).
+//
+//ds:def id=sql-unevaluatedkeys-y85mmxge owner=@khanakia stability=stable
 const unevaluatedKeys = ""
 
 // evaluateKeys fills in, in x, the concurrency bucket, rate keys and
 // default queue of run r, enqueued by an enqueue-only client that did not
 // register its workflow. Both updates are conditional on the marker, so a
 // second worker doing the same finds nothing to change.
+//
+//ds:def id=sql-client-evaluatekeys-gnscfsy7 owner=@khanakia stability=stable
 func (c *Client) evaluateKeys(ctx context.Context, tx *sql.Tx, reg *registered, r *runRow) error {
 	if r.rateKeys != unevaluatedKeys {
 		return nil

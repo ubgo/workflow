@@ -13,6 +13,8 @@ import (
 // keep showing what the app said; Describe gives the message with the
 // context in front. It wraps the step's own error, so errors.Is and
 // errors.As keep working through it.
+//
+//ds:def id=runerror-9cdqsecz owner=@khanakia stability=stable
 type RunError struct {
 	RunID    RunID
 	Workflow string
@@ -22,6 +24,8 @@ type RunError struct {
 }
 
 // Error is the step's own message (Err.Error()).
+//
+//ds:def id=runerror-error-8ec8g3t9 owner=@khanakia stability=stable
 func (e *RunError) Error() string {
 	if e.Err == nil {
 		return e.Describe()
@@ -31,6 +35,8 @@ func (e *RunError) Error() string {
 
 // Describe reads `workflow "send-email" run r-12 step "deliver" attempt 3:
 // <err>`, for a log line that has nothing else to say which run it was.
+//
+//ds:def id=runerror-describe-3c86vt5b owner=@khanakia stability=stable
 func (e *RunError) Describe() string {
 	msg := fmt.Sprintf("workflow %q run %s", e.Workflow, e.RunID)
 	if e.Step != "" {
@@ -49,6 +55,8 @@ func (e *RunError) Describe() string {
 func (e *RunError) Unwrap() error { return e.Err }
 
 // RunErrorOf returns the RunError err carries, if any.
+//
+//ds:def id=runerrorof-43usfvhp owner=@khanakia stability=stable
 func RunErrorOf(err error) (*RunError, bool) {
 	var re *RunError
 	ok := errors.As(err, &re)

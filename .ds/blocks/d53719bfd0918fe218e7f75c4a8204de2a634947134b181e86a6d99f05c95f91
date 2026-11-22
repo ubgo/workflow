@@ -1,0 +1,7 @@
+func WithFireJitterClock(c clock.Clock) FireJitterOption {
+	return func(j *fireJitter) {
+		if c != nil {
+			j.clk = c
+		}
+	}
+}

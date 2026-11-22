@@ -1,0 +1,2 @@
+`INSERT INTO {p}run_info (run_id, tenant, output, has_output, progress, nodes, deadline, timeout)
+VALUES (?, ?, NULL, 0, NULL, '[]', 0, '')`

@@ -1,0 +1,95 @@
+func (m *Manager) resume(ctx context.Context, id ID) error {
+	ownerID, err := newID()
+	if err != nil {
+		return err
+	}
+	owner := string(ownerID)
+	claimed := false
+	st, err := m.store.Update(ctx, id, func(s *State) error {
+		now := m.clk.Now()
+		if s.Dispatched || now.Before(s.DispatchUntil) {
+			return nil
+		}
+		claimed = true
+		s.DispatchOwner, s.DispatchUntil = owner, now.Add(m.dispatchLease)
+		return nil
+	})
+	if err != nil || !claimed {
+		return err
+	}
+	if st.Coordinated {
+		return m.resumeSpawn(ctx, id, owner, st)
+	}
+	var unstarted []int
+	for i, j := range st.Jobs {
+		if j.Ref.IsZero() && !j.Status.IsTerminal() {
+			unstarted = append(unstarted, i)
+		}
+	}
+	if len(unstarted) == 0 {
+		return m.finishDispatch(ctx, id, owner)
+	}
+	finder, hasFinder := m.client.(RunFinder)
+	var found map[int]workflow.RunRef
+	if hasFinder {
+		if found, err = finder.FindBatchRuns(ctx, id, st.CreatedAt); err != nil {
+			// The lease stays taken, so the next try comes after it ends.
+			return fmt.Errorf("batch %s: resume: find runs: %w", id, err)
+		}
+	}
+	hasSpec := len(st.Spec) == len(st.Jobs)
+	var start, cancel []int
+	foundRefs := map[int]workflow.RunRef{}
+	for k, i := range unstarted {
+		// A finder lists runs by index only, so for a job RetryFailed
+		// started again it may list the earlier attempt's run: neither its
+		// listing nor its silence says anything about the new attempt.
+		retried := st.Jobs[i].Attempt > 0
+		if ref, ok := found[i]; ok && !retried {
+			foundRefs[i] = ref
+			continue
+		}
+		neverStarted := !st.Grouped && k > 0
+		if hasFinder && !retried && (!hasSpec || st.Spec[i].RunAt.IsZero()) {
+			neverStarted = true
+		}
+		if neverStarted && hasSpec && !st.Cancelled {
+			start = append(start, i)
+			continue
+		}
+		cancel = append(cancel, i)
+	}
+	saved, err := m.store.Update(ctx, id, func(s *State) error {
+		if err := m.renew(s, owner); err != nil {
+			return err
+		}
+		for i, ref := range foundRefs {
+			if s.Jobs[i].Ref.IsZero() {
+				s.Jobs[i].Ref = ref
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("batch %s: resume: save found refs: %w", id, err)
+	}
+	if saved.Cancelled {
+		var errs []error
+		for i := range foundRefs {
+			errs = append(errs, m.cancelRun(ctx, saved.Jobs[i]))
+		}
+		cancel = append(cancel, start...)
+		start = nil
+		if err := errors.Join(errs...); err != nil {
+			return err
+		}
+	}
+	if len(cancel) > 0 {
+		m.log.WarnContext(ctx, "batch: resumed dispatch records jobs as cancelled", "batch", string(id), "jobs", cancel,
+			"why", "the batch is cancelled, or the job may have started with its ref lost, or its spec was not kept (WithResumableDispatch)")
+		if err := m.recordUnstarted(ctx, id, owner, cancel); err != nil {
+			return err
+		}
+	}
+	return m.start(ctx, id, owner, st.Spec, start)
+}

@@ -1,0 +1,3 @@
+func WithEnqueueSpanName(fn func(workflow.Job) string) Option {
+	return func(c *config) { c.enqueueName = fn }
+}

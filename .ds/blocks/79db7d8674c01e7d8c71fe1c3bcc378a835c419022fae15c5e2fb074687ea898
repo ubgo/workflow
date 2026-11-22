@@ -1,0 +1,3 @@
+var forkDrops = []string{LabelParentRun, LabelParentStep, LabelSchedule, LabelTickAt, LabelTrigger,
+	LabelPartitionSet, LabelPartitionKey, LabelObjectKey, LabelThenFrom, LabelContinuedFrom, LabelRunKey,
+	LabelForkOf, LabelForkStep, LabelRedo}

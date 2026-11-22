@@ -1,0 +1,22 @@
+func (c *Client) IndexLabels(ctx context.Context) (int, error) {
+	if err := c.ensureLock(ctx, labelsLockName); err != nil {
+		return 0, fmt.Errorf("sqlstore: index labels: %w", err)
+	}
+	total := 0
+	for {
+		var n int
+		var more bool
+		err := c.st.tx(ctx, func(tx *sql.Tx) error {
+			var err error
+			n, more, err = c.indexLabelChunk(ctx, tx)
+			return err
+		})
+		if err != nil {
+			return total, fmt.Errorf("sqlstore: index labels: %w", err)
+		}
+		total += n
+		if !more {
+			return total, nil
+		}
+	}
+}

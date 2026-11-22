@@ -1,0 +1,15 @@
+func CheckRunQuery(have Caps, q RunQuery) error {
+	if len(q.LabelPrefixes) > 0 && !have.Has(CapLabelPrefix) {
+		return &UnsupportedError{Field: "RunQuery.LabelPrefixes", Missing: CapLabelPrefix}
+	}
+	if q.Tenant != "" && !have.Has(CapTenant) {
+		return &UnsupportedError{Field: "RunQuery.Tenant", Missing: CapTenant}
+	}
+	if (!q.DueFrom.IsZero() || !q.DueTo.IsZero()) && !have.Has(CapDueQuery) {
+		return &UnsupportedError{Field: "RunQuery.DueFrom", Missing: CapDueQuery}
+	}
+	if len(q.Payload) > 0 && !have.Has(CapPayloadSearch) {
+		return &UnsupportedError{Field: "RunQuery.Payload", Missing: CapPayloadSearch}
+	}
+	return nil
+}

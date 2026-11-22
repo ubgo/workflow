@@ -1,0 +1,8 @@
+type PartitionRun struct {
+	// Key is the partition key.
+	Key string
+
+	// Run is the partition's newest run: its RunRef, Status and Error
+	// are the partition's state.
+	Run RunInfo
+}

@@ -1,0 +1,15 @@
+func extensionValue(v json.RawMessage) (string, error) {
+	var s string
+	if json.Unmarshal(v, &s) == nil {
+		return s, nil
+	}
+	var b bool
+	if json.Unmarshal(v, &b) == nil {
+		return strconv.FormatBool(b), nil
+	}
+	var n json.Number
+	if json.Unmarshal(v, &n) == nil {
+		return n.String(), nil
+	}
+	return "", fmt.Errorf("value %s is not a string, number or boolean", v)
+}

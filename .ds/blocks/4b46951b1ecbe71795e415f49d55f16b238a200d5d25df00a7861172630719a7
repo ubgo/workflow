@@ -1,0 +1,18 @@
+func (c *Client) CancelGroup(ctx context.Context, group string, parent workflow.RunRef, since time.Time) error {
+	sdk, err := c.ready()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	if !parent.IsZero() {
+		errs = append(errs, c.Cancel(ctx, parent))
+	}
+	_, err = sdk.Runs().Cancel(ctx, rest.V1CancelTaskRequest{Filter: &rest.V1TaskFilter{
+		Since:              since.Add(-batchListLag),
+		AdditionalMetadata: &[]string{batch.LabelBatch + ":" + group},
+	}})
+	if err != nil {
+		errs = append(errs, engineErr(err, "cancel group %s", group))
+	}
+	return errors.Join(errs...)
+}

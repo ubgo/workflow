@@ -1,0 +1,4 @@
+type Codec interface {
+	Encode(plain []byte) ([]byte, error)
+	Decode(encoded []byte) ([]byte, error)
+}

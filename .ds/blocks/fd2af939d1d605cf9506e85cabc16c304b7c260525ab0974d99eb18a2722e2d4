@@ -1,0 +1,11 @@
+func likePrefix(p string) string {
+	var b strings.Builder
+	for _, r := range p {
+		if r == '%' || r == '_' || string(r) == likeEscape {
+			b.WriteString(likeEscape)
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('%')
+	return b.String()
+}

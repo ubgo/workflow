@@ -1,0 +1,8 @@
+func CheckSlots(wf Workflow, slots int) error {
+	for _, s := range wf.Steps {
+		if n := StepSlots(s); n > slots {
+			return invalidf("workflow %q step %q needs %d worker slots and this client has %d", wf.Name, s.Name, n, slots)
+		}
+	}
+	return nil
+}

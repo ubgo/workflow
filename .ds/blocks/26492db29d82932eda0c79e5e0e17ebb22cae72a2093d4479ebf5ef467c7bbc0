@@ -1,0 +1,4 @@
+func WithEnqueueOutcome(ctx context.Context) (context.Context, *EnqueueOutcome) {
+	out := &EnqueueOutcome{}
+	return context.WithValue(ctx, outcomeKey{}, out), out
+}

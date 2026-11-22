@@ -1,0 +1,7 @@
+func ToMessage(e CloudEvent) Message {
+	m := Message{ID: e.ID, Name: e.Type, Key: e.Subject, Payload: e.Data}
+	if len(e.Extensions) > 0 {
+		m.Labels = maps.Clone(e.Extensions)
+	}
+	return m
+}

@@ -27,6 +27,8 @@ import (
 
 // Harness adapts one driver to the suite. Only New is required; every
 // other field has a default suited to the kind of clock the instance uses.
+//
+//ds:def id=workflowtest-harness-7uqe9srm owner=@khanakia stability=stable
 type Harness struct {
 	// New returns a fresh, unstarted client for one subtest. The suite
 	// registers workflows, calls Start with a context it cancels when the
@@ -93,6 +95,19 @@ type Harness struct {
 	// keep state across runs of the suite.
 	Prefix string
 
+	// StepTimeoutHandshake says the driver keeps the step-timeout
+	// handshake (workflow.WithTimeoutClaim) without claiming
+	// CapRunTimeout: an attempt that runs past Step.Timeout (or the
+	// workflow's Timeout) has its context cancelled with
+	// workflow.TimeoutError(workflow.ErrStepTimeout, ...), fails with that
+	// error whatever the handler returns, and keeps the handler's result
+	// when step middleware claimed the timeout (a step tolerated by
+	// WithRules). A driver with CapRunTimeout is held to this anyway. The
+	// step-timeout cases of the attemptcause and toleratedtimeout groups
+	// run when either holds; Hatchet sets it, since the engine has no run
+	// deadline but its worker enforces Step.Timeout itself.
+	StepTimeoutHandshake bool
+
 	// Groups, when set, picks the groups Run executes: a group runs only
 	// when Groups returns true for its name (as its subtest is named:
 	// "queuelimit", "durable"; GroupNames lists them all). Nil runs every
@@ -107,6 +122,8 @@ type Harness struct {
 }
 
 // Instance is one client under test plus what the suite needs to drive it.
+//
+//ds:def id=workflowtest-instance-hareevvd owner=@khanakia stability=stable
 type Instance struct {
 	// Client is fresh and unstarted.
 	Client workflow.Client

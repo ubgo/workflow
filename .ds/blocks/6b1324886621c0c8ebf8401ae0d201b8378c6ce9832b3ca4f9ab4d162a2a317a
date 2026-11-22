@@ -1,0 +1,4 @@
+func IsDiscarded(err error) bool {
+	var d *discardError
+	return errors.As(err, &d)
+}

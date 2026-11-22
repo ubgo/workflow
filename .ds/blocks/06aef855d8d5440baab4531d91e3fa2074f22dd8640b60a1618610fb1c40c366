@@ -1,0 +1,12 @@
+func (c *Client) reportProgress(t *task, p workflow.Progress) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if t.r.status.IsTerminal() {
+		return fmt.Errorf("%w: the run has ended", workflow.ErrCancelled)
+	}
+	p = p.Clone()
+	p.Step, p.At = t.step.Name, c.clk.Now()
+	t.r.progress = &p
+	c.emitLocked(t.r, workflow.LifecycleProgress, t.step.Name, t.attempt, nil)
+	return nil
+}

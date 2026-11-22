@@ -1,0 +1,1 @@
+func (r DrainReport) Clean() bool { return len(r.Cut) == 0 }

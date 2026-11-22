@@ -173,6 +173,8 @@ func namedScheduleID(workflowName, name string) string {
 // one row. A schedule without a Name is a new schedule on every call, with
 // an ID from the ID generator. Rows made by a version before named upserts
 // keep firing until they are Unscheduled.
+//
+//ds:def id=sql-client-schedule-tjaxged6 owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -311,6 +313,8 @@ func (c *Client) updateNamed(ctx context.Context, tx *sql.Tx, r scheduleRow) err
 // Unschedule stops a schedule. An empty id, or one already removed, is a
 // no-op; an id never issued returns ErrNotFound. The row stays, inactive,
 // so the second call can tell "removed" from "never existed".
+//
+//ds:def id=sql-client-unschedule-tn9h8rca owner=@khanakia stability=stable
 func (c *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
 	if id.IsZero() {
 		return nil
@@ -419,6 +423,8 @@ func (d dueSchedule) tickName() string {
 // A paused schedule (SchedulePauser) does not fire: its due ticks are
 // reported as skipped and its next fire time moves past them, so they
 // never fire, not even on resume.
+//
+//ds:def id=sql-client-fireschedules-9tkj9xrk owner=@khanakia stability=stable
 func (c *Client) fireSchedules(ctx context.Context) error {
 	now := c.clk.Now()
 	allPaused, err := c.schedulesPaused(ctx)
@@ -493,6 +499,8 @@ type tickDecision struct {
 // ScheduleWhen are decided before the transaction, on this node, and a
 // skipped tick still gets its tick row, so one node reports it. Tick
 // observers hear of every outcome after the commit.
+//
+//ds:def id=sql-client-fireone-mfjemgus owner=@khanakia stability=stable
 func (c *Client) fireOne(ctx context.Context, d dueSchedule, now time.Time) (bool, error) {
 	reg := c.reg(d.workflow)
 	sched, err := c.parseFor(d.expr, d.spec)
@@ -623,6 +631,8 @@ func (c *Client) fireOne(ctx context.Context, d dueSchedule, now time.Time) (boo
 
 // askWhen calls a ScheduleWhen, treating a panic as "no" so one bad
 // predicate cannot stop the dispatcher.
+//
+//ds:def id=sql-client-askwhen-k65uhzav owner=@khanakia stability=stable
 func (c *Client) askWhen(ctx context.Context, when func(context.Context, workflow.Tick) bool, t workflow.Tick) (ok bool) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -717,6 +727,8 @@ var zoneProbes = func() []time.Time {
 // encodeLocation stores a zone so every node evaluates it the same: by
 // name when time.LoadLocation gives the same offsets back, else as a fixed
 // offset when it has one. Anything else is refused rather than shifted.
+//
+//ds:def id=sql-encodelocation-25guqe3a owner=@khanakia stability=stable
 func encodeLocation(loc *time.Location) (string, error) {
 	name := loc.String()
 	if loc == time.Local || name == "Local" {
@@ -734,6 +746,7 @@ func encodeLocation(loc *time.Location) (string, error) {
 	return fixedZonePrefix + strconv.Itoa(off) + ":" + name, nil
 }
 
+//ds:def id=sql-decodelocation-f8c7z3ct owner=@khanakia stability=stable
 func decodeLocation(s string) (*time.Location, error) {
 	if rest, ok := strings.CutPrefix(s, fixedZonePrefix); ok {
 		off, name, ok := strings.Cut(rest, ":")

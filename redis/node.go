@@ -19,11 +19,15 @@ import (
 
 // maxPayloadBytes is the largest value Redis stores in one string (its
 // proto-max-bulk-len default), the driver's hard payload cap.
+//
+//ds:def id=redis-maxpayloadbytes-gucdax4w owner=@khanakia stability=stable
 const maxPayloadBytes = 512 << 20
 
 // WithNodeID sets this client's node identity: StepInfo.Node,
 // AttemptError.Node, RunInfo.AttemptedBy and its NodeInfo. The default is
 // workflow.DefaultNodeID (host name and process ID).
+//
+//ds:def id=redis-withnodeid-38w3qvxp owner=@khanakia stability=stable
 func WithNodeID(id string) Option {
 	return func(c *Client) {
 		if id != "" {
@@ -35,6 +39,8 @@ func WithNodeID(id string) Option {
 // WithPayloadLimit refuses, at Enqueue, a job whose payload (or a chained
 // job's) is larger than n bytes, with a *workflow.PayloadTooLargeError.
 // The default and the ceiling is the 512 MiB Redis stores in one value.
+//
+//ds:def id=redis-withpayloadlimit-5yc26vec owner=@khanakia stability=stable
 func WithPayloadLimit(n int) Option {
 	return func(c *Client) {
 		if n > 0 && n < maxPayloadBytes {
@@ -46,12 +52,16 @@ func WithPayloadLimit(n int) Option {
 // WithSchedulerOnly makes a scheduler node: Start runs no worker, only the
 // dispatcher, which fires schedules and admits pending runs for the
 // worker nodes (workflow.NodeScheduler).
+//
+//ds:def id=redis-withscheduleronly-psx5q54d owner=@khanakia stability=stable
 func WithSchedulerOnly() Option { return func(c *Client) { c.mode = workflow.NodeScheduler } }
 
 // WithoutScheduler makes a worker node: it runs workers and admits
 // pending runs but fires no schedule (workflow.NodeWorker), so a separate
 // scheduler node (WithSchedulerOnly) fires them. Declared Workflow.Cron
 // entries are still written at Start.
+//
+//ds:def id=redis-withoutscheduler-mdn69ca3 owner=@khanakia stability=stable
 func WithoutScheduler() Option { return func(c *Client) { c.mode = workflow.NodeWorker } }
 
 // PayloadLimit is the largest payload Enqueue accepts (workflow.PayloadLimiter).
@@ -97,6 +107,8 @@ func (c *Client) reportIn(ctx context.Context) {
 
 // reporter reports this node in every third of the lease until the client
 // stops, then removes it.
+//
+//ds:def id=redis-client-reporter-2g7gmnrm owner=@khanakia stability=stable
 func (c *Client) reporter() {
 	defer c.wg.Done()
 	for {
@@ -118,6 +130,8 @@ func (c *Client) reporter() {
 
 // Nodes lists the nodes of the prefix seen within three leases, by ID,
 // and drops older entries (workflow.NodeLister).
+//
+//ds:def id=redis-client-nodes-pq2k53gg owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	all, err := c.rdb.HGetAll(ctx, c.base+":nodes").Result()
 	if err != nil {
@@ -140,6 +154,8 @@ func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // Health reports the client live unless it stopped, and ready while it
 // is started (an enqueue-only client: always) and Redis answers a PING
 // within ctx's deadline (workflow.HealthChecker).
+//
+//ds:def id=redis-client-health-53pawas3 owner=@khanakia stability=stable
 func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 	c.mu.Lock()
 	started, stopped, draining := c.started, c.stopped, c.draining
@@ -190,6 +206,8 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 
 // Reschedule moves a delayed run that has not started to at (now when at
 // is zero or past), keeping its RunRef (workflow.RunRescheduler).
+//
+//ds:def id=redis-client-reschedule-j5u3fw5f owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	id, err := runID(ref)
 	if err != nil {
@@ -225,6 +243,8 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 // process touches (workflow.LifecycleNotifier): best-effort and local,
 // delivered in order on one goroutine; an event that finds the buffer of
 // lifecycleBuffer full is dropped and logged.
+//
+//ds:def id=redis-client-onlifecycle-pkz638m3 owner=@khanakia stability=stable
 func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnLifecycle needs a function", workflow.ErrInvalid)
@@ -240,9 +260,13 @@ func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 
 // lifecycleBuffer is how many lifecycle events wait for the observers
 // before new ones are dropped.
+//
+//ds:def id=redis-lifecyclebuffer-r6nt77tq owner=@khanakia stability=stable
 const lifecycleBuffer = 4096
 
 // emit queues ev for the lifecycle observers, filling Node.
+//
+//ds:def id=redis-client-emit-dh9vkbpx owner=@khanakia stability=stable
 func (c *Client) emit(ev workflow.LifecycleEvent) {
 	c.mu.Lock()
 	n := len(c.lifecycle)
@@ -303,6 +327,7 @@ type progressReporter struct {
 	attempt int
 }
 
+//ds:def id=redis-progressreporter-reportprogress-gs4bfrq5 owner=@khanakia stability=stable
 func (p progressReporter) ReportProgress(_ context.Context, pr workflow.Progress) error {
 	c, h := p.c, p.h
 	pr = pr.Clone()

@@ -1,0 +1,24 @@
+func (r *Relay) claim(ctx context.Context) ([]*entry, string, error) {
+	o := r.o
+	now := o.clk.Now().UnixNano()
+	token := randomID("obx")
+	until := now + int64(r.lease)
+	args := []any{statusPending, now, now, r.batch}
+	if o.engine == sqlb.DialectSQLite {
+		_, err := o.db.ExecContext(ctx, o.sql("UPDATE {t} SET lease_token = ?, lease_until = ? WHERE id IN (SELECT id FROM {t} WHERE "+claimWhere+")"),
+			append([]any{token, until}, args...)...)
+		if err != nil {
+			return nil, "", fmt.Errorf("outbox: claim: %w", err)
+		}
+	} else if err := r.claimLocked(ctx, token, until, args); err != nil {
+		return nil, "", err
+	}
+	var out []*entry
+	var e entry
+	err := sqlb.Each(ctx, o.db, sqlb.NewQuery(o.sql("SELECT "+entryCols+" FROM {t} WHERE lease_token = ? ORDER BY seq"), []any{token}, e.targets()),
+		func() error { cp := e; out = append(out, &cp); return nil })
+	if err != nil {
+		return nil, "", fmt.Errorf("outbox: read claimed entries: %w", err)
+	}
+	return out, token, nil
+}

@@ -1,0 +1,18 @@
+func (c *Client) signalFleet() {
+	if c.notifier == nil {
+		return
+	}
+	if c.enqueueOnly {
+		// No sender goroutine runs here: notify before the enqueue returns.
+		ctx, cancel := context.WithTimeout(context.Background(), notifyTimeout)
+		defer cancel()
+		if err := c.notifier.Notify(ctx, c.notifyChannel()); err != nil {
+			c.log.Warn("sqlstore: notify other clients", "error", err)
+		}
+		return
+	}
+	select {
+	case c.fleet <- struct{}{}:
+	default:
+	}
+}

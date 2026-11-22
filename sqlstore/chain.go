@@ -198,6 +198,8 @@ func (c *Client) newChainEditor(runID string) *chainEditor {
 // that records its success, so an attempt that fails (and is retried)
 // never adds its jobs. The run is touched, so no other step of it edits
 // the chain at the same time.
+//
+//ds:def id=sql-client-applychainedits-geebnunb owner=@khanakia stability=stable
 func (c *Client) applyChainEdits(ctx context.Context, tx *sql.Tx, a *attempt) error {
 	if a.edits == nil {
 		return nil
@@ -217,6 +219,8 @@ func (c *Client) applyChainEdits(ctx context.Context, tx *sql.Tx, a *attempt) er
 // the next job is inserted as a new run carrying the rest, or, when its
 // workflow is not registered here, the row is marked for a client that
 // registers it.
+//
+//ds:def id=sql-client-handoffchain-62729cn6 owner=@khanakia stability=stable
 func (c *Client) handoffChain(ctx context.Context, tx *sql.Tx, row *runRow, o *txOut) error {
 	chain, err := c.loadChain(ctx, tx, row.id)
 	if err != nil || len(chain) == 0 {
@@ -239,6 +243,8 @@ func (c *Client) handoffChain(ctx context.Context, tx *sql.Tx, row *runRow, o *t
 // allow) cannot be enqueued by anyone, so the chain ends there with an
 // error in the log rather than failing the run that already succeeded. A
 // key an unfinished run holds starts nothing, as Enqueue does.
+//
+//ds:def id=sql-client-insertchained-x67wtq8j owner=@khanakia stability=stable
 func (c *Client) insertChained(ctx context.Context, tx *sql.Tx, reg *registered, from string, next workflow.Job, o *txOut) error {
 	key, err := idemKey(reg, next)
 	if err == nil {

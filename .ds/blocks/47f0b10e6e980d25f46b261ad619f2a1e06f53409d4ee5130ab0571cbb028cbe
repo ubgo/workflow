@@ -1,0 +1,47 @@
+func (p *thenPlugin) observe(ctx context.Context, slot *thenSlot, ev RunEvent) {
+	if ev.Labels[LabelRedo] == "true" && !p.afterRedo {
+		return // a redo: the first success already started the next jobs
+	}
+	for _, r := range p.rules {
+		on := r.On
+		if len(on) == 0 {
+			on = []Status{StatusSucceeded}
+		}
+		if r.When != ev.Workflow || !slices.Contains(on, ev.Status) {
+			continue
+		}
+		job, ok, err := r.Start(ev)
+		name := r.Name
+		if name == "" {
+			name = r.When + ">" + job.Workflow
+		}
+		if err != nil {
+			p.errs(&ThenError{Rule: name, From: ev.Ref, Err: err})
+			continue
+		}
+		if !ok {
+			continue
+		}
+		if err := ValidateLabels(job.Labels); err != nil {
+			p.errs(&ThenError{Rule: name, From: ev.Ref, Job: job, Err: err})
+			continue
+		}
+		from := thenRunKey(ev.Ref)
+		job.Labels = maps.Clone(job.Labels)
+		if job.Labels == nil {
+			job.Labels = map[string]string{}
+		}
+		job.Labels[LabelThenFrom] = from
+		if job.IdempotencyKey == "" {
+			job.IdempotencyKey = "then/" + name + "/" + from
+		}
+		enq := slot.get()
+		if enq == nil {
+			p.errs(&ThenError{Rule: name, From: ev.Ref, Job: job, Err: invalidf("then: the plugin was not applied with Use, so it has no client to enqueue on")})
+			continue
+		}
+		if _, err := enq(AllowReservedLabels(ctx, LabelThenFrom), job); err != nil {
+			p.errs(&ThenError{Rule: name, From: ev.Ref, Job: job, Err: err})
+		}
+	}
+}

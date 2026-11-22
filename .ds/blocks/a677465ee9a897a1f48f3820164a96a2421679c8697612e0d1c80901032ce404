@@ -1,0 +1,7 @@
+func NewLineageStore(rdb goredis.UniversalClient, prefix string) (*LineageStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &LineageStore{rdb: rdb, base: base}, nil
+}

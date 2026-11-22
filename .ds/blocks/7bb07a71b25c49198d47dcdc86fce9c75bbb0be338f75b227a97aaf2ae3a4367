@@ -1,0 +1,38 @@
+func TestRun_UsageErrorsExit2(t *testing.T) {
+	f, srv := newFake(t)
+	for _, args := range [][]string{
+		{},
+		{"nope"},
+		{"retry"},
+		{"retry", "r1", "r2"},
+		{"retry", "--all", "r1"},
+		{"retry", "r1", "--workflow", "w"},
+		{"pause"},
+		{"pause", "--queue", "q", "--everything"},
+		{"runs", "--label", "novalue"},
+		{"runs", "--from", "yesterday"},
+		{"failures", "--status", "failed"},
+		{"delete", "--all", "--max", "-1"},
+		{"runs", "--bogus"},
+		{"drain", "--wait", "0s"},
+		{"--header", "no colon here", "caps"},
+		{"reset", "r1"},
+		{"reset", "--step", "load"},
+		{"reset", "r1", "r2", "--step", "load"},
+		{"fork", "r1"},
+		{"fork", "r1", "--step", "load", "--label", "novalue"},
+		{"signal-waiting"},
+		{"signal-waiting", "a", "b"},
+		{"signal-waiting", "go", "--payload", "{not json"},
+	} {
+		if code, _, stderr := runCLI(t, srv, nil, args...); code != ExitUsage || stderr == "" {
+			t.Errorf("%q: exit %d stderr %q, want 2 with a message", args, code, stderr)
+		}
+	}
+	if c := f.Calls(); len(c) != 0 {
+		t.Errorf("usage errors reached the API: %v", c)
+	}
+	if code, _, stderr := runCLI(t, nil, map[string]string{}, "caps"); code != ExitUsage || !strings.Contains(stderr, EnvURL) {
+		t.Errorf("no URL: %d %q", code, stderr)
+	}
+}

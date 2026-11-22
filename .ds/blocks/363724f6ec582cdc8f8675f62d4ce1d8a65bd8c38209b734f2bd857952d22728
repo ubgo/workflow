@@ -1,0 +1,27 @@
+func retryBackoff(b workflow.Backoff) (spec backoffSpec, ok bool, err error) {
+	if b.Initial <= 0 {
+		return backoffSpec{}, false, nil
+	}
+	f := b.Factor
+	if f < 1 {
+		f = 1
+	}
+	const field = "Retry.Backoff"
+	if b.Jitter > 0 {
+		return backoffSpec{}, false, unsupported(field+".Jitter", workflow.CapRetryJitter, "Hatchet waits exactly Factor^n seconds and has no jitter")
+	}
+	if f > hatchetMaxBackoffFactor {
+		return backoffSpec{}, false, workflow.Unsupported(field+".Factor", "Hatchet allows a factor of at most 1000")
+	}
+	if want := time.Duration(f * float64(time.Second)); b.Initial != want {
+		return backoffSpec{}, false, workflow.Unsupported(field+".Initial", fmt.Sprintf("Hatchet waits Factor^n seconds, so Initial must equal Factor seconds (%s), not %s", want, b.Initial))
+	}
+	maxSeconds := hatchetMaxBackoffSeconds
+	if b.Max > 0 {
+		if b.Max%time.Second != 0 || b.Max > hatchetMaxBackoffSeconds*time.Second {
+			return backoffSpec{}, false, workflow.Unsupported(field+".Max", "Hatchet caps backoff at a whole number of seconds up to 86400, not "+b.Max.String())
+		}
+		maxSeconds = int(b.Max / time.Second)
+	}
+	return backoffSpec{factor: float32(f), maxSeconds: maxSeconds}, true, nil
+}

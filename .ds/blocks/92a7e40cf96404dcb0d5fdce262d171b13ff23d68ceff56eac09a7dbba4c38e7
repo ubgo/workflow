@@ -1,0 +1,12 @@
+type DisableStore interface {
+	// Disabled reports whether key is disabled.
+	Disabled(ctx context.Context, key string) (bool, error)
+	// Fail counts one more consecutive failure of key and disables it
+	// when the count reaches after; newly is true only for the call that
+	// disabled it.
+	Fail(ctx context.Context, key string, after int) (newly bool, err error)
+	// Succeed resets key's count of consecutive failures.
+	Succeed(ctx context.Context, key string) error
+	// Enable re-enables key and resets its count.
+	Enable(ctx context.Context, key string) error
+}

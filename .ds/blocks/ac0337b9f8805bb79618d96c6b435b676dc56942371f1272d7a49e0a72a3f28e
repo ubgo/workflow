@@ -1,0 +1,5 @@
+type MachineHarness struct {
+	Client func(t *testing.T) workflow.Client
+	Start  func(t *testing.T, c workflow.Client, wfs ...workflow.Workflow)
+	Store  func(t *testing.T, c workflow.Client) workflow.JournalStore
+}

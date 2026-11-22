@@ -8,11 +8,15 @@ import (
 
 // StepSlots returns how many worker slots one attempt of s holds:
 // Step.Slots, with zero counted as one.
+//
+//ds:def id=stepslots-am5mgsbq owner=@khanakia stability=stable
 func StepSlots(s Step) int { return max(s.Slots, 1) }
 
 // CheckSlots refuses a workflow with a step that needs more slots than a
 // pool of size slots holds, since such a step could never start. Drivers
 // with CapSlotCost call it at Register. Errors wrap ErrInvalid.
+//
+//ds:def id=checkslots-3nwgkqa3 owner=@khanakia stability=stable
 func CheckSlots(wf Workflow, slots int) error {
 	for _, s := range wf.Steps {
 		if n := StepSlots(s); n > slots {
@@ -30,6 +34,8 @@ func CheckSlots(wf Workflow, slots int) error {
 // Drivers with CapSlotCost use it between claiming an attempt and running
 // it, so every driver applies the same rule. The zero value is not
 // ready; use NewSlotPool.
+//
+//ds:def id=slotpool-3rcwu7ku owner=@khanakia stability=stable
 type SlotPool struct {
 	mu      sync.Mutex
 	size    int
@@ -43,6 +49,8 @@ type slotWaiter struct {
 }
 
 // NewSlotPool returns a pool of size slots (at least one).
+//
+//ds:def id=newslotpool-5td9h9hg owner=@khanakia stability=stable
 func NewSlotPool(size int) *SlotPool { return &SlotPool{size: max(size, 1)} }
 
 // Size is the pool's number of slots.
@@ -59,6 +67,8 @@ func (p *SlotPool) InUse() int {
 // earlier waiter until they are free, or returns ctx's error when ctx ends
 // first. n above Size is an error wrapping ErrInvalid: it could never be
 // served.
+//
+//ds:def id=slotpool-acquire-rbcbkhj5 owner=@khanakia stability=stable
 func (p *SlotPool) Acquire(ctx context.Context, n int) error {
 	n = max(n, 1)
 	if n > p.size {
@@ -98,6 +108,8 @@ func (p *SlotPool) Acquire(ctx context.Context, n int) error {
 
 // Release gives back n slots taken by Acquire and serves the waiters that
 // now fit, in order.
+//
+//ds:def id=slotpool-release-bchqsvcz owner=@khanakia stability=stable
 func (p *SlotPool) Release(n int) {
 	n = max(n, 1)
 	p.mu.Lock()

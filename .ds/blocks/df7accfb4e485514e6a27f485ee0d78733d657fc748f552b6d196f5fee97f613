@@ -1,0 +1,17 @@
+func encodeInput(payload []byte) (map[string]any, error) {
+	in := map[string]any{}
+	if len(payload) == 0 {
+		return in, nil
+	}
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(payload, &obj) == nil {
+		if _, clash := obj[payloadField]; clash {
+			return nil, workflow.Unsupported("Job.Payload", "top-level key "+payloadField+" is reserved by the Hatchet driver")
+		}
+		for k, v := range obj {
+			in[k] = v
+		}
+	}
+	in[payloadField] = base64.StdEncoding.EncodeToString(payload)
+	return in, nil
+}

@@ -1,0 +1,15 @@
+func When(cond func(ctx context.Context, in []byte) (bool, error), h Handler) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		if cond == nil || h == nil {
+			return nil, Permanent(invalidf("When needs a condition and a handler"))
+		}
+		ok, err := cond(ctx, in)
+		if err != nil {
+			return nil, fmt.Errorf("workflow: When condition: %w", err)
+		}
+		if !ok {
+			return in, nil
+		}
+		return h(ctx, in)
+	}
+}

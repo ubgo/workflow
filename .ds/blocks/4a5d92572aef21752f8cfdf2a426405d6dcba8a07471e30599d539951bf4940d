@@ -1,0 +1,32 @@
+func ValidateRunQuery(q RunQuery) error {
+	for _, s := range q.Statuses {
+		if !s.valid() {
+			return invalidf("run query: unknown status %q", s)
+		}
+	}
+	if q.Queue != "" {
+		if err := ValidateQueueName(q.Queue); err != nil {
+			return err
+		}
+	}
+	if !q.From.IsZero() && !q.To.IsZero() && !q.From.Before(q.To) {
+		return invalidf("run query: From %s is not before To %s", q.From, q.To)
+	}
+	if !q.DueFrom.IsZero() && !q.DueTo.IsZero() && !q.DueFrom.Before(q.DueTo) {
+		return invalidf("run query: DueFrom %s is not before DueTo %s", q.DueFrom, q.DueTo)
+	}
+	if q.Tenant != "" {
+		if err := ValidateTenant(q.Tenant); err != nil {
+			return err
+		}
+	}
+	if q.Limit < 0 || q.Limit > MaxRunsLimit {
+		return invalidf("run query: Limit %d is outside [0, %d]", q.Limit, MaxRunsLimit)
+	}
+	for path := range q.Payload {
+		if !validPayloadPath(path) {
+			return invalidf("run query: payload path %q is not a dot path of plain names", path)
+		}
+	}
+	return nil
+}

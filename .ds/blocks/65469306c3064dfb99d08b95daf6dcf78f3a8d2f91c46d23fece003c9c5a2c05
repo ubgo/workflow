@@ -1,0 +1,9 @@
+func ResolveSecret(ctx context.Context, r SecretResolver, ref SecretRef) ([]byte, error) {
+	if ref.Ref == "" {
+		return nil, Permanent(ErrNoSecretRef)
+	}
+	if r == nil {
+		return nil, Permanent(invalidf("secret %q: resolver is nil", ref.Ref))
+	}
+	return r.ResolveSecret(ctx, ref.Ref)
+}

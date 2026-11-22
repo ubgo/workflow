@@ -17,6 +17,8 @@ import (
 // group starting over, and no item lost or returned twice while several
 // goroutines Append and Take one group at once (run it under -race). A
 // durable store's test calls it once per engine.
+//
+//ds:def id=workflowtest-aggregatestorecontract-qdhkqxx3 owner=@khanakia stability=stable
 func AggregateStoreContract(t testing.TB, s middleware.AggregateStore) {
 	t.Helper()
 	ctx := context.Background()

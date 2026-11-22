@@ -10,6 +10,8 @@ var _ workflow.TransientSignaller = (*Client)(nil)
 
 // SignalWaiting resumes the runs whose wait step is suspended on ev's name
 // and key now, and keeps ev for no one else (workflow.TransientSignaller).
+//
+//ds:def id=memory-client-signalwaiting-swh99hk3 owner=@khanakia stability=stable
 func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err

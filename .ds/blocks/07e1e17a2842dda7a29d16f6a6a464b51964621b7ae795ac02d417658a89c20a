@@ -1,0 +1,15 @@
+func (b *Bus) Subscribe(s Subscription) error {
+	if s.Name == "" || s.Event == "" {
+		return fmt.Errorf("%w: events: subscription needs a Name and an Event", workflow.ErrInvalid)
+	}
+	if s.Workflow == "" && s.Job == nil {
+		return fmt.Errorf("%w: events: subscription %q needs a Workflow or a Job", workflow.ErrInvalid, s.Name)
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.nameTakenLocked(s.Name) {
+		return fmt.Errorf("%w: events: subscription %q already exists", workflow.ErrInvalid, s.Name)
+	}
+	b.subs = append(b.subs, s)
+	return nil
+}

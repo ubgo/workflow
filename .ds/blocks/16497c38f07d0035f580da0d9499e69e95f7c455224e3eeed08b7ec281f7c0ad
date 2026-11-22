@@ -1,0 +1,1 @@
+func WithLineage(store LineageStore) DatasetOption { return func(d *Datasets) { d.store = store } }

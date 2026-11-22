@@ -1,0 +1,1 @@
+func (Real) NewTimer(d time.Duration) Timer { return realTimer{time.NewTimer(d)} }

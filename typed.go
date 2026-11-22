@@ -10,6 +10,8 @@ import (
 // JSON and encodes its output to JSON, so app code works with structs, not
 // bytes. Empty input decodes to the zero In. Input that does not decode is
 // a Permanent error: retrying the same bytes can never succeed.
+//
+//ds:def id=define-d3ttbgk3 owner=@khanakia stability=stable
 func Define[In, Out any](fn func(ctx context.Context, in In) (Out, error)) Handler {
 	return func(ctx context.Context, raw []byte) ([]byte, error) {
 		var in In

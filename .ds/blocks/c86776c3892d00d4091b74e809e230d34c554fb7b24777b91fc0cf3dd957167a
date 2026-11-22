@@ -1,0 +1,3 @@
+func isNoContent(err error) bool {
+	return err != nil && strings.Contains(err.Error(), errNoContentStatus)
+}

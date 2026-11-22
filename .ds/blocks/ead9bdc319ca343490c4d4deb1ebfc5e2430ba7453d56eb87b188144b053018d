@@ -1,0 +1,9 @@
+func EffectiveQueue(wf Workflow, job Job) string {
+	switch {
+	case job.Queue != "":
+		return job.Queue
+	case wf.Queue != "":
+		return wf.Queue
+	}
+	return DefaultQueue
+}

@@ -1,0 +1,14 @@
+func resolveChain(ctx context.Context, m Message) Message {
+	info, inStep := workflow.StepInfoFrom(ctx)
+	if m.Correlation == "" {
+		if inStep && info.Labels[LabelCorrelation] != "" {
+			m.Correlation = info.Labels[LabelCorrelation]
+		} else {
+			m.Correlation = m.ID
+		}
+	}
+	if m.Causation == "" && inStep {
+		m.Causation = info.Labels[LabelEventID]
+	}
+	return m
+}

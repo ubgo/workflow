@@ -1,0 +1,4 @@
+type EventLog interface {
+	Append(ctx context.Context, m Message, at time.Time) error
+	Range(ctx context.Context, from, to time.Time, fn func(m Message, at time.Time) error) error
+}

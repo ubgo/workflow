@@ -1,0 +1,36 @@
+func Unique(by func(workflow.Job) string, store UniqueStore, ttl time.Duration) workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if err := refuseInternalLabels(ctx, "Unique", job.Labels, uniqueOwnLabels, ClaimCheckLabel); err != nil {
+				return workflow.RunRef{}, err
+			}
+			key := by(job)
+			if key == "" {
+				return next(ctx, job)
+			}
+			if ttl <= 0 {
+				return workflow.RunRef{}, fmt.Errorf("%w: Unique needs a positive ttl", workflow.ErrInvalid)
+			}
+			owner, err := newOwnerToken()
+			if err != nil {
+				return workflow.RunRef{}, err
+			}
+			ok, err := store.Acquire(ctx, key, owner, ttl)
+			if err != nil {
+				return workflow.RunRef{}, fmt.Errorf("workflow/middleware: unique acquire: %w", err)
+			}
+			if !ok {
+				return workflow.RunRef{}, fmt.Errorf("%w: unique key %q is held", workflow.ErrDuplicate, key)
+			}
+			job.Labels = stampUnique(job.Labels, key, owner)
+			ref, err := next(workflow.AllowReservedLabels(ctx, UniqueKeyLabel, UniqueOwnerLabel), job)
+			if err != nil {
+				// The job never reached the engine, so the lock guards
+				// nothing; a release failure only delays the retry by ttl.
+				_ = store.Release(context.WithoutCancel(ctx), key, owner)
+				return workflow.RunRef{}, err
+			}
+			return ref, nil
+		}
+	}
+}

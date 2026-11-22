@@ -1,0 +1,3 @@
+func ExpireSteps(steps ...string) ExpireOption {
+	return func(c *expireConfig) { c.steps = append(c.steps, steps...) }
+}

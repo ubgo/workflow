@@ -1,0 +1,42 @@
+func MapEach[In, Out any](ctx context.Context, name string, items []In, fn func(ctx context.Context, i int, item In) (Out, error), opts ...MapOption) ([]Out, error) {
+	cfg := mapConfig{concurrency: 1}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return nil, err
+	}
+	key, err := j.claim(name)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Out, len(items))
+	errs := make([]error, len(items))
+	sem := make(chan struct{}, cfg.concurrency)
+	var wg sync.WaitGroup
+	for i, item := range items {
+		if err := ctx.Err(); err != nil {
+			errs[i] = fmt.Errorf("item %d: %w", i, err)
+			continue
+		}
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			v, err := memoKey(ctx, j, key+"#"+strconv.Itoa(i), name+"#"+strconv.Itoa(i), func(ctx context.Context) (Out, error) {
+				return fn(ctx, i, item)
+			})
+			if err != nil {
+				errs[i] = fmt.Errorf("item %d: %w", i, err)
+				return
+			}
+			out[i] = v
+		}()
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, fmt.Errorf("workflow: map %q: %w", name, err)
+	}
+	return out, nil
+}

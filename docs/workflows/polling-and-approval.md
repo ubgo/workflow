@@ -2,12 +2,12 @@
 
 Three ways a step waits for the world without holding a worker: poll until a condition holds (a file lands in a bucket, an export finishes), sleep until a time (renew a subscription on its date), or suspend until a person answers (approve a refund). Each keeps its progress outside the worker, so a wait of minutes or weeks costs no goroutine and survives a restart.
 
-Use `Poll` when you can only ask whether something is ready, `SleepUntil` when you know the time, and an approval when a person or another system will tell you. When the world can call back instead of being asked, a [signal](signals.md) is cheaper than a poll.
+Use [`Poll`](ds:block?id=poll-48rh3xt3) when you can only ask whether something is ready, [`SleepUntil`](ds:block?id=sleepuntil-6vncwvvy) when you know the time, and an [approval](ds:block?id=approvalstep-2yvb5vyr) when a person or another system will tell you. When the world can call back instead of being asked, a [signal](signals.md) is cheaper than a poll.
 
 ## Before you start
 
-- `Poll` needs the Journal plugin and `CapSnooze` (memory, sqlstore, Redis); `SleepUntil` needs `CapSnooze`. On a driver without it the snooze spends an attempt.
-- Approvals need `CapWaitForEvent` (memory, sqlstore, Redis, Hatchet).
+- [`Poll`](ds:block?id=poll-48rh3xt3) needs the Journal plugin and [`CapSnooze`](ds:block?id=capsnooze-pffu58xc) ([memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-p5caps-wggh6esn), [Redis](ds:block?id=redis-caps-bfgdst9t)); [`SleepUntil`](ds:block?id=sleepuntil-6vncwvvy) needs `CapSnooze`. On a driver without it the snooze spends an attempt.
+- Approvals need [`CapWaitForEvent`](ds:block?id=capwaitforevent-2km3dkzy) ([memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)).
 - The example is [`examples/flow-patterns`](../../examples/flow-patterns). Run it with `go run ./flow-patterns` from `examples/`.
 
 ## Poll until a condition holds
@@ -25,11 +25,11 @@ if err != nil {
 }
 ```
 
-`workflow.Poll(ctx, name, spec, check)` calls `check`; while it reports not done, the attempt ends with a snooze for the next wait, so no worker is held and no retry is spent. `PollSpec` sets the wait (`Every`, growing by `Factor` up to `Max`, or your own `Next`), a `Timeout` after which the step fails with `ErrPollTimeout` (it matches `ErrTimeout`), and a `Clock`. The start time and the number of looks live in the journal, so the interval and the timeout hold across looks, retries and restarts. Use it for a sensor (a file or partition exists), or to poll an external job an earlier step started.
+[`workflow.Poll(ctx, name, spec, check)`](ds:block?id=poll-48rh3xt3) calls `check`; while it reports not done, the attempt ends with a snooze for the next wait, so no worker is held and no retry is spent. [`PollSpec`](ds:block?id=pollspec-rbwpje2v) sets the wait (`Every`, growing by `Factor` up to `Max`, or your own `Next`), a `Timeout` after which the step fails with [`ErrPollTimeout`](ds:block?id=errpolltimeout-2mzgb5sv) (it matches `ErrTimeout`), and a `Clock`. The start time and the number of looks live in the journal, so the interval and the timeout hold across looks, retries and restarts. Use it for a sensor (a file or partition exists), or to poll an external job an earlier step started.
 
 ## Sleep until a time
 
-`workflow.SleepUntil(clk, t)` returns a snooze for the time left before `t` and nil once `t` has passed; return its error from the handler. The step comes back at `t` holding no worker and spending no attempt:
+[`workflow.SleepUntil(clk, t)`](ds:block?id=sleepuntil-6vncwvvy) returns a snooze for the time left before `t` and nil once `t` has passed; return its error from the handler. The step comes back at `t` holding no worker and spending no attempt:
 
 <!-- snippet: examples/flow-patterns/main.go#sleepuntil -->
 ```go
@@ -43,7 +43,7 @@ if err := workflow.SleepUntil(clock.Real{}, at); err != nil {
 return json.Marshal("renewed") // runs once `at` has passed
 ```
 
-A nil clock means the real one; pass a fake clock in tests ([fake clock](../testing/fake-clock.md)). A wait longer than `MaxSnooze` takes several snoozes, each coming back to find `t` still ahead. Put the call at the top of the step, or put earlier work in `Memo`, since the code above it runs on every return. To sleep between steps instead of inside one, use a [sleep step](sleep.md).
+A nil clock means the real one; pass a fake clock in tests ([fake clock](../testing/fake-clock.md)). A wait longer than [`MaxSnooze`](ds:block?id=maxsnooze-jzy97vu4) (30 days) takes several snoozes, each coming back to find `t` still ahead. Put the call at the top of the step, or put earlier work in `Memo`, since the code above it runs on every return. To sleep between steps instead of inside one, use a [sleep step](sleep.md).
 
 ## Human approval
 
@@ -69,7 +69,7 @@ pay := workflow.Step{Name: "pay", After: []string{"approve"}, Run: func(ctx cont
 }}
 ```
 
-`workflow.ApprovalStep` is a wait step on `ApprovalEvent` keyed by the request (`Key`, or `KeyFrom` reading the job). `Approve` and `Reject` resume it with a `Decision`, which the next step reads with `DecisionOf`. An answer sent before the run reaches the step is kept. For a request with no natural ID, `NewApprovalToken` returns a random one to store in the job.
+[`workflow.ApprovalStep`](ds:block?id=approvalstep-2yvb5vyr) is a wait step on `ApprovalEvent` keyed by the request (`Key`, or `KeyFrom` reading the job). [`Approve`](ds:block?id=approve-y7nybmbq) and [`Reject`](ds:block?id=reject-x4n6u9kz) resume it with a `Decision`, which the next step reads with [`DecisionOf`](ds:block?id=decisionof-jftveqah). An answer sent before the run reaches the step is kept. For a request with no natural ID, [`NewApprovalToken`](ds:block?id=newapprovaltoken-k4r4eb84) returns a random one to store in the job.
 
 To put an approve button in an email, sign the key with an expiry and check it in the link's handler:
 
@@ -90,7 +90,7 @@ if err := workflow.Approve(ctx, c, key, "ana@example.com", "looks right"); err !
 }
 ```
 
-`ApprovalSigner` needs no storage: the token carries the key and its expiry under an HMAC-SHA256. `Keys[0]` signs and every key verifies, so keys rotate. A forged or expired token matches `ErrApprovalToken`.
+[`ApprovalSigner`](ds:block?id=approvalsigner-76cy8uh3) needs no storage: the token carries the key and its expiry under an HMAC-SHA256. `Keys[0]` signs and every key verifies, so keys rotate. A forged or expired token matches `ErrApprovalToken` ([`Verify`](ds:block?id=approvalsigner-verify-7emh3ft6)).
 
 ## Try it
 
@@ -114,11 +114,11 @@ sleep until:
 
 ## Pitfalls
 
-- **A poll's `check` runs on every look:** keep it cheap and side-effect free. Its looks and start time live in the journal, so an in-process `MemoryJournal` restarts the count on another worker; use a durable journal store in production.
-- **Without `CapSnooze` every look or sleep spends an attempt.** On Hatchet a `Poll` or `SleepUntil` would burn through the step's retries; use a [sleep step](sleep.md) or a signal there.
-- **An approval's `Timeout` fails the run** with `ErrWaitTimeout`; tolerate it with [trigger rules](trigger-rules.md) for an escalation branch.
-- **An approval key is the whole secret of an unsigned link.** Anyone who can call `Approve` with the key decides; put keys in links only signed with `ApprovalSigner`, and keep its keys in your secret store.
-- **One answer resumes every run waiting with that key.** Give each request its own key, such as `NewApprovalToken`, when two runs must not share one decision.
+- **A poll's `check` runs on every look:** keep it cheap and side-effect free. Its looks and start time live in the journal ([`Poll`](ds:block?id=poll-48rh3xt3) needs the plugin: [`journalFrom`](ds:block?id=journalfrom-qywwa6tc)), so an in-process [`MemoryJournal`](ds:block?id=memoryjournal-3th6qamq) restarts the count on another worker; use a durable journal store in production.
+- **Without `CapSnooze` every look or sleep spends an attempt.** On Hatchet ([no `CapSnooze`](ds:block?id=hatchet-caps-d6x9fv8z)) a `Poll` or `SleepUntil` would burn through the step's retries; use a [sleep step](sleep.md) or a signal there.
+- **An approval's [`Timeout`](ds:block?id=approvalspec-n28mq3pn) fails the run** with `ErrWaitTimeout`; tolerate it with [trigger rules](trigger-rules.md) for an escalation branch.
+- **An approval key is the whole secret of an unsigned link.** Anyone who can call [`Approve`](ds:block?id=approve-y7nybmbq) with the key decides; put keys in links only signed with `ApprovalSigner`, and keep its keys in your secret store.
+- **One answer resumes every run waiting with that key** (an answer is [one `Signal` on the key](ds:block?id=answerapproval-ft2r3974)). Give each request its own key, such as `NewApprovalToken`, when two runs must not share one decision.
 
 ## Related
 

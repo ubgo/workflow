@@ -1,0 +1,32 @@
+func (h *handler[P]) events(w http.ResponseWriter, r *http.Request) {
+	ref, info, ok := h.open(w, r, ActionEvents)
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	st, err := h.c.Status(ctx, ref)
+	if err != nil {
+		h.fail(w, ActionEvents, err)
+		return
+	}
+	var after int64
+	if v := r.Header.Get("Last-Event-ID"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			after = n
+		}
+	}
+	hd := w.Header()
+	hd.Set("Content-Type", "text/event-stream")
+	hd.Set("Cache-Control", "no-store")
+	hd.Set("X-Content-Type-Options", "nosniff")
+	hd.Set("X-Accel-Buffering", "no") // ask a fronting proxy not to buffer the stream
+	w.WriteHeader(http.StatusOK)
+	f := &follower[P]{h: h, w: w, rc: http.NewResponseController(w), ref: ref, last: after}
+	if info != nil {
+		f.run = info.Ref.RunID
+	}
+	if f.run.IsZero() {
+		f.run = ref.RunID
+	}
+	f.follow(ctx, st)
+}

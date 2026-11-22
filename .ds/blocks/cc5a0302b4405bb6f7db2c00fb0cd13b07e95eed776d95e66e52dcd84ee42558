@@ -1,0 +1,12 @@
+type RunCount struct {
+	// Total is how many runs match, up to the max scan.
+	Total int
+	// Truncated is true when more runs match than the max scan read:
+	// Total is then a lower bound and the last pages are missing.
+	Truncated bool
+	// Cursors holds the cursor that starts each page of the query's
+	// page size: Cursors[0] is "" (the first page), Cursors[i] starts
+	// page i+1. Pass one as RunQuery.Cursor with the same filters and
+	// Limit to open that page.
+	Cursors []string
+}

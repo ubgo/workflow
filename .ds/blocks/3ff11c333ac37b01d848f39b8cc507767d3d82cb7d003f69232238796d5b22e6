@@ -1,0 +1,5 @@
+type Pauser interface {
+	Pause(ctx context.Context, t PauseTarget) error
+	Resume(ctx context.Context, t PauseTarget) error
+	Paused(ctx context.Context) ([]PauseTarget, error)
+}

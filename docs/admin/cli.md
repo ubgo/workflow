@@ -4,21 +4,21 @@
 
 ## Before you start
 
-- An app that mounts `admin.NewHandler` ([Admin JSON API](http-api.md)) and an `Identify` that accepts something a script can send: a bearer token, or a header such as a session cookie.
-- Install the stand-alone binary: `go install github.com/ubgo/workflow/cli/cmd/workflow@latest`. It is the `github.com/ubgo/workflow/cli` module (Go 1.24 or later).
+- An app that mounts [`admin.NewHandler`](ds:block?id=admin-newhandler-np68g63j) ([Admin JSON API](http-api.md)) and an `Identify` that accepts something a script can send: a bearer token, or a header such as a session cookie.
+- Install the stand-alone binary: `go install github.com/ubgo/workflow/cli/cmd/workflow@latest`. It is the `github.com/ubgo/workflow/cli` module (Go 1.24 or later), whose package imports only the standard library ([`TestGuard_StdlibOnly`](ds:block?id=cli-testguard-stdlibonly-27tfnnex)).
 - The example is [`examples/admin-cli`](../../examples/admin-cli). It starts the admin handler over a memory client on an `httptest` server and drives the CLI against it. Run it with `go run ./admin-cli` from `examples/`. [`examples/cli-tour`](../../examples/cli-tour) runs every command below once against the same kind of server, embedded as a subcommand of an app's binary.
 
 ## Connect
 
-Point it at the mount point and authenticate the way your `Identify` expects. Flags win over environment variables, and the global flags go before or after the command:
+Point it at the mount point and authenticate the way your `Identify` expects. Flags win over environment variables ([`envDefaults`](ds:block?id=cli-envdefaults-53ht2asz)), and the global flags go before or after the command:
 
 | Flag | Environment variable | What it sends |
 |---|---|---|
 | `--url URL` | `WORKFLOW_ADMIN_URL` | Where the app mounted the handler, such as `https://app.example.com/admin` |
-| `--token T` | `WORKFLOW_ADMIN_TOKEN` | `Authorization: Bearer T`; never printed, not even in an error or in `help` |
+| `--token T` | `WORKFLOW_ADMIN_TOKEN` | `Authorization: Bearer T` ([`buildHeaders`](ds:block?id=cli-buildheaders-6k6b5vfc)); never printed, not even in an error or in `help` ([`TestRun_AuthHeadersAndTokenNeverPrinted`](ds:block?id=cli-testrun-authheadersandtokenneverprinted-kezrzh3z)) |
 | `--header 'K: V'` | `WORKFLOW_ADMIN_HEADER` (one header) | Any header, repeatable: a session cookie, a tenant header |
 | `--json` | | Print the API's JSON answer, indented, instead of a table |
-| `--timeout D` | | An overall time limit for the command (none by default; each request is bounded at 30 seconds) |
+| `--timeout D` | | An overall time limit for the command (none by default; each request is bounded at 30 seconds, [`cli.DefaultTimeout`](ds:block?id=cli-defaulttimeout-whu8gewm)) |
 
 ```sh
 export WORKFLOW_ADMIN_URL=https://app.example.com/admin
@@ -27,7 +27,7 @@ workflow failures --workflow send-email
 workflow --header 'Cookie: session=...' inspect 01J9Z...
 ```
 
-An app that embeds the CLI hands it the environment through `cli.Options.Getenv`, keyed by the constants `cli.EnvURL`, `cli.EnvToken` and `cli.EnvHeader`; the tour reads them from a map:
+An app that embeds the CLI hands it the environment through [`cli.Options.Getenv`](ds:block?id=cli-options-h563nup5), keyed by the constants [`cli.EnvURL`, `cli.EnvToken` and `cli.EnvHeader`](ds:block?id=cli-envvars-43gx5upd); the tour reads them from a map:
 
 <!-- snippet: examples/cli-tour/main.go#env -->
 ```go
@@ -66,11 +66,11 @@ For one command it clears the token and sets `cli.EnvHeader` to `Cookie: session
 | `health` | Live, ready and each check | |
 | `nodes` | The online nodes | |
 
-`workflow help` lists them; `workflow help <command>` shows a command's flags. Flags may follow positional arguments (`workflow retry r-1 --dry-run`), and `--` ends the flags.
+`workflow help` lists them ([`commands`](ds:block?id=cli-commands-swdmb7e8) is the list, in usage order); `workflow help <command>` shows a command's flags. Flags may follow positional arguments (`workflow retry r-1 --dry-run`), and `--` ends the flags ([`parseInterleaved`](ds:block?id=cli-parseinterleaved-fcu64w2p)).
 
 ## Preview before you act
 
-`--dry-run` reads and changes nothing. For one run it fetches the run and says whether the action would be accepted; with `--all` it asks the server for a dry run with the same filter, so the count and the sample are the server's own:
+`--dry-run` reads and changes nothing ([`TestRun_DryRunNeverWrites`](ds:block?id=cli-testrun-dryrunneverwrites-9nx7hcq5)). For one run it fetches the run and says whether the action would be accepted; with `--all` it asks the server for a dry run with the same filter, so the count and the sample are the server's own ([`actionCmd`](ds:block?id=cli-actioncmd-sp9ck7m4)):
 
 ```text
 $ workflow retry --all --workflow send-email --dry-run
@@ -84,11 +84,11 @@ matched 3, retried 3, skipped 0 (changed meanwhile)
 exit 0
 ```
 
-A bulk retry or delete acts on at most the server's bound (`admin.WithMaxBulk`, 1,000 by default) or `--max`; when more match it says so, and running the same command again does the next batch. `delete --all` with no filter is refused by the server: list the statuses to mean every finished run ([Admin operations › Act on many runs at once](operations.md#act-on-many-runs-at-once)). `trigger --dry-run` shows the schedule that would run and warns when its overlap policy would refuse the trigger. For the single-run commands the dry run reads the run and exits 1 when the action would be refused: `reschedule --dry-run` unless the run is still delayed (`scheduled`), `cancel-step --dry-run` when the run has finished, `reset --dry-run` unless the run failed (or succeeded, with `--succeeded`), `fork --dry-run` unless the run has finished. `signal-waiting --dry-run` reads the server's capabilities and exits 1 when it would refuse the call. `pause --dry-run` and `resume --dry-run` read the active pauses, say whether the target is paused and how many pauses are active, and write nothing.
+A bulk retry or delete acts on at most the server's bound ([`admin.WithMaxBulk`](ds:block?id=admin-withmaxbulk-ety2e74q), 1,000 by default: [`admin.DefaultMaxBulk`](ds:block?id=admin-defaultmaxbulk-dtm2uzhk)) or `--max`; when more match it says so, and running the same command again does the next batch. `delete --all` with no filter is refused by the server ([`Admin.DeleteAll`](ds:block?id=admin-admin-deleteall-hfykz854)): list the statuses to mean every finished run ([Admin operations › Act on many runs at once](operations.md#act-on-many-runs-at-once)). [`trigger --dry-run`](ds:block?id=cli-triggercmd-shrcf6wu) shows the schedule that would run and warns when its overlap policy would refuse the trigger. For the single-run commands the dry run reads the run and exits 1 when the action would be refused: [`reschedule --dry-run`](ds:block?id=cli-reschedulecmd-6aee8q3p) unless the run is still delayed (`scheduled`), [`cancel-step --dry-run`](ds:block?id=cli-cancelstepcmd-5c773ctq) when the run has finished, [`reset --dry-run`](ds:block?id=cli-resetcmd-q6esujd6) unless the run failed (or succeeded, with `--succeeded`), [`fork --dry-run`](ds:block?id=cli-forkcmd-85emeetp) unless the run has finished. [`signal-waiting --dry-run`](ds:block?id=cli-signalwaitingcmd-t3jdendr) reads the server's capabilities and exits 1 when it would refuse the call. [`pause --dry-run` and `resume --dry-run`](ds:block?id=cli-pausecmd-5yqn838t) read the active pauses, say whether the target is paused and how many pauses are active, and write nothing.
 
 ## Re-run from a step or fork a run
 
-When a run failed, or succeeded with a wrong result, because of something upstream of the step that failed (bad data fixed at the source, a transform deployed with a fix), `retry` is not enough: it resumes at the step that failed. `reset` re-runs the run in place from the step you name, and `fork` starts a new run from it, leaving the original as it was ([Manage runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step)):
+When a run failed, or succeeded with a wrong result, because of something upstream of the step that failed (bad data fixed at the source, a transform deployed with a fix), `retry` is not enough: it resumes at the step that failed. [`reset`](ds:block?id=cli-resetcmd-q6esujd6) re-runs the run in place from the step you name, and [`fork`](ds:block?id=cli-forkcmd-85emeetp) starts a new run from it, leaving the original as it was ([Manage runs › Re-run a failed run from an earlier step](../jobs/manage-runs.md#re-run-a-failed-run-from-an-earlier-step)):
 
 ```text
 $ workflow reset run-7 --step transform --dry-run
@@ -98,7 +98,7 @@ $ workflow reset run-7 --step transform
 reset run-7 from step transform
 exit 0
 $ workflow reset run-9 --step transform
-workflow: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-9 is succeeded; only a failed run can be retried
+workflow: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-9 is succeeded; only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)
 exit 1
 $ workflow reset run-9 --step transform --succeeded
 reset run-9 from step transform
@@ -115,7 +115,7 @@ exit 0
 
 ## Signal the runs waiting now
 
-`signal-waiting` sends an event that only the runs already waiting for it receive; a run that reaches its wait step a moment later never sees it, where a plain signal is kept for it. Use it for hints whose loss is harmless, such as a "refresh now" nudge ([Signals › Deliver only to runs waiting now](../workflows/signals.md#deliver-only-to-runs-waiting-now)):
+[`signal-waiting`](ds:block?id=cli-signalwaitingcmd-t3jdendr) sends an event that only the runs already waiting for it receive; a run that reaches its wait step a moment later never sees it, where a plain signal is kept for it. Use it for hints whose loss is harmless, such as a "refresh now" nudge ([Signals › Deliver only to runs waiting now](../workflows/signals.md#deliver-only-to-runs-waiting-now)):
 
 ```text
 $ workflow signal-waiting cache.refresh --key eu --payload '{"reason":"deploy"}'
@@ -127,7 +127,7 @@ Zero resumed is not an error. The payload must be JSON (a usage error, exit 2, o
 
 ## Script with it
 
-`--json` prints the API's own answer, so a script reads it with `jq` and the shape is the one documented in [Admin JSON API](http-api.md#routes). The exit code is `0` when the command did what it was asked, `1` when the API refused or failed (a 401, a 403, a 409, a timeout) or a check failed, and `2` for a wrong command line:
+`--json` prints the API's own answer, so a script reads it with `jq` and the shape is the one documented in [Admin JSON API](http-api.md#routes). The exit code is `0` when the command did what it was asked, `1` when the API refused or failed (a 401, a 403, a 409, a timeout) or a check failed, and `2` for a wrong command line ([`cli.Run`](ds:block?id=cli-run-f8y65pmf), [`TestRun_UsageErrorsExit2`](ds:block?id=cli-testrun-usageerrorsexit2-6hzp7c5e), [`TestRun_APIErrorExit1`](ds:block?id=cli-testrun-apierrorexit1-4yyb8khk)):
 
 ```text
 $ workflow health
@@ -145,7 +145,7 @@ run 'workflow help' for usage
 exit 2
 ```
 
-The codes are the constants `cli.ExitOK`, `cli.ExitError` and `cli.ExitUsage`, so Go code around `cli.Run` names them instead of repeating numbers:
+The codes are the constants [`cli.ExitOK`, `cli.ExitError` and `cli.ExitUsage`](ds:block?id=cli-exitcodes-ppkys34b), so Go code around `cli.Run` names them instead of repeating numbers:
 
 <!-- snippet: examples/cli-tour/main.go#exit-codes -->
 ```go
@@ -159,9 +159,9 @@ var exitNames = map[int]string{
 }
 ```
 
-An API refusal is printed as `admin API: HTTP <status> <code>: <message>`, the text of a `*cli.APIError` (`Status`, `Code`, `Message`), with the codes of [Admin JSON API › Step 3](http-api.md#step-3-handle-the-error-codes).
+An API refusal is printed as `admin API: HTTP <status> <code>: <message>`, the text of a [`*cli.APIError`](ds:block?id=cli-apierror-w4hu3735) (`Status`, `Code`, `Message`), with the codes of [Admin JSON API › Step 3](http-api.md#step-3-handle-the-error-codes).
 
-`health` exits 1 when the client is not live or not ready, and `drain` exits 1 when runs are still queued or running after `--wait`, so a deploy script can gate on either:
+[`health`](ds:block?id=cli-healthcmd-kn9vahyu) exits 1 when the client is not live or not ready, and [`drain`](ds:block?id=cli-draincmd-mzyve365) exits 1 when runs are still queued or running after `--wait` ([`TestRun_Drain`](ds:block?id=cli-testrun-drain-qnj74rva)), so a deploy script can gate on either:
 
 ```sh
 workflow pause --queue emails
@@ -169,11 +169,11 @@ workflow drain --queue emails --wait 10m && ./deploy-email-workers.sh
 workflow resume --queue emails
 ```
 
-`drain` counts runs that are queued, running or retrying; delayed runs and runs waiting for an event are not waited for, since either can wait for days.
+`drain` counts runs that are queued, running or retrying ([`drainStatuses`](ds:block?id=cli-drainstatuses-ta2zcy96)); delayed runs and runs waiting for an event are not waited for, since either can wait for days.
 
 ## Embed it in your binary
 
-`cli.Run(ctx, args, cli.Options{...})` is the whole CLI as a function that returns the exit code, so an app can ship it as a subcommand of its own binary with its own default URL and auth. `Options` takes `Stdout` and `Stderr`, `Getenv` (nil reads no environment; pass `os.Getenv` or your own lookup), `HTTPClient` (default: a 30-second timeout), `Now` and `Sleep` for `drain`'s polling, and `Name` for the usage text. `cli.Main()` is the stand-alone binary's body: it calls `Run` with the process's arguments, `os.Getenv`, a context cancelled on an interrupt, and exits with the code.
+[`cli.Run(ctx, args, cli.Options{...})`](ds:block?id=cli-run-f8y65pmf) is the whole CLI as a function that returns the exit code, so an app can ship it as a subcommand of its own binary with its own default URL and auth. [`Options`](ds:block?id=cli-options-h563nup5) takes `Stdout` and `Stderr`, `Getenv` (nil reads no environment; pass `os.Getenv` or your own lookup), `HTTPClient` (default: a 30-second timeout, [`cli.DefaultTimeout`](ds:block?id=cli-defaulttimeout-whu8gewm)), `Now` and `Sleep` for `drain`'s polling, and `Name` for the usage text. [`cli.Main()`](ds:block?id=cli-main-sd4j6jfm) is the stand-alone binary's body: it calls `Run` with the process's arguments, `os.Getenv`, a context cancelled on an interrupt, and exits with the code.
 
 To ship it inside your own binary, call `cli.Run` from a subcommand and give the URL a default of your own, so `myapp admin failures` works with only a token set:
 
@@ -417,7 +417,7 @@ worker-1  full  default,emails  2        0        2026-10-14 09:00:00
 exit 0 cli.ExitOK
 ## exit codes
 $ myapp admin reset run-3 --step transform
-myapp admin: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-3 is succeeded; only a failed run can be retried
+myapp admin: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-3 is succeeded; only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)
 exit 1 cli.ExitError
 $ myapp admin reschedule delayed-41 --scheduled
 myapp admin: --at "": want an RFC 3339 time such as 2026-10-15T09:00:00Z
@@ -429,12 +429,12 @@ exit 2 cli.ExitUsage
 
 ## Pitfalls
 
-- **Keep the token out of shell history.** Set `WORKFLOW_ADMIN_TOKEN` from a secret store or a file rather than typing `--token`.
-- **Times in tables are local.** Tables print times in the terminal's zone, to the second; `--json` keeps the API's RFC 3339 times. (The tour fixes the zone at UTC so its output is the same everywhere.)
-- **A delayed run needs `--scheduled`.** Until it starts its ID is a `ScheduledID`, as `reschedule` shows in the tour; without the flag the server answers 404.
-- **There is no `edit` command.** Editing a delayed run is `POST /runs/{id}/edit` or `Admin.EditRun` ([Admin operations › Step 3](operations.md#step-3-act-on-runs)).
-- **The CLI checks only shape.** It validates label and time formats; status names, queue names and what the driver supports are the server's to refuse, and its refusal is printed with exit 1.
-- **`--all` without filters means every match.** `retry --all` with no filter retries every failed run, up to the bound; preview with `--dry-run` first.
+- **Keep the token out of shell history.** Set [`WORKFLOW_ADMIN_TOKEN`](ds:block?id=cli-envvars-43gx5upd) from a secret store or a file rather than typing `--token`.
+- **Times in tables are local.** Tables print times in the terminal's zone, to the second ([`fmtTime`](ds:block?id=cli-fmttime-vjzz9jsx)); `--json` keeps the API's RFC 3339 times. (The tour fixes the zone at UTC so its output is the same everywhere.)
+- **A delayed run needs `--scheduled`.** Until it starts its ID is a `ScheduledID`, as `reschedule` shows in the tour; without the flag the server answers 404 (the flag picks the route, [`runPath`](ds:block?id=cli-runpath-qnjfehgw)).
+- **There is no `edit` command** (none in [`commands`](ds:block?id=cli-commands-swdmb7e8)). Editing a delayed run is `POST /runs/{id}/edit` or `Admin.EditRun` ([Admin operations › Step 3](operations.md#step-3-act-on-runs)).
+- **The CLI checks only shape.** It validates label and time formats ([`filter.check`](ds:block?id=cli-filter-check-nupj5n5u)); status names, queue names and what the driver supports are the server's to refuse, and its refusal is printed with exit 1.
+- **`--all` without filters means every match.** `retry --all` with no filter retries every failed run, up to the bound ([`admin.DefaultMaxBulk`](ds:block?id=admin-defaultmaxbulk-dtm2uzhk)); preview with `--dry-run` first.
 - **`reset` and `fork` do the work again.** The named step and every step after it run again, side effects included; preview with `--dry-run` and pick the latest step that fixes the result.
 - **It is as allowed as its token.** Every call goes through your `Authorize`; give automation a token whose role allows only what the script does.
 

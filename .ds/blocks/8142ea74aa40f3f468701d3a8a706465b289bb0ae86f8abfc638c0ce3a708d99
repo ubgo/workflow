@@ -1,0 +1,53 @@
+func Poll[T any](ctx context.Context, name string, spec PollSpec, check func(ctx context.Context) (T, bool, error)) (T, error) {
+	var zero T
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return zero, err
+	}
+	key, err := j.claim("poll/" + name)
+	if err != nil {
+		return zero, err
+	}
+	clk := spec.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	now := clk.Now()
+	var st pollState
+	raw, ok, err := j.store.Load(ctx, j.run, key)
+	if err != nil {
+		return zero, fmt.Errorf("workflow: poll %q: load: %w", name, err)
+	}
+	if ok {
+		if err := json.Unmarshal(raw, &st); err != nil {
+			return zero, Permanent(fmt.Errorf("workflow: poll %q: stored state does not decode: %w", name, err))
+		}
+	} else {
+		st.Start = now
+	}
+	v, done, err := check(ctx)
+	if err != nil {
+		return zero, err
+	}
+	if done {
+		return v, nil
+	}
+	if spec.Timeout > 0 && now.Sub(st.Start) >= spec.Timeout {
+		return zero, Permanent(fmt.Errorf("%w: %q gave up after %s and %s looks", ErrPollTimeout, name, spec.Timeout, strconv.Itoa(st.Looks+1)))
+	}
+	st.Looks++
+	b, err := json.Marshal(st)
+	if err != nil {
+		return zero, err
+	}
+	if err := j.store.Save(ctx, j.run, key, b); err != nil {
+		return zero, fmt.Errorf("workflow: poll %q: save: %w", name, err)
+	}
+	d := spec.Wait(st.Looks)
+	if spec.Timeout > 0 {
+		if left := st.Start.Add(spec.Timeout).Sub(now); d > left {
+			d = left
+		}
+	}
+	return zero, Snooze(d)
+}

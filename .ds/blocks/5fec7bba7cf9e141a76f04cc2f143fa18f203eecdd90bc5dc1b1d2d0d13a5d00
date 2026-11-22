@@ -1,0 +1,1 @@
+var ErrDecode = errors.New("workflow/middleware: payload does not decode")

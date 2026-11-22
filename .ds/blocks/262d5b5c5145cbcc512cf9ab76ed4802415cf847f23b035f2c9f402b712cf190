@@ -1,0 +1,5 @@
+type MachineRegistry[D any] struct {
+	mu      sync.RWMutex
+	guards  map[string]workflow.MachineGuard[D]
+	actions map[string]workflow.MachineAction[D]
+}

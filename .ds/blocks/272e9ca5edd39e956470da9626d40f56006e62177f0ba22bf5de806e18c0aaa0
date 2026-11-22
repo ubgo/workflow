@@ -1,0 +1,19 @@
+func (f *Fake) Resume(ctx context.Context, t workflow.PauseTarget) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := workflow.CheckPause(f.caps, t); err != nil {
+		return err
+	}
+	if t.Workflow != "" && f.passes(t.Workflow) {
+		return f.Forward.Resume(ctx, t)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t.All {
+		clear(f.paused)
+		return nil
+	}
+	delete(f.paused, t)
+	return nil
+}

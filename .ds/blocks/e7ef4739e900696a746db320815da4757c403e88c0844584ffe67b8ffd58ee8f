@@ -1,0 +1,30 @@
+func (f *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
+	pl, pok := f.primary.(workflow.LifecycleNotifier)
+	sl, sok := f.secondary.(workflow.LifecycleNotifier)
+	if !pok || !sok {
+		return workflow.Unsupported("OnLifecycle", "both failover backends must implement workflow.LifecycleNotifier")
+	}
+	f.mu.Lock()
+	started := f.started
+	f.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	side := func(s side) workflow.LifecycleFunc {
+		return func(ctx context.Context, ev workflow.LifecycleEvent) {
+			ev.Ref = encodeRef(s, ev.Ref)
+			ev.Labels = sideLabels(ev.Labels, s)
+			fn(ctx, ev)
+		}
+	}
+	if err := pl.OnLifecycle(side(primarySide)); err != nil {
+		return fmt.Errorf("failover: primary: %w", err)
+	}
+	if err := sl.OnLifecycle(side(secondarySide)); err != nil {
+		if errors.Is(err, workflow.ErrUnsupported) {
+			return err
+		}
+		return fmt.Errorf("failover: secondary: %w", err)
+	}
+	return nil
+}

@@ -1,0 +1,1 @@
+var ErrRecycle = errors.New("workflow: worker recycled")

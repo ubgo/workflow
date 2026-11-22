@@ -1,0 +1,11 @@
+func Shape(wf Workflow) string {
+	lines := make([]string, len(wf.Steps))
+	for i, s := range wf.Steps {
+		after := slices.Clone(s.After)
+		slices.Sort(after)
+		lines[i] = s.Name + "|" + string(s.Kind()) + "|" + strings.Join(after, ",")
+	}
+	slices.Sort(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:8])
+}

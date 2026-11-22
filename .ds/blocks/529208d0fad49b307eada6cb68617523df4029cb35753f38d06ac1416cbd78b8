@@ -1,0 +1,4 @@
+type ChunkProgress struct {
+	Done  int64 `json:"done"`
+	Total int64 `json:"total,omitempty"`
+}

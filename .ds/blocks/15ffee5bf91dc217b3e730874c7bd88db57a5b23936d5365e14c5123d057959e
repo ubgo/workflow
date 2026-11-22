@@ -1,0 +1,15 @@
+func validateRetry(p RetryPolicy) error {
+	if p.Max < 0 {
+		return errors.New("Retry.Max is negative")
+	}
+	if j := p.Backoff.Jitter; math.IsNaN(j) || j < 0 || j > 1 {
+		return fmt.Errorf("Retry.Backoff.Jitter %v is outside [0, 1]", j)
+	}
+	if p.Until < 0 {
+		return errors.New("Retry.Until is negative")
+	}
+	if p.MaxErrors < 0 {
+		return errors.New("Retry.MaxErrors is negative")
+	}
+	return nil
+}

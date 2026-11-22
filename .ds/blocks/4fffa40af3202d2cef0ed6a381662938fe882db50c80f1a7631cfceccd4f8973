@@ -1,0 +1,3 @@
+func BatchWhere(desc string, fn func(FakeBatch) bool) BatchMatcher {
+	return BatchMatcher{desc: desc, match: fn}
+}

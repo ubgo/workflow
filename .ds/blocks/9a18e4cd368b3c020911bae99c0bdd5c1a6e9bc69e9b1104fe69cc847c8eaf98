@@ -1,0 +1,13 @@
+type MemoryMetricsConfig struct {
+	// Bucket is the resolution counts are kept at (DefaultMetricsBucket).
+	Bucket time.Duration
+	// Keep is how long counts are kept (DefaultMetricsKeep).
+	Keep time.Duration
+	// Dedupe is how many recent (run, status) pairs are remembered so a
+	// redelivered end is counted once (DefaultMetricsDedupe). A repeat
+	// arriving after that many other ends is counted again.
+	Dedupe int
+	// Clock prunes old buckets and stamps an event without a FinishedAt;
+	// nil means clock.Real.
+	Clock clock.Clock
+}

@@ -1,0 +1,13 @@
+func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.Auth.Identify == nil || h.cfg.Auth.Authorize == nil {
+		writeError(w, http.StatusForbidden, CodeForbidden, "httprun is closed: no Auth.Identify and Auth.Authorize configured")
+		return
+	}
+	who, err := h.identify(r)
+	if err != nil {
+		writeError(w, http.StatusUnauthorized, CodeUnauthorized, "authentication required")
+		return
+	}
+	ctx := context.WithValue(r.Context(), principalKey[P]{}, who)
+	h.mux.ServeHTTP(w, r.WithContext(ctx))
+}

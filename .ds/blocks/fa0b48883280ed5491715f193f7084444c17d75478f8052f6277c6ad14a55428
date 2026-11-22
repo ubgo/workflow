@@ -1,0 +1,6 @@
+func WakeChecked(inner Clock, every time.Duration) Clock {
+	if every <= 0 {
+		every = DefaultWakeCheck
+	}
+	return wakeClock{inner: inner, every: every}
+}

@@ -1,0 +1,1 @@
+type Observer func(ctx context.Context, ev Event)

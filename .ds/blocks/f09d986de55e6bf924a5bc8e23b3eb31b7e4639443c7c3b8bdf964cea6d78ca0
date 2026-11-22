@@ -1,0 +1,16 @@
+type Published struct {
+	// ID is the message's ID, the one given or the one the bus made.
+	ID string
+
+	// Deliveries has one entry per subscription the message matched, in
+	// the order they were subscribed.
+	Deliveries []Delivery
+
+	// Signalled reports whether the message was also signalled to
+	// waiting runs (WithSignal) without error.
+	Signalled bool
+
+	// Cancellations has one entry per cancel subscription the message
+	// matched (SubscribeCancel), in the order they were subscribed.
+	Cancellations []Cancellation
+}

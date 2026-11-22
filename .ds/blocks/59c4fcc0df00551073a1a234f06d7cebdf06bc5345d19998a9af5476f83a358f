@@ -1,0 +1,13 @@
+func (f *Client) primaryFailed() (until time.Time) {
+	if f.coolN == 0 {
+		return time.Time{}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failures++
+	if f.failures >= f.coolN {
+		f.coolUntil = f.clk.Now().Add(f.coolFor)
+		return f.coolUntil
+	}
+	return time.Time{}
+}

@@ -1,0 +1,7 @@
+func WithCoolOff(n int, d time.Duration) Option {
+	return func(f *Client) {
+		if n >= 1 && d > 0 {
+			f.coolN, f.coolFor = n, d
+		}
+	}
+}

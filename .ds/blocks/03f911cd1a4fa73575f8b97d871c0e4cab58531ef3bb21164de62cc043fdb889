@@ -1,0 +1,24 @@
+func ParseExtended(expr string) (Schedule, error) {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" || strings.HasPrefix(trimmed, "@") {
+		return Parse(expr)
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != len(fields) {
+		return Parse(expr) // the same field-count error
+	}
+	domPlain, domSpecial, perr := splitDOM(parts[2])
+	if perr == nil {
+		var dowPlain string
+		var dowSpecial []dowItem
+		dowPlain, dowSpecial, perr = splitDOW(parts[4])
+		if perr == nil {
+			if len(domSpecial) == 0 && len(dowSpecial) == 0 {
+				return Parse(expr)
+			}
+			return buildExt(expr, trimmed, parts, domPlain, domSpecial, dowPlain, dowSpecial)
+		}
+	}
+	perr.Expr = expr
+	return nil, perr
+}

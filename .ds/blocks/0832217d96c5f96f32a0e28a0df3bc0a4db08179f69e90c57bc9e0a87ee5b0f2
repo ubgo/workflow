@@ -1,0 +1,30 @@
+func TestNewOps_RefusedWhenTheJobsClientLacksThem(t *testing.T) {
+	wait := workflow.Workflow{Name: "wait", Steps: []workflow.Step{{Name: "w", Wait: &workflow.WaitSpec{Event: "go"}}}}
+	c := startOver(t, memory.New(), bareClient{memory.New()}, wait)
+	ctx := t.Context()
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "wait"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ResetRun(ctx, ref, "w"); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ResetRun: %v, want ErrUnsupported", err)
+	}
+	if _, err := c.ResetRunWith(ctx, ref, "w", workflow.ResetOptions{Succeeded: true}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ResetRunWith: %v, want ErrUnsupported", err)
+	}
+	if _, err := c.ForkRun(ctx, ref, "w", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("ForkRun: %v, want ErrUnsupported", err)
+	}
+	payload := []byte(`1`)
+	if _, err := c.EditRun(ctx, ref, workflow.JobEdit{Payload: &payload}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("EditRun: %v, want ErrUnsupported", err)
+	}
+	if n, err := c.SignalWaiting(ctx, workflow.Event{Name: "go"}); !errors.Is(err, workflow.ErrUnsupported) || n != 0 {
+		t.Errorf("SignalWaiting = %d, %v; want 0, ErrUnsupported", n, err)
+	}
+	for _, op := range []workflow.Op{workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting} {
+		if workflow.Supports(c, op) {
+			t.Errorf("Supports(%s) = true with a jobs client without it", op)
+		}
+	}
+}

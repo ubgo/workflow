@@ -1,0 +1,12 @@
+type StoredOutput struct {
+	Step    string
+	Attempt int
+	// Started and Finished bound the attempt, on the capturing clock.
+	Started, Finished time.Time
+	// Text is middleware.FormatOutput's rendering of the attempt.
+	Text string
+	// Truncated is true when Text was cut to OutputLimits.Bytes.
+	Truncated bool
+	// Error is the attempt's error message; empty when it succeeded.
+	Error string
+}

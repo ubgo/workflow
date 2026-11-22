@@ -1,0 +1,1 @@
+func (c *Client) BucketStore() *BucketStore { return &BucketStore{rdb: c.rdb, base: c.base} }

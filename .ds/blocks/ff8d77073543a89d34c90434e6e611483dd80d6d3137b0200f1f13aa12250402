@@ -1,0 +1,47 @@
+func (d *debouncer) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+		k := d.key(job)
+		if k == "" {
+			return next(ctx, job)
+		}
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		now := d.clk.Now()
+		prev, pending, err := d.store.Get(ctx, k)
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("workflow/middleware: debounce store get: %w", err)
+		}
+		first := now
+		if pending && prev.RunAt.After(now) {
+			first = prev.First
+		}
+		runAt := now.Add(d.window)
+		if d.maxWait > 0 && runAt.After(first.Add(d.maxWait)) {
+			runAt = first.Add(d.maxWait)
+		}
+		job.RunAt = runAt
+		ref, err := next(ctx, job)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		// Swap decides which run is replaced: under a shared store another
+		// process may have swapped in since Get, and its run is the one to
+		// cancel now.
+		prev, pending, err = d.store.Swap(ctx, k, DebounceBurst{First: first, RunAt: runAt, Ref: ref})
+		if err != nil {
+			// Fail closed: the store does not know the new run, so drop it
+			// rather than let it fire beside the pending one.
+			if cerr := d.c.Cancel(context.WithoutCancel(ctx), ref); cerr != nil && !errors.Is(cerr, workflow.ErrNotFound) {
+				return ref, fmt.Errorf("workflow/middleware: debounce store swap: %w (and the new run could not be cancelled: %w)", err, cerr)
+			}
+			return workflow.RunRef{}, fmt.Errorf("workflow/middleware: debounce store swap: %w", err)
+		}
+		if pending && prev.RunAt.After(now) && prev.Ref != ref {
+			if err := d.c.Cancel(ctx, prev.Ref); err != nil && !errors.Is(err, workflow.ErrNotFound) {
+				return ref, fmt.Errorf("workflow/middleware: debounce cancel of the replaced run: %w", err)
+			}
+		}
+		return ref, nil
+	}
+}

@@ -1,0 +1,7 @@
+type DebounceStore interface {
+	// Get returns key's burst, or found false when there is none.
+	Get(ctx context.Context, key string) (b DebounceBurst, found bool, err error)
+	// Swap stores b as key's burst and returns the burst it replaced, or
+	// found false when there was none.
+	Swap(ctx context.Context, key string, b DebounceBurst) (prev DebounceBurst, found bool, err error)
+}

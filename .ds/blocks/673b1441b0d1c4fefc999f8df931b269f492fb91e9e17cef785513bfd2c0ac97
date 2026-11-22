@@ -1,0 +1,10 @@
+func AllWhen(conds ...func(context.Context, Tick) bool) func(context.Context, Tick) bool {
+	return func(ctx context.Context, t Tick) bool {
+		for _, c := range conds {
+			if c != nil && !c(ctx, t) {
+				return false
+			}
+		}
+		return true
+	}
+}

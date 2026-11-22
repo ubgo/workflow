@@ -16,6 +16,8 @@ import (
 // (workflow.Serve returns it). Runs it never claimed stay queued in the
 // database for the next client. Start refuses an invalid r
 // (workflow.ValidateRecycle).
+//
+//ds:def id=sql-withrecycle-tekpfn73 owner=@khanakia stability=stable
 func WithRecycle(r workflow.Recycle) Option {
 	return func(cl *Client) { cl.recycle = r }
 }
@@ -89,6 +91,8 @@ func (c *Client) recycleAfterAttempt() {
 // claiming at once and drains the client without a deadline. A client
 // already stopping (Drain, the Start ctx, stop-when-idle) keeps a nil
 // cause: that stop was asked for.
+//
+//ds:def id=sql-client-recyclenow-8yuv3ad5 owner=@khanakia stability=stable
 func (c *Client) recycleNow(hit *workflow.RecycleError) {
 	c.mu.Lock()
 	first := c.stopCause == nil && !c.stopped && !c.draining.Load()

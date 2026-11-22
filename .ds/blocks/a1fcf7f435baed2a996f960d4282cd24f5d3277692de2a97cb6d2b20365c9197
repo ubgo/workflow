@@ -1,0 +1,5 @@
+type Deferred struct {
+	mu     sync.Mutex
+	held   []heldJob
+	closed bool
+}

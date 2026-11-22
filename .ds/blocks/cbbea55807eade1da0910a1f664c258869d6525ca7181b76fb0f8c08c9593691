@@ -1,0 +1,8 @@
+func (l *LocalCron) run(ctx context.Context, e localEntry, at time.Time) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("local cron %q panicked: %v", e.name, r)
+		}
+	}()
+	return e.fn(ctx, at)
+}

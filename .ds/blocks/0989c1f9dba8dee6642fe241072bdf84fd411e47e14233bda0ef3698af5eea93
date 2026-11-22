@@ -1,0 +1,26 @@
+type StreamChunk struct {
+	// Pos is the chunk's position in its run, from 1, given by the store
+	// in the order chunks arrived. Read's after and the SSE event ID of
+	// the httprun package are a Pos, so a reader that reconnects asks for
+	// what came after the last chunk it saw. A gap means the store
+	// dropped older chunks to stay within its bounds.
+	Pos int64
+
+	// Step is the step that emitted it.
+	Step string
+
+	// Attempt is the step attempt that emitted it (StepInfo.Attempt);
+	// zero when the store does not know it.
+	Attempt int
+
+	// Seq is the chunk's number within its step attempt, from 1, as Emit
+	// numbered it. A retried attempt starts again at 1, so a reader
+	// showing one answer can start over when Attempt changes.
+	Seq int64
+
+	// Data is the chunk as the step emitted it.
+	Data []byte
+
+	// At is when the store received it, on the store's clock.
+	At time.Time
+}

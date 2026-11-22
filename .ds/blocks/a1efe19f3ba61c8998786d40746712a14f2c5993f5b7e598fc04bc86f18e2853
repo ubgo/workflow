@@ -1,0 +1,1 @@
+var ErrClosed = errors.New("batch: the batch has finished or was cancelled")

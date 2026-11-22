@@ -1,0 +1,42 @@
+func TestClaimCheck_LookalikeNotResolved(t *testing.T) {
+	store := middleware.NewMemoryBlobStore()
+	ctx := context.Background()
+	_ = store.Put(ctx, "other/payload", []byte("another run's secret"))
+	_ = store.Put(ctx, "tok", []byte("unscoped"))
+	_ = store.Put(ctx, "tok/payload", []byte("mine"))
+	cc := newClaimCheck(t, store)
+	var seen []byte
+	step := cc.Step()(func(_ context.Context, in []byte) ([]byte, error) {
+		seen = in
+		return nil, nil
+	})
+
+	other := claimRef("other/payload")
+	cases := map[string]struct {
+		ctx context.Context
+		in  []byte
+	}{
+		"another run's key":       {runCtx("tok"), other},
+		"no key under the token":  {runCtx("tok"), claimRef("tok")},
+		"token as a mere prefix":  {runCtx("to"), claimRef("tok/payload")},
+		"in a parents object":     {runCtx("tok"), []byte(`{"a":` + string(other) + `,"b":1}`)},
+		"step outside a run":      {ctx, claimRef("tok/payload")},
+		"run without the label":   {workflow.WithStepInfo(ctx, workflow.StepInfo{Labels: map[string]string{}}), claimRef("tok/payload")},
+		"prefix in a bare string": {runCtx("tok"), []byte(`wfclaim1:tok/payload`)},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := step(tc.ctx, tc.in); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(seen, tc.in) {
+				t.Fatalf("lookalike was resolved to %q", seen)
+			}
+		})
+	}
+
+	// The control: the run's own reference does resolve.
+	if _, err := step(runCtx("tok"), claimRef("tok/payload")); err != nil || string(seen) != "mine" {
+		t.Fatalf("own reference not resolved: %q, %v", seen, err)
+	}
+}

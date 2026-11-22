@@ -13,6 +13,8 @@ import (
 // hold: Fail's crossing reported once, Succeed and Enable resetting, and
 // exactly one newly of 50 concurrent Fails. It also checks that the
 // store's migration is its own list and that a second Migrate is a no-op.
+//
+//ds:def id=enginetest-testdisablestore-gx6njhs4 owner=@khanakia stability=stable
 func TestDisableStore(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {

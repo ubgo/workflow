@@ -1,0 +1,8 @@
+func refuseBatchLabels(batchName, where string, labels map[string]string) error {
+	for _, k := range slices.Sorted(maps.Keys(labels)) {
+		if strings.HasPrefix(k, workflow.LabelPrefixBatch) {
+			return fmt.Errorf("%w: batch %q: %s: label %q uses the reserved prefix %q", workflow.ErrInvalid, batchName, where, k, workflow.LabelPrefixBatch)
+		}
+	}
+	return nil
+}

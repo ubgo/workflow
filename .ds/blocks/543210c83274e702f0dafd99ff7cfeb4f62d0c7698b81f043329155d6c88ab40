@@ -1,0 +1,1 @@
+func (b Builder) Weekends() Builder { return b.withDow("Weekends()", "0,6") }

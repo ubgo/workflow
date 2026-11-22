@@ -1,0 +1,51 @@
+func Handler(wf workflow.Workflow, verifier events.Verifier, opts ...HandlerOption) http.Handler {
+	cfg := handlerConfig{max: DefaultMaxBody}
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
+	if cfg.max <= 0 {
+		cfg.max = DefaultMaxBody
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, cfg.max))
+		if err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				http.Error(w, "body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			http.Error(w, "could not read the body", http.StatusBadRequest)
+			return
+		}
+		if verifier == nil {
+			http.Error(w, "signature does not verify", http.StatusUnauthorized)
+			return
+		}
+		if _, err := verifier.Verify(r, body); err != nil {
+			http.Error(w, "signature does not verify", http.StatusUnauthorized)
+			return
+		}
+		var env Envelope
+		dec := json.NewDecoder(bytes.NewReader(body))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&env); err != nil {
+			http.Error(w, "body is not a delivery envelope", http.StatusBadRequest)
+			return
+		}
+		res, err := workflow.RunInline(r.Context(), wf, workflow.Job{Workflow: wf.Name, Payload: env.Payload}, cfg.inline...)
+		if err != nil {
+			answerError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(workflow.RunOutput(wf, res.Outputs))
+	})
+}

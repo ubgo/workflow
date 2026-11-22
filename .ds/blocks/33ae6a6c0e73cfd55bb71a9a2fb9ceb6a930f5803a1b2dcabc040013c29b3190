@@ -1,0 +1,63 @@
+type RunQuery struct {
+	// Ref picks one run: every field of Ref that is set must equal the
+	// run's, so a RunRef that Enqueue returned for a delayed run (only its
+	// ScheduledID) still finds the run after it started. The zero RunRef
+	// matches any run. With Ref set, Runs returns zero or
+	// one run, which is how an admin surface shows a single run.
+	Ref RunRef
+
+	// Workflow is the workflow name; empty matches any.
+	Workflow string
+
+	// Queue is the run's queue (EffectiveQueue); empty matches any.
+	Queue string
+
+	// Statuses matches runs in any of these statuses; empty matches any
+	// (CancelAll gives it its own default).
+	Statuses []Status
+
+	// Labels matches runs whose Job.Labels hold every pair exactly.
+	Labels map[string]string
+
+	// LabelPrefixes matches runs whose Job.Labels hold every key with a
+	// value starting with the given prefix (an empty prefix matches any
+	// value under that key). It needs CapLabelPrefix; a driver without it
+	// refuses the query (CheckRunQuery) rather than ignoring the filter.
+	LabelPrefixes map[string]string
+
+	// From and To bound the enqueue time to [From, To); a zero bound is
+	// open.
+	From, To time.Time
+
+	// Tenant matches runs whose Job.Tenant equals it; empty matches any.
+	// It needs CapTenant; a driver without it refuses the query
+	// (CheckRunQuery).
+	Tenant string
+
+	// DueFrom and DueTo bound the time a delayed run is due (RunInfo.RunAt)
+	// to [DueFrom, DueTo), for "what fires in the next hour". With either
+	// set, only runs enqueued with a RunAt match. A zero bound is open.
+	// They need CapDueQuery (CheckRunQuery).
+	DueFrom, DueTo time.Time
+
+	// Payload matches runs whose payload is a JSON object holding every
+	// field with the given value (RS-08, search inside args). A key is a
+	// field name or a dot path into nested objects ("customer.id"), each
+	// segment a plain name (letters, digits, underscore, not starting
+	// with a digit). A value matches the field's text: a JSON string
+	// unquoted ("acme"), a number as written in the payload ("42",
+	// "1.5"), true, false or null. A payload that is not a JSON object, or
+	// lacks the field, does not match. It needs CapPayloadSearch
+	// (CheckRunQuery). CancelAll refuses it. The payload is the one the
+	// driver stores, so a payload sealed by a codec or Encrypt cannot be
+	// searched.
+	Payload map[string]string
+
+	// Limit is the page size: zero means DefaultRunsLimit, more than
+	// MaxRunsLimit is invalid. CancelAll refuses it.
+	Limit int
+
+	// Cursor continues a listing from RunPage.Next; empty starts at the
+	// newest run. It is opaque and driver-specific. CancelAll refuses it.
+	Cursor string
+}

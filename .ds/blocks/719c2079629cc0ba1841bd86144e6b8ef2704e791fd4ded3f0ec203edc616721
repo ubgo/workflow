@@ -1,0 +1,26 @@
+func memoKey[T any](ctx context.Context, j *journalScope, key, name string, fn func(ctx context.Context) (T, error)) (T, error) {
+	var zero T
+	raw, ok, err := j.store.Load(ctx, j.run, key)
+	if err != nil {
+		return zero, fmt.Errorf("workflow: memo %q: load: %w", name, err)
+	}
+	if ok {
+		var v T
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return zero, Permanent(fmt.Errorf("workflow: memo %q: stored result does not decode: %w", name, err))
+		}
+		return v, nil
+	}
+	v, err := fn(ctx)
+	if err != nil {
+		return zero, err
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return zero, Permanent(fmt.Errorf("workflow: memo %q: encode result: %w", name, err))
+	}
+	if err := j.store.Save(ctx, j.run, key, b); err != nil {
+		return zero, fmt.Errorf("workflow: memo %q: save: %w", name, err)
+	}
+	return v, nil
+}

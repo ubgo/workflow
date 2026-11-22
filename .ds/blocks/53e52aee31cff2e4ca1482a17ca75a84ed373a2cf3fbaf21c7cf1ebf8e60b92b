@@ -1,0 +1,31 @@
+func enqueuePartition(ctx context.Context, client Client, set PartitionSet, key string) (RunRef, error) {
+	var job Job
+	if set.Job != nil {
+		var err error
+		if job, err = set.Job(key); err != nil {
+			return RunRef{}, err
+		}
+		if err := ValidateLabels(job.Labels); err != nil {
+			return RunRef{}, err
+		}
+		if job.Workflow == "" {
+			job.Workflow = set.Workflow
+		}
+	} else {
+		payload, err := json.Marshal(key)
+		if err != nil {
+			return RunRef{}, err
+		}
+		job = Job{Workflow: set.Workflow, Payload: payload}
+	}
+	job.Labels = maps.Clone(job.Labels)
+	if job.Labels == nil {
+		job.Labels = map[string]string{}
+	}
+	job.Labels[LabelPartitionSet] = set.Name
+	job.Labels[LabelPartitionKey] = key
+	if job.IdempotencyKey == "" {
+		job.IdempotencyKey = PartitionKey(job.Workflow, set.Name, key)
+	}
+	return client.Enqueue(ctx, job)
+}

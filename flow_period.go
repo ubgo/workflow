@@ -25,6 +25,8 @@ const (
 // refused, as for Schedule.Location: a period boundary depends on the
 // zone, and the host's zone differs from machine to machine. Errors wrap
 // ErrInvalid.
+//
+//ds:def id=periodkey-jn3g3p9u owner=@khanakia stability=stable
 func PeriodKey(t time.Time, p Period, loc *time.Location) (string, error) {
 	if loc == nil || loc == time.Local {
 		return "", invalidf("period key needs an explicit location, not nil or time.Local")
@@ -59,6 +61,8 @@ func PeriodKey(t time.Time, p Period, loc *time.Location) (string, error) {
 // pass the same key to the payment provider's own idempotency key (the
 // period key alone, PeriodKey, is the stable value for that), and
 // memoise the charge with Memo so a retried step does not charge twice.
+//
+//ds:def id=onceperperiod-6wfss2ur owner=@khanakia stability=stable
 func OncePerPeriod(job Job, scope string, p Period, t time.Time, loc *time.Location) (Job, error) {
 	if scope == "" {
 		return job, invalidf("once per period: scope is empty")

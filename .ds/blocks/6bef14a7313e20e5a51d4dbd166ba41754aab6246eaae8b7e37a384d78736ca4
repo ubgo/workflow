@@ -1,0 +1,9 @@
+	PubSubAttributes = AttributeLimits{Name: "Pub/Sub", MaxCount: 100, MaxKeyBytes: 256, MaxValueBytes: 1024, ValidKey: func(k string) error {
+		if k == "" {
+			return fmt.Errorf("empty key")
+		}
+		if strings.HasPrefix(strings.ToLower(k), "goog") {
+			return fmt.Errorf("key %q uses the prefix Pub/Sub reserves", k)
+		}
+		return nil
+	}}

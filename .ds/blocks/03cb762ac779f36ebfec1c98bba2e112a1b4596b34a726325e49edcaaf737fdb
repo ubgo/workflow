@@ -1,0 +1,4 @@
+type LineageStore struct {
+	st    *store
+	names *strings.Replacer // {lineage} -> quoted name
+}

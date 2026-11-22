@@ -1,0 +1,27 @@
+func (m *Manager) claimCallbacks(s *State, eff effects, now time.Time) []PendingCallback {
+	if s.Progress != "" {
+		for _, i := range eff.progress {
+			s.Pending = append(s.Pending, PendingCallback{Kind: CallbackProgress, Workflow: s.Progress, Job: i, Round: s.Round})
+		}
+	}
+	for _, cb := range []struct {
+		fire bool
+		kind CallbackKind
+		name string
+	}{{eff.catch, CallbackCatch, s.Catch}, {eff.then, CallbackThen, s.Then}, {eff.finally, CallbackFinally, s.Finally}} {
+		if cb.fire && cb.name != "" {
+			s.Pending = append(s.Pending, PendingCallback{Kind: cb.kind, Workflow: cb.name, Round: s.Round})
+		}
+	}
+	var claimed []PendingCallback
+	for i := range s.Pending {
+		p := &s.Pending[i]
+		if p.RetryAt.After(now) {
+			continue
+		}
+		p.Attempts++
+		p.RetryAt = now.Add(m.callbackRetry)
+		claimed = append(claimed, *p)
+	}
+	return claimed
+}

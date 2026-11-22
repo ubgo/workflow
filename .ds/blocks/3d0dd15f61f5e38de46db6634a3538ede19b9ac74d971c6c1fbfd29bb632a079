@@ -1,0 +1,9 @@
+func (s *DisableStore) disableMigrations() []migrate.Migration {
+	stmts := s.st.render(disableDefs(typesFor(s.st.engine)))
+	for i, q := range stmts {
+		stmts[i] = s.names.Replace(q)
+	}
+	return []migrate.Migration{
+		{Owner: s.st.owner(DisableMigrationOwner), Name: "001_disable", Script: s.st.script(stmts)},
+	}
+}

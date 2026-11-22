@@ -1,0 +1,1 @@
+var ErrDriver = errors.New("pgnotify: Listen needs a pool opened with the pgx stdlib driver")

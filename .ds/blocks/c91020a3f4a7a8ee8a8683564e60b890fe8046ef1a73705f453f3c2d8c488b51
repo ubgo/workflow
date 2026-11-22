@@ -1,0 +1,3 @@
+func WithLocalCronErrors(f func(name string, at time.Time, err error)) LocalCronOption {
+	return func(l *LocalCron) { l.onError = f }
+}

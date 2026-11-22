@@ -1,0 +1,5 @@
+func (c *Client) Native() *hatchetsdk.Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.sdk
+}

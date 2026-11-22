@@ -1,0 +1,11 @@
+type MachineEnv struct {
+	// Store keeps each instance's record (MachineSpec.Store).
+	Store workflow.JournalStore
+
+	// Client sends timers (MachineSpec.Client); required when a state
+	// has timers.
+	Client workflow.Client
+
+	// Clock is the time source; nil means clock.Real.
+	Clock clock.Clock
+}

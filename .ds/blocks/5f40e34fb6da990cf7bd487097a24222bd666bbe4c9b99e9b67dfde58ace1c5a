@@ -1,0 +1,3 @@
+func (s *AggregateStore) PruneEmpty(ctx context.Context) (int64, error) {
+	return s.st.execN(ctx, s.st.db, s.q("DELETE FROM {aggregate_groups} WHERE group_hash NOT IN (SELECT group_hash FROM {aggregate_items})"))
+}

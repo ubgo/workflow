@@ -1,0 +1,26 @@
+{
+  "_hlc": "2026-11-21T18:51:07.178Z/0000/act_eed7179abc3d7c58a0a0613f51dfa322",
+  "_o": {
+    "cmd": "task note",
+    "git": {
+      "branch": "docs/pass2",
+      "commit": "db1cd9ce8289852af9a60a849eb2765fbefcd8ae",
+      "state": "branch"
+    },
+    "project": "prj_01a115555ae37c48ae7fddcfa96da417",
+    "store": "repo"
+  },
+  "_table": "comments",
+  "_v": 2,
+  "_w": {
+    "v": "0.1.26"
+  },
+  "body": "W3 bound 185/185 target sections, keyed delayed start example verified live; hatchet.md:704 needs a coordinator ds ack (line move). Report: wf-context/reports/docs-docs2-w3.md",
+  "created_at": "2026-11-21T18:51:07.178000000Z",
+  "created_by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "entity_id": "tsk_01a1ff3532bf7b33b8416f6bd5e66282",
+  "entity_table": "tasks",
+  "id": "cmt_01a1ff72a9af70de8be52b59c77bcb68",
+  "updated_at": "2026-11-21T18:51:07.178000000Z",
+  "updated_by": "act_eed7179abc3d7c58a0a0613f51dfa322"
+}

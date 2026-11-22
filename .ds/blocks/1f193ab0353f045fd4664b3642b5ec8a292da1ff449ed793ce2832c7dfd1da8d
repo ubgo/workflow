@@ -1,0 +1,1 @@
+type RouterFunc func(ctx context.Context, job workflow.Job) (string, error)

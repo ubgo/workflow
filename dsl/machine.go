@@ -32,6 +32,8 @@ import (
 //	    {"from": "new", "event": "expire", "to": "cancelled"}
 //	  ]
 //	}
+//
+//ds:def id=dsl-machinedefinition-tmpd4qeb owner=@khanakia stability=stable
 type MachineDefinition struct {
 	// Name is the machine's (and its workflow's) name.
 	Name string `json:"name"`
@@ -60,6 +62,8 @@ type MachineDefinition struct {
 }
 
 // StateDef is one state of a MachineDefinition.
+//
+//ds:def id=dsl-statedef-6whhsty9 owner=@khanakia stability=stable
 type StateDef struct {
 	Name     string `json:"name"`
 	Parent   string `json:"parent,omitempty"`
@@ -77,12 +81,16 @@ type StateDef struct {
 
 // TimerDef is a timer of a state: Event after Delay (a Go duration
 // string such as "30m").
+//
+//ds:def id=dsl-timerdef-gstrjz2d owner=@khanakia stability=stable
 type TimerDef struct {
 	Delay string `json:"delay"`
 	Event string `json:"event"`
 }
 
 // TransitionDef is one transition of a MachineDefinition.
+//
+//ds:def id=dsl-transitiondef-jjhav7bf owner=@khanakia stability=stable
 type TransitionDef struct {
 	From  string `json:"from"`
 	Event string `json:"event"`
@@ -105,6 +113,8 @@ type TransitionDef struct {
 // MachineRegistry holds the guards and actions a MachineDefinition may
 // name, for machines whose data is a D. The zero value is ready to use;
 // it is safe for concurrent use.
+//
+//ds:def id=dsl-machineregistry-k2z5pnpz owner=@khanakia stability=stable
 type MachineRegistry[D any] struct {
 	mu      sync.RWMutex
 	guards  map[string]workflow.MachineGuard[D]
@@ -112,10 +122,14 @@ type MachineRegistry[D any] struct {
 }
 
 // NewMachineRegistry returns an empty registry.
+//
+//ds:def id=dsl-newmachineregistry-hst3eav7 owner=@khanakia stability=stable
 func NewMachineRegistry[D any]() *MachineRegistry[D] { return &MachineRegistry[D]{} }
 
 // Guard registers g under name; an empty name, a nil guard or a name
 // taken is refused with ErrInvalid.
+//
+//ds:def id=dsl-machineregistry-guard-ag7tpere owner=@khanakia stability=stable
 func (r *MachineRegistry[D]) Guard(name string, g workflow.MachineGuard[D]) error {
 	if name == "" || g == nil {
 		return fieldErr("", "a guard needs a name and a function")
@@ -133,6 +147,8 @@ func (r *MachineRegistry[D]) Guard(name string, g workflow.MachineGuard[D]) erro
 }
 
 // Action registers a under name, as Guard does for guards.
+//
+//ds:def id=dsl-machineregistry-action-2d2f5jjj owner=@khanakia stability=stable
 func (r *MachineRegistry[D]) Action(name string, a workflow.MachineAction[D]) error {
 	if name == "" || a == nil {
 		return fieldErr("", "an action needs a name and a function")
@@ -149,6 +165,7 @@ func (r *MachineRegistry[D]) Action(name string, a workflow.MachineAction[D]) er
 	return nil
 }
 
+//ds:def id=dsl-machineregistry-guardlookup-epekbcpd owner=@khanakia stability=stable
 func (r *MachineRegistry[D]) guard(path, name string) (workflow.MachineGuard[D], error) {
 	if r != nil {
 		r.mu.RLock()
@@ -161,6 +178,7 @@ func (r *MachineRegistry[D]) guard(path, name string) (workflow.MachineGuard[D],
 	return nil, fieldErr(path, "no guard is registered as %q (registered: %s)", name, r.names(true))
 }
 
+//ds:def id=dsl-machineregistry-actionlookup-ugtbmzng owner=@khanakia stability=stable
 func (r *MachineRegistry[D]) action(path, name string) (workflow.MachineAction[D], error) {
 	if r != nil {
 		r.mu.RLock()
@@ -198,6 +216,8 @@ func (r *MachineRegistry[D]) names(guards bool) string {
 
 // MachineEnv is what a machine needs besides its definition: where
 // instances live, the client its timers are sent on, and the clock.
+//
+//ds:def id=dsl-machineenv-wqbuhqmk owner=@khanakia stability=stable
 type MachineEnv struct {
 	// Store keeps each instance's record (MachineSpec.Store).
 	Store workflow.JournalStore
@@ -213,6 +233,8 @@ type MachineEnv struct {
 // ParseMachine reads a MachineDefinition from JSON strictly (unknown
 // fields, wrong types and data after the document are refused with their
 // JSON path) and checks what the data form can get wrong.
+//
+//ds:def id=dsl-parsemachine-mngjffec owner=@khanakia stability=stable
 func ParseMachine(data []byte) (MachineDefinition, error) {
 	def, err := parseDoc[MachineDefinition](data)
 	if err != nil {
@@ -228,6 +250,8 @@ func ParseMachine(data []byte) (MachineDefinition, error) {
 // unhandled policy and history modes the machine knows, timer durations.
 // BuildMachine then resolves names and runs workflow.DefineMachine's own
 // checks (states, parents, initials, targets).
+//
+//ds:def id=dsl-machinedefinition-validate-w9g8h2br owner=@khanakia stability=stable
 func (d MachineDefinition) Validate() error {
 	if d.Name == "" {
 		return fieldErr("name", "is empty")
@@ -266,6 +290,7 @@ func (d MachineDefinition) Validate() error {
 	return nil
 }
 
+//ds:def id=dsl-historymode-bh8makju owner=@khanakia stability=stable
 func historyMode(path, s string) (workflow.HistoryMode, error) {
 	switch s {
 	case "":
@@ -283,6 +308,8 @@ func historyMode(path, s string) (workflow.HistoryMode, error) {
 // (an unknown name is refused with its JSON path and the registered
 // names). Register the workflow on the client like any other; SendEvent,
 // StartMachine and MachineStatus work on it unchanged.
+//
+//ds:def id=dsl-buildmachine-pfc8h78c owner=@khanakia stability=stable
 func BuildMachine[D any](def MachineDefinition, reg *MachineRegistry[D], env MachineEnv) (workflow.Workflow, error) {
 	if err := def.Validate(); err != nil {
 		return workflow.Workflow{}, err
@@ -349,6 +376,8 @@ func BuildMachine[D any](def MachineDefinition, reg *MachineRegistry[D], env Mac
 }
 
 // LoadMachine is ParseMachine then BuildMachine.
+//
+//ds:def id=dsl-loadmachine-hyqt5332 owner=@khanakia stability=stable
 func LoadMachine[D any](data []byte, reg *MachineRegistry[D], env MachineEnv) (workflow.Workflow, error) {
 	def, err := ParseMachine(data)
 	if err != nil {
@@ -359,6 +388,8 @@ func LoadMachine[D any](data []byte, reg *MachineRegistry[D], env MachineEnv) (w
 
 // MarshalMachine writes def as indented JSON, for an admin tool that
 // reads, edits and stores definitions.
+//
+//ds:def id=dsl-marshalmachine-zgtjc9q9 owner=@khanakia stability=stable
 func MarshalMachine(def MachineDefinition) ([]byte, error) {
 	b, err := json.MarshalIndent(def, "", "  ")
 	if err != nil {

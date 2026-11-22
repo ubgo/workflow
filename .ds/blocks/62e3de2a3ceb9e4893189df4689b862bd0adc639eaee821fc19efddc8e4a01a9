@@ -1,0 +1,10 @@
+func classify(err error) error {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	var ne interface{ Timeout() bool }
+	if errors.As(err, &ne) || errors.Is(err, goredis.ErrClosed) || isConnErr(err) {
+		return workflow.Unavailable(err)
+	}
+	return err
+}

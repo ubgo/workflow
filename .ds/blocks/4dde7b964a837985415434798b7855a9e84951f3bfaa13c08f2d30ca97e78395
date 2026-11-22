@@ -1,0 +1,12 @@
+type LocalCron struct {
+	clk     clock.Clock
+	parser  cron.Parser
+	onError func(name string, at time.Time, err error)
+
+	mu      sync.Mutex
+	entries []localEntry
+	names   map[string]bool
+	started bool
+	wg      sync.WaitGroup
+	done    chan struct{}
+}

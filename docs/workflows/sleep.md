@@ -4,13 +4,13 @@ Some processes need to pause between steps: a 24-hour cooling-off period before 
 
 ## Before you start
 
-- A driver with `workflow.CapDurableSleep`. The memory, SQL, Redis and Hatchet drivers have it; whether a sleep survives a restart is `CapDurable` (SQL and Hatchet yes, memory no).
+- A driver with [`workflow.CapDurableSleep`](ds:block?id=capdurablesleep-k5tkkje8). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have it; whether a sleep survives a restart is [`CapDurable`](ds:block?id=capdurable-yhjnwexa) (SQL and Hatchet yes, memory no).
 - Workflows and steps: [steps](steps.md).
 - The example is [`examples/signals-and-sleep`](../../examples/signals-and-sleep). It runs on the memory driver with a fake clock, so a 24-hour sleep ends when the program moves the clock. Run it with `go run ./signals-and-sleep` from `examples/`.
 
 ## Sleep inside a workflow
 
-A sleep step sets `Step.Sleep` to a positive duration and nothing else: it is the third step kind (`workflow.StepSleep`), beside `Run` and `Wait`. It passes its input through unchanged, so the step after it reads what the step before it produced. In the order workflow, `cool-off` sleeps a day between the payment and shipping, and `ship` reads the payment event that `await-payment` output:
+A sleep step sets `Step.Sleep` to a positive duration and nothing else: it is the third step kind ([`workflow.StepSleep`](ds:block?id=stepsleep-ny78cwqa), reported by [`Step.Kind`](ds:block?id=step-kind-xew6agd5)), beside `Run` and `Wait`. It passes its input through unchanged ([the memory driver's step start](ds:block?id=memory-client-startstep-zfm8phve) hands the sleep's input on as its output), so the step after it reads what the step before it produced. In the order workflow, `cool-off` sleeps a day between the payment and shipping, and `ship` reads the payment event that `await-payment` output:
 
 <!-- snippet: examples/signals-and-sleep/main.go#order -->
 ```go
@@ -49,14 +49,14 @@ orderFlow := workflow.Workflow{
 }
 ```
 
-While a run sleeps, `Status` reports `StatusWaiting` and no worker is used. In the example, `A-2` is paid on Monday at 09:00, sleeps, and ships on Tuesday at 09:00 when the program moves the fake clock by a day:
+While a run sleeps, `Status` reports `StatusWaiting` (["a Sleep step parks"](ds:block?id=buildtransitions-vreab6mw)) and no worker is used. In the example, `A-2` is paid on Monday at 09:00, sleeps, and ships on Tuesday at 09:00 when the program moves the fake clock by a day:
 
 ```text
   paid A-2 at Mon 09:00: A-2 waiting (sleeping), A-1 waiting
   ship A-2 (paid 40) at Tue 09:00
 ```
 
-A sleep is measured on the driver's clock: the injected `clock.Clock` on the memory, SQL and Redis drivers (`WithClock`), which is what lets a test pass `clock.NewFake` and make "sleep three days" take microseconds.
+A sleep is measured on the driver's clock: the injected `clock.Clock` on the memory, SQL and Redis drivers (`WithClock`: [memory](ds:block?id=memory-withclock-bkbmyc67), [SQL](ds:block?id=sql-withclock-43e3rabg), [Redis](ds:block?id=redis-withclock-beffbra2)), which is what lets a test pass `clock.NewFake` and make "sleep three days" take microseconds.
 
 ## Try it
 
@@ -79,9 +79,9 @@ wait and sleep:
 ## Pitfalls
 
 - **Never sleep inside a `Run` handler.** `time.Sleep` in a handler holds a worker for the whole duration, ignores the fake clock, and is lost on a crash. Split the work into two steps with a sleep step between them.
-- **On the memory driver a sleep does not survive a restart.** The run is lost with the process. Use the SQL driver or Hatchet for sleeps measured in hours or days.
-- **A negative `Sleep` fails validation**, and a step that sets `Sleep` together with `Run` or `Wait` is invalid: exactly one kind per step.
-- **A sleep is relative to when the step begins**, not to the run's enqueue. For "at 09:00 tomorrow", enqueue a [delayed job](../jobs/delays.md) with `RunAt`, or use a [cron schedule](../schedules/cron.md).
+- **On the memory driver a sleep does not survive a restart** (its [capability list](ds:block?id=memory-caps-yxkuq583) leaves out `CapDurable`). The run is lost with the process. Use the SQL driver or Hatchet for sleeps measured in hours or days.
+- **A negative `Sleep` fails validation**, and a step that sets `Sleep` together with `Run` or `Wait` is invalid: exactly one kind per step ([`validateStep`](ds:block?id=validatestep-x6aebswc)).
+- **A sleep is relative to when the step begins**, not to the run's enqueue (the timer starts in [the step start](ds:block?id=memory-client-startstep-zfm8phve)). For "at 09:00 tomorrow", enqueue a [delayed job](../jobs/delays.md) with `RunAt`, or use a [cron schedule](../schedules/cron.md).
 
 ## Related
 

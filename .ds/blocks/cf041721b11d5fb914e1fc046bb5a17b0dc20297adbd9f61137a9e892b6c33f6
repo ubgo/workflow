@@ -1,0 +1,8 @@
+func (r *Recorder) AssertEnqueuedWith(t testing.TB, wf string, match func(workflow.Job) bool) {
+	t.Helper()
+	jobs := r.jobsOf(wf)
+	if slices.ContainsFunc(jobs, match) {
+		return
+	}
+	t.Errorf("no job of workflow %q matched (%d enqueued)", wf, len(jobs))
+}

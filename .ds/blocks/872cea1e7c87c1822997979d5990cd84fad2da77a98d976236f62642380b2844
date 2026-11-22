@@ -1,0 +1,14 @@
+func CheckPayload(job Job, limit int, source string) error {
+	if limit <= 0 {
+		return nil
+	}
+	if len(job.Payload) > limit {
+		return &PayloadTooLargeError{Workflow: job.Workflow, Size: len(job.Payload), Limit: limit, Source: source}
+	}
+	for _, next := range job.Chain {
+		if err := CheckPayload(next, limit, source); err != nil {
+			return err
+		}
+	}
+	return nil
+}

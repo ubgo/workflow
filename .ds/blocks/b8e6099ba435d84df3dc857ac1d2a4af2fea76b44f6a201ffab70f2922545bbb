@@ -1,0 +1,38 @@
+func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return nil, err
+	}
+	runID, state, err := c.resolve(ctx, sdk, ref)
+	if err != nil {
+		return nil, err
+	}
+	switch state {
+	case statePending:
+		return nil, fmt.Errorf("%w: run %s is scheduled, not succeeded", workflow.ErrWrongState, ref)
+	case stateGone:
+		return nil, fmt.Errorf("%w: run %s was cancelled before it started", workflow.ErrWrongState, ref)
+	}
+	d, err := runDetailsLagged(ctx, sdk, runID, c.cfg.VisibilityLag)
+	if isNotFound(err) {
+		return nil, fmt.Errorf("%w: run %q", workflow.ErrNotFound, runID)
+	}
+	if err != nil {
+		return nil, engineErr(err, "read run")
+	}
+	st, err := c.endStatus(d)
+	if err != nil {
+		return nil, err
+	}
+	if st != workflow.StatusSucceeded {
+		return nil, fmt.Errorf("%w: run %s is %s, not succeeded", workflow.ErrWrongState, runID, st)
+	}
+	if d.Run.PayloadsRestricted != nil && *d.Run.PayloadsRestricted {
+		return nil, errors.New("hatchet driver: result: the engine withholds payloads from this token")
+	}
+	out, ok := c.runOutput(metadataStrings(d.Run.AdditionalMetadata)[metaWorkflow], d)
+	if !ok {
+		return nil, fmt.Errorf("hatchet driver: result of run %s: a final step's output is missing", runID)
+	}
+	return out, nil
+}

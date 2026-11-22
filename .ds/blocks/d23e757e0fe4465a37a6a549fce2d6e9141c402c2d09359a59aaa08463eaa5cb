@@ -1,0 +1,8 @@
+type NotExpressibleError struct {
+	Format Format
+	// Field is the Schedule field ("Cron", "Location", "Misfire",
+	// "Overlap", "Windows", "Active") or, for a cron field, its name
+	// ("second", "day-of-month", "year").
+	Field  string
+	Reason string
+}

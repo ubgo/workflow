@@ -1,0 +1,10 @@
+func AppendToChain(ctx context.Context, jobs ...Job) error {
+	ed, ok := ChainEditorFrom(ctx)
+	if !ok {
+		return noChain("AppendToChain")
+	}
+	if err := checkEditLabels(ctx, jobs); err != nil {
+		return err
+	}
+	return ed.Append(jobs...)
+}

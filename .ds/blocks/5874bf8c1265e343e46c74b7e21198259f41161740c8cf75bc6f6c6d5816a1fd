@@ -1,0 +1,3 @@
+func (s *OutputStore) PruneBefore(ctx context.Context, t time.Time) (int64, error) {
+	return s.st.execN(ctx, s.st.db, "DELETE FROM {outputs} WHERE finished_at < ?", t.UnixNano())
+}

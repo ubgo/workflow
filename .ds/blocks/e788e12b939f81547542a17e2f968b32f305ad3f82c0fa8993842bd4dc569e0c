@@ -1,0 +1,15 @@
+func (p *PromiseStore) Settle(ctx context.Context, id string, val []byte) ([]byte, bool, error) {
+	if val == nil {
+		val = []byte{}
+	}
+	// SET NX GET returns the old value when there was one and stores
+	// nothing; Nil means this call stored val.
+	old, err := p.rdb.SetArgs(ctx, p.key(id), val, goredis.SetArgs{Mode: "NX", Get: true, TTL: p.ttl}).Bytes()
+	if err == goredis.Nil {
+		return append([]byte{}, val...), true, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("redis: promise settle: %w", classify(err))
+	}
+	return old, false, nil
+}

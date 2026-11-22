@@ -1,0 +1,3 @@
+func (rc *ReplayCtx) Now(name string) (time.Time, error) {
+	return ReplayStep(rc, name, func(context.Context) (time.Time, error) { return rc.opts.Clock.Now().UTC(), nil })
+}

@@ -25,6 +25,8 @@ func (c *Client) Drain(ctx context.Context) error {
 // handler was still running when ctx ended; its disposition is
 // DrainRequeued. The report is fixed before the client's context is
 // cancelled, and a second call returns the first call's report.
+//
+//ds:def id=redis-client-drainwithreport-zxumh4bq owner=@khanakia stability=stable
 func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
 	c.mu.Lock()
 	if !c.started {

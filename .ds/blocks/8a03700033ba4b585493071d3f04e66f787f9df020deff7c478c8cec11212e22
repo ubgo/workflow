@@ -1,0 +1,11 @@
+type BucketStore interface {
+	// Take adds cost to key's level and returns zero when it fits;
+	// otherwise it adds nothing and returns how long until it would fit.
+	Take(ctx context.Context, key string, spec BucketSpec, cost float64, now time.Time) (wait time.Duration, err error)
+
+	// Observe sets key's level to what the upstream reported (Shopify's
+	// "32/40" call-limit header, a GraphQL throttle status), so the
+	// bucket follows the upstream's own count, including calls made by
+	// other apps on the same credential.
+	Observe(ctx context.Context, key string, spec BucketSpec, level float64, now time.Time) error
+}

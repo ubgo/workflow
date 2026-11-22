@@ -1,0 +1,52 @@
+func TestReportPlugin(t *testing.T) {
+	var mu sync.Mutex
+	var got []workflow.Failure
+	rep := workflow.ReporterFunc(func(_ context.Context, f workflow.Failure) {
+		mu.Lock()
+		got = append(got, f)
+		mu.Unlock()
+	})
+	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	mem := memory.New(memory.WithClock(clk))
+	c, err := workflow.Use(mem, middleware.Report(rep, middleware.ReportConfig{Attempts: true, Clock: clk}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{{Name: "s", Run: func(context.Context, []byte) ([]byte, error) {
+		return nil, workflow.Permanent(errors.New("boom"))
+	}}}}
+	if err := c.Register(wf); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: []byte(`"secret"`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		n := len(got)
+		mu.Unlock()
+		if n >= 2 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("reports = %+v, want the attempt and the final failure", got)
+	}
+	attempt, final := got[0], got[1]
+	if attempt.Final || attempt.Attempt != 1 || attempt.Step != "s" || attempt.Ref.RunID != ref.RunID || attempt.Status != workflow.StatusRetrying {
+		t.Errorf("attempt report = %+v", attempt)
+	}
+	if !final.Final || final.Status != workflow.StatusFailed || final.Step != "s" || final.Ref.RunID != ref.RunID {
+		t.Errorf("final report = %+v", final)
+	}
+}

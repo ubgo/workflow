@@ -17,6 +17,8 @@ var (
 // trigger makes one run. It never fails over: a run triggered on the
 // secondary would not be the schedule's last run there for the overlap
 // check. Needs CapScheduleTrigger.
+//
+//ds:def id=failover-client-triggerschedule-dafkgtc7 owner=@khanakia stability=stable
 func (f *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := f.need("TriggerSchedule", workflow.CapScheduleTrigger); err != nil {
 		return workflow.RunRef{}, err
@@ -53,6 +55,7 @@ func (f *Client) ForceFail(ctx context.Context, ref workflow.RunRef, reason stri
 	})
 }
 
+//ds:def id=failover-client-force-b5nft8hn owner=@khanakia stability=stable
 func (f *Client) force(field string, ref workflow.RunRef, fn func(workflow.RunForcer, workflow.RunRef) error) error {
 	if err := f.need(field, workflow.CapForceRun); err != nil {
 		return err

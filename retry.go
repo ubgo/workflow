@@ -11,6 +11,8 @@ import (
 // any level (Job.Retry, Step.Retry, Workflow.Retry) says otherwise: none.
 // It is the last link of the precedence chain EffectiveRetriesFor resolves,
 // and the Max of the zero RetryPolicy.
+//
+//ds:def id=defaultretrymax-wwnmv64w owner=@khanakia stability=stable
 const DefaultRetryMax = 0
 
 // RetryPolicy says how often and how soon a failed step is tried again.
@@ -27,6 +29,8 @@ const DefaultRetryMax = 0
 // EffectiveRetriesFor is the one function that applies this order, and
 // every driver calls it, so no two drivers can resolve a step's policy
 // differently.
+//
+//ds:def id=retrypolicy-cjkmhshn owner=@khanakia stability=stable
 type RetryPolicy struct {
 	// Max is the number of retries after the first attempt, so a step runs
 	// at most Max+1 times. The value that applies is the one of the policy
@@ -80,12 +84,16 @@ type RetryPolicy struct {
 // RetriesNone returns a policy that never retries, for a step that must
 // not inherit the workflow default. It returns a fresh value each call so
 // no caller can change it for another.
+//
+//ds:def id=retriesnone-gvsc2j8f owner=@khanakia stability=stable
 func RetriesNone() *RetryPolicy { return &RetryPolicy{Max: DefaultRetryMax} }
 
 // Retryable reports whether err, after the given number of attempts (1
 // for the first), may be tried again: not permanent, not discarded, not
 // excluded by NoRetryOn, and within Max. It ignores Until and MaxErrors,
 // which need more than an attempt count; drivers call Next.
+//
+//ds:def id=retrypolicy-retryable-ve8muksd owner=@khanakia stability=stable
 func (p RetryPolicy) Retryable(err error, attempts int) bool {
 	if err == nil || IsPermanent(err) || IsDiscarded(err) || errors.Is(err, ErrCancelled) {
 		return false
@@ -101,6 +109,8 @@ func (p RetryPolicy) Retryable(err error, attempts int) bool {
 // its jitter drawn from rnd, a source of uniform values in [0, 1) (nil
 // means math/rand/v2). Every driver that retries calls it, so no two
 // drivers can disagree on the rule.
+//
+//ds:def id=retrypolicy-nextdelay-94cqz66r owner=@khanakia stability=stable
 func (p RetryPolicy) NextDelay(err error, retry int, rnd func() float64) time.Duration {
 	if p.DelayFor != nil {
 		if d, ok := p.DelayFor(err, retry); ok {
@@ -118,6 +128,8 @@ func (p RetryPolicy) NextDelay(err error, retry int, rnd func() float64) time.Du
 
 // Attempts is what a driver knows about one step's attempts when one of
 // them fails.
+//
+//ds:def id=attempts-vqangamg owner=@khanakia stability=stable
 type Attempts struct {
 	// N is the number of attempts made, including the one that just
 	// failed: 1 after the first.
@@ -136,6 +148,8 @@ type Attempts struct {
 // Count returns a after one more failed attempt with err: N grows by one,
 // and Errors too unless err is a release. Drivers keep an Attempts per
 // step and call it on every failure, so no two drivers count differently.
+//
+//ds:def id=attempts-count-ttmdy23p owner=@khanakia stability=stable
 func (a Attempts) Count(err error) Attempts {
 	a.N++
 	if !IsRelease(err) {
@@ -147,6 +161,8 @@ func (a Attempts) Count(err error) Attempts {
 // IsRelease reports whether err carries a RetryAfter delay: a release,
 // which counts against RetryPolicy.Max but not against
 // MaxErrors.
+//
+//ds:def id=isrelease-b5qv6a9e owner=@khanakia stability=stable
 func IsRelease(err error) bool {
 	var r *retryAfterError
 	return errors.As(err, &r)
@@ -165,6 +181,8 @@ func IsRelease(err error) bool {
 //
 // now is the driver's clock. It is a pure function of its arguments
 // (with a pinned rnd), so a test can pin every branch.
+//
+//ds:def id=retrypolicy-next-vj4catr9 owner=@khanakia stability=stable
 func (p RetryPolicy) Next(err error, a Attempts, now time.Time, rnd func() float64) (delay time.Duration, retry bool) {
 	if !p.Retryable(err, a.N) {
 		return 0, false
@@ -181,6 +199,8 @@ func (p RetryPolicy) Next(err error, a Attempts, now time.Time, rnd func() float
 
 // Backoff is an exponential wait: Initial, then times Factor per attempt,
 // capped at Max, optionally shortened by a random Jitter.
+//
+//ds:def id=backoff-3jh78r24 owner=@khanakia stability=stable
 type Backoff struct {
 	Initial time.Duration
 	Factor  float64 // below 1 is treated as 1 (constant backoff)
@@ -195,6 +215,8 @@ type Backoff struct {
 }
 
 // Delay returns the wait before retry number n (1 for the first retry).
+//
+//ds:def id=backoff-delay-4u7wxm4a owner=@khanakia stability=stable
 func (b Backoff) Delay(n int) time.Duration {
 	if b.Initial <= 0 || n < 1 {
 		return 0
@@ -220,6 +242,8 @@ func (b Backoff) Delay(n int) time.Duration {
 // [0, 1): u = 0 gives the full delay, u near 1 the shortest. The draw is
 // an argument, not read here, so the result is a pure function a test can
 // pin.
+//
+//ds:def id=backoff-jittereddelay-me9rbcyv owner=@khanakia stability=stable
 func (b Backoff) JitteredDelay(n int, u float64) time.Duration {
 	d := b.Delay(n)
 	j := min(max(b.Jitter, 0), 1)
@@ -242,6 +266,8 @@ func (r *retryAfterError) Unwrap() error { return r.err }
 // retries on the normal Backoff, on every driver. Permanent still wins:
 // RetryAfter(Permanent(err), d) is not retried. RetryAfter(nil, d) is nil
 // and a negative d counts as zero.
+//
+//ds:def id=retryafter-xck6cdyv owner=@khanakia stability=stable
 func RetryAfter(err error, d time.Duration) error {
 	if err == nil {
 		return nil
@@ -251,6 +277,8 @@ func RetryAfter(err error, d time.Duration) error {
 
 // RetryAfterDelay is the stock RetryPolicy.DelayFor: the delay of the
 // outermost RetryAfter in err's chain, or false when there is none.
+//
+//ds:def id=retryafterdelay-pgsc6bvn owner=@khanakia stability=stable
 func RetryAfterDelay(err error, _ int) (time.Duration, bool) {
 	var r *retryAfterError
 	if errors.As(err, &r) {
@@ -265,6 +293,8 @@ func RetryAfterDelay(err error, _ int) (time.Duration, bool) {
 // for callers that decide at declaration time (a driver that registers
 // retries with an engine); a driver that sees runs calls
 // EffectiveRetriesFor.
+//
+//ds:def id=effectiveretries-52e5k4q9 owner=@khanakia stability=stable
 func EffectiveRetries(step Step, wf Workflow) RetryPolicy {
 	return EffectiveRetriesFor(step, wf, Job{})
 }
@@ -277,6 +307,8 @@ func EffectiveRetries(step Step, wf Workflow) RetryPolicy {
 // that retries (memory, sqlstore, redis, RunInline) calls it with the
 // run's own Job, so a driver that ignored Job.Retry on a step would be a
 // bug the conformance suite catches.
+//
+//ds:def id=effectiveretriesfor-cv2kmktb owner=@khanakia stability=stable
 func EffectiveRetriesFor(step Step, wf Workflow, job Job) RetryPolicy {
 	switch {
 	case job.Retry != nil:
@@ -295,6 +327,8 @@ func EffectiveRetriesFor(step Step, wf Workflow, job Job) RetryPolicy {
 // err already is a discard or a cancellation (those end the run their own
 // way), it returns nil and the driver fails the run as before. Every driver
 // calls it at the point Next says stop, so none decides differently.
+//
+//ds:def id=retrypolicy-exhaustederror-uwdsjnja owner=@khanakia stability=stable
 func (p RetryPolicy) ExhaustedError(attempts int, err error) error {
 	if !p.DiscardOnExhaust || err == nil || IsDiscarded(err) || errors.Is(err, ErrCancelled) {
 		return nil

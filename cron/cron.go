@@ -60,6 +60,8 @@ var _ Parser = Parse
 
 // Schedule is a parsed schedule. Implementations are immutable and safe for
 // concurrent use.
+//
+//ds:def id=cron-schedule-re3q8kvx owner=@khanakia stability=stable
 type Schedule interface {
 	// Next returns the first fire time strictly after `after`, expressed in
 	// loc. A nil loc means UTC, never the host zone, so the same schedule
@@ -83,15 +85,21 @@ type Schedule interface {
 // is the longest gap between two February 29ths (e.g. 2096 to 2104, since
 // 2100 is not a leap year); one more year of margin covers any satisfiable
 // expression, so a zero result means the expression can never fire.
+//
+//ds:def id=cron-searchyears-kef7s52b owner=@khanakia stability=stable
 const searchYears = 9
 
 // minEvery is the shortest "@every" interval. Fire times are computed at
 // one-second resolution, and a sub-second interval would turn a scheduler
 // loop into a busy loop.
+//
+//ds:def id=cron-minevery-xfdc3bqq owner=@khanakia stability=stable
 const minEvery = time.Second
 
 // ParseError reports an invalid expression and names the offending field,
 // so a typo fails loudly at registration instead of silently at run time.
+//
+//ds:def id=cron-parseerror-pq2ykupx owner=@khanakia stability=stable
 type ParseError struct {
 	Expr   string // the full expression as given
 	Field  string // "minute", "hour", "day-of-month", "month", "day-of-week", "macro" or "expression"
@@ -119,6 +127,7 @@ var (
 	dowNames   = map[string]int{"SUN": 0, "MON": 1, "TUE": 2, "WED": 3, "THU": 4, "FRI": 5, "SAT": 6}
 
 	// Day-of-week allows 7 so "MON-SUN" and "5-7" work; 7 is folded onto 0.
+	//ds:def id=cron-fields-fb7tcvhb owner=@khanakia stability=stable
 	fields = [5]field{
 		{name: "minute", min: 0, max: 59},
 		{name: "hour", min: 0, max: 23},
@@ -127,6 +136,7 @@ var (
 		{name: "day-of-week", min: 0, max: 7, names: dowNames},
 	}
 
+	//ds:def id=cron-macros-p5eq42z4 owner=@khanakia stability=stable
 	macros = map[string]string{
 		"@yearly":   "0 0 1 1 *",
 		"@annually": "0 0 1 1 *",
@@ -142,6 +152,8 @@ const everyPrefix = "@every"
 
 // allHours is the hour bitset of a schedule that matches every hour; such a
 // schedule follows real time across DST transitions (see the package doc).
+//
+//ds:def id=cron-allhours-jav27y92 owner=@khanakia stability=stable
 const allHours = uint64(1)<<24 - 1
 
 // Parser turns an expression into a Schedule. Parse is the default every
@@ -154,11 +166,15 @@ const allHours = uint64(1)<<24 - 1
 // cron dialect still refuses them. A Parser must return a Schedule that
 // keeps the interface's contract (Next never returns a time at or before
 // after; nil loc means UTC) and must be safe for concurrent use.
+//
+//ds:def id=cron-parser-8g5hqgru owner=@khanakia stability=stable
 type Parser func(expr string) (Schedule, error)
 
 // Parse parses a five-field cron expression, a macro, or "@every
 // <duration>". Every error is a *ParseError naming the bad field. It is
 // the default Parser.
+//
+//ds:def id=cron-parse-85dsvh6b owner=@khanakia stability=stable
 func Parse(expr string) (Schedule, error) {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {
@@ -170,6 +186,7 @@ func Parse(expr string) (Schedule, error) {
 	return parseFields(expr, trimmed, trimmed)
 }
 
+//ds:def id=cron-parsemacro-vdq7m596 owner=@khanakia stability=stable
 func parseMacro(expr, trimmed string) (Schedule, error) {
 	parts := strings.Fields(trimmed)
 	name := strings.ToLower(parts[0])
@@ -193,6 +210,7 @@ func parseMacro(expr, trimmed string) (Schedule, error) {
 	return parseFields(expr, trimmed, std)
 }
 
+//ds:def id=cron-parsefields-2yx88fhx owner=@khanakia stability=stable
 func parseFields(expr, trimmed, std string) (Schedule, error) {
 	parts := strings.Fields(std)
 	if len(parts) != len(fields) {
@@ -218,6 +236,8 @@ func parseFields(expr, trimmed, std string) (Schedule, error) {
 }
 
 // parseField returns the bitset of values the field matches.
+//
+//ds:def id=cron-parsefield-cxdyuapw owner=@khanakia stability=stable
 func parseField(text string, f field) (uint64, *ParseError) {
 	fail := func(value, reason string) *ParseError {
 		return &ParseError{Field: f.name, Value: value, Reason: reason}
@@ -296,6 +316,7 @@ type spec struct {
 
 func (s *spec) String() string { return s.expr }
 
+//ds:def id=cron-spec-daymatches-27cyjwg8 owner=@khanakia stability=stable
 func (s *spec) dayMatches(day time.Time) bool {
 	domOK := s.dom&(1<<uint(day.Day())) != 0
 	dowOK := s.dow&(1<<uint(day.Weekday())) != 0
@@ -360,6 +381,8 @@ func (s *spec) firstOnDay(day, after time.Time, loc *time.Location) (time.Time, 
 // unresolved, and the walk stops at the first wall time whose earliest
 // instant cannot beat the best found. An every-minute schedule so resolves
 // one or two wall times a day instead of 1,440.
+//
+//ds:def id=cron-firstfire-83zdvcv6 owner=@khanakia stability=stable
 func firstFire(day, after time.Time, loc *time.Location, hour, minute uint64) (time.Time, bool) {
 	periodic := hour == allHours
 	base := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC).Unix()
@@ -425,6 +448,8 @@ func offsetBounds(base int64, loc *time.Location) (lo, hi int) {
 // the gap ends for a fixed-time schedule, nothing for a periodic one. A wall
 // time in a fall-back overlap yields its first occurrence for a fixed-time
 // schedule, both occurrences for a periodic one.
+//
+//ds:def id=cron-resolve-dt9n6h3q owner=@khanakia stability=stable
 func resolve(y int, mo time.Month, d, h, mi int, loc *time.Location, periodic bool) []time.Time {
 	wall := time.Date(y, mo, d, h, mi, 0, 0, time.UTC).Unix()
 	// The offsets in force a day either side cover any transition near this

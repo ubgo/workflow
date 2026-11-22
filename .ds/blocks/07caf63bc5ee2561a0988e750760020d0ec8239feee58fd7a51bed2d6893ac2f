@@ -1,0 +1,23 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.started {
+		return nil, nil
+	}
+	n := workflow.NodeInfo{
+		ID:        c.nodeID(),
+		Mode:      workflow.NodeFull,
+		Workers:   c.workers,
+		Running:   c.executing,
+		StartedAt: c.startedAt,
+		LastSeen:  c.clk.Now(),
+	}
+	for _, q := range c.queueCfg {
+		n.Queues = append(n.Queues, q.Name)
+	}
+	slices.Sort(n.Queues)
+	return []workflow.NodeInfo{n}, nil
+}

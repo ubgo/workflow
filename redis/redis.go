@@ -21,6 +21,8 @@ import (
 // caps is what this driver really does, each proven by the workflowtest
 // conformance suite against a real Redis. See the package doc for what is
 // not declared and why.
+//
+//ds:def id=redis-caps-bfgdst9t owner=@khanakia stability=stable
 var caps = workflow.CapsOf(
 	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapDurableSleep,
 	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel,
@@ -49,22 +51,28 @@ const (
 	// defaultPrefix starts every key; it is wrapped in a hash tag, so on a
 	// Redis Cluster every key of one prefix lives in one slot and the Lua
 	// scripts can touch them together.
+	//ds:def id=redis-defaultprefix-jge3n5vw owner=@khanakia stability=stable
 	defaultPrefix = "wf"
 	// defaultLease is how long a claimed run stays claimed without a
 	// renewal; a dead worker's run is claimed again after at most this.
+	//ds:def id=redis-defaultlease-2fx35wau owner=@khanakia stability=stable
 	defaultLease = 30 * time.Second
 	// defaultPoll is how often an idle worker looks for work when no
 	// wake-up message arrived (a missed publish, a due time reached).
+	//ds:def id=redis-defaultpoll-csvg4n53 owner=@khanakia stability=stable
 	defaultPoll = time.Second
 	// defaultWorkers is how many runs one client executes at once.
+	//ds:def id=redis-defaultworkers-3b2bxkk7 owner=@khanakia stability=stable
 	defaultWorkers = 10
 	// defaultMaxReclaims is how many lease expiries in a row (with no step
 	// finishing in between) a run survives before it fails with
 	// ErrAbandoned, so a step that kills every worker it lands on cannot
 	// loop through the cluster forever. Five tolerates a rolling restart.
+	//ds:def id=redis-defaultmaxreclaims-x9bm2qhn owner=@khanakia stability=stable
 	defaultMaxReclaims = 5
 	// defaultRetention is how long a finished run stays readable (Status,
 	// Runs) before Redis expires it; the same day the memory driver keeps.
+	//ds:def id=redis-defaultretention-6mpz4577 owner=@khanakia stability=stable
 	defaultRetention = 24 * time.Hour
 	// releaseTimeout bounds the write that hands a run back when the
 	// client stops, which runs after the client's own context ended.
@@ -82,11 +90,15 @@ const (
 
 // prefixPattern keeps prefixes to characters that cannot open or close a
 // hash tag or collide with the key separator.
+//
+//ds:def id=redis-prefixpattern-qqvyse53 owner=@khanakia stability=stable
 var prefixPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
 // ErrAbandoned is the error of a run whose lease expired more than
 // WithMaxReclaims times in a row: every worker that took it died (or lost
 // Redis) before a step finished.
+//
+//ds:def id=redis-errabandoned-k85tzs7y owner=@khanakia stability=stable
 var ErrAbandoned = errors.New("redis: run abandoned by its workers")
 
 // Option configures a Client.
@@ -95,11 +107,15 @@ type Option func(*Client)
 // WithPrefix sets the key prefix (default "wf"). Clients that share a
 // prefix share every run and schedule; give each app or test its own.
 // Keys look like {prefix}:run:<id>.
+//
+//ds:def id=redis-withprefix-h97vgfbr owner=@khanakia stability=stable
 func WithPrefix(p string) Option { return func(c *Client) { c.prefix = p } }
 
 // WithClock sets the time source of every due time: delayed starts,
 // sleeps, retry backoff, step timeouts and cron fires. The default is
 // clock.Real; tests pass clock.NewFake.
+//
+//ds:def id=redis-withclock-beffbra2 owner=@khanakia stability=stable
 func WithClock(clk clock.Clock) Option {
 	return func(c *Client) {
 		if clk != nil {
@@ -113,6 +129,8 @@ func WithClock(clk clock.Clock) Option {
 // which is wall time: a test that moves a fake scheduling clock by an hour
 // must not make every running step look abandoned. The default is
 // clock.Real.
+//
+//ds:def id=redis-withleaseclock-csjjgd58 owner=@khanakia stability=stable
 func WithLeaseClock(clk clock.Clock) Option {
 	return func(c *Client) {
 		if clk != nil {
@@ -123,6 +141,8 @@ func WithLeaseClock(clk clock.Clock) Option {
 
 // WithLease sets how long a claimed run stays claimed without renewal
 // (renewed every third of it). Values of zero or less are ignored.
+//
+//ds:def id=redis-withlease-e3vcux83 owner=@khanakia stability=stable
 func WithLease(d time.Duration) Option {
 	return func(c *Client) {
 		if d > 0 {
@@ -133,6 +153,8 @@ func WithLease(d time.Duration) Option {
 
 // WithPollInterval sets how often an idle worker looks for work without a
 // wake-up message. Values of zero or less are ignored.
+//
+//ds:def id=redis-withpollinterval-bmbcv6wz owner=@khanakia stability=stable
 func WithPollInterval(d time.Duration) Option {
 	return func(c *Client) {
 		if d > 0 {
@@ -143,6 +165,8 @@ func WithPollInterval(d time.Duration) Option {
 
 // WithWorkers sets how many runs this client executes at once. Values
 // below 1 are ignored.
+//
+//ds:def id=redis-withworkers-8ws3qngs owner=@khanakia stability=stable
 func WithWorkers(n int) Option {
 	return func(c *Client) {
 		if n >= 1 {
@@ -153,6 +177,8 @@ func WithWorkers(n int) Option {
 
 // WithMaxReclaims sets how many lease expiries in a row a run survives
 // before it fails with ErrAbandoned. Negative values are ignored.
+//
+//ds:def id=redis-withmaxreclaims-6w3gbh3f owner=@khanakia stability=stable
 func WithMaxReclaims(n int) Option {
 	return func(c *Client) {
 		if n >= 0 {
@@ -164,6 +190,8 @@ func WithMaxReclaims(n int) Option {
 // WithRetention sets how long a finished run stays readable before Redis
 // expires its key (measured by Redis, so wall time). Zero keeps finished
 // runs until Delete; negative values are ignored.
+//
+//ds:def id=redis-withretention-8xgh5d9q owner=@khanakia stability=stable
 func WithRetention(d time.Duration) Option {
 	return func(c *Client) {
 		if d >= 0 {
@@ -181,11 +209,15 @@ func WithRetention(d time.Duration) Option {
 // idempotency policy); a job for one it did not is checked by
 // workflow.CheckJob only, and runs once a worker client that registers it
 // claims it.
+//
+//ds:def id=redis-withenqueueonly-wt5y2y49 owner=@khanakia stability=stable
 func WithEnqueueOnly() Option { return func(c *Client) { c.enqueueOnly = true } }
 
 // WithErrorHistory sets how many failed attempts RunInfo.Errors keeps per
 // run, newest kept (workflow.DefaultErrorHistory by default). Zero or less
 // turns the history off.
+//
+//ds:def id=redis-witherrorhistory-h3km7hu2 owner=@khanakia stability=stable
 func WithErrorHistory(n int) Option {
 	return func(c *Client) {
 		c.errHistory = n
@@ -194,6 +226,8 @@ func WithErrorHistory(n int) Option {
 
 // WithLogger sets where background errors go (a failed renewal, a run
 // that could not be handed back). The default discards them.
+//
+//ds:def id=redis-withlogger-p6xuyy9a owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) Option {
 	return func(c *Client) {
 		if l != nil {
@@ -204,6 +238,8 @@ func WithLogger(l *slog.Logger) Option {
 
 // WithMiddleware wraps every step handler and OnFailure handler, outermost
 // first.
+//
+//ds:def id=redis-withmiddleware-28r4tn9t owner=@khanakia stability=stable
 func WithMiddleware(mw ...workflow.Middleware) Option {
 	return func(c *Client) { c.mw = append(c.mw, mw...) }
 }
@@ -211,6 +247,8 @@ func WithMiddleware(mw ...workflow.Middleware) Option {
 // WithCronParser sets the cron dialect. Every client of one prefix must
 // use the same parser, since any of them may fire any schedule. The
 // default is cron.Parse.
+//
+//ds:def id=redis-withcronparser-vkv8aegq owner=@khanakia stability=stable
 func WithCronParser(p cron.Parser) Option {
 	return func(c *Client) {
 		if p != nil {
@@ -221,6 +259,8 @@ func WithCronParser(p cron.Parser) Option {
 
 // WithJitterSource sets the random source of retry jitter, a function
 // returning values in [0, 1). Tests pin it; the default is math/rand.
+//
+//ds:def id=redis-withjittersource-a3mqs5ft owner=@khanakia stability=stable
 func WithJitterSource(rnd func() float64) Option {
 	return func(c *Client) { c.rnd = rnd }
 }
@@ -231,6 +271,8 @@ func WithJitterSource(rnd func() float64) Option {
 // equal-priority runs start oldest first) followed by 16 random hex
 // digits. A function that returns IDs in another order changes only the
 // order of equal-priority runs.
+//
+//ds:def id=redis-withidfunc-crtcujyn owner=@khanakia stability=stable
 func WithIDFunc(f func() string) Option {
 	return func(c *Client) {
 		if f != nil {
@@ -246,6 +288,8 @@ func WithIDFunc(f func() string) Option {
 // runs of the queue this client executes at once (each may run parallel
 // steps), within WithWorkers. Without it a client serves every queue from
 // one pool. Start refuses an invalid list.
+//
+//ds:def id=redis-withqueues-4gdxbhqh owner=@khanakia stability=stable
 func WithQueues(qs ...workflow.QueueConfig) Option {
 	return func(c *Client) { c.queues = append(c.queues, qs...) }
 }
@@ -309,6 +353,8 @@ type Client struct {
 
 // New returns an unstarted client over rdb. It never touches Redis until
 // Start.
+//
+//ds:def id=redis-new-mhng6crc owner=@khanakia stability=stable
 func New(rdb goredis.UniversalClient, opts ...Option) (*Client, error) {
 	if rdb == nil {
 		return nil, fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)
@@ -352,6 +398,8 @@ func New(rdb goredis.UniversalClient, opts ...Option) (*Client, error) {
 
 // defaultID is the creation time in ms as 13 hex digits plus 16 random hex
 // digits. crypto/rand never fails on supported platforms.
+//
+//ds:def id=redis-client-defaultid-jbqxpsk3 owner=@khanakia stability=stable
 func (c *Client) defaultID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
@@ -374,6 +422,8 @@ func (c *Client) Capabilities() workflow.Caps { return caps }
 
 // Register validates wf and stores it. Cron expressions are parsed here so
 // a typo fails now, not at the first fire.
+//
+//ds:def id=redis-client-register-zy9gzzxh owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -436,6 +486,8 @@ func (c *Client) wrap(h workflow.Handler) workflow.Handler {
 // cron schedules, subscribes to wake-up messages and starts the workers
 // and the dispatcher. It does not block; cancelling ctx stops the client,
 // handing its running runs back so another client resumes them.
+//
+//ds:def id=redis-client-start-tmas9yaz owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	if c.enqueueOnly {
 		return nil
@@ -530,6 +582,8 @@ func (c *Client) Start(ctx context.Context) error {
 
 // Stop cancels the client and waits until it has stopped. Safe to call
 // more than once and before Start.
+//
+//ds:def id=redis-client-stop-az3e3p93 owner=@khanakia stability=stable
 func (c *Client) Stop() {
 	c.mu.Lock()
 	cancel := c.cancel
@@ -607,6 +661,8 @@ func (c *Client) pokeNotifier() {
 // exprKeys refuses every expression key in wf: Redis has no engine
 // expression language, so concurrency, rate and wait keys are Go
 // functions (workflow.KeyFunc) evaluated by the client.
+//
+//ds:def id=redis-exprkeys-g3qq6r7w owner=@khanakia stability=stable
 func exprKeys(wf workflow.Workflow) error {
 	reason := "the Redis driver evaluates only KeyFunc keys; workflow " + wf.Name
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
@@ -705,6 +761,8 @@ func cutPrefix(s, p string) (string, bool) {
 // classify marks errors that mean Redis is unreachable as
 // workflow.ErrUnavailable, so failover and callers can tell an outage
 // from a refusal.
+//
+//ds:def id=redis-classify-tmkjutp4 owner=@khanakia stability=stable
 func classify(err error) error {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err

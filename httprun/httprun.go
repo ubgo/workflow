@@ -127,8 +127,11 @@ type Auth[P any] struct {
 
 // The defaults of Config's zero fields.
 const (
-	DefaultMaxBody   = 1 << 20
-	DefaultPoll      = time.Second
+	//ds:def id=httprun-defaultmaxbody-fwge93c7 owner=@khanakia stability=stable
+	DefaultMaxBody = 1 << 20
+	//ds:def id=httprun-defaultpoll-xu2qjbxs owner=@khanakia stability=stable
+	DefaultPoll = time.Second
+	//ds:def id=httprun-defaultheartbeat-evx2n8yc owner=@khanakia stability=stable
 	DefaultHeartbeat = 15 * time.Second
 )
 
@@ -136,6 +139,8 @@ const (
 const MediaTypeJSON = "application/json"
 
 // Config configures New. Only Auth and Workflows are needed.
+//
+//ds:def id=httprun-config-jnyk8j5f owner=@khanakia stability=stable
 type Config[P any] struct {
 	// Auth gates every request (see the package doc). Required.
 	Auth Auth[P]
@@ -238,6 +243,8 @@ type handler[P any] struct {
 // workflow.LifecycleNotifier, New registers an observer for live status
 // events; that only works before c.Start (afterwards the client answers
 // ErrAlreadyStarted, logged, and the events route polls).
+//
+//ds:def id=httprun-new-hzhj9wnu owner=@khanakia stability=stable
 func New[P any](c workflow.Client, cfg Config[P]) http.Handler {
 	if cfg.MaxBody <= 0 {
 		cfg.MaxBody = DefaultMaxBody
@@ -289,6 +296,8 @@ func New[P any](c workflow.Client, cfg Config[P]) http.Handler {
 
 // ServeHTTP is the gate: closed without Auth, 401 without an identity,
 // then the routes.
+//
+//ds:def id=httprun-handler-p-servehttp-53jzjthw owner=@khanakia stability=stable
 func (h *handler[P]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.Auth.Identify == nil || h.cfg.Auth.Authorize == nil {
 		writeError(w, http.StatusForbidden, CodeForbidden, "httprun is closed: no Auth.Identify and Auth.Authorize configured")
@@ -359,8 +368,11 @@ func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
 // HeaderIdempotencyKey is the request header whose value becomes the
 // job's IdempotencyKey (needs CapIdempotencyKey; the driver refuses it
 // otherwise, answered 501).
+//
+//ds:def id=httprun-headeridempotencykey-nz6c4mt2 owner=@khanakia stability=stable
 const HeaderIdempotencyKey = "Idempotency-Key"
 
+//ds:def id=httprun-handler-p-start-gzefdf7z owner=@khanakia stability=stable
 func (h *handler[P]) start(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("workflow")
 	if !h.workflows[name] {
@@ -419,6 +431,8 @@ func (h *handler[P]) start(w http.ResponseWriter, r *http.Request) {
 }
 
 // location is where the run's status is read.
+//
+//ds:def id=httprun-handler-p-location-pt4m8y6s owner=@khanakia stability=stable
 func (h *handler[P]) location(ref workflow.RunRef) string {
 	base := "runs/"
 	if h.cfg.Mount != "" {
@@ -451,6 +465,8 @@ func pathRef(r *http.Request) workflow.RunRef {
 
 // lookup reads the run's RunInfo when the client can list runs. found is
 // false for an unknown run; err is set only for a real failure.
+//
+//ds:def id=httprun-handler-p-lookup-qr4zv6ub owner=@khanakia stability=stable
 func (h *handler[P]) lookup(ctx context.Context, ref workflow.RunRef) (info *workflow.RunInfo, err error) {
 	q, ok := h.c.(workflow.RunQuerier)
 	if !ok || !h.c.Capabilities().Has(workflow.CapRunQuery) {
@@ -471,6 +487,8 @@ func (h *handler[P]) lookup(ctx context.Context, ref workflow.RunRef) (info *wor
 
 // open reads the run and authorizes action on it. It writes the response
 // and returns false when the request ends here.
+//
+//ds:def id=httprun-handler-p-open-uj2bzwjj owner=@khanakia stability=stable
 func (h *handler[P]) open(w http.ResponseWriter, r *http.Request, action Action) (workflow.RunRef, *workflow.RunInfo, bool) {
 	ref := pathRef(r)
 	if ref.IsZero() {
@@ -492,6 +510,7 @@ func (h *handler[P]) open(w http.ResponseWriter, r *http.Request, action Action)
 	return ref, info, true
 }
 
+//ds:def id=httprun-handler-p-status-xjcaa4jd owner=@khanakia stability=stable
 func (h *handler[P]) status(w http.ResponseWriter, r *http.Request) {
 	ref, info, ok := h.open(w, r, ActionStatus)
 	if !ok {
@@ -570,6 +589,7 @@ func (s *statusJSON) setResult(b []byte) {
 	}
 }
 
+//ds:def id=httprun-handler-p-statusjson-8accxucp owner=@khanakia stability=stable
 func (h *handler[P]) statusJSON(ref workflow.RunRef, st workflow.Status, info *workflow.RunInfo) statusJSON {
 	out := statusJSON{Ref: toRefJSON(ref), Status: st, Done: st.IsTerminal()}
 	if info == nil {

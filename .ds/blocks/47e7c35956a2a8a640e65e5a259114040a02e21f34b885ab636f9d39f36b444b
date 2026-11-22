@@ -1,0 +1,19 @@
+func TestHandler_ClosedByDefault(t *testing.T) {
+	for name, auth := range map[string]Auth[user]{
+		"zero":         {},
+		"no Authorize": {Identify: bearerAuth().Identify},
+		"no Identify":  {Authorize: bearerAuth().Authorize},
+	} {
+		f := seeded()
+		h := NewHandler(New(f), auth)
+		for _, r := range append(routes, route{"GET", "/nope", "", ""}) {
+			rec := do(t, h, r.method, r.path, r.body)
+			if rec.Code != http.StatusForbidden || errCode(t, rec) != CodeForbidden {
+				t.Errorf("%s: %s %s = %d %s, want 403", name, r.method, r.path, rec.Code, rec.Body)
+			}
+		}
+		if c := f.Calls(); len(c) != 0 {
+			t.Errorf("%s: operations ran: %v", name, c)
+		}
+	}
+}

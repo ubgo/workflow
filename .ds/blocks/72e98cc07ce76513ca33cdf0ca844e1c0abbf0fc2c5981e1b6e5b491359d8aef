@@ -1,0 +1,26 @@
+func (f *Fake) Register(wf workflow.Workflow) error {
+	if f.passes(wf.Name) {
+		if err := f.inner.Register(wf); err != nil {
+			return err
+		}
+		f.mu.Lock()
+		f.pwfs[wf.Name] = wf
+		f.mu.Unlock()
+		return nil
+	}
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	for i, expr := range wf.Cron {
+		if _, err := f.parseCronFor(expr, wf.CronSeconds); err != nil {
+			return fmt.Errorf("%w: workflow %q: Cron[%d]: %w", workflow.ErrInvalid, wf.Name, i, err)
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.started {
+		return workflow.ErrAlreadyStarted
+	}
+	f.wfs[wf.Name] = wf
+	return nil
+}

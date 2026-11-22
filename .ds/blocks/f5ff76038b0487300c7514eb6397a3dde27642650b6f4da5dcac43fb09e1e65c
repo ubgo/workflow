@@ -1,0 +1,23 @@
+func listBatches(bs []FakeBatch) string {
+	if len(bs) == 0 {
+		return "no batch was dispatched"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%d batches:", len(bs))
+	for _, fb := range bs {
+		counts := map[string]int{}
+		var names []string
+		for _, j := range fb.Jobs {
+			if counts[j.Workflow] == 0 {
+				names = append(names, j.Workflow)
+			}
+			counts[j.Workflow]++
+		}
+		parts := make([]string, len(names))
+		for i, n := range names {
+			parts[i] = fmt.Sprintf("%s x%d", n, counts[n])
+		}
+		fmt.Fprintf(&b, "\n  %s: %d jobs (%s)", fb.ID, len(fb.Jobs), strings.Join(parts, ", "))
+	}
+	return b.String()
+}

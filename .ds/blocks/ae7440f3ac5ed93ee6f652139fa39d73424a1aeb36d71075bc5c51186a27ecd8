@@ -1,0 +1,11 @@
+func checkJobs(batch, what string, jobs []workflow.Job) error {
+	for i, job := range jobs {
+		if err := refuseBatchLabels(batch, what+strconv.Itoa(i), job.Labels); err != nil {
+			return err
+		}
+		if len(job.Chain) > 0 {
+			return fmt.Errorf("%w: batch %q: %s%d has a Job.Chain; a batch tracks one run per job, so put the chained work in the job's workflow or a Then callback", workflow.ErrInvalid, batch, what, i)
+		}
+	}
+	return nil
+}

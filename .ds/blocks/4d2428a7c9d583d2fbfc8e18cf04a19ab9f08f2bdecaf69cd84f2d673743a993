@@ -1,0 +1,12 @@
+func NewMemoryOutputs(lim MemoryOutputLimits) *MemoryOutputs {
+	if lim.Runs <= 0 {
+		lim.Runs = DefaultOutputRuns
+	}
+	if lim.PerRun <= 0 {
+		lim.PerRun = DefaultOutputPerRun
+	}
+	if lim.Bytes <= 0 {
+		lim.Bytes = DefaultOutputBytes
+	}
+	return &MemoryOutputs{lim: lim, runs: map[workflow.RunID][]AttemptOutput{}}
+}

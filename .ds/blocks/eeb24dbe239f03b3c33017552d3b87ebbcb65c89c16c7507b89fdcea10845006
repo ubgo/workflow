@@ -1,0 +1,4 @@
+type MemoryAudit struct {
+	mu      sync.Mutex
+	entries []AuditEntry
+}

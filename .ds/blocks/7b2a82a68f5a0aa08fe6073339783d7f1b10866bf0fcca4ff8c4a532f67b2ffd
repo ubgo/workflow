@@ -1,0 +1,3 @@
+func (e *PayloadTooLargeError) Is(target error) bool {
+	return target == ErrPayloadTooLarge || target == ErrInvalid
+}

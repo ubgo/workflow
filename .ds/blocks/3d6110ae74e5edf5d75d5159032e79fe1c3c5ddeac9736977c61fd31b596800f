@@ -1,0 +1,16 @@
+func concurrencyStrategy(s workflow.ConcurrencyStrategy) (hatchetsdk.ConcurrencyLimitStrategy, error) {
+	switch s {
+	case "", workflow.ConcurrencyQueueNewest, workflow.ConcurrencyRoundRobin:
+		// GROUP_ROUND_ROBIN queues a run whose key is full and serves keys
+		// in turn, which is what "the new run waits" means on Hatchet.
+		// Within a key it starts queued runs by insert order, which is
+		// Concurrency.FIFO (CapKeyFIFO, TestKeyFIFOLive).
+		return hatchetsdk.GroupRoundRobin, nil
+	case workflow.ConcurrencyDropNewest, workflow.ConcurrencyCancelNewest:
+		// Hatchet records the refused run as cancelled; it never runs.
+		return hatchetsdk.CancelNewest, nil
+	case workflow.ConcurrencyCancelInProgress:
+		return hatchetsdk.CancelInProgress, nil
+	}
+	return "", workflow.Unsupported("Concurrency.Strategy", "unknown strategy "+strconv.Quote(string(s)))
+}

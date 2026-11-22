@@ -1,16 +1,16 @@
 # Schedule conditions
 
-A schedule's cron says when a tick is due; a condition says whether a due tick should run. Office-hours-only syncs, a quiet hour at lunch, nothing while a deploy runs, a job that only makes sense when a feature flag is on: each is a rule about whether one tick runs. Here they are time-of-day windows, which are data and stored with the schedule, and one `ScheduleWhen` function on the workflow, which is code. A tick a condition stops is not lost silently: it is reported as a skipped tick, with the reason, to [tick observers and schedule hooks](hooks.md).
+A schedule's cron says when a tick is due; a condition says whether a due tick should run. Office-hours-only syncs, a quiet hour at lunch, nothing while a deploy runs, a job that only makes sense when a feature flag is on: each is a rule about whether one tick runs. Here they are time-of-day windows, which are data and stored with the schedule, and one `ScheduleWhen` function on the workflow, which is code. A tick a condition stops is not lost silently: it is reported as a [skipped tick](ds:block?id=tickskipped-9qvjzprc), with the reason, to [tick observers and schedule hooks](hooks.md).
 
 ## Before you start
 
-- Windows need `workflow.CapScheduleWindow` and `ScheduleWhen` needs `workflow.CapScheduleWhen`. The memory, SQL and Redis drivers have both; check `c.Capabilities()` on another driver. A driver without them refuses the field (at `Register` for a workflow, at `Schedule` for a schedule) with an `*workflow.UnsupportedError`, rather than firing ticks the condition should have stopped. Hatchet fires crons on its engine, where no condition of ours can run, so it declares neither `CapScheduleWhen` nor `CapScheduleWindow` and refuses both fields rather than ignoring them.
+- Windows need [`workflow.CapScheduleWindow`](ds:block?id=capschedulewindow-rn8htvhs) and `ScheduleWhen` needs [`workflow.CapScheduleWhen`](ds:block?id=capschedulewhen-z3ehkydm). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-paritycaps-e5y5vqhk) and [Redis](ds:block?id=redis-caps-bfgdst9t) drivers have both; check `c.Capabilities()` on another driver. A driver without them refuses the field (at `Register` for a workflow, at `Schedule` for a schedule) with an `*workflow.UnsupportedError`, rather than firing ticks the condition should have stopped. Hatchet fires crons on its engine, where no condition of ours can run, so it [declares neither](ds:block?id=hatchet-caps-d6x9fv8z) `CapScheduleWhen` nor `CapScheduleWindow` and [refuses both fields](ds:block?id=hatchet-checksupported-733uwgsp) rather than ignoring them. It refuses `Active` periods too; see [Hatchet limitations](../drivers/hatchet.md#limitations).
 - The example is [`examples/schedule-hooks`](../../examples/schedule-hooks). It runs an hourly schedule on the memory driver with a fake clock, so a working day passes in a moment. Run it with `go run ./schedule-hooks` from `examples/`.
 - Cron basics are on [cron schedules](cron.md).
 
 ## Limit ticks to time windows
 
-`Schedule.Windows` limits a schedule's ticks by time of day on the wall clock of its `Location`. A tick fires only inside at least one `Between` window (no `Between` windows: at any time) and outside every `Unless` window. Each `Window` is `From` and `To` as `"HH:MM"` on a 24-hour clock, `From` inclusive and `To` exclusive, so `09:00`-`17:00` lets the 09:00 tick through and stops the 17:00 one. A `To` before `From` wraps midnight: `{From: "22:00", To: "06:00"}` is the night. A window with `From` equal to `To` is refused, since it would mean either nothing or the whole day.
+`Schedule.Windows` limits a schedule's ticks by time of day on the wall clock of its `Location`. A tick fires only inside at least one `Between` window (no `Between` windows: at any time) and outside every `Unless` window ([`Windows`](ds:block?id=windows-69x7f7t3)). Each [`Window`](ds:block?id=window-srw8hxfa) is `From` and `To` as `"HH:MM"` on a 24-hour clock, `From` inclusive and `To` exclusive, so `09:00`-`17:00` lets the 09:00 tick through and stops the 17:00 one. A `To` before `From` [wraps midnight](ds:block?id=window-contains-adfcke6z): `{From: "22:00", To: "06:00"}` is the night. A window with `From` equal to `To` is [refused](ds:block?id=validatewindows-ymvv75xw), since it would mean either nothing or the whole day.
 
 <!-- snippet: examples/schedule-hooks/main.go#windows -->
 ```go
@@ -27,7 +27,7 @@ id, err := c.Schedule(ctx, workflow.Schedule{
 })
 ```
 
-Declared crons take the same windows through `Workflow.CronWindows`, evaluated in `Workflow.CronLocation`. Windows are read on the schedule's own wall clock, so an `09:00`-`17:00` window on a Berlin schedule is Berlin office hours all year, across daylight saving changes. `workflow.Windows.Allows(t, loc)` is the pure function every driver applies, for showing a user whether a time passes.
+Declared crons take the same windows through `Workflow.CronWindows`, evaluated in `Workflow.CronLocation`. Windows are read on the schedule's own wall clock, so an `09:00`-`17:00` window on a Berlin schedule is Berlin office hours all year, across daylight saving changes. [`workflow.Windows.Allows(t, loc)`](ds:block?id=windows-allows-xr62c52g) is the pure function every driver applies, for showing a user whether a time passes.
 
 ## Decide in code with ScheduleWhen
 
@@ -46,11 +46,11 @@ err := c.Register(workflow.Workflow{
 })
 ```
 
-The condition is code on the workflow, not a field of the schedule, for a reason: a schedule made with `Client.Schedule` is data a durable driver stores and may fire on any node, and a function cannot be stored. Every node registers the workflow, so every node has the function. It runs on the firing node, on the driver's scheduler goroutine, so it must return quickly; read a flag or a cached setting, do not call a slow service.
+The condition is code on the workflow, not a field of the schedule, for a reason: a schedule made with `Client.Schedule` is data a durable driver stores and may fire on any node, and a function cannot be stored. Every node registers the workflow, so every node has the function. It runs on the firing node, on the driver's scheduler goroutine ([memory](ds:block?id=memory-client-askwhen-w456jtt5), [SQL](ds:block?id=sql-client-askwhen-k65uhzav), [Redis](ds:block?id=redis-client-askwhen-exxfr27e)), so it must return quickly; read a flag or a cached setting, do not call a slow service.
 
 ## Run only in some environments
 
-`workflow.InEnvironment(current, allowed...)` returns a `ScheduleWhen` that fires ticks only when `current` is one of the allowed names, for schedules that must not run in staging or on a laptop. The names are the app's own: the library has no notion of an environment and reads nothing from the process, so the app passes the value it already has (a config field, an environment variable it reads). With no allowed names it never fires. `workflow.AllWhen(conds...)` combines conditions, asking them in order and stopping at the first false:
+[`workflow.InEnvironment(current, allowed...)`](ds:block?id=inenvironment-p5vgb3j9) returns a `ScheduleWhen` that fires ticks only when `current` is one of the allowed names, for schedules that must not run in staging or on a laptop. The names are the app's own: the library has no notion of an environment and reads nothing from the process, so the app passes the value it already has (a config field, an environment variable it reads). With no allowed names it never fires. [`workflow.AllWhen(conds...)`](ds:block?id=allwhen-g8hpvf7s) combines conditions, asking them in order and stopping at the first false:
 
 <!-- snippet: examples/schedule-specs/main.go#environment -->
 ```go
@@ -60,11 +60,11 @@ when := workflow.AllWhen(
 )
 ```
 
-The ticks it stops are reported as skipped with `TickReasonWhen`, like any `ScheduleWhen`. Not registering the schedule at all outside production works too, and is the only choice on a driver without `CapScheduleWhen`.
+The ticks it stops are reported as skipped with [`TickReasonWhen`](ds:block?id=tickreasonwhen-uv3qk2hy), like any `ScheduleWhen`. Not registering the schedule at all outside production works too, and is the only choice on a driver without `CapScheduleWhen`.
 
 ## An active period
 
-`Schedule.Active` (or `Workflow.CronActive` for a declared cron) limits a schedule to a period: a campaign that runs for a week, a trial reminder that stops when the trial ends. Ticks `t` with `From <= t < Until` fire; a zero `From` means no start and a zero `Until` no end, and an `Until` at or before `From` is refused. It needs `workflow.CapScheduleActive` (the memory, Redis and SQL drivers declare it; Hatchet refuses).
+[`Schedule.Active`](ds:block?id=active-r7frpdu3) (or `Workflow.CronActive` for a declared cron) limits a schedule to a period: a campaign that runs for a week, a trial reminder that stops when the trial ends. Ticks `t` with `From <= t < Until` fire; a zero `From` means no start and a zero `Until` no end, and an `Until` at or before `From` is [refused](ds:block?id=active-validate-vfxfreh8). It needs [`workflow.CapScheduleActive`](ds:block?id=capscheduleactive-7jnzkwny) (the [memory](ds:block?id=memory-caps-yxkuq583), [Redis](ds:block?id=redis-caps-bfgdst9t) and [SQL](ds:block?id=sql-p5caps-wggh6esn) drivers declare it; [Hatchet refuses](ds:block?id=hatchet-client-schedule-ug2ype7f)).
 
 <!-- snippet: examples/schedule-specs/main.go#active -->
 ```go
@@ -75,7 +75,7 @@ campaign := workflow.Active{
 runs := workflow.NextRuns(workflow.NextRunsQuery{Schedule: s, Location: time.UTC, After: monday, Count: 10, Active: campaign}) // asks for 10, the period holds 3
 ```
 
-Ticks outside the period are not ticks at all, unlike a window: there is no skipped-tick event for them and no misfire catch-up across the time before `From`, so a schedule created today with `From` next Monday does not fire the days in between when Monday comes. `workflow.NextActive(schedule, after, loc, active)` is the shared next-tick rule every driver uses, and `NextRuns` applies the period too, so a dashboard lists only the fires that will happen. Once `Until` has passed the schedule stays listed and never fires; `Unschedule` it to remove it.
+Ticks outside the period are not ticks at all, unlike a window: there is no skipped-tick event for them and no misfire catch-up across the time before `From`, so a schedule created today with `From` next Monday does not fire the days in between when Monday comes. [`workflow.NextActive(schedule, after, loc, active)`](ds:block?id=nextactive-nt7cn659) is the shared next-tick rule every driver uses, and [`NextRuns`](ds:block?id=nextruns-eumy8g7g) applies the period too, so a dashboard lists only the fires that will happen. Once `Until` has passed the schedule stays listed and never fires; `Unschedule` it to remove it.
 
 ## Try it
 
@@ -103,10 +103,10 @@ The ticks of the office-hours schedule from 08:00 to 13:00:
 - **A skipped tick does not come back.** A condition decides about one tick; when the window opens or the flag clears, the next tick fires, not the ones skipped. The misfire policy is about ticks nobody was awake to fire, not ticks a condition said no to.
 - **Windows use the schedule's zone, not the server's.** A schedule with `Location: time.UTC` and a `09:00`-`17:00` window runs 09:00-17:00 UTC wherever the server is.
 - **`ScheduleWhen` runs once per tick on one node.** It is not a lock and not a filter on runs enqueued by hand; a run enqueued with `Client.Enqueue` never asks it.
-- **A slow `ScheduleWhen` delays the scheduler.** It runs on the driver's scheduler goroutine.
-- **An active period is not a window.** Ticks before `From` or from `Until` on are not reported as skipped and are never caught up by a misfire policy; a schedule past its `Until` stays listed until it is removed.
-- **`InEnvironment` decides once.** The environment is read when the condition is built, not per tick; build it from the value the process started with.
-- **A panicking `ScheduleWhen` skips the tick.** The memory, SQL and Redis drivers recover the panic, log it at Error and report the tick skipped with `TickReasonWhen`, so a bug in the condition never fires work it should have stopped.
+- **A slow `ScheduleWhen` delays the scheduler.** It runs on the driver's scheduler goroutine ([`askWhen`](ds:block?id=memory-client-askwhen-w456jtt5)).
+- **An active period is not a window.** Ticks before `From` or from `Until` on [are not reported as skipped](ds:block?id=nextactive-nt7cn659) and are never caught up by a misfire policy; a schedule past its `Until` stays listed until it is removed.
+- **`InEnvironment` decides once.** The environment is [read when the condition is built](ds:block?id=inenvironment-p5vgb3j9), not per tick; build it from the value the process started with.
+- **A panicking `ScheduleWhen` skips the tick.** The [memory](ds:block?id=memory-client-askwhen-w456jtt5), [SQL](ds:block?id=sql-client-askwhen-k65uhzav) and [Redis](ds:block?id=redis-client-askwhen-exxfr27e) drivers recover the panic, log it at Error and report the tick skipped with `TickReasonWhen`, so a bug in the condition never fires work it should have stopped.
 
 ## Related
 

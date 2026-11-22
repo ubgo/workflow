@@ -1,0 +1,19 @@
+func TestFakeStopAndImmediate(t *testing.T) {
+	f := clock.NewFake(start)
+	tm := f.NewTimer(time.Minute)
+	if !tm.Stop() || tm.Stop() {
+		t.Fatal("Stop should report true once")
+	}
+	f.Advance(time.Hour)
+	if _, ok := fired(tm); ok {
+		t.Fatal("stopped timer fired")
+	}
+	if _, ok := fired(f.NewTimer(0)); !ok {
+		t.Fatal("zero timer did not fire at once")
+	}
+	f.Advance(-time.Hour)
+	f.Set(start)
+	if !f.Now().Equal(start.Add(time.Hour)) {
+		t.Fatal("clock went back")
+	}
+}

@@ -1,0 +1,1 @@
+func (c *Client) BatchStore() *BatchStore { return &BatchStore{c: c} }

@@ -1,0 +1,26 @@
+func onCalendar(fl cron.Fields, zone string) []string {
+	date := func(dom []int) string {
+		year := "*"
+		if fl.Year != nil {
+			year = systemdList(fl.Year, cron.MinYear, cron.MaxYear, false, false)
+		}
+		return year + "-" + systemdList(fl.Month, 1, 12, true, true) + "-" + systemdList(dom, 1, 31, true, true)
+	}
+	clock := systemdList(fl.Hour, 0, 23, true, true) + ":" + systemdList(fl.Minute, 0, 59, true, true) + ":" + systemdList(fl.Second, 0, 59, true, true)
+	line := func(dow []int, dom []int) string {
+		out := date(dom) + " " + clock + " " + zone
+		if dow != nil && !full(dow, 0, 6) {
+			out = weekdays(dow) + " " + out
+		}
+		return out
+	}
+	all := allDays()
+	domFull, dowFull := full(fl.DayOfMonth, 1, 31), full(fl.DayOfWeek, 0, 6)
+	switch {
+	case fl.DayOr && !domFull && !dowFull:
+		return []string{line(nil, fl.DayOfMonth), line(fl.DayOfWeek, all)}
+	case fl.DayOr:
+		return []string{line(nil, all)}
+	}
+	return []string{line(fl.DayOfWeek, fl.DayOfMonth)}
+}

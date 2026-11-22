@@ -1,0 +1,16 @@
+func (b *Bus) upcast(m Message) (Message, error) {
+	if err := b.checkVersion(m); err != nil {
+		return m, err
+	}
+	p, ok := b.versions[m.Name]
+	if !ok || m.Version == p.current {
+		return m, nil
+	}
+	out, err := workflow.Upcast(m.Payload, m.Version, p.current, p.ups)
+	if err != nil {
+		return m, fmt.Errorf("%w: events: message %q (ID %q): %w", workflow.ErrInvalid, m.Name, m.ID, err)
+	}
+	m.Payload = out
+	m.Version = p.current
+	return m, nil
+}

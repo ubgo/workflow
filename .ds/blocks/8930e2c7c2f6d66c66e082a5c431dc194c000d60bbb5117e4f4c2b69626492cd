@@ -1,0 +1,6 @@
+func Discard(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &discardError{err: err}
+}

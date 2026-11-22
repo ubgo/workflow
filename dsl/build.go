@@ -19,6 +19,8 @@ import (
 // Capability checks stay with the driver: Build accepts a wait step, and a
 // driver without CapWaitForEvent refuses the workflow at Register, as it
 // would refuse the Go form.
+//
+//ds:def id=dsl-build-etfzctan owner=@khanakia stability=stable
 func Build(def Definition, reg *Registry) (workflow.Workflow, error) {
 	if err := def.Validate(); err != nil {
 		return workflow.Workflow{}, err
@@ -69,6 +71,8 @@ func Build(def Definition, reg *Registry) (workflow.Workflow, error) {
 }
 
 // build converts one validated step at path.
+//
+//ds:def id=dsl-stepdef-build-ghrcfsnm owner=@khanakia stability=stable
 func (s StepDef) build(path string, reg *Registry) (workflow.Step, error) {
 	step := workflow.Step{Name: s.Name, After: slices.Clone(s.After)}
 	step.Timeout, _ = duration(at(path, "timeout"), s.Timeout)
@@ -97,6 +101,8 @@ func (s StepDef) build(path string, reg *Registry) (workflow.Step, error) {
 
 // resolve looks name up in reg, refusing an unknown one at path with the
 // names reg knows, so a typo reads next to the right spelling.
+//
+//ds:def id=dsl-resolve-qt5y6d8c owner=@khanakia stability=stable
 func resolve(reg *Registry, path, name string) (workflow.Handler, error) {
 	if h, ok := reg.Handler(name); ok {
 		return h, nil
@@ -111,6 +117,8 @@ func resolve(reg *Registry, path, name string) (workflow.Handler, error) {
 // labelKey is a key function reading one job label: the per-run key of a
 // wait or a concurrency cap, taken from Job.Labels, which the enqueuer
 // sets. A missing label reads as the empty key.
+//
+//ds:def id=dsl-labelkey-9hq8uv4m owner=@khanakia stability=stable
 func labelKey(label string) workflow.ConcurrencyKey {
 	return workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[label] })
 }

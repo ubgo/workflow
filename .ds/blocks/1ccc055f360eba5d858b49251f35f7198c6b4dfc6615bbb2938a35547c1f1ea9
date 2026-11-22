@@ -1,0 +1,62 @@
+func (c *Client) CompleteTx(ctx context.Context, tx *sql.Tx, output []byte) error {
+	if tx == nil {
+		return fmt.Errorf("%w: CompleteTx needs a transaction", workflow.ErrInvalid)
+	}
+	v, ok := ctx.Value(attemptKey{}).(attemptCtx)
+	if !ok || v.c != c {
+		return fmt.Errorf("%w: CompleteTx must be called with the context of a step this client is running", workflow.ErrInvalid)
+	}
+	a := v.a
+	if errors.Is(context.Cause(ctx), ErrLeaseLost) {
+		return fmt.Errorf("sqlstore: complete step %q of run %s: %w", a.name, a.runID, ErrLeaseLost)
+	}
+	reg := c.reg(a.workflow)
+	if reg == nil {
+		return fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, a.workflow)
+	}
+	var o txOut
+	row, err := c.touch(ctx, tx, a.runID)
+	if errors.Is(err, workflow.ErrNotFound) {
+		return fmt.Errorf("sqlstore: complete step %q: run %s is gone: %w", a.name, a.runID, ErrLeaseLost)
+	}
+	if err != nil {
+		return fmt.Errorf("sqlstore: complete step %q of run %s: %w", a.name, a.runID, err)
+	}
+	if row.status != runActive {
+		return fmt.Errorf("sqlstore: complete step %q: run %s is %s: %w", a.name, a.runID, row.status, ErrLeaseLost)
+	}
+	// The fence: the step row changes only while it is this attempt's, and
+	// the change locks it until tx ends. Moving status off running is a
+	// real change on every engine, so MySQL's changed-rows count is 1.
+	n, err := c.st.execN(ctx, tx, "UPDATE {steps} SET status = ? WHERE id = ? AND lease_token = ? AND status = ?",
+		stepSucceeded, a.stepID, a.token, stepRunning)
+	if err != nil {
+		return fmt.Errorf("sqlstore: complete step %q of run %s: %w", a.name, a.runID, err)
+	}
+	if n == 0 {
+		if done, err := c.completedBy(ctx, tx, a); err != nil {
+			return err
+		} else if done {
+			return fmt.Errorf("%w: step %q of run %s was already completed by this attempt", workflow.ErrInvalid, a.name, a.runID)
+		}
+		return fmt.Errorf("sqlstore: complete step %q: the step is no longer this attempt's: %w", a.name, ErrLeaseLost)
+	}
+	if _, err := c.st.exec(ctx, tx, "DELETE FROM {step_cancel} WHERE step_id = ?", a.stepID); err != nil {
+		return err
+	}
+	if err := c.applyChainEdits(ctx, tx, a); err != nil {
+		return err
+	}
+	if err := c.completeStep(ctx, tx, reg, row, a.name, output, &o); err != nil {
+		return err
+	}
+	// completeStep cleared the lease token; keeping this attempt's token on
+	// the succeeded row is how the worker later tells that this attempt's
+	// completion committed (completedBy). Nothing else reads the token of a
+	// step that is not running.
+	if _, err := c.st.exec(ctx, tx, "UPDATE {steps} SET lease_token = ? WHERE id = ?", a.token, a.stepID); err != nil {
+		return err
+	}
+	a.completion.set(o)
+	return nil
+}

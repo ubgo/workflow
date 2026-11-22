@@ -1,0 +1,88 @@
+type State struct {
+	ID   ID
+	Name string
+
+	// Labels is Batch.Labels without the reserved batch labels, copied
+	// onto every callback job.
+	Labels map[string]string `json:",omitempty"`
+
+	// Then, Catch and Finally are the callback workflow names; empty means
+	// none.
+	Then, Catch, Finally string
+
+	// Before and Progress are Batch.Before and Batch.Progress: the
+	// workflows enqueued once when the batch is created and once per job
+	// end reported by a run. Empty means none.
+	Before   string `json:",omitempty"`
+	Progress string `json:",omitempty"`
+
+	// AllowFailures is Batch.AllowFailures: it stops a failure from
+	// cancelling the other jobs, and Catch fires on the first failure anyway.
+	AllowFailures bool
+
+	// DiscardedAs is Batch.DiscardedAs; empty means StatusFailed.
+	DiscardedAs workflow.Status `json:",omitempty"`
+
+	// Jobs holds one entry per job, in the order of Batch.Jobs; a job's
+	// index is its identity, because its RunRef is not known until Enqueue
+	// returns and a fast run can finish before that.
+	Jobs []JobState
+
+	// Cancelled is set by Manager.Cancel, or by the first failure when
+	// AllowFailures is false. A cancelled batch never runs Then.
+	Cancelled bool
+
+	// FailCancelled is set together with Cancelled when a failed job
+	// cancelled the batch, as opposed to Manager.Cancel or a dispatch that
+	// failed. Manager.RetryFailed revives only such a batch, and then also
+	// re-runs the jobs that cancel stopped.
+	FailCancelled bool `json:",omitempty"`
+
+	// Round counts Manager.RetryFailed calls that re-ran jobs. It goes
+	// into the idempotency key of every callback decided after a retry,
+	// so a re-armed Then, Catch or Finally is not deduplicated against the
+	// one the previous round enqueued.
+	Round int `json:",omitempty"`
+
+	// CatchFired and Finished are the once-only latches: each flips from
+	// false to true inside one Store.Update, so exactly one caller wins the
+	// right to enqueue Catch, and exactly one wins Then and Finally.
+	CatchFired bool
+	Finished   bool
+
+	// Pending holds the callbacks decided but not yet enqueued, in the
+	// order they were decided; see PendingCallback.
+	Pending []PendingCallback `json:",omitempty"`
+
+	CreatedAt   time.Time
+	CancelledAt time.Time // zero unless Cancelled
+	FinishedAt  time.Time // zero unless Finished
+
+	// Dispatch progress, which lets another process finish a Dispatch whose
+	// process died part-way (see Manager.ResumeDispatches).
+	//
+	// Dispatched is set once every job was started or recorded as never
+	// started. DispatchOwner names the Dispatch (or resume) that may start
+	// jobs, and DispatchUntil is when its lease ends; every Store.Update of
+	// a dispatch checks the owner and extends the lease, so a resumer takes
+	// over only after the dispatcher stopped writing. Grouped is set before
+	// a GroupRunner call, after which no job without a saved ref is known
+	// to be unstarted. Spec holds the labelled jobs while the dispatch is
+	// open, so a resumer can start the ones never started; it is kept on
+	// the GroupRunner path, and on the one-Enqueue-per-job path only with
+	// WithResumableDispatch, because there every saved ref rewrites the
+	// whole State. A State written before these fields existed reads as
+	// not dispatched with an expired lease; a resumer then finds every job
+	// started and only sets Dispatched.
+	//
+	// Coordinated is set before a GroupSpawner call, and Parent holds the
+	// coordinator run it returned: the batch's jobs are that run's
+	// children, which never get a ref of their own (see GroupSpawner).
+	Dispatched    bool            `json:",omitempty"`
+	DispatchOwner string          `json:",omitempty"`
+	DispatchUntil time.Time       `json:",omitzero"`
+	Grouped       bool            `json:",omitempty"`
+	Spec          []workflow.Job  `json:",omitempty"`
+	Coordinated   bool            `json:",omitempty"`
+	Parent        workflow.RunRef `json:",omitzero"`
+}

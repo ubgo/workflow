@@ -1,0 +1,13 @@
+func overdue(info RunInfo, maxWait time.Duration, now time.Time) bool {
+	if info.Status != StatusQueued && info.Status != StatusScheduled {
+		return false
+	}
+	if info.Status == StatusScheduled && info.RunAt.IsZero() {
+		return false // a delayed run whose due time this driver does not report
+	}
+	since := info.EnqueuedAt
+	if info.RunAt.After(since) {
+		since = info.RunAt
+	}
+	return now.Sub(since) > maxWait
+}

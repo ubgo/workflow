@@ -13,6 +13,8 @@ import (
 // their ranges. Every error wraps ErrInvalid and names the step or field.
 // Drivers call it from Register; it does not parse cron expressions, which
 // the driver's cron parser checks.
+//
+//ds:def id=validate-mnthpzkp owner=@khanakia stability=stable
 func Validate(wf Workflow) error {
 	if wf.Name == "" {
 		return invalidf("workflow has no name")
@@ -55,6 +57,7 @@ func Validate(wf Workflow) error {
 	return validatePolicies(wf)
 }
 
+//ds:def id=validatestep-x6aebswc owner=@khanakia stability=stable
 func validateStep(s Step) error {
 	if s.Kind() == "" {
 		return errors.New("exactly one of Run, Wait and Sleep must be set")
@@ -107,6 +110,8 @@ func validateStep(s Step) error {
 
 // validateRetry checks the ranges of a retry policy; the caller names
 // where it sits.
+//
+//ds:def id=validateretry-jcn44n64 owner=@khanakia stability=stable
 func validateRetry(p RetryPolicy) error {
 	if p.Max < 0 {
 		return errors.New("Retry.Max is negative")
@@ -124,6 +129,8 @@ func validateRetry(p RetryPolicy) error {
 }
 
 // validateMisfire checks a misfire policy; the caller names where it sits.
+//
+//ds:def id=validatemisfire-mna4wuqq owner=@khanakia stability=stable
 func validateMisfire(m Misfire) error {
 	if m.Within < 0 {
 		return errors.New("Misfire.Within is negative")
@@ -154,6 +161,7 @@ func validateMisfire(m Misfire) error {
 	return nil
 }
 
+//ds:def id=validatepolicies-x88m4hwu owner=@khanakia stability=stable
 func validatePolicies(wf Workflow) error {
 	if err := validateRetry(wf.Retry); err != nil {
 		return invalidf("workflow %q: %v", wf.Name, err)
@@ -280,6 +288,8 @@ func findCycle(steps []Step, index map[string]int) string {
 // well-formed windows, a well-formed misfire policy and no
 // label under a reserved prefix (see ValidateLabels). Errors wrap
 // ErrInvalid. The cron expression itself is parsed by the driver.
+//
+//ds:def id=validateschedule-knj437ed owner=@khanakia stability=stable
 func ValidateSchedule(s Schedule) error {
 	switch {
 	case s.Workflow == "":
@@ -325,6 +335,8 @@ func ValidateSchedule(s Schedule) error {
 // labels, which need the caller's ctx: the library's own packages set
 // reserved labels on the jobs they pass down, so a driver's public
 // Enqueue also calls CheckJobLabels(ctx, job).
+//
+//ds:def id=validatejob-a7nq3u2t owner=@khanakia stability=stable
 func ValidateJob(job Job) error {
 	if job.Workflow == "" {
 		return invalidf("job has no Workflow")

@@ -1,0 +1,14 @@
+func dayFields(f Format, fl cron.Fields, list func([]int, int, int) string) (string, string, error) {
+	domFull, dowFull := full(fl.DayOfMonth, 1, 31), full(fl.DayOfWeek, 0, 6)
+	switch {
+	case fl.DayOr && !domFull && !dowFull:
+		return list(fl.DayOfMonth, 1, 31), list(fl.DayOfWeek, 0, 6), nil
+	case fl.DayOr || (domFull && dowFull):
+		return "*", "*", nil // one field matches every day, so every day does
+	case domFull:
+		return "*", list(fl.DayOfWeek, 0, 6), nil
+	case dowFull:
+		return list(fl.DayOfMonth, 1, 31), "*", nil
+	}
+	return "", "", refuse(f, "day-of-month", "both day fields are restricted with a stepped \"*\", which needs both to match; its parser would match either")
+}

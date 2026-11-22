@@ -1,0 +1,11 @@
+func scopeSupport(ctx context.Context, sup []OperationSupport) []OperationSupport {
+	if _, ok := TenantFrom(ctx); !ok {
+		return sup
+	}
+	for i, s := range sup {
+		if refusedOps[s.Operation] {
+			sup[i] = OperationSupport{Operation: s.Operation, Reason: "not available to a tenant-scoped caller"}
+		}
+	}
+	return sup
+}

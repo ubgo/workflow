@@ -1,0 +1,120 @@
+var claimScript = goredis.NewScript(luaPrelude + `
+local b, now, lnow, luntil, tok, started = ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
+readyNow = tonumber(now)
+for _, id in ipairs(redis.call('ZRANGEBYSCORE', b .. ':due', '-inf', now, 'LIMIT', 0, 100)) do
+  redis.call('ZREM', b .. ':due', id)
+  local h = redis.call('HMGET', rk(b, id), 'status', 'owner')
+  if h[1] and not terminal(h[1]) and h[2] == '' then
+    redis.call('HSET', rk(b, id), 'status', 'queued')
+    enready(b, id)
+  end
+end
+for _, id in ipairs(redis.call('ZRANGEBYSCORE', b .. ':leases', '-inf', '(' .. lnow, 'LIMIT', 0, 100)) do
+  redis.call('ZREM', b .. ':leases', id)
+  local h = redis.call('HMGET', rk(b, id), 'status', 'owner')
+  if h[1] == 'running' and h[2] and h[2] ~= '' then
+    redis.call('HSET', rk(b, id), 'owner', '', 'status', 'queued')
+    redis.call('HINCRBY', rk(b, id), 'reclaims', 1)
+    enready(b, id)
+  end
+end
+local paused = {}
+local pl = redis.call('HGETALL', b .. ':paused')
+for i = 1, #pl, 2 do paused[pl[i]] = true end
+if paused['all'] then return false end
+local mode, n = ARGV[7], tonumber(ARGV[8])
+local qprio, qrank = {}, {}
+for i = 0, n - 1 do
+  qprio[ARGV[9 + 3 * i]] = tonumber(ARGV[10 + 3 * i])
+  qrank[ARGV[9 + 3 * i]] = tonumber(ARGV[11 + 3 * i])
+end
+local first = 9 + 3 * n
+for _ = 1, 100 do
+  local best, bestKey, bp, br, bs, bestKind, bestRn, bestQ
+  for i = first, #ARGV, 3 do
+    local wf, lo, hi = ARGV[i], tonumber(ARGV[i + 1]), tonumber(ARGV[i + 2])
+    if not paused['w:' .. wf] then
+      local names = {}
+      if lo == 0 then names[1] = wf end
+      for _, v in ipairs(redis.call('SMEMBERS', b .. ':wfv:' .. wf)) do
+        local n = tonumber(v)
+        if n and n >= lo and n <= hi then names[#names + 1] = rname(wf, v) end
+      end
+      for _, rn in ipairs(names) do
+        for _, q in ipairs(redis.call('SMEMBERS', b .. ':wfq:' .. rn)) do
+          if (mode == 'all' or qprio[q]) and not paused['q:' .. q] then
+            local p, rank = qprio[q] or 0, qrank[q] or 0
+            -- kind 1: the ready set; kind 2: the round-robin places in line
+            for kind = 1, 2 do
+              local key = readykey(b, rn, q)
+              if kind == 2 then key = poskey(b, rn, q) end
+              local r = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+              if r[1] then
+                local s = tonumber(r[2])
+                if not best or p > bp or (p == bp and (rank < br or (rank == br and
+                    (s < bs or (s == bs and r[1] < best))))) then
+                  best, bestKey, bp, br, bs, bestKind, bestRn, bestQ = r[1], key, p, rank, s, kind, rn, q
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  if not best then return false end
+  if bestKind == 2 then
+    -- best is a place in line: the run holding it hands it to the run of
+    -- its fair set with the smallest start tag and takes that run's place.
+    local pr = posrunkey(b, bestRn, bestQ)
+    local h = redis.call('HGET', pr, best)
+    local hs = h and redis.call('HGET', rk(b, h), 'status')
+    if not h then
+      redis.call('ZREM', bestKey, best)
+      best = nil
+    elseif not hs or terminal(hs) then
+      -- a run that ended without leaving the indexes gives its place up
+      redis.call('ZREM', bestKey, best)
+      redis.call('HDEL', pr, best)
+      unfair(b, h)
+      best = nil
+    else
+      local fk = redis.call('HGET', rk(b, h), 'fk')
+      -- the smallest start tag; equal tags go by arrival (seq)
+      local m, mseq
+      local top = fk and redis.call('ZRANGE', fk, 0, 0, 'WITHSCORES')
+      if top and top[1] then
+        for _, c in ipairs(redis.call('ZRANGEBYSCORE', fk, top[2], top[2], 'LIMIT', 0, 64)) do
+          local cs = tonumber(redis.call('HGET', rk(b, c), 'seq') or '0')
+          if not m or cs < mseq then m, mseq = c, cs end
+        end
+      end
+      if m and m ~= h then
+        local pm = redis.call('HGET', rk(b, m), 'pos')
+        redis.call('HSET', pr, pm, h)
+        redis.call('HSET', rk(b, h), 'pos', pm)
+        redis.call('HSET', pr, best, m)
+        redis.call('HSET', rk(b, m), 'pos', best)
+        h = m
+      end
+      unfair(b, h)
+      best = h
+    end
+  else
+    redis.call('ZREM', bestKey, best)
+  end
+  if best then
+  redis.call('ZREM', sincekey(b, bestRn, bestQ), best)
+  local key = rk(b, best)
+  local h = redis.call('HMGET', key, 'status', 'owner')
+  if h[1] and not terminal(h[1]) and h[2] == '' then
+    redis.call('HSET', key, 'owner', tok, 'status', 'running', 'lease', luntil)
+    if not redis.call('HGET', key, 'started') then redis.call('HSET', key, 'started', started) end
+    redis.call('HDEL', key, 'sigpend')
+    redis.call('ZADD', b .. ':leases', luntil, best)
+    return {best, redis.call('HGETALL', key)}
+  end
+  end
+end
+return false
+`)

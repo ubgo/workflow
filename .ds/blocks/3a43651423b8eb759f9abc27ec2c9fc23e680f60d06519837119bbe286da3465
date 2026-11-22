@@ -1,0 +1,61 @@
+func (i *Instrumentation) Step() workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, _ := workflow.StepInfoFrom(ctx)
+			attrs := []attribute.KeyValue{
+				AttrWorkflow.String(info.Workflow),
+				AttrStep.String(info.Step),
+				AttrRunID.String(info.RunID.String()),
+				AttrAttempt.Int(info.Attempt),
+				AttrQueue.String(info.Queue),
+			}
+			if info.Node != "" {
+				attrs = append(attrs, AttrNode.String(info.Node))
+			}
+			if i.tenant && info.Tenant != "" {
+				attrs = append(attrs, AttrTenant.String(info.Tenant))
+			}
+			attrs = append(attrs, i.labelAttrs(info.Labels)...)
+			opts := []trace.SpanStartOption{trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attrs...)}
+			if i.parenting == ParentNewRootLink {
+				opts = append(opts, trace.WithNewRoot())
+			}
+			if len(info.Labels) > 0 {
+				enq := i.prop.Extract(ctx, labelCarrier{labels: info.Labels})
+				if sc := trace.SpanContextFromContext(enq); sc.IsValid() {
+					if i.parenting == ParentChild {
+						ctx = enq
+					} else {
+						opts = append(opts, trace.WithLinks(trace.Link{SpanContext: sc}))
+					}
+				}
+			}
+			name := ""
+			if i.stepName != nil {
+				name = i.stepName(info)
+			}
+			if name == "" {
+				name = "workflow.step " + info.Workflow + "/" + info.Step
+			}
+			ctx, span := i.tracer.Start(ctx, name, opts...)
+			defer span.End()
+
+			start := i.clk.Now()
+			if !info.ReadyAt.IsZero() {
+				i.queueWait.Record(ctx, max(start.Sub(info.ReadyAt), 0).Seconds(), metric.WithAttributes(append(i.metricLabelAttrs(info.Labels),
+					AttrWorkflow.String(info.Workflow), AttrStep.String(info.Step), AttrQueue.String(info.Queue))...))
+			}
+			out, err := next(ctx, in)
+			secs := i.clk.Now().Sub(start).Seconds()
+
+			outcome := outcomeOf(err)
+			recordErr(span, err)
+			span.SetAttributes(AttrOutcome.String(string(outcome)))
+			mattrs := metric.WithAttributes(append(i.metricLabelAttrs(info.Labels), AttrWorkflow.String(info.Workflow),
+				AttrStep.String(info.Step), AttrQueue.String(info.Queue), AttrOutcome.String(string(outcome)))...)
+			i.stepDuration.Record(ctx, secs, mattrs)
+			i.stepOutcomes.Add(ctx, 1, mattrs)
+			return out, err
+		}
+	}
+}

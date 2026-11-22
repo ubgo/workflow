@@ -1,0 +1,4 @@
+func (f *Fake) AssertBatched(t testing.TB, m ...BatchMatcher) {
+	t.Helper()
+	assertBatched(t, f.Batches(), m)
+}

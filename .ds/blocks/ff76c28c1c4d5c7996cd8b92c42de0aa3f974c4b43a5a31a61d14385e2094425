@@ -1,0 +1,36 @@
+func triggerCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	dry := fs.Bool("dry-run", false, "show the schedule that would run and enqueue nothing")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) != 1 {
+			return usagef("trigger takes one schedule ID")
+		}
+		id := url.PathEscape(args[0])
+		if *dry {
+			var s scheduleJSON
+			raw, err := e.api.get(ctx, "schedules/"+id, &s)
+			if err != nil {
+				return err
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would run schedule %s (workflow %s) now; nothing enqueued\n", s.ID, s.Workflow)
+			if s.Overlap == "skip" {
+				fprintln(e.out, "its overlap policy is skip: the real trigger is refused while its previous run is unfinished")
+			}
+			return nil
+		}
+		var out struct {
+			Ref refJSON `json:"ref"`
+		}
+		raw, err := e.api.do(ctx, "POST", "schedules/"+id+"/trigger", nil, &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		fprintf(e.out, "triggered %s as run %s\n", args[0], out.Ref)
+		return nil
+	}
+}

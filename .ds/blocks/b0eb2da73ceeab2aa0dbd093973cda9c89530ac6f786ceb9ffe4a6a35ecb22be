@@ -1,0 +1,7 @@
+func MarshalMachine(def MachineDefinition) ([]byte, error) {
+	b, err := json.MarshalIndent(def, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("%w: dsl: %w", workflow.ErrInvalid, err) // a NaN factor or jitter
+	}
+	return b, nil
+}

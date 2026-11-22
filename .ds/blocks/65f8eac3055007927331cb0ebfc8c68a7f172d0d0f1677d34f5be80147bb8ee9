@@ -1,0 +1,3 @@
+func NewFake(start time.Time) *Fake {
+	return &Fake{now: start, armed: make(chan struct{})}
+}

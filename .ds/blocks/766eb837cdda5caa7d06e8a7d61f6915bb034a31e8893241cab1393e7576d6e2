@@ -1,0 +1,16 @@
+func (s Step) Kind() StepKind {
+	var kinds []StepKind
+	if s.Run != nil {
+		kinds = append(kinds, StepRun)
+	}
+	if s.Wait != nil {
+		kinds = append(kinds, StepWait)
+	}
+	if s.Sleep != 0 {
+		kinds = append(kinds, StepSleep)
+	}
+	if len(kinds) != 1 {
+		return ""
+	}
+	return kinds[0]
+}

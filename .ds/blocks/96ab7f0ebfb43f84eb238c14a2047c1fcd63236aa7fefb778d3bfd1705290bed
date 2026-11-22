@@ -1,0 +1,31 @@
+func (s *store) checkVersion(ctx context.Context, ms []migrate.Migration) error {
+	l, err := s.ledger()
+	if err != nil {
+		return err
+	}
+	rows, err := l.AppliedDB(ctx, s.db)
+	if err != nil {
+		return fmt.Errorf("sqlstore: read the migration ledger %s%s: %w", s.prefix, ledgerStem, s.mark(err))
+	}
+	known := map[[2]string]bool{}
+	owners := map[string]bool{}
+	for _, m := range ms {
+		known[[2]string{m.Owner, m.Name}] = true
+		owners[m.Owner] = true
+	}
+	var unknown []string
+	for _, r := range rows {
+		if owners[r.Owner] && !known[[2]string{r.Owner, r.Name}] {
+			name := r.Name
+			if r.Owner != s.owner(MigrationOwner) {
+				name = strings.TrimSuffix(r.Owner[strings.LastIndex(r.Owner, "/")+1:], "@"+s.schema) + "/" + r.Name
+			}
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return &SchemaTooNewError{Unknown: unknown}
+	}
+	return nil
+}

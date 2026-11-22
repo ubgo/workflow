@@ -1,0 +1,1 @@
+func WithLog(log EventLog) Option { return func(b *Bus) { b.log = log } }

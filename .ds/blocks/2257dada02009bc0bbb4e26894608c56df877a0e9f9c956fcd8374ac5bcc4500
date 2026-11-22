@@ -1,0 +1,16 @@
+func Boundary(d time.Duration, onTimer func(ctx context.Context, info StepInfo), steps ...string) Middleware {
+	return func(next Handler) Handler {
+		if d <= 0 || onTimer == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, _ := StepInfoFrom(ctx)
+			if len(steps) > 0 && !slices.Contains(steps, info.Step) {
+				return next(ctx, in)
+			}
+			t := time.AfterFunc(d, func() { onTimer(ctx, info) })
+			defer t.Stop()
+			return next(ctx, in)
+		}
+	}
+}

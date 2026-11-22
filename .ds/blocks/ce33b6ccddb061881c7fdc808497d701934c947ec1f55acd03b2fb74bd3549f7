@@ -1,0 +1,6 @@
+func (o StepOutcome) AssertSucceeded(t testing.TB) {
+	t.Helper()
+	if o.Err != nil {
+		t.Errorf("step failed: %v", o.Err)
+	}
+}

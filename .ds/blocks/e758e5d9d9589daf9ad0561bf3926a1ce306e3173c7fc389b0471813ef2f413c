@@ -1,0 +1,28 @@
+func (b *breaker) wrap(next workflow.Handler) workflow.Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		var key string
+		if b.cfg.Key != nil {
+			key = b.cfg.Key(ctx, in)
+		} else if info, ok := workflow.StepInfoFrom(ctx); ok {
+			key = info.Workflow
+		}
+		open, err := b.cfg.Store.IsOpen(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("%w (key %q): circuit store: %w", ErrThrottled, key, err)
+		}
+		if open {
+			return nil, fmt.Errorf("%w (key %q)", ErrThrottled, key)
+		}
+		out, err := next(ctx, in)
+		switch {
+		case err == nil:
+			_ = b.cfg.Store.Reset(context.WithoutCancel(ctx), key) // see CircuitStore
+		case workflow.IsPermanent(err) || errors.Is(err, ErrThrottled):
+		default:
+			if rerr := b.cfg.Store.RecordError(context.WithoutCancel(ctx), key, b.policy); rerr != nil {
+				err = errors.Join(err, fmt.Errorf("workflow/middleware: circuit store: %w", rerr))
+			}
+		}
+		return out, err
+	}
+}

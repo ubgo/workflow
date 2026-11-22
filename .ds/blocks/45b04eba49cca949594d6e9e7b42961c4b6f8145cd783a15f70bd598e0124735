@@ -1,0 +1,17 @@
+func LaunchdNextFire(s workflow.Schedule, t Target, o LaunchdOptions, clk clock.Clock) (File, error) {
+	j, err := launchdPrepare(s, t, o)
+	if err != nil {
+		return File{}, err
+	}
+	next, err := j.nextFire(clk)
+	if err != nil {
+		return File{}, err
+	}
+	local := next.In(o.Zone)
+	if local.Second() != 0 {
+		return File{}, refuse(FormatLaunchd, "second", "the next fire %s is not on a minute; launchd starts jobs on the minute", local.Format(time.RFC3339))
+	}
+	return j.plist([]interval{{
+		{"Month", int(local.Month())}, {"Day", local.Day()}, {"Hour", local.Hour()}, {"Minute", local.Minute()},
+	}}), nil
+}

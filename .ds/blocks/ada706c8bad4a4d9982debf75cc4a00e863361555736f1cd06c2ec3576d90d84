@@ -1,0 +1,40 @@
+func (s *Saga) Do(ctx context.Context, action string, do, undo func(ctx context.Context) error) error {
+	if s.name == "" || action == "" || do == nil {
+		return Permanent(invalidf("saga: a name, an action name and a do function are required"))
+	}
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return err
+	}
+	key, err := j.claim("saga/" + s.name + "/do/" + action)
+	if err != nil {
+		return err
+	}
+	_, aborted, err := RunData[string](ctx, sagaAbortData(s.name))
+	if err != nil {
+		return err
+	}
+	if aborted {
+		// An action that finished before the abort reports success again
+		// (as Memo would), so the step's code walks on to the first
+		// action that never ran, which is refused; by then every finished
+		// action is remembered and Abort can finish the compensation an
+		// earlier attempt began.
+		_, ok, err := j.store.Load(ctx, j.run, key)
+		if err != nil {
+			return fmt.Errorf("workflow: saga %q: load %q: %w", s.name, action, err)
+		}
+		if ok {
+			s.remember(action, undo)
+			return nil
+		}
+		return Permanent(fmt.Errorf("%w: saga %q, action %q not started", ErrSagaAborted, s.name, action))
+	}
+	if _, err := memoKey(ctx, j, key, action, func(ctx context.Context) (bool, error) {
+		return true, do(ctx)
+	}); err != nil {
+		return err
+	}
+	s.remember(action, undo)
+	return nil
+}

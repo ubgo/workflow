@@ -1,0 +1,12 @@
+type NondeterminismError struct {
+	// Position is the index of the call, from 0.
+	Position int
+
+	// Recorded is the call recorded at Position ("step charge"); empty
+	// when the history ended there.
+	Recorded string
+
+	// Got is the call the code made ("sleep cool-off"); empty when the
+	// code returned with recorded calls left over.
+	Got string
+}

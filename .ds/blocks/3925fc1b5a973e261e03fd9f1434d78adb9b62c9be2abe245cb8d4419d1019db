@@ -1,0 +1,9 @@
+func (r *Recorder) assertPaused(t testing.TB, target workflow.PauseTarget, want bool) {
+	t.Helper()
+	ps, err := r.Paused(context.Background())
+	if err != nil {
+		t.Errorf("list pauses: %v", err)
+		return
+	}
+	assertPause(t, target, ps, want)
+}

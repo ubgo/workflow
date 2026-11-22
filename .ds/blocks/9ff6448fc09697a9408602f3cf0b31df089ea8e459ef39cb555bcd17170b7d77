@@ -1,0 +1,1 @@
+var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun, OpResetRun, OpResetSucceeded, OpForkRun, OpSignalWaiting}

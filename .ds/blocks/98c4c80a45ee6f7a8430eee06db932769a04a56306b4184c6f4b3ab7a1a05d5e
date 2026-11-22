@@ -1,0 +1,41 @@
+func New(regions map[string]workflow.Client, router Router, opts ...Option) (*Client, error) {
+	if len(regions) == 0 {
+		return nil, fmt.Errorf("%w: regional: no regions", workflow.ErrInvalid)
+	}
+	if router == nil {
+		return nil, fmt.Errorf("%w: regional: nil Router", workflow.ErrInvalid)
+	}
+	var cfg config
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
+	c := &Client{
+		regions: make(map[string]workflow.Client, len(regions)),
+		router:  router,
+		signal:  cfg.signal,
+		wfs:     map[string]workflow.Workflow{},
+	}
+	for name, rc := range regions {
+		if err := validRegion(name); err != nil {
+			return nil, err
+		}
+		if rc == nil {
+			return nil, fmt.Errorf("%w: regional: region %q has a nil client", workflow.ErrInvalid, name)
+		}
+		c.regions[name] = rc
+		c.names = append(c.names, name)
+	}
+	slices.Sort(c.names)
+	c.schedRegion = cfg.schedRegion
+	if c.schedRegion == "" && len(c.names) == 1 {
+		c.schedRegion = c.names[0]
+	}
+	if c.schedRegion != "" {
+		if _, ok := c.regions[c.schedRegion]; !ok {
+			return nil, unknownRegion(c.schedRegion, "WithScheduleRegion")
+		}
+	}
+	return c, nil
+}

@@ -1,0 +1,1 @@
+var ErrCalendar = errors.New("cron: invalid calendar")

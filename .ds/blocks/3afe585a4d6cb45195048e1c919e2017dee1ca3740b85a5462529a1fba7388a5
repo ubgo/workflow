@@ -1,0 +1,11 @@
+type RouteRule struct {
+	// Match selects the jobs this rule routes. Nil matches every job.
+	Match func(workflow.Job) bool
+
+	// Workflow, when set, replaces Job.Workflow.
+	Workflow string
+
+	// Labels are added to Job.Labels. A label the job already carries
+	// wins: a choice made at the enqueue site beats the routing table.
+	Labels map[string]string
+}

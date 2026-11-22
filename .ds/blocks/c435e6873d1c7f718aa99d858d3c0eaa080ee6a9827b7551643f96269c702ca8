@@ -1,0 +1,123 @@
+func TestCompleteTxRefusals(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name+"/outside a step", func(t *testing.T) {
+			f := newCompleteFixture(t, e, func(*ctxFixture, context.Context, int64) ([]byte, error) { return nil, nil })
+			ctx := context.Background()
+			tx, err := f.db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = tx.Rollback() }()
+			if err := f.c.CompleteTx(ctx, tx, nil); !errors.Is(err, workflow.ErrInvalid) {
+				t.Fatalf("outside a step: %v, want ErrInvalid", err)
+			}
+			if err := f.c.CompleteTx(ctx, nil, nil); !errors.Is(err, workflow.ErrInvalid) {
+				t.Fatalf("nil tx: %v, want ErrInvalid", err)
+			}
+		})
+		t.Run(e.name+"/another client's step and twice", func(t *testing.T) {
+			var other atomic.Pointer[sqlstore.Client]
+			var foreign, again atomic.Value
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				tx, err := f.db.BeginTx(ctx, nil)
+				if err != nil {
+					return nil, err
+				}
+				defer func() { _ = tx.Rollback() }()
+				foreign.Store(errBox{other.Load().CompleteTx(ctx, tx, nil)})
+				if err := f.c.CompleteTx(ctx, tx, []byte(`"once"`)); err != nil {
+					return nil, err
+				}
+				again.Store(errBox{f.c.CompleteTx(ctx, tx, []byte(`"twice"`))})
+				return nil, tx.Commit()
+			})
+			oc, err := sqlstore.New(f.db, e.dialect, sqlstore.WithTablePrefix("other_"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			other.Store(oc)
+			ref, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := f.awaitEnd(t, ref); st != workflow.StatusSucceeded {
+				t.Fatalf("run %s, want succeeded", st)
+			}
+			if b, _ := foreign.Load().(errBox); !errors.Is(b.err, workflow.ErrInvalid) {
+				t.Fatalf("another client's CompleteTx: %v, want ErrInvalid", b.err)
+			}
+			if b, _ := again.Load().(errBox); !errors.Is(b.err, workflow.ErrInvalid) {
+				t.Fatalf("second CompleteTx of one attempt: %v, want ErrInvalid", b.err)
+			}
+			f.mu.Lock()
+			got := string(f.receipt)
+			f.mu.Unlock()
+			if got != `"once"` {
+				t.Fatalf("receipt input %q, want the first completion's", got)
+			}
+		})
+		t.Run(e.name+"/lease taken over", func(t *testing.T) {
+			var lost atomic.Value
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				if attempt > 1 {
+					return []byte(`"retaken"`), nil
+				}
+				// Another client's claim, as it would land after this
+				// attempt's lease expired: a new token on the step.
+				if _, err := f.db.ExecContext(ctx, "UPDATE "+f.stepsTbl+" SET lease_token = 'lease_other', lease_until = 0 WHERE name = 'charge'"); err != nil {
+					return nil, err
+				}
+				err := chargeInTx(f, context.WithoutCancel(ctx), `"stale"`, func(tx *sql.Tx) error { return tx.Commit() })
+				lost.Store(errBox{err})
+				return nil, err
+			})
+			ref, err := f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st := f.awaitEnd(t, ref); st != workflow.StatusSucceeded {
+				t.Fatalf("run %s, want succeeded once the step was retaken", st)
+			}
+			waitFor(t, 5*time.Second, "the first attempt's CompleteTx", func() bool { return lost.Load() != nil })
+			if b, _ := lost.Load().(errBox); !errors.Is(b.err, sqlstore.ErrLeaseLost) {
+				t.Fatalf("CompleteTx after a takeover: %v, want ErrLeaseLost", b.err)
+			}
+			f.mu.Lock()
+			got := string(f.receipt)
+			f.mu.Unlock()
+			if got != `"retaken"` {
+				t.Fatalf("receipt input %q, want the retaken attempt's output", got)
+			}
+			if n := f.orderRows(t); n != 0 {
+				t.Fatalf("%d app rows, want 0 (the refused tx was rolled back)", n)
+			}
+		})
+		t.Run(e.name+"/run cancelled", func(t *testing.T) {
+			var lost atomic.Value
+			var ref workflow.RunRef
+			refSet := make(chan struct{})
+			f := newCompleteFixture(t, e, func(f *ctxFixture, ctx context.Context, attempt int64) ([]byte, error) {
+				<-refSet
+				if err := f.c.Cancel(context.WithoutCancel(ctx), ref); err != nil {
+					return nil, err
+				}
+				err := chargeInTx(f, context.WithoutCancel(ctx), `"late"`, func(tx *sql.Tx) error { return tx.Commit() })
+				lost.Store(errBox{err})
+				return nil, err
+			})
+			var err error
+			ref, err = f.c.Enqueue(context.Background(), workflow.Job{Workflow: "pay"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			close(refSet)
+			if st := f.awaitEnd(t, ref); st != workflow.StatusCancelled {
+				t.Fatalf("run %s, want cancelled", st)
+			}
+			waitFor(t, 5*time.Second, "the handler's CompleteTx", func() bool { return lost.Load() != nil })
+			if b, _ := lost.Load().(errBox); !errors.Is(b.err, sqlstore.ErrLeaseLost) {
+				t.Fatalf("CompleteTx on a cancelled run: %v, want ErrLeaseLost", b.err)
+			}
+		})
+	}
+}

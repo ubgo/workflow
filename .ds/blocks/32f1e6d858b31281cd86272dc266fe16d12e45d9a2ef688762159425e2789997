@@ -1,0 +1,6 @@
+func (s *statusWriter) Flush() {
+	if s.status == 0 {
+		s.status = http.StatusOK
+	}
+	_ = http.NewResponseController(s.ResponseWriter).Flush() // an unflushable writer has nothing to flush
+}

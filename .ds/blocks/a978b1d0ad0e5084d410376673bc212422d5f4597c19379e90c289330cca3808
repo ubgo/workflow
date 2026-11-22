@@ -1,0 +1,3 @@
+func StepMiddleware(mw ...workflow.Middleware) StepOption {
+	return func(s *stepRun) { s.mw = append(s.mw, mw...) }
+}

@@ -1,0 +1,15 @@
+func TestUnprefixedRefFallsBackToSecondary(t *testing.T) {
+	fx := newFixture(t)
+	fx.up(waitWF)
+	fx.p.down.Store(true)
+	ref := fx.enqueue("k")
+	raw := workflow.RunRef{RunID: workflow.RunID(strings.TrimPrefix(string(ref.RunID), "secondary:"))}
+	fx.waitStatus(raw, workflow.StatusWaiting) // the primary does not know it
+
+	if _, err := fx.c.Status(fx.ctx, workflow.RunRef{RunID: "primary:a", ScheduledID: "secondary:b"}); !errors.Is(err, workflow.ErrNotFound) {
+		t.Errorf("ref naming two backends: %v, want ErrNotFound", err)
+	}
+	if _, err := fx.c.Status(fx.ctx, workflow.RunRef{RunID: "nope"}); !errors.Is(err, workflow.ErrNotFound) {
+		t.Errorf("unknown unprefixed ref: %v, want ErrNotFound", err)
+	}
+}

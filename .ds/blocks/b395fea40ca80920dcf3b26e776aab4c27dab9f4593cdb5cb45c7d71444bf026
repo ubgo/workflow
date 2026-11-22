@@ -1,0 +1,4 @@
+type DisableStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}

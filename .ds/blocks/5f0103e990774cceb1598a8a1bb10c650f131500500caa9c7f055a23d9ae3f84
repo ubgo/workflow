@@ -1,0 +1,14 @@
+func (c *Client) Health(ctx context.Context) workflow.HealthReport {
+	o, n := workflow.CheckHealth(ctx, c.old), workflow.CheckHealth(ctx, c.new)
+	out := workflow.HealthReport{Live: o.Live && n.Live, Ready: n.Ready}
+	for _, s := range []struct {
+		side Side
+		rep  workflow.HealthReport
+	}{{SideOld, o}, {SideNew, n}} {
+		for _, ch := range s.rep.Checks {
+			ch.Name = string(s.side) + " " + ch.Name
+			out.Checks = append(out.Checks, ch)
+		}
+	}
+	return out
+}

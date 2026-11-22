@@ -1,0 +1,32 @@
+func (s *OutputStore) Deliver(ctx context.Context, out middleware.Output) error {
+	if !out.HasInfo || out.Info.RunID.IsZero() {
+		return ErrOutputNoRun
+	}
+	var b strings.Builder
+	if err := middleware.FormatOutput(&b, out); err != nil {
+		return err
+	}
+	text, truncated := cutText(b.String(), s.lim.Bytes)
+	msg := ""
+	if out.Err != nil {
+		msg = out.Err.Error()
+	}
+	run := string(out.Info.RunID)
+	return s.st.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := s.st.exec(ctx, tx, `INSERT INTO {outputs} (run_id, step, attempt, started_at, finished_at, body, truncated, err)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, run, out.Info.Step, out.Info.Attempt, out.Started.UnixNano(), out.Finished.UnixNano(),
+			text, boolInt(truncated), msg); err != nil {
+			return fmt.Errorf("sqlstore: store output: %w", err)
+		}
+		var cut int64
+		err := s.st.one(ctx, tx, "SELECT id FROM {outputs} WHERE run_id = ? ORDER BY id DESC LIMIT 1 OFFSET ?", []any{run, s.lim.PerRun}, &cut)
+		if isNoRows(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("sqlstore: read the output bound: %w", err)
+		}
+		_, err = s.st.exec(ctx, tx, "DELETE FROM {outputs} WHERE run_id = ? AND id <= ?", run, cut)
+		return err
+	})
+}

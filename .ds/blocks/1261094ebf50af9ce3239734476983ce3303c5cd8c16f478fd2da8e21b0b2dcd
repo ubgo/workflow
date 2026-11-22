@@ -1,0 +1,16 @@
+func (b Builder) Expr() (string, error) {
+	if b.err != nil {
+		return "", b.err
+	}
+	expr := b.every
+	if expr == "" {
+		if b.minute == "" {
+			return "", fmt.Errorf("%w: the zero Builder has no frequency; start from Daily(), EveryMinutes(n) or another frequency function", ErrBuilder)
+		}
+		expr = strings.Join([]string{b.minute, b.hour, b.dom, b.month, b.dow}, " ")
+	}
+	if _, err := Parse(expr); err != nil {
+		return "", fmt.Errorf("%w: built %q: %w", ErrBuilder, expr, err)
+	}
+	return expr, nil
+}

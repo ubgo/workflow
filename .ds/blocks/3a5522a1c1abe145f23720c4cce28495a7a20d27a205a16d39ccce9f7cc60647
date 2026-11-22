@@ -1,0 +1,39 @@
+func DefaultErrorClassifier(err error) ErrorClass {
+	if err == nil {
+		return ErrorClass{}
+	}
+	var state interface{ SQLState() string }
+	if errors.As(err, &state) {
+		code := state.SQLState()
+		switch code {
+		case pgUniqueViolation:
+			return ErrorClass{UniqueViolation: true}
+		case pgDeadlock, pgSerialization:
+			return ErrorClass{Retryable: true}
+		case pgAdminShutdown, pgCrashShutdown, pgCannotConnectNow:
+			return ErrorClass{Unavailable: true}
+		}
+		if strings.HasPrefix(code, pgConnectionClass) {
+			return ErrorClass{Unavailable: true}
+		}
+	}
+	var netErr *net.OpError
+	if errors.As(err, &netErr) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, sql.ErrConnDone) {
+		return ErrorClass{Unavailable: true}
+	}
+	msg := err.Error()
+	for _, sig := range []string{pgxConnectFailed, mysqlInvalidConn, mysqlTooManyConns, mysqlServerShutdown} {
+		if strings.Contains(msg, sig) {
+			return ErrorClass{Unavailable: true}
+		}
+	}
+	if strings.Contains(msg, mysqlDuplicate) || strings.Contains(msg, sqliteUnique) {
+		return ErrorClass{UniqueViolation: true}
+	}
+	for _, sig := range []string{sqliteBusy, sqliteLocked, mysqlDeadlock, mysqlLockWaitTimeout} {
+		if strings.Contains(msg, sig) {
+			return ErrorClass{Retryable: true}
+		}
+	}
+	return ErrorClass{}
+}

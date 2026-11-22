@@ -1,0 +1,127 @@
+func (c *Client) fireOne(ctx context.Context, d dueSchedule, now time.Time) (bool, error) {
+	reg := c.reg(d.workflow)
+	sched, err := c.parseFor(d.expr, d.spec)
+	if err != nil {
+		return false, fmt.Errorf("stored schedule %s does not parse: %w", d.id, err)
+	}
+	loc, err := decodeLocation(d.loc)
+	if err != nil {
+		return false, fmt.Errorf("stored schedule %s zone %q does not load: %w", d.id, d.loc, err)
+	}
+	var labels map[string]string
+	if err := json.Unmarshal([]byte(d.labels), &labels); err != nil {
+		c.log.Error("sqlstore: stored schedule labels do not decode", "schedule", d.id, "error", err)
+	}
+	// The default fires the oldest due tick once under its own fire time;
+	// a policy fires what Misfire.Due picks from [next_fire, now].
+	last := time.Unix(0, d.next-1)
+	var fire []time.Time
+	if d.misfire.IsZero() {
+		fire = []time.Time{unixTime(d.next)}
+	} else {
+		fire = d.misfire.Due(sched, last, now, loc)
+	}
+	if !d.spec.active.IsZero() {
+		// A next fire time stored before the period changed may lie
+		// outside it: such a tick never fires.
+		fire = slices.DeleteFunc(fire, func(t time.Time) bool { return !d.spec.active.Contains(t) })
+	}
+	missed, missedAt := dropped(sched, last, now, loc, fire)
+	windows := d.windows
+	if d.declared && reg != nil {
+		windows = reg.wf.CronWindows
+	}
+	base := workflow.Tick{ScheduleID: workflow.ScheduleID(d.id), Name: d.tickName(), Workflow: d.workflow, Declared: d.declared,
+		Location: loc, Labels: labels}
+	// Under OverlapSkip an unfinished previous run holds every tick back,
+	// and so does a run this firing starts: of several due ticks at most
+	// one fires.
+	blocked, _, err := c.overlapBlocks(ctx, d)
+	if err != nil {
+		return false, err
+	}
+	decisions := make([]tickDecision, len(fire))
+	for i, t := range fire {
+		decisions[i].at = t.UnixNano()
+		tick := base
+		tick.At = t.In(loc)
+		switch {
+		case !windows.IsZero() && !windows.Allows(t, loc):
+			decisions[i].reason = workflow.TickReasonWindow
+		case blocked:
+			decisions[i].reason = workflow.TickReasonOverlap
+		case reg != nil && reg.wf.ScheduleWhen != nil && !c.askWhen(ctx, reg.wf.ScheduleWhen, tick):
+			decisions[i].reason = workflow.TickReasonWhen
+		default:
+			if decisions[i].runID, err = c.st.newID(IDRun); err != nil {
+				return false, err
+			}
+			blocked = d.overlap == workflow.OverlapSkip
+		}
+	}
+	next := sched.Next(now, loc)
+	refs := make([]workflow.RunRef, len(decisions))
+	err = c.st.tx(ctx, func(tx *sql.Tx) error {
+		q, args := "UPDATE {schedules} SET next_fire = ? WHERE id = ? AND next_fire = ?", []any{next.UnixNano(), d.id, d.next}
+		if next.IsZero() {
+			q, args = "UPDATE {schedules} SET active = 0 WHERE id = ? AND next_fire = ?", args[1:]
+		}
+		n, err := c.st.execN(ctx, tx, q, args...)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return errTickTaken
+		}
+		for i, dec := range decisions {
+			if _, err := c.st.exec(ctx, tx, "INSERT INTO {ticks} (schedule_id, fire_at, run_id) VALUES (?, ?, ?)", d.id, dec.at, dec.runID); err != nil {
+				return err
+			}
+			if dec.runID == "" {
+				continue
+			}
+			runLabels := workflow.FiredLabelsAt(labels, workflow.ScheduleID(d.id), d.tickName(), unixTime(dec.at))
+			row, err := c.insertRun(ctx, tx, reg, workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: runLabels, Tenant: d.tenant}, "", dec.runID)
+			if err != nil {
+				return err
+			}
+			refs[i] = row.ref()
+			if err := c.moveLast(ctx, tx, d, dec.at, dec.runID); err != nil {
+				return err
+			}
+			d.lastRun = dec.runID // the next tick of this firing compares against it
+		}
+		return nil
+	})
+	if errors.Is(err, errTickTaken) || errors.Is(err, errLastMoved) || c.st.isUnique(err) {
+		return false, nil // another client fired this tick
+	}
+	var ticks []workflow.Tick
+	if missed > 0 && err == nil {
+		t := base
+		t.Outcome, t.At, t.Missed = workflow.TickMisfired, missedAt.In(loc), missed
+		ticks = append(ticks, t)
+	}
+	enqueued := false
+	for i, dec := range decisions {
+		t := base
+		t.At = unixTime(dec.at).In(loc)
+		switch {
+		case dec.runID == "" && err == nil:
+			t.Outcome, t.Reason = workflow.TickSkipped, dec.reason
+		case dec.runID == "":
+			continue // the skip was not recorded; the next pass decides again
+		default:
+			t.Outcome, t.Run, t.Err = workflow.TickFired, refs[i], err
+			enqueued = enqueued || err == nil
+		}
+		ticks = append(ticks, t)
+	}
+	c.emitTicks(ctx, ticks)
+	if enqueued {
+		if kerr := c.keepRuns(ctx, d); kerr != nil {
+			c.log.Error("sqlstore: trim a schedule's run history (KeepRuns)", "schedule", d.id, "error", kerr)
+		}
+	}
+	return enqueued, err
+}

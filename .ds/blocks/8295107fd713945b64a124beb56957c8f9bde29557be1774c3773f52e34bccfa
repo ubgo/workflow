@@ -1,0 +1,34 @@
+func TestRun_DryRunNeverWrites(t *testing.T) {
+	f, srv := newFake(t)
+	for _, args := range [][]string{
+		{"retry", "r1", "--dry-run"},
+		{"cancel", "--all", "--queue", "emails", "--dry-run"},
+		{"retry", "--all", "--workflow", "send", "--dry-run"},
+		{"delete", "--all", "--status", "failed", "--dry-run"},
+		{"trigger", "s1", "--dry-run"},
+		{"reset", "r1", "--step", "load", "--dry-run"},
+		{"fork", "r1", "--step", "load", "--dry-run"},
+		{"signal-waiting", "go", "--dry-run"},
+	} {
+		runCLI(t, srv, nil, args...)
+	}
+	for _, c := range f.Calls() {
+		if c.method == http.MethodGet {
+			continue
+		}
+		var b map[string]any
+		if json.Unmarshal([]byte(c.body), &b) != nil || b["dry_run"] != true {
+			t.Errorf("dry run wrote: %s %s %s", c.method, c.path, c.body)
+		}
+	}
+	// A dry run of an action the server would refuse says so and exits 1:
+	// a failed run cannot be cancelled. One it would accept exits 0.
+	_, srv2 := newFake(t)
+	code, _, stderr := runCLI(t, srv2, nil, "cancel", "r1", "--dry-run")
+	if code != ExitError || !strings.Contains(stderr, "would be refused") {
+		t.Errorf("dry cancel of a failed run: %d %q", code, stderr)
+	}
+	if code, out, _ := runCLI(t, srv2, nil, "delete", "r1", "--dry-run"); code != ExitOK || !strings.Contains(out, "would delete run r1") {
+		t.Errorf("dry delete of a failed run: %d %q", code, out)
+	}
+}

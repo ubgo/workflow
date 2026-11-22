@@ -1,0 +1,13 @@
+func (m *MemoryLineage) Record(ctx context.Context, l Lineage) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if slices.ContainsFunc(m.recs, l.same) {
+		return nil
+	}
+	l.Meta = maps.Clone(l.Meta)
+	m.recs = append(m.recs, l)
+	return nil
+}

@@ -1,0 +1,3 @@
+type BucketStore struct {
+	st *store
+}

@@ -1,0 +1,11 @@
+func ExpireAt(job workflow.Job, t time.Time) workflow.Job {
+	labels := make(map[string]string, len(job.Labels)+1)
+	maps.Copy(labels, job.Labels)
+	if t.IsZero() {
+		delete(labels, LabelExpiresAt)
+	} else {
+		labels[LabelExpiresAt] = formatExpiry(t)
+	}
+	job.Labels = labels
+	return job
+}

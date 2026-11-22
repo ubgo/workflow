@@ -1,0 +1,6 @@
+func defaultLogLevel(_ context.Context, ev StepLogEvent) slog.Level {
+	if ev.Phase == StepFailed {
+		return slog.LevelError
+	}
+	return slog.LevelDebug
+}

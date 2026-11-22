@@ -1,0 +1,46 @@
+func TaskScheduler(s workflow.Schedule, t Target, o TaskSchedulerOptions) (File, error) {
+	const f = FormatTaskScheduler
+	j, err := taskPrepare(s, t)
+	if err != nil {
+		return File{}, err
+	}
+	if o.Zone == nil {
+		return File{}, invalid(f, "TaskSchedulerOptions.Zone is required: name the zone the machine runs in")
+	}
+	if !sameZone(s.Location, o.Zone) {
+		return File{}, refuse(f, "Location", "zone %s: a calendar trigger fires on the machine's own zone, %s", s.Location, o.Zone)
+	}
+	if err := j.noWindows(f); err != nil {
+		return File{}, err
+	}
+	fl, err := j.fields(f)
+	if err != nil {
+		return File{}, err
+	}
+	sched, err := taskDays(fl)
+	if err != nil {
+		return File{}, err
+	}
+	times, err := taskTimes(fl)
+	if err != nil {
+		return File{}, err
+	}
+	from, until, err := taskBounds(s, fl, o.Zone)
+	if err != nil {
+		return File{}, err
+	}
+	var triggers strings.Builder
+	for _, tt := range times {
+		start := startBoundary(from, tt.at, o.Zone)
+		triggers.WriteString("    <CalendarTrigger>\n      <StartBoundary>" + start + "</StartBoundary>\n")
+		if !until.IsZero() {
+			triggers.WriteString("      <EndBoundary>" + until.Add(-time.Second).In(o.Zone).Format("2006-01-02T15:04:05") + "</EndBoundary>\n")
+		}
+		if tt.every > 0 {
+			triggers.WriteString("      <Repetition>\n        <Interval>" + isoDuration(tt.every) + "</Interval>\n        <Duration>" + isoDuration(tt.span) + "</Duration>\n      </Repetition>\n")
+		}
+		triggers.WriteString(sched)
+		triggers.WriteString("    </CalendarTrigger>\n")
+	}
+	return j.task(triggers.String())
+}

@@ -1,0 +1,10 @@
+func NewPromiseStore(rdb goredis.UniversalClient, prefix string, ttl time.Duration) (*PromiseStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	if ttl < 0 {
+		return nil, fmt.Errorf("%w: redis: promise ttl %s is negative", workflow.ErrInvalid, ttl)
+	}
+	return &PromiseStore{rdb: rdb, base: base, ttl: ttl}, nil
+}

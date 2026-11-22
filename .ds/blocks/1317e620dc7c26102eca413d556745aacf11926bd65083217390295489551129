@@ -1,0 +1,11 @@
+func runMetadata(labels map[string]string, idemKey string) (map[string]string, error) {
+	md := make(map[string]string, len(labels)+1)
+	for k, v := range labels {
+		if isReservedLabel(k) {
+			return nil, workflow.Unsupported("Job.Labels", "label "+strconv.Quote(k)+" uses a prefix reserved by the driver or Hatchet")
+		}
+		md[k] = v
+	}
+	md[metaIdempotencyKey] = idemKey
+	return md, nil
+}

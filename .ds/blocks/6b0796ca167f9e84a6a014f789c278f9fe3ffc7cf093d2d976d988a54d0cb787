@@ -1,0 +1,24 @@
+func ValidateJob(job Job) error {
+	if job.Workflow == "" {
+		return invalidf("job has no Workflow")
+	}
+	if job.Queue != "" {
+		if err := ValidateQueueName(job.Queue); err != nil {
+			return fmt.Errorf("job for %q: %w", job.Workflow, err)
+		}
+	}
+	if job.Tenant != "" {
+		if err := ValidateTenant(job.Tenant); err != nil {
+			return fmt.Errorf("job for %q: %w", job.Workflow, err)
+		}
+	}
+	if p := job.Retry; p != nil {
+		if p.NoRetryOn != nil || p.DelayFor != nil {
+			return invalidf("job for %q: Job.Retry is data only; put NoRetryOn and DelayFor on the step", job.Workflow)
+		}
+		if err := validateRetry(*p); err != nil {
+			return invalidf("job for %q: Job.%v", job.Workflow, err)
+		}
+	}
+	return validateChain(job)
+}

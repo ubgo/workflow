@@ -1,0 +1,12 @@
+func choiceDecide(choice string, decide func(context.Context, []byte) (string, error), branches []string) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		branch, err := decide(ctx, in)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.Contains(branches, branch) {
+			return nil, Permanent(invalidf("choice %q: Decide returned %q, which is not a branch", choice, branch))
+		}
+		return encodeJSON("choice "+choice, choiceRoute{Branch: branch, Input: in})
+	}
+}

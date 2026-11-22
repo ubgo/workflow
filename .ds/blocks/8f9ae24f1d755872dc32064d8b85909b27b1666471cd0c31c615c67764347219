@@ -1,0 +1,25 @@
+func ArgsTagged[T any]() ArgsOption {
+	t := reflect.TypeFor[T]()
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return func(*argsKey) {}
+	}
+	var names []string
+	for i := range t.NumField() {
+		f := t.Field(i)
+		if !f.IsExported() || f.Tag.Get(UniqueTag) != "true" {
+			continue
+		}
+		name := f.Name
+		if tag, _, _ := strings.Cut(f.Tag.Get("json"), ","); tag != "" && tag != "-" {
+			name = tag
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return func(*argsKey) {}
+	}
+	return ArgsFields(names...)
+}

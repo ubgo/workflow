@@ -1,0 +1,15 @@
+type DeferOptions struct {
+	// Succeeded decides from the response status whether the request
+	// succeeded, so its held jobs are flushed rather than discarded. Nil
+	// means DeferSucceeded (any status below 400). A handler that writes
+	// no status counts as 200.
+	Succeeded func(status int) bool
+
+	// OnError receives a flush that failed for some jobs. The response is
+	// already written, so it cannot reach the client. Nil logs it with
+	// Logger.
+	OnError func(r *http.Request, err error)
+
+	// Logger is used by the default OnError. Nil means slog.Default().
+	Logger *slog.Logger
+}

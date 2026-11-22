@@ -1,0 +1,1 @@
+var ErrStepCancelled = errors.New("workflow: step cancelled")

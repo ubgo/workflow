@@ -1,0 +1,19 @@
+func (f *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := f.need("TriggerSchedule", workflow.CapScheduleTrigger); err != nil {
+		return workflow.RunRef{}, err
+	}
+	pid, sid := decodeScheduleID(id)
+	sd, inner := primarySide, pid
+	if pid.IsZero() {
+		sd, inner = secondarySide, sid
+	}
+	t, ok := f.backend(sd).(workflow.ScheduleTriggerer)
+	if !ok {
+		return workflow.RunRef{}, &workflow.UnsupportedError{Field: "TriggerSchedule", Missing: workflow.CapScheduleTrigger, Reason: "the " + sd.String() + " backend does not implement it"}
+	}
+	ref, err := t.TriggerSchedule(ctx, inner)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return encodeRef(sd, ref), nil
+}

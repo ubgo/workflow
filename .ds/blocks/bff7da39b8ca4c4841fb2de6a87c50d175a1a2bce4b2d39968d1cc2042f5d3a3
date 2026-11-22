@@ -1,0 +1,7 @@
+type MachineStep struct {
+	Seq   uint64    `json:"seq"`
+	Event string    `json:"event"`
+	From  []string  `json:"from,omitempty"`
+	To    []string  `json:"to"`
+	At    time.Time `json:"at"`
+}

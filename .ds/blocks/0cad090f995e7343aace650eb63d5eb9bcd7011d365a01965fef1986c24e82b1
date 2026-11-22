@@ -1,0 +1,3 @@
+type SecretResolver interface {
+	ResolveSecret(ctx context.Context, name string) ([]byte, error)
+}

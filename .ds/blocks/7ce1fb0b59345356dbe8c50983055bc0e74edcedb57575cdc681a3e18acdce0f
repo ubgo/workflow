@@ -1,0 +1,39 @@
+func (c InboxConsumer) Once(ctx context.Context, id string, fn func(ctx context.Context) error) (bool, error) {
+	if c.Inbox == nil {
+		return false, invalidf("inbox consumer %q has no Inbox", c.Consumer)
+	}
+	key := InboxKey{Consumer: c.Consumer, ID: id}
+	if err := key.validate(); err != nil {
+		return false, err
+	}
+	lease, keep := c.Lease, c.Keep
+	if lease <= 0 {
+		lease = DefaultInboxLease
+	}
+	if keep <= 0 {
+		keep = DefaultInboxKeep
+	}
+	state, token, err := c.Inbox.Claim(ctx, key, lease, c.now())
+	if err != nil {
+		return false, fmt.Errorf("workflow: inbox %s: claim: %w", key, err)
+	}
+	switch state {
+	case InboxDone:
+		return false, nil
+	case InboxBusy:
+		return false, fmt.Errorf("%w: %s", ErrInboxBusy, key)
+	case InboxClaimed:
+	default:
+		return false, fmt.Errorf("workflow: inbox %s: claim returned %v", key, state)
+	}
+	if err := fn(ctx); err != nil {
+		// A failed release only delays the redelivery until the lease
+		// ends; fn's error is the one the caller acts on.
+		_ = c.Inbox.Release(context.WithoutCancel(ctx), key, token)
+		return true, err
+	}
+	if err := c.Inbox.Complete(context.WithoutCancel(ctx), key, token, keep, c.now()); err != nil {
+		return true, fmt.Errorf("workflow: inbox %s: complete: %w", key, err)
+	}
+	return true, nil
+}

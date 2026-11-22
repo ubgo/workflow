@@ -1,0 +1,11 @@
+func ByLabel(key, fallback string) Router {
+	return RouterFunc(func(_ context.Context, job workflow.Job) (string, error) {
+		if v := job.Labels[key]; v != "" {
+			return v, nil
+		}
+		if fallback != "" {
+			return fallback, nil
+		}
+		return "", fmt.Errorf("%w: regional: job for %q has no %q label and the router has no fallback region", workflow.ErrInvalid, job.Workflow, key)
+	})
+}

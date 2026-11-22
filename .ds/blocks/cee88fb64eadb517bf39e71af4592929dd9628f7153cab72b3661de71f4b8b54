@@ -1,0 +1,31 @@
+func (spec BackfillSpec) target() (backfillTarget, error) {
+	var t backfillTarget
+	if s := spec.Schedule; s != nil {
+		if spec.Workflow != "" || spec.Cron != "" || spec.Location != nil || spec.Seconds || spec.Input != nil || spec.Labels != nil {
+			return t, invalidf("backfill: set Schedule or Workflow/Cron/Location/Seconds/Input/Labels, not both")
+		}
+		if err := ValidateSchedule(*s); err != nil {
+			return t, fmt.Errorf("backfill: %w", err)
+		}
+		t = backfillTarget{workflow: s.Workflow, cron: s.Cron, name: s.Name, loc: s.Location, seconds: s.Seconds,
+			input: s.Input, labels: s.Labels, tenant: s.Tenant, active: s.Active, windows: s.Windows}
+	} else {
+		if err := ValidateSchedule(Schedule{Workflow: spec.Workflow, Cron: spec.Cron, Location: spec.Location, Labels: spec.Labels}); err != nil {
+			return t, fmt.Errorf("backfill: %w", err)
+		}
+		t = backfillTarget{workflow: spec.Workflow, cron: spec.Cron, loc: spec.Location, seconds: spec.Seconds,
+			input: spec.Input, labels: spec.Labels}
+	}
+	if t.name == "" {
+		t.name = t.cron // as for a declared cron
+	}
+	switch {
+	case !spec.ScheduleID.IsZero():
+		t.scope = "id\x00" + string(spec.ScheduleID)
+	case spec.Schedule != nil && spec.Schedule.Name != "":
+		t.scope = "name\x00" + t.workflow + "\x00" + t.name
+	default:
+		t.scope = fmt.Sprintf("cron\x00%s\x00%s\x00%s\x00%t", t.workflow, t.cron, t.loc, t.seconds)
+	}
+	return t, nil
+}

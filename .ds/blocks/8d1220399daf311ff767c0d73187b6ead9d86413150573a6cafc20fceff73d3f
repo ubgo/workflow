@@ -1,0 +1,16 @@
+func (a Attributes) TraceLabels(d DecodedAttributes) map[string]string {
+	if len(d.Trace) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for label, name := range a.trace() {
+		key := name
+		if a.Limits.CaseInsensitive {
+			key = strings.ToLower(name)
+		}
+		if v, ok := d.Trace[key]; ok {
+			out[label] = v
+		}
+	}
+	return out
+}

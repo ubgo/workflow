@@ -1,0 +1,26 @@
+func (e CloudEvent) WriteHTTP(h http.Header) ([]byte, error) {
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	set := func(name, v string) {
+		if v != "" {
+			h.Set(ceHeaderPrefix+name, percentEncode(v))
+		}
+	}
+	set("specversion", e.SpecVersion)
+	set("id", e.ID)
+	set("source", e.Source)
+	set("type", e.Type)
+	set("subject", e.Subject)
+	set("dataschema", e.DataSchema)
+	if !e.Time.IsZero() {
+		set("time", e.Time.Format(time.RFC3339Nano))
+	}
+	for name, v := range e.Extensions {
+		set(name, v)
+	}
+	if e.DataContentType != "" {
+		h.Set("Content-Type", e.DataContentType)
+	}
+	return e.Data, nil
+}

@@ -1,0 +1,3 @@
+func BatchSize(n int) BatchMatcher {
+	return BatchWhere(strconv.Itoa(n)+" jobs", func(b FakeBatch) bool { return len(b.Jobs) == n })
+}

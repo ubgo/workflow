@@ -1,0 +1,15 @@
+func MigrationScripts(d sqlb.Dialect, opts ...Option) ([]MigrationScript, error) {
+	o, err := build(nil, d, opts)
+	if err != nil {
+		return nil, err
+	}
+	var out []MigrationScript
+	for _, m := range o.migrations() {
+		ms := MigrationScript{Owner: m.Owner, Name: m.Name}
+		for _, st := range m.Script {
+			ms.Statements = append(ms.Statements, st.SQL)
+		}
+		out = append(out, ms)
+	}
+	return out, nil
+}

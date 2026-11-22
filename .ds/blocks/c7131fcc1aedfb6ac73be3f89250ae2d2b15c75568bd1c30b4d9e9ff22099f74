@@ -1,0 +1,15 @@
+func (o *Outbox) Requeue(ctx context.Context, id string) error {
+	res, err := o.db.ExecContext(ctx, o.sql("UPDATE {t} SET status = ?, attempts = 0, due = ?, lease_token = NULL, lease_until = 0 WHERE id = ? AND status = ?"),
+		statusPending, o.clk.Now().UnixNano(), id, statusDead)
+	if err != nil {
+		return fmt.Errorf("outbox: requeue %q: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("outbox: requeue %q: rows affected: %w", id, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: dead entry %q", workflow.ErrNotFound, id)
+	}
+	return nil
+}

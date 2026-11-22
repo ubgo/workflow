@@ -1,0 +1,19 @@
+func NewLeaderElector(db *sql.DB, d sqlb.Dialect, role, node string, opts ...LeaderOption) (*LeaderElector, error) {
+	if db == nil || d == nil {
+		return nil, fmt.Errorf("%w: NewLeaderElector needs a *sql.DB and a dialect", workflow.ErrInvalid)
+	}
+	if role == "" || node == "" {
+		return nil, fmt.Errorf("%w: NewLeaderElector needs a role and a node id", workflow.ErrInvalid)
+	}
+	e := &LeaderElector{role: role, node: node, clk: clock.Real{}, lease: defaultLeaderLease, prefix: defaultTablePrefix}
+	for _, o := range opts {
+		o(e)
+	}
+	// build validates the dialect, prefix and schema exactly as New does.
+	c, err := build(db, d, []Option{WithTablePrefix(e.prefix), WithSchema(e.schema)})
+	if err != nil {
+		return nil, err
+	}
+	e.st, e.log = c.st, c.log
+	return e, nil
+}

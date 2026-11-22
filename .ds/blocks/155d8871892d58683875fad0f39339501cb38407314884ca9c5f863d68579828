@@ -1,0 +1,7 @@
+func GroupNames() []string {
+	var out []string
+	for _, g := range allGroups() {
+		out = append(out, g.name)
+	}
+	return out
+}

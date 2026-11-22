@@ -17,6 +17,8 @@ var _ workflow.TransientSignaller = (*Client)(nil)
 // resumes runs of the workflows this client registered; a run of a
 // workflow only another client registered is not resumed, so call it on a
 // worker client.
+//
+//ds:def id=sql-client-signalwaiting-8ssy9v7j owner=@khanakia stability=stable
 func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return 0, err

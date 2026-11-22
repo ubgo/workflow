@@ -22,6 +22,8 @@ var allowedCore = map[string]bool{
 // require lines; this one also stops a reach into another core package
 // (a driver, middleware) that would make writing a file pull in a
 // scheduler. A standard-library path has no dot in its first element.
+//
+//ds:def id=schedexport-testguard-stdlibandcoreonly-xkunw5qa owner=@khanakia stability=stable
 func TestGuard_StdlibAndCoreOnly(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {

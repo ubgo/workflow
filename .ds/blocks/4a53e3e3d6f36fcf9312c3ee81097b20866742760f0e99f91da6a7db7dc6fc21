@@ -1,0 +1,12 @@
+func (m *Manager) claimChange(s *State, owner, what string) error {
+	if s.Coordinated {
+		return &workflow.UnsupportedError{Field: "batch." + what, Reason: "batch " + string(s.ID) + " runs as one coordinator run (GroupSpawner), which starts every job itself"}
+	}
+	if !s.Dispatched {
+		return fmt.Errorf("batch %s: %s: %w", s.ID, what, ErrDispatching)
+	}
+	now := m.clk.Now()
+	s.Dispatched, s.Grouped = false, false
+	s.DispatchOwner, s.DispatchUntil = owner, now.Add(m.dispatchLease)
+	return nil
+}

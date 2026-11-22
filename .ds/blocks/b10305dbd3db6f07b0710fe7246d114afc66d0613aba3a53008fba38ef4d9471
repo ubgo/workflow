@@ -1,0 +1,41 @@
+func buildTransitions() []Transition {
+	var t []Transition
+	t = append(t,
+		Transition{StatusScheduled, StatusQueued, "the start time arrives", CapDelayedStart},
+		Transition{StatusQueued, StatusRunning, "a worker claims a ready step", Caps{}},
+		Transition{StatusRunning, StatusQueued, "an attempt is handed back or the next step is ready", Caps{}},
+		Transition{StatusRunning, StatusWaiting, "a Wait step parks", CapWaitForEvent},
+		Transition{StatusRunning, StatusWaiting, "a Sleep step parks", CapDurableSleep},
+		Transition{StatusRunning, StatusWaiting, "a step returned Snooze", CapSnooze},
+		Transition{StatusWaiting, StatusQueued, "the event arrives or the sleep ends", Caps{}},
+		Transition{StatusWaiting, StatusRunning, "the resumed step starts at once", Caps{}},
+		Transition{StatusRunning, StatusRetrying, "an attempt failed and the policy allows another", CapRunStates},
+		Transition{StatusRetrying, StatusRunning, "the backoff elapsed and a worker claimed the step", CapRunStates},
+		Transition{StatusRetrying, StatusQueued, "the backoff elapsed", CapRunStates},
+		Transition{StatusRunning, StatusSucceeded, "every step succeeded", Caps{}},
+		Transition{StatusRunning, StatusFailed, "the policy stopped retrying a failed attempt", Caps{}},
+		Transition{StatusRunning, StatusDiscarded, "a step returned Discard", CapsOf(CapDiscard, CapRunStates)},
+		Transition{StatusRunning, StatusDiscarded, "the policy stopped retrying and has DiscardOnExhaust", CapsOf(CapDiscardExhausted, CapRunStates)},
+		Transition{StatusFailed, StatusQueued, "Retry re-opens the run from its failed step", CapRetryRun},
+	)
+	// Parallel steps let the run as a whole move between any two active
+	// statuses; the specific pairs above are the ones with a single cause.
+	for _, from := range activeStatuses {
+		for _, to := range activeStatuses {
+			if from == to || hasTransition(t, from, to) {
+				continue
+			}
+			t = append(t, Transition{from, to, "parallel steps changed which status describes the run", reportCaps(from, to)})
+		}
+	}
+	// Operator and run-level endings reach every non-terminal status.
+	for _, from := range append([]Status{StatusScheduled}, activeStatuses...) {
+		t = append(t,
+			Transition{from, StatusCancelled, "Cancel or CancelAll", CapCancel},
+			Transition{from, StatusFailed, "the run went past Workflow.RunTimeout", CapRunTimeout},
+			Transition{from, StatusFailed, "ForceFail", CapForceRun},
+			Transition{from, StatusSucceeded, "ForceComplete", CapForceRun},
+		)
+	}
+	return t
+}

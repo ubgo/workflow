@@ -1,0 +1,17 @@
+func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
+	sdk, err := c.ready()
+	if err != nil {
+		return err
+	}
+	late, err := c.cancelRef(ctx, sdk, ref)
+	if err != nil || late == nil {
+		return err
+	}
+	if err := c.settleLate(ctx, sdk, []*lateStart{late}); err != nil {
+		return err
+	}
+	if late.runID != "" {
+		return late.err()
+	}
+	return nil
+}

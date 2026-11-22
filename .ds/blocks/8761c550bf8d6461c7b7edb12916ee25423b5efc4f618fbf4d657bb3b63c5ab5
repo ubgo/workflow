@@ -1,0 +1,4 @@
+const (
+	DefaultMetricsWindow = time.Hour
+	DefaultMetricsPoints = 60
+)

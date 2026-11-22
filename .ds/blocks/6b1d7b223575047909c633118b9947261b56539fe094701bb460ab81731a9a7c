@@ -1,0 +1,71 @@
+func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Client, error) {
+	if d == nil {
+		return nil, fmt.Errorf("%w: sqlstore needs a dialect", workflow.ErrInvalid)
+	}
+	switch sqlb.DialectName(d) {
+	case enginePostgres, engineSQLite, engineMySQL:
+	default:
+		return nil, workflow.Unsupported("dialect "+sqlb.DialectName(d), "sqlstore runs on Postgres, SQLite and MySQL")
+	}
+	c := &Client{
+		clk:         clock.Real{},
+		leaseClk:    clock.Real{},
+		lease:       defaultLease,
+		maxReclaims: defaultMaxReclaims,
+		pruneEvery:  defaultPruneInterval,
+		poll:        defaultPoll,
+		workers:     defaultWorkers,
+		fetch:       claimBatch,
+		log:         slog.New(slog.DiscardHandler),
+		prefix:      defaultTablePrefix,
+		parse:       cron.Parse,
+		classify:    DefaultErrorClassifier,
+		ids:         DefaultIDGenerator,
+		txAttempts:  defaultTxAttempts,
+		errHistory:  workflow.DefaultErrorHistory,
+
+		tickRetention:  defaultTickRetention,
+		housekeepEvery: defaultHousekeepEvery,
+		pruneChunk:     defaultPruneChunk,
+
+		wfs:     map[string]*registered{},
+		wake:    make(chan struct{}),
+		work:    make(chan struct{}, 1),
+		local:   map[string]map[*attempt]bool{},
+		running: map[string]int{},
+		done:    make(chan struct{}),
+		fleet:   make(chan struct{}, 1),
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	if c.nodeID == "" {
+		c.nodeID = workflow.DefaultNodeID()
+	}
+	if c.dbClockEvery > 0 {
+		c.dbClock = &DatabaseClock{db: db, engine: sqlb.DialectName(d), local: clock.Real{}}
+		c.clk, c.leaseClk = c.dbClock, c.dbClock
+	}
+	if err := workflow.ValidateQueues(c.queues); err != nil {
+		return nil, err
+	}
+	if err := workflow.CheckQueueLimits(caps, c.queues); err != nil {
+		return nil, err
+	}
+	c.tiers, c.served = queueTiers(c.queues)
+	c.limits = queueLimits(c.queues)
+	if !prefixPattern.MatchString(c.prefix) {
+		return nil, fmt.Errorf("%w: table prefix %q must match %s", workflow.ErrInvalid, c.prefix, prefixPattern)
+	}
+	if c.schema != "" {
+		if sqlb.DialectName(d) != enginePostgres {
+			return nil, workflow.Unsupported("WithSchema on "+sqlb.DialectName(d), "only Postgres has schemas inside a database; on MySQL point the pool at the database")
+		}
+		if !prefixPattern.MatchString(c.schema) {
+			return nil, fmt.Errorf("%w: schema %q must match %s", workflow.ErrInvalid, c.schema, prefixPattern)
+		}
+	}
+	c.st = newStore(db, d, c)
+	c.buildLeader()
+	return c, nil
+}

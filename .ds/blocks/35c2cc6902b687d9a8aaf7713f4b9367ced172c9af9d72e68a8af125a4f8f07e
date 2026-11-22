@@ -1,0 +1,5 @@
+func HasChain(workflows ...string) JobMatcher {
+	return Where(fmt.Sprintf("chain %v", workflows), func(j workflow.Job) bool {
+		return slices.Equal(chainNames(j.Chain), workflows)
+	})
+}

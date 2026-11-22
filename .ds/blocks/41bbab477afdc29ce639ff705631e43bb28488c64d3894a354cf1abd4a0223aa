@@ -1,0 +1,29 @@
+func WithUpcasters(event string, current int, ups map[int]workflow.Upcaster) Option {
+	return func(b *Bus) {
+		if b.optErr != nil {
+			return
+		}
+		switch {
+		case event == "":
+			b.optErr = fmt.Errorf("%w: events: WithUpcasters needs an event name", workflow.ErrInvalid)
+			return
+		case current < 0:
+			b.optErr = fmt.Errorf("%w: events: WithUpcasters(%q): current version %d is negative", workflow.ErrInvalid, event, current)
+			return
+		}
+		if _, dup := b.versions[event]; dup {
+			b.optErr = fmt.Errorf("%w: events: WithUpcasters(%q) given twice", workflow.ErrInvalid, event)
+			return
+		}
+		for v, up := range ups {
+			if v < 0 || v >= current || up == nil {
+				b.optErr = fmt.Errorf("%w: events: WithUpcasters(%q): upcaster for version %d is nil or outside [0, %d)", workflow.ErrInvalid, event, v, current)
+				return
+			}
+		}
+		if b.versions == nil {
+			b.versions = map[string]versionPolicy{}
+		}
+		b.versions[event] = versionPolicy{current: current, ups: maps.Clone(ups)}
+	}
+}

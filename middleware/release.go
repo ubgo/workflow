@@ -11,6 +11,8 @@ import (
 // ErrReleased is wrapped by the error Release returns for a step it did not
 // run, so a retry policy, a log filter or a test can tell a release from a
 // real failure with errors.Is.
+//
+//ds:def id=mw-errreleased-qtkkhua5 owner=@khanakia stability=stable
 var ErrReleased = errors.New("workflow/middleware: step released")
 
 // Release does not run the step when when reports true: the attempt ends
@@ -33,6 +35,8 @@ var ErrReleased = errors.New("workflow/middleware: step released")
 // To release from inside a handler, after it has started, return
 // workflow.RetryAfter(err, d) there; this middleware is for a condition
 // checked before the handler, across every workflow it wraps.
+//
+//ds:def id=mw-release-ek3ppr3h owner=@khanakia stability=stable
 func Release(when func(ctx context.Context, in []byte) bool, delay time.Duration) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		if when == nil {

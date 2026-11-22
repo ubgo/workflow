@@ -1,0 +1,4 @@
+type Registry struct {
+	mu       sync.RWMutex
+	handlers map[string]workflow.Handler
+}

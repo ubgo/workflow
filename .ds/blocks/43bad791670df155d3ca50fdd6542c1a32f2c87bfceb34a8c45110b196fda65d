@@ -1,0 +1,19 @@
+func (f *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	pn, sn, ok := f.notifiers()
+	if !ok {
+		return workflow.Unsupported("OnRunFinished", "both failover backends must implement workflow.RunNotifier")
+	}
+	f.mu.Lock()
+	started := f.started
+	f.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	if err := pn.OnRunFinished(sideObserver(fn, primarySide)); err != nil {
+		return fmt.Errorf("failover: primary: %w", err)
+	}
+	if err := sn.OnRunFinished(sideObserver(fn, secondarySide)); err != nil {
+		return fmt.Errorf("failover: secondary: %w", err)
+	}
+	return nil
+}

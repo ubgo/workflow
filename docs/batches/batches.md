@@ -1,16 +1,16 @@
 # Batches
 
-A batch runs a group of jobs as one unit and enqueues a callback workflow when it ends: `Then` when every job succeeded, `Catch` on the first failure, `Finally` when every job has finished, whatever the outcome. Thumbnails for an upload, an export split into parts, a fan-out of emails: the app dispatches the jobs and learns about the whole, with progress to show while it runs. It is built on the public `Client` only, so it runs on every driver.
+A batch runs a group of jobs as one unit and enqueues a callback workflow when it ends: `Then` when every job succeeded, `Catch` on the first failure, `Finally` when every job has finished, whatever the outcome ([`recordFinish`](ds:block?id=batch-recordfinish-9b55fcjg)). Thumbnails for an upload, an export split into parts, a fan-out of emails: the app dispatches the jobs and learns about the whole, with progress to show while it runs. It is built on the public `Client` only (each job is one [`Enqueue`](ds:block?id=batch-manager-start-srx3z8d9) with two labels), so it runs on every driver.
 
 ## Before you start
 
-- Any `workflow.Client`, the `batch` package (core module) and a `batch.Store` for the batch state. `batch.NewMemoryStore()` keeps it in the process; a store shared by several processes is on [durability](durability.md).
-- The callbacks are ordinary registered workflows. Each receives the batch's `batch.Progress` as its JSON payload.
+- Any `workflow.Client`, the `batch` package (core module) and a [`batch.Store`](ds:block?id=batch-store-vp7qhnme) for the batch state. [`batch.NewMemoryStore()`](ds:block?id=batch-newmemorystore-xy8h2erx) keeps it in the process; a store shared by several processes is on [durability](durability.md).
+- The callbacks are ordinary registered workflows. Each receives the batch's [`batch.Progress`](ds:block?id=batch-progress-539fkcc8) as its JSON payload ([`callback`](ds:block?id=batch-manager-callback-9sp5vupc)).
 - The runnable program for this page is [examples/batches](../../examples/batches/).
 
 ## Dispatch a batch
 
-`batch.New(client, store, opts...)` returns a `Manager`. Call `Manager.Attach(ctx)` once, before `client.Start`, with the context you pass to `Start`: it connects the sources that tell the batch its jobs ended (on the memory driver, the run-finished hook, which cannot be registered after `Start`; see [completion](completion.md)).
+[`batch.New(client, store, opts...)`](ds:block?id=batch-new-geazwpek) returns a `Manager`. Call [`Manager.Attach(ctx)`](ds:block?id=batch-manager-attach-xnchrce9) once, before `client.Start`, with the context you pass to `Start`: it connects the sources that tell the batch its jobs ended (on the memory driver, the run-finished hook ([`defaultSources`](ds:block?id=batch-manager-defaultsources-cgw2pdqt)), which cannot be registered after `Start`; see [completion](completion.md)).
 
 <!-- snippet: examples/batches/main.go#manager -->
 ```go
@@ -33,7 +33,7 @@ if err := c.Start(ctx); err != nil {
 }
 ```
 
-`Manager.Dispatch(ctx, batch.Batch{...})` saves the batch, enqueues its jobs in order and returns its ID. `Then`, `Catch` and `Finally` name registered workflows; empty means none.
+[`Manager.Dispatch(ctx, batch.Batch{...})`](ds:block?id=batch-manager-dispatch-pdbtg7ks) saves the batch, enqueues its jobs in order and returns its ID. `Then`, `Catch` and `Finally` name registered workflows; empty means none ([`Batch`](ds:block?id=batch-batch-sbryq3mb)).
 
 <!-- snippet: examples/batches/main.go#dispatch -->
 ```go
@@ -56,13 +56,13 @@ if err != nil {
 
 The semantics:
 
-- `Then` runs once when every job succeeded and the batch was not cancelled.
-- `Catch` runs once, on the first failed job. Without `AllowFailures`, that failure also cancels the batch and the jobs still running. With `Batch.AllowFailures`, the other jobs keep running; `Then` still does not run, because not every job succeeded.
-- `Finally` runs once when every job has finished, including after a cancel.
-- A job cancelled on its own is not a failure: it fires no `Catch`, but it stops `Then`.
-- A job a step dropped with `workflow.Discard` (status `discarded`) counts as failed by default, so it fires `Catch`. `Batch.DiscardedAs` makes it count as cancelled or succeeded instead; see [Run states](../jobs/run-states.md#batches-and-discarded-jobs).
+- `Then` runs once when every job succeeded and the batch was not cancelled ([`finish`](ds:block?id=batch-finish-2yzs4ctf)).
+- `Catch` runs once, on the first failed job ([`recordFinish`](ds:block?id=batch-recordfinish-9b55fcjg)). Without `AllowFailures`, that failure also cancels the batch and the jobs still running. With `Batch.AllowFailures`, the other jobs keep running; `Then` still does not run, because not every job succeeded.
+- `Finally` runs once when every job has finished, including after a cancel ([`finish`](ds:block?id=batch-finish-2yzs4ctf)).
+- A job cancelled on its own is not a failure: it fires no `Catch`, but it stops `Then` ([`recordFinish`](ds:block?id=batch-recordfinish-9b55fcjg)).
+- A job a step dropped with `workflow.Discard` (status `discarded`) counts as failed by default, so it fires `Catch` ([`counted`](ds:block?id=batch-state-counted-ezrpnwzb)). [`Batch.DiscardedAs`](ds:block?id=batch-batch-sbryq3mb) makes it count as cancelled or succeeded instead; see [Run states](../jobs/run-states.md#batches-and-discarded-jobs).
 
-Each decision is made inside one `Store.Update`, so a run end reported twice, or by two sources at once, still fires each callback at most once. A callback is an `Enqueue` of the named workflow whose payload is the batch's `Progress` at the moment the callback was decided:
+Each decision is made inside one [`Store.Update`](ds:block?id=batch-store-vp7qhnme), so a run end reported twice, or by two sources at once, still fires each callback at most once. A callback is an [`Enqueue`](ds:block?id=batch-manager-callback-9sp5vupc) of the named workflow whose payload is the batch's `Progress` at the moment the callback was decided:
 
 <!-- snippet: examples/batches/main.go#callback -->
 ```go
@@ -79,11 +79,11 @@ cb := workflow.Workflow{
 
 In the example's second batch, one job fails: `Catch` receives `failed=1 cancelledJobs=0` (decided at the failure), and `Finally` receives `failed=1 cancelledJobs=1` once the cancelled job has reported back.
 
-If an `Enqueue` fails during `Dispatch`, the jobs not yet enqueued are recorded as cancelled, the batch is cancelled (which cancels the jobs already enqueued and, once they finish, runs `Finally`) and the error is returned together with the ID, so the caller can still inspect the batch. A batch with no jobs is refused with `workflow.ErrInvalid`.
+If an `Enqueue` fails during [`Dispatch`](ds:block?id=batch-manager-dispatch-pdbtg7ks), the jobs not yet enqueued are recorded as cancelled ([`abortJobs`](ds:block?id=batch-manager-abortjobs-h5p9xpfp)), the batch is cancelled (which cancels the jobs already enqueued and, once they finish, runs `Finally`) and the error is returned together with the ID, so the caller can still inspect the batch. An `Enqueue` can fail and still have started its run (a timeout after the engine accepted the job); on a client with `workflow.CapCancelAll` `Dispatch` also cancels every unfinished run carrying the batch's [`batch.LabelBatch`](ds:block?id=batch-labelbatch-qsurvmc8) ([`cancelUnplaced`](ds:block?id=batch-manager-cancelunplaced-4t7aybp3)), so such a run is cancelled too. Without that capability it runs on unseen by the batch. A batch with no jobs is refused with `workflow.ErrInvalid` ([`checkBatch`](ds:block?id=batch-checkbatch-3aj6zx3v)).
 
 ## Track progress
 
-`Manager.Progress(ctx, id)` returns a `batch.Progress` snapshot: `Total`, `Pending`, `Succeeded`, `Failed`, `CancelledJobs`, `Discarded` (jobs that ended discarded, also counted in the bucket `DiscardedAs` names), whether the batch itself was `Cancelled`, and whether it is `Finished` (every job terminal). `Processed()` is the number of jobs that ended in any status (`Total - Pending`), and `Percent()` that number as a whole percentage of `Total`, rounded down. An unknown ID returns an error wrapping `workflow.ErrNotFound`.
+[`Manager.Progress(ctx, id)`](ds:block?id=batch-manager-progress-etkyu46k) returns a [`batch.Progress`](ds:block?id=batch-progress-539fkcc8) snapshot: `Total`, `Pending`, `Succeeded`, `Failed`, `CancelledJobs`, `Discarded` (jobs that ended discarded, also counted in the bucket `DiscardedAs` names), whether the batch itself was `Cancelled`, and whether it is `Finished` (every job terminal). [`Processed()`](ds:block?id=batch-progress-processed-5vb2zg4h) is the number of jobs that ended in any status (`Total - Pending`), and [`Percent()`](ds:block?id=batch-progress-percent-2e5q7usv) that number as a whole percentage of `Total`, rounded down. An unknown ID returns an error wrapping `workflow.ErrNotFound`.
 
 <!-- snippet: examples/batches/main.go#progress -->
 ```go
@@ -99,7 +99,7 @@ After the first batch's callbacks ran, it prints `progress thumbs-1: total=3 pen
 
 ## Cancel a batch
 
-`Manager.Cancel(ctx, id)` cancels the batch and every job still running. `Then` will not run; `Finally` runs once the cancelled jobs report back. Cancelling a finished or already cancelled batch is a no-op, and an unknown ID returns an error wrapping `workflow.ErrNotFound`.
+[`Manager.Cancel(ctx, id)`](ds:block?id=batch-manager-cancel-7v23p4bf) cancels the batch and every job still running ([`markCancelled`](ds:block?id=batch-markcancelled-qxy4j7tu)). `Then` will not run; `Finally` runs once the cancelled jobs report back. Cancelling a finished or already cancelled batch is a no-op, and an unknown ID returns an error wrapping `workflow.ErrNotFound`.
 
 <!-- snippet: examples/batches/main.go#cancel -->
 ```go
@@ -115,9 +115,9 @@ if err := m.Cancel(ctx, id); err != nil {
 
 ## Labels on a batch
 
-`Batch.Labels` are copied onto every `Then`, `Catch` and `Finally` job, so a callback carries what the batch was for (a tenant, a user) and passes enqueue middleware that requires a label or routes on one. They are saved in the batch's state, so a callback enqueued by another process or after a restart carries them too. They are not put on the batch's own jobs; set those on each `Job`.
+[`Batch.Labels`](ds:block?id=batch-batch-sbryq3mb) are copied onto every `Then`, `Catch` and `Finally` job ([`callbackLabels`](ds:block?id=batch-callbacklabels-mz7rx2nn)), so a callback carries what the batch was for (a tenant, a user) and passes enqueue middleware that requires a label or routes on one. They are saved in the batch's state, so a callback enqueued by another process or after a restart carries them too. They are not put on the batch's own jobs; set those on each `Job`.
 
-Each job of the batch gets two labels of the package's own: `batch.LabelBatch` (`workflow.batch.id`, the batch ID) and `batch.LabelIndex` (`workflow.batch.index`, its position). A run end that carries both is how the batch knows which of its jobs finished; callbacks never carry them. The prefix `workflow.batch.` is reserved, and `Dispatch` refuses a job or a `Batch.Labels` with a label under it, rather than overwriting it:
+Each job of the batch gets two labels of the package's own ([`labelJobs`](ds:block?id=batch-labeljobs-k5gb85qs)): [`batch.LabelBatch`](ds:block?id=batch-labelbatch-qsurvmc8) (`workflow.batch.id`, the batch ID) and [`batch.LabelIndex`](ds:block?id=batch-labelindex-jtskuw4z) (`workflow.batch.index`, its position). A run end that carries both is how the batch knows which of its jobs finished; callbacks never carry them. The prefix `workflow.batch.` is reserved, and `Dispatch` refuses a job or a `Batch.Labels` with a label under it ([`refuseBatchLabels`](ds:block?id=batch-refusebatchlabels-68cnbjj7)), rather than overwriting it:
 
 <!-- snippet: examples/batches/main.go#reserved -->
 ```go
@@ -129,7 +129,7 @@ fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid))
 
 ## Batch IDs
 
-A batch ID is 128 random bits as hex by default. `batch.WithIDFunc(fn)` makes IDs with `fn` instead, for example a UUIDv7 or a ULID so IDs sort by time or match the app's own. The example numbers them `thumbs-1`, `thumbs-2` so its output is the same on every run:
+A batch ID is 128 random bits as hex by default ([`idBytes`](ds:block?id=batch-idbytes-xvspfaku), [`newID`](ds:block?id=batch-newid-jj44pfd7)). [`batch.WithIDFunc(fn)`](ds:block?id=batch-withidfunc-a9ccxauz) makes IDs with `fn` instead, for example a UUIDv7 or a ULID so IDs sort by time or match the app's own. The example numbers them `thumbs-1`, `thumbs-2` so its output is the same on every run:
 
 <!-- snippet: examples/batches/main.go#idfunc -->
 ```go
@@ -139,7 +139,7 @@ batch.WithIDFunc(func() (batch.ID, error) { // the default is 128 random bits as
 }),
 ```
 
-An ID must be unique across every process sharing the store (`Store.Create` refuses a repeat) and non-empty: `Dispatch` fails with `fn`'s error, or `workflow.ErrInvalid` for an empty ID, and saves nothing:
+An ID must be unique across every process sharing the store ([`Store.Create`](ds:block?id=batch-memorystore-create-uxe6zyqx) refuses a repeat) and non-empty: `Dispatch` fails with `fn`'s error, or `workflow.ErrInvalid` for an empty ID, and saves nothing:
 
 <!-- snippet: examples/batches/main.go#empty-id -->
 ```go
@@ -148,7 +148,7 @@ _, err = blank.Dispatch(ctx, batch.Batch{Jobs: []workflow.Job{{Workflow: "resize
 fmt.Println("refused:", errors.Is(err, workflow.ErrInvalid)) // nothing was saved or enqueued
 ```
 
-The ID appears in the `workflow.batch.id` label and in the callbacks' idempotency keys (`batch:<id>:<kind>`), so keep it to characters the engine accepts in a label value. A nil `fn` keeps the default. A counter like the example's is only safe in one process; across processes use an ID the store cannot see twice, such as a UUID.
+The ID appears in the `workflow.batch.id` label and in the callbacks' idempotency keys ([`batch:<id>:<kind>`](ds:block?id=batch-callbackkey-agsg3nsq)), so keep it to characters the engine accepts in a label value. A nil `fn` keeps the default. A counter like the example's is only safe in one process; across processes use an ID the store cannot see twice, such as a UUID.
 
 ## Try it
 
@@ -190,13 +190,13 @@ Callbacks are separate runs that may finish in any order, so the example sorts e
 
 ## Pitfalls
 
-- **`Attach` before `Start`.** On a driver whose completion source is the run-finished hook, a `Manager` attached after `Start` fails, because the hook cannot be registered then; without `Attach`, no job end ever reaches the batch.
-- **Callbacks are at least once without idempotency keys.** On a driver with `CapIdempotencyKey`, every callback carries the key `batch:<id>:<kind>`, so a retry after an enqueue that landed but was not recorded cannot double it. On a driver without it, a crash at that moment can enqueue a callback twice; make callbacks idempotent.
-- **`Catch` sees the batch at the failure.** Its `Progress` is a snapshot taken when the failure was recorded, before the other jobs were cancelled; read `Finally` for the final counts.
-- **A job's labels are copied, not mutated.** `Dispatch` clones each job's labels before adding the batch labels, so reusing a `Job` value across batches is safe.
-- **`Progress` is a snapshot, not a stream.** It reads the store once; a job that ends a moment later is not in it. For a push on every job end, set `Batch.Progress` to a workflow ([lifecycle](lifecycle.md#step-1-report-the-start-and-every-job-end)).
-- **`Percent` rounds down.** 199 of 200 jobs ended reads 99, and it reads 100 only once every job ended. Test `Finished` to decide that a batch is done; `Pending` is the number of jobs not yet ended.
-- **`MemoryStore` is per process.** Every `Manager` reporting into a batch must share its store; in several processes, use a durable store ([durability](durability.md)).
+- **`Attach` before `Start`.** On a driver whose completion source is the run-finished hook ([`HookSource`](ds:block?id=batch-hooksource-attach-3ympu39g)), a `Manager` attached after `Start` fails, because the hook cannot be registered then; without `Attach`, no job end ever reaches the batch.
+- **Callbacks are at least once without idempotency keys.** On a driver with `CapIdempotencyKey`, every callback carries the key [`batch:<id>:<kind>`](ds:block?id=batch-callbackkey-agsg3nsq) ([`callback`](ds:block?id=batch-manager-callback-9sp5vupc)), so a retry after an enqueue that landed but was not recorded cannot double it. On a driver without it, a crash at that moment can enqueue a callback twice; make callbacks idempotent.
+- **`Catch` sees the batch at the failure.** Its `Progress` is a snapshot taken when the failure was recorded, before the other jobs were cancelled ([`recordFinish`](ds:block?id=batch-recordfinish-9b55fcjg)); read `Finally` for the final counts.
+- **A job's labels are copied, not mutated.** `Dispatch` clones each job's labels before adding the batch labels ([`labelJobs`](ds:block?id=batch-labeljobs-k5gb85qs)), so reusing a `Job` value across batches is safe.
+- **`Progress` is a snapshot, not a stream.** It reads the store once ([`Manager.Progress`](ds:block?id=batch-manager-progress-etkyu46k)); a job that ends a moment later is not in it. For a push on every job end, set `Batch.Progress` to a workflow ([lifecycle](lifecycle.md#step-1-report-the-start-and-every-job-end)).
+- **[`Percent`](ds:block?id=batch-progress-percent-2e5q7usv) rounds down.** 199 of 200 jobs ended reads 99, and it reads 100 only once every job ended. Test `Finished` to decide that a batch is done; `Pending` is the number of jobs not yet ended.
+- **[`MemoryStore`](ds:block?id=batch-memorystore-hjud4syz) is per process.** Every `Manager` reporting into a batch must share its store; in several processes, use a durable store ([durability](durability.md)).
 
 ## Related
 

@@ -1,0 +1,3 @@
+func HasQueue(q string) JobMatcher {
+	return Where("queue "+strconv.Quote(q), func(j workflow.Job) bool { return j.Queue == q })
+}

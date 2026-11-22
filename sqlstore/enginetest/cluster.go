@@ -100,6 +100,8 @@ func (p *perRun) snapshot() map[workflow.RunID]int {
 // renewals of a short lease can wait out the lease on a busy database. A
 // second execution under a 30-second lease is a double claim, not an
 // expiry.
+//
+//ds:def id=enginetest-clusterclaimseachsteponce-pwh749d8 owner=@khanakia stability=stable
 func ClusterClaimsEachStepOnce(t *testing.T) {
 	const lease = 30 * time.Second
 	const runs = 60
@@ -146,6 +148,8 @@ func ClusterClaimsEachStepOnce(t *testing.T) {
 // ClusterCronTickFiresOnce declares one cron on three clients sharing
 // a clock and a database, and checks each tick enqueues exactly one run.
 // It is the test that fails if the tick row stops being the guard.
+//
+//ds:def id=enginetest-clustercrontickfiresonce-q6htg6xb owner=@khanakia stability=stable
 func ClusterCronTickFiresOnce(t *testing.T) {
 	const ticks = 4
 	for _, e := range engines(t) {

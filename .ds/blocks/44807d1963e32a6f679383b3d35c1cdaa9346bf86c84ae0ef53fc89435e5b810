@@ -1,0 +1,9 @@
+func storeBase(rdb goredis.UniversalClient, prefix string) (string, error) {
+	if rdb == nil {
+		return "", fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)
+	}
+	if !prefixPattern.MatchString(prefix) {
+		return "", fmt.Errorf("%w: redis: prefix %q must match %s", workflow.ErrInvalid, prefix, prefixPattern)
+	}
+	return "{" + prefix + "}", nil
+}

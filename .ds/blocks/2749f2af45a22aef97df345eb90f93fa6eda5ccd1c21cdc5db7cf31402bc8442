@@ -1,0 +1,31 @@
+var outcomeCases = []testCase{
+	{"Enqueue reports a new run and a duplicate", func(e *env) {
+		e.need(workflow.CapIdempotencyKey)
+		g := newGate(e.t)
+		var c counter
+		wf := oneStep(e.name("w"), blockFirst(&c, g))
+		e.up(wf)
+		key := e.name("key")
+		ctx, out := workflow.WithEnqueueOutcome(context.Background())
+		first, err := e.c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, IdempotencyKey: key})
+		if err != nil {
+			e.t.Fatalf("Enqueue: %v", err)
+		}
+		if !out.Reported || out.Duplicate {
+			e.t.Fatalf("first Enqueue outcome = %+v, want Reported and not Duplicate", *out)
+		}
+		ctx, out = workflow.WithEnqueueOutcome(context.Background())
+		second, err := e.c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, IdempotencyKey: key})
+		if err != nil {
+			e.t.Fatalf("second Enqueue: %v", err)
+		}
+		if !out.Reported || !out.Duplicate {
+			e.t.Fatalf("duplicate Enqueue outcome = %+v, want Reported and Duplicate", *out)
+		}
+		if second.RunID != first.RunID {
+			e.t.Errorf("duplicate returned %+v, want the holder %+v", second, first)
+		}
+		g.open()
+		e.waitStatus(first, workflow.StatusSucceeded, e.tm.unit)
+	}},
+}

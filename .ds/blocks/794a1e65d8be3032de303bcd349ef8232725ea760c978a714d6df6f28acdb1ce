@@ -1,0 +1,51 @@
+func (c *Client) recordFailure(ctx context.Context, tx *sql.Tx, reg *registered, row *runRow, step workflow.Step, a *attempt, herr error, o *txOut) error {
+	override, err := c.runRetry(ctx, tx, row.id)
+	if err != nil {
+		return err
+	}
+	policy := workflow.EffectiveRetriesFor(step, reg.wf, workflow.Job{Retry: override})
+	var errs, first int64
+	err = c.st.one(ctx, tx, "SELECT errors, first_at FROM {step_ext} WHERE step_id = ?", []any{a.stepID}, &errs, &first)
+	if err != nil && !errors.Is(err, sqlb.ErrNoRows) {
+		return fmt.Errorf("sqlstore: read attempt counts: %w", err)
+	}
+	if first == 0 {
+		first = a.started
+	}
+	if err := c.addAttemptError(ctx, tx, a, herr); err != nil {
+		return err
+	}
+	att := workflow.Attempts{N: int(a.failures), Errors: int(errs), First: unixTime(first)}.Count(herr)
+	if _, err := c.st.exec(ctx, tx, "DELETE FROM {step_ext} WHERE step_id = ?", a.stepID); err != nil {
+		return err
+	}
+	if _, err := c.st.exec(ctx, tx, "INSERT INTO {step_ext} (step_id, errors, first_at) VALUES (?, ?, ?)", a.stepID, att.Errors, first); err != nil {
+		return err
+	}
+	now := c.clk.Now()
+	if delay, retry := policy.Next(herr, att, now, c.rnd); retry {
+		o.changed = true
+		o.events = append(o.events, workflow.LifecycleEvent{Kind: workflow.LifecycleRetrying, Ref: workflow.RunRef{RunID: workflow.RunID(a.runID)},
+			Workflow: a.workflow, Queue: a.queue, Tenant: a.tenant, Step: a.name, Attempt: int(a.attempts), Status: workflow.StatusRetrying, Err: herr})
+		if _, err := c.st.exec(ctx, tx, "DELETE FROM {step_err} WHERE step_id = ?", a.stepID); err != nil {
+			return err
+		}
+		if _, err := c.st.exec(ctx, tx, "INSERT INTO {step_err} (step_id, err) VALUES (?, ?)", a.stepID, herr.Error()); err != nil {
+			return err
+		}
+		_, err := c.st.exec(ctx, tx, `UPDATE {steps} SET status = ?, due = ?, lease_token = NULL, lease_until = 0, failures = ?, reclaims = 0
+			WHERE id = ?`, stepReady, now.Add(delay).UnixNano(), att.N, a.stepID)
+		return err
+	}
+	if _, err := c.st.exec(ctx, tx, "UPDATE {steps} SET failures = ? WHERE id = ?", att.N, a.stepID); err != nil {
+		return err
+	}
+	if derr := policy.ExhaustedError(att.N, herr); derr != nil {
+		return c.discardRun(ctx, tx, row, a.name, derr, o)
+	}
+	msg := fmt.Sprintf("sqlstore: step %q failed after %d attempt(s): %v", a.name, att.N, herr)
+	if err := c.markFailing(ctx, tx, row, a.name, a.in, msg, o); err != nil {
+		return err
+	}
+	return c.setTimeoutKind(ctx, tx, row.id, timeoutKindOf(herr))
+}

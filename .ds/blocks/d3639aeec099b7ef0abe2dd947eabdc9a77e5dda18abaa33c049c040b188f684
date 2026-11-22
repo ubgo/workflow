@@ -1,0 +1,35 @@
+func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildOptions) ([]byte, error) {
+	e, ok, err := rc.next("child", name)
+	if err != nil {
+		return nil, err
+	}
+	spawnName := rc.childSpawnName(name)
+	if ok {
+		if e.Err != "" {
+			return nil, Permanent(errors.New(e.Err))
+		}
+		var v []byte
+		if err := json.Unmarshal(e.Value, &v); err != nil {
+			return nil, rc.fail(Permanent(fmt.Errorf("workflow: replay: child %q: recorded result does not decode: %w", name, err)))
+		}
+		return v, nil
+	}
+	out, err := AwaitChild(rc.ctx, client, spawnName, job, opts)
+	if d, snoozed := SnoozeDelay(err); snoozed {
+		return nil, rc.suspendFor(d)
+	}
+	if err != nil {
+		if !IsPermanent(err) {
+			return nil, rc.fail(err)
+		}
+		if rerr := rc.record(replayEntry{Kind: "child", Name: name, Err: err.Error()}); rerr != nil {
+			return nil, rerr
+		}
+		return nil, Permanent(errors.New(err.Error()))
+	}
+	raw, _ := json.Marshal(out)
+	if err := rc.record(replayEntry{Kind: "child", Name: name, Value: raw}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

@@ -15,6 +15,8 @@ import (
 // the shutdown itself interrupts are listed as cut and never as finished.
 // A second call, or one after the client stopped, returns the first
 // call's report.
+//
+//ds:def id=memory-client-drainwithreport-752nb52t owner=@khanakia stability=stable
 func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
 	c.mu.Lock()
 	if !c.started {

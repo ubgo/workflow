@@ -1,0 +1,22 @@
+type ReplayOptions struct {
+	// From and To bound the log time to [From, To); a zero bound is
+	// open.
+	From, To time.Time
+
+	// Filter, when set, must return true for a logged message to be
+	// replayed. It sees the message as logged, before upcasting.
+	Filter func(Message) bool
+
+	// Subscriptions names the subscriptions to deliver to; empty means
+	// every subscription. A name the bus does not have, or a cancel
+	// subscription's, is refused: cancels and diverts are never replayed,
+	// because cancelling later would hit runs that did not exist when the
+	// event happened.
+	Subscriptions []string
+
+	// ID identifies the replay. Replaying again with the same ID starts
+	// nothing a previous replay with that ID started (see Replay); a new
+	// ID delivers everything again. Empty means a new ID from the bus's
+	// ID function, so every such call delivers again.
+	ID string
+}

@@ -1,0 +1,4 @@
+func SoftDone(ctx context.Context) <-chan struct{} {
+	ch, _ := ctx.Value(softKey{}).(<-chan struct{})
+	return ch
+}

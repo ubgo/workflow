@@ -1,0 +1,50 @@
+func objectStep[S any](spec ObjectSpec[S]) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		info, ok := StepInfoFrom(ctx)
+		if !ok {
+			return nil, Permanent(invalidf("object %q: not called from a step", spec.Name))
+		}
+		key := info.Labels[LabelObjectKey]
+		if key == "" {
+			return nil, Permanent(invalidf("object %q: the call has no object key; enqueue it with CallObject", spec.Name))
+		}
+		var call objectCall
+		if err := json.Unmarshal(in, &call); err != nil {
+			return nil, Permanent(fmt.Errorf("%w: object %q: call payload: %v", ErrInvalid, spec.Name, err))
+		}
+		method, ok := spec.Methods[call.Method]
+		if !ok {
+			return nil, Permanent(invalidf("object %q has no method %q (methods: %v)", spec.Name, call.Method, methodNames(spec.Methods)))
+		}
+		run := objectRun(spec.Name, key)
+		rec, err := loadObject(ctx, spec.Store, run)
+		if err != nil {
+			return nil, fmt.Errorf("workflow: object %q key %q: %w", spec.Name, key, err)
+		}
+		if rec.LastRun == info.RunID {
+			return rec.LastOut, nil // applied already; a retry after the save
+		}
+		var state S
+		if len(rec.State) > 0 {
+			if err := json.Unmarshal(rec.State, &state); err != nil {
+				return nil, Permanent(fmt.Errorf("workflow: object %q key %q: stored state does not decode: %w", spec.Name, key, err))
+			}
+		}
+		next, out, err := method(ctx, state, call.Args)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := encodeJSON("object "+spec.Name+" state", next)
+		if err != nil {
+			return nil, err
+		}
+		b, err := encodeJSON("object "+spec.Name+" record", objectRecord{State: raw, LastRun: info.RunID, LastOut: out})
+		if err != nil {
+			return nil, err
+		}
+		if err := spec.Store.Save(ctx, run, objectStateKey, b); err != nil {
+			return nil, fmt.Errorf("workflow: object %q key %q: save: %w", spec.Name, key, err)
+		}
+		return out, nil
+	}
+}

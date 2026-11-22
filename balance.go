@@ -15,6 +15,8 @@ import (
 
 // QueueLoad is one queue's load on one client, as a WorkerScaler reports
 // it and a Balancer reads it.
+//
+//ds:def id=queueload-xhk3w6np owner=@khanakia stability=api
 type QueueLoad struct {
 	// Queue is the queue name.
 	Queue string
@@ -43,11 +45,15 @@ type QueueLoad struct {
 // it directly. ByDepth and ByWait are the built-in strategies; any other
 // policy (a schedule, a cost model, an external autoscaler's answer)
 // implements this interface or BalancerFunc.
+//
+//ds:def id=balancer-dqvct8jq owner=@khanakia stability=stable
 type Balancer interface {
 	Balance(loads []QueueLoad) map[string]int
 }
 
 // BalancerFunc adapts a function to Balancer.
+//
+//ds:def id=balancerfunc-xamyydda owner=@khanakia stability=stable
 type BalancerFunc func(loads []QueueLoad) map[string]int
 
 // Balance calls f.
@@ -58,6 +64,8 @@ func (f BalancerFunc) Balance(loads []QueueLoad) map[string]int { return f(loads
 // CapWorkerScale. It covers the queues the client was configured with
 // (its QueueConfig list); the counts are this client's own, so on a
 // shared store each process balances its own workers.
+//
+//ds:def id=workerscaler-2pk27xz7 owner=@khanakia stability=stable
 type WorkerScaler interface {
 	// QueueLoads returns the load of every configured queue, sorted by
 	// name. Before Start it returns ErrNotStarted.
@@ -71,6 +79,8 @@ type WorkerScaler interface {
 }
 
 // QueueBounds limits one queue's worker count under a Balancer.
+//
+//ds:def id=queuebounds-vufjcscs owner=@khanakia stability=stable
 type QueueBounds struct {
 	// Min is the fewest workers the queue keeps, however idle it is.
 	// Zero means one.
@@ -81,6 +91,8 @@ type QueueBounds struct {
 }
 
 // BalanceConfig is the shared configuration of the built-in strategies.
+//
+//ds:def id=balanceconfig-6gmw877z owner=@khanakia stability=stable
 type BalanceConfig struct {
 	// Total is the worker budget shared by the queues. Zero means the
 	// sum of their current Workers, so balancing moves workers between
@@ -104,6 +116,8 @@ type BalanceConfig struct {
 // ByDepth balances by backlog: after each queue's minimum, the budget is
 // shared in proportion to each queue's Depth plus Running (the work it
 // has in hand), within each queue's maximum.
+//
+//ds:def id=bydepth-t5zsqjmu owner=@khanakia stability=stable
 func ByDepth(cfg BalanceConfig) Balancer {
 	return Proportional(cfg, func(l QueueLoad) float64 { return float64(l.Depth + l.Running) })
 }
@@ -112,6 +126,8 @@ func ByDepth(cfg BalanceConfig) Balancer {
 // shared in proportion to how long each queue's oldest attempt has
 // waited, within each queue's maximum, so the queue falling furthest
 // behind gets the most help.
+//
+//ds:def id=bywait-p7xf4vu8 owner=@khanakia stability=stable
 func ByWait(cfg BalanceConfig) Balancer {
 	return Proportional(cfg, func(l QueueLoad) float64 { return l.OldestWait.Seconds() })
 }
@@ -122,12 +138,15 @@ func ByWait(cfg BalanceConfig) Balancer {
 // maximum; what a capped queue cannot take goes to the others. When no
 // queue has weight the rest is shared evenly. Ties go to the queue whose
 // name sorts first, so the result is deterministic.
+//
+//ds:def id=proportional-kqg4wfge owner=@khanakia stability=stable
 func Proportional(cfg BalanceConfig, weight func(QueueLoad) float64) Balancer {
 	return BalancerFunc(func(loads []QueueLoad) map[string]int {
 		return proportional(cfg, weight, loads)
 	})
 }
 
+//ds:def id=proportional-xkxmwbxv owner=@khanakia stability=stable
 func proportional(cfg BalanceConfig, weight func(QueueLoad) float64, loads []QueueLoad) map[string]int {
 	if len(loads) == 0 {
 		return map[string]int{}
@@ -219,11 +238,15 @@ func proportional(cfg BalanceConfig, weight func(QueueLoad) float64, loads []Que
 }
 
 // DefaultBalanceEvery is how often a BalanceLoop with no Every runs.
+//
+//ds:def id=defaultbalanceevery-sarudmvt owner=@khanakia stability=stable
 const DefaultBalanceEvery = 5 * time.Second
 
 // BalanceLoop applies a Balancer to a WorkerScaler on an interval.
 // Balancing is off unless an app runs one: no driver balances on its
 // own. Run it on the client's Start ctx so it stops with the client.
+//
+//ds:def id=balanceloop-k9gtfh9v owner=@khanakia stability=stable
 type BalanceLoop struct {
 	// Scaler is the client to balance (a client declaring
 	// CapWorkerScale).
@@ -247,6 +270,8 @@ type BalanceLoop struct {
 // Once runs one round: it reads the loads, asks the Balancer and sets
 // every count that changed. It returns every failure joined; a count it
 // could not set does not stop the others.
+//
+//ds:def id=balanceloop-once-xuapjqya owner=@khanakia stability=stable
 func (l BalanceLoop) Once(ctx context.Context) error {
 	if l.Scaler == nil || l.Balancer == nil {
 		return invalidf("balance loop: Scaler and Balancer are required")
@@ -279,6 +304,8 @@ func (l BalanceLoop) Once(ctx context.Context) error {
 
 // Run calls Once every Every until ctx ends, and returns nil then. It
 // returns at once with an error when Scaler or Balancer is missing.
+//
+//ds:def id=balanceloop-run-vmg7hk7w owner=@khanakia stability=stable
 func (l BalanceLoop) Run(ctx context.Context) error {
 	if l.Scaler == nil || l.Balancer == nil {
 		return invalidf("balance loop: Scaler and Balancer are required")

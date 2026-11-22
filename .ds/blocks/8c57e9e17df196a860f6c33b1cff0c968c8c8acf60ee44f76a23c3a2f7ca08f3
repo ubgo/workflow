@@ -1,0 +1,5 @@
+type DrainReport struct {
+	FinishedRuns  int
+	FinishedSteps int
+	Cut           []DrainCut
+}

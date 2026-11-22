@@ -1,0 +1,34 @@
+func (c *Client) callTimed(ctx context.Context, h workflow.Handler, reg *registered, step workflow.Step, a *attempt, claimed func() bool) ([]byte, error) {
+	d := step.Timeout
+	if d == 0 {
+		d = reg.wf.Timeout
+	}
+	if d <= 0 {
+		return safeCall(h, ctx, a.in)
+	}
+	actx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	// The timer cancels the attempt with a timeout error, so context.Cause
+	// in the handler matches workflow.ErrStepTimeout; the driver tells it
+	// from any other cause by identity.
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout, fmt.Sprintf("sqlstore: step %q attempt %d after %s", a.name, a.attempts, d))
+	tm := c.clk.NewTimer(d)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		select {
+		case <-tm.C():
+			cancel(errStep)
+		case <-actx.Done():
+			tm.Stop()
+		}
+	}()
+	out, err := safeCall(h, actx, a.in)
+	if context.Cause(actx) == errStep && !claimed() {
+		// It matches workflow.ErrStepTimeout (and ErrTimeout, which picks
+		// OnTimeout) as well as context.DeadlineExceeded, as before.
+		return nil, fmt.Errorf("sqlstore: step %q attempt %d timed out after %s: %w: %w", a.name, a.attempts, d,
+			workflow.TimeoutError(workflow.ErrStepTimeout, ""), context.DeadlineExceeded)
+	}
+	return out, err
+}

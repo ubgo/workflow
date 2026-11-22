@@ -1,0 +1,36 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := c.usable(); err != nil {
+		return "", err
+	}
+	if err := workflow.ValidateSchedule(s); err != nil {
+		return "", err
+	}
+	if err := workflow.CheckScheduleCaps(caps, s); err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	_, ok := c.wfs[s.Workflow]
+	c.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, s.Workflow)
+	}
+	src, err := c.parseCronFor(s.Cron, s.Seconds)
+	if err != nil {
+		return "", fmt.Errorf("%w: schedule for workflow %q: %w", workflow.ErrInvalid, s.Workflow, err)
+	}
+	field := ""
+	if s.Name != "" {
+		field = s.Workflow + "\n" + s.Name
+	}
+	id, err := c.writeSchedule(ctx, schedWrite{id: "sch-" + c.newID(), field: field, name: s.Name, wf: s.Workflow, expr: s.Cron,
+		src: src, loc: s.Location, input: s.Input, labels: s.Labels, misfire: s.Misfire, overlap: s.Overlap,
+		seconds: s.Seconds, active: s.Active, keep: s.KeepRuns, windows: s.Windows, tenant: s.Tenant})
+	if err != nil {
+		return "", err
+	}
+	c.pokeDispatcher()
+	return workflow.ScheduleID(id), nil
+}

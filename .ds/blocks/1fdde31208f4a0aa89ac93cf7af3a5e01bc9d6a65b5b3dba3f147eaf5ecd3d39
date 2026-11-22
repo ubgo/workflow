@@ -1,0 +1,7 @@
+type UpdateRequest struct {
+	// Reply is the promise id the run settles with its answer.
+	Reply string `json:"reply"`
+
+	// Payload is the caller's arguments.
+	Payload []byte `json:"payload,omitempty"`
+}

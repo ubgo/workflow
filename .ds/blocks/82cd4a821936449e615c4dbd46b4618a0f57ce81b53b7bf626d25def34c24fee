@@ -1,0 +1,9 @@
+func (s *AggregateStore) aggregateMigrations() []migrate.Migration {
+	stmts := s.st.render(aggregateDefs(typesFor(s.st.engine)))
+	for i, q := range stmts {
+		stmts[i] = s.names.Replace(q)
+	}
+	return []migrate.Migration{
+		{Owner: s.st.owner(AggregateMigrationOwner), Name: "001_aggregate", Script: s.st.script(stmts)},
+	}
+}

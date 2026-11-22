@@ -1,0 +1,6 @@
+func DrainOutcome(report DrainReport, ctxErr error) error {
+	if report.Clean() {
+		return nil
+	}
+	return ctxErr
+}

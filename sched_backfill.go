@@ -12,6 +12,8 @@ import (
 // LabelTriggerBackfill is the LabelTrigger value of a run Backfill
 // started, so run listings and observers can tell a backfilled tick from
 // a cron fire (no LabelTrigger) and a manual trigger (LabelTriggerManual).
+//
+//ds:def id=labeltriggerbackfill-6hkhj42d owner=@khanakia stability=stable
 const LabelTriggerBackfill = "backfill"
 
 // LabelRunKey is the label Backfill and FireAtStartup (with
@@ -21,10 +23,14 @@ const LabelTriggerBackfill = "backfill"
 // up among the runs the driver still keeps, so a repeated call does not
 // start a run that already finished. It is under the reserved
 // LabelPrefixInternal.
+//
+//ds:def id=labelrunkey-7hb64aje owner=@khanakia stability=stable
 const LabelRunKey = LabelPrefixInternal + "run-key"
 
 // DefaultBackfillMax is the most ticks one Backfill starts when
 // BackfillSpec.Max is zero.
+//
+//ds:def id=defaultbackfillmax-qn938fhf owner=@khanakia stability=stable
 const DefaultBackfillMax = 1000
 
 // maxBackfillScan bounds how many ticks BackfillPlan looks at (windows
@@ -35,6 +41,8 @@ const maxBackfillScan = 1 << 20
 // BackfillSpec names the ticks to replay and what each run gets. Set
 // either Schedule (the schedule as the app declared it) or Workflow,
 // Cron and Location (and optionally Seconds, Input, Labels), not both.
+//
+//ds:def id=backfillspec-dsnrt6wf owner=@khanakia stability=stable
 type BackfillSpec struct {
 	// Schedule is the schedule to replay: its Workflow, Cron, Location,
 	// Seconds, Input, Labels and Tenant are used, its Active period and
@@ -84,6 +92,7 @@ type backfillTarget struct {
 	scope                string
 }
 
+//ds:def id=backfillspec-target-67adhzws owner=@khanakia stability=stable
 func (spec BackfillSpec) target() (backfillTarget, error) {
 	var t backfillTarget
 	if s := spec.Schedule; s != nil {
@@ -122,6 +131,8 @@ func (spec BackfillSpec) target() (backfillTarget, error) {
 // the Schedule's Active period or Windows. It refuses (ErrInvalid) a bad
 // spec, an empty or inverted range, a negative Max, and a range holding
 // more than Max ticks.
+//
+//ds:def id=backfillplan-erqmz364 owner=@khanakia stability=stable
 func BackfillPlan(spec BackfillSpec) ([]time.Time, error) {
 	t, err := spec.target()
 	if err != nil {
@@ -130,6 +141,7 @@ func BackfillPlan(spec BackfillSpec) ([]time.Time, error) {
 	return planTicks(spec, t)
 }
 
+//ds:def id=planticks-9fusuf53 owner=@khanakia stability=stable
 func planTicks(spec BackfillSpec, t backfillTarget) ([]time.Time, error) {
 	if spec.From.IsZero() || spec.To.IsZero() || !spec.To.After(spec.From) {
 		return nil, invalidf("backfill for %q: want From before To, both set", t.workflow)
@@ -163,6 +175,8 @@ func planTicks(spec BackfillSpec, t backfillTarget) ([]time.Time, error) {
 }
 
 // BackfillOption tunes Backfill.
+//
+//ds:def id=backfilloption-5gtkbm2n owner=@khanakia stability=stable
 type BackfillOption func(*backfillOptions)
 
 type backfillOptions struct{ allowDuplicates bool }
@@ -171,6 +185,8 @@ type backfillOptions struct{ allowDuplicates bool }
 // CapIdempotencyKey, where nothing stops a repeated or concurrent
 // backfill from starting a tick twice (the run-key lookup still applies
 // on a client with CapRunQuery). Use it only for idempotent jobs.
+//
+//ds:def id=backfillallowduplicates-r4vast3j owner=@khanakia stability=stable
 func BackfillAllowDuplicates() BackfillOption {
 	return func(o *backfillOptions) { o.allowDuplicates = true }
 }
@@ -199,6 +215,8 @@ func BackfillAllowDuplicates() BackfillOption {
 // tick already started. On an enqueue error it stops and returns the refs
 // so far with the error, so a retry of the same call resumes where it
 // stopped.
+//
+//ds:def id=backfill-rfae9nah owner=@khanakia stability=stable
 func Backfill(ctx context.Context, c Client, spec BackfillSpec, opts ...BackfillOption) ([]RunRef, error) {
 	var o backfillOptions
 	for _, opt := range opts {
@@ -250,6 +268,8 @@ func scheduleRunKey(kind, scope, suffix string) string {
 
 // enqueueUnlessKeyed enqueues job unless a run carrying LabelRunKey key is still
 // known to the client (CapRunQuery), in which case it returns that run.
+//
+//ds:def id=enqueueunlesskeyed-ucrm4vaf owner=@khanakia stability=stable
 func enqueueUnlessKeyed(ctx context.Context, c Client, job Job, key string) (RunRef, error) {
 	if q, ok := c.(RunQuerier); ok && c.Capabilities().Has(CapRunQuery) {
 		page, err := q.Runs(ctx, RunQuery{Workflow: job.Workflow, Labels: map[string]string{LabelRunKey: key}, Limit: 1})

@@ -1,0 +1,7 @@
+func RunSuspended(ctx context.Context, store JournalStore, ref RunRef) (bool, error) {
+	if ref.RunID.IsZero() {
+		return false, nil
+	}
+	v, found, err := store.Load(ctx, ref.RunID, suspendKey)
+	return found && string(v) == "1", err
+}

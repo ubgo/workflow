@@ -1,0 +1,13 @@
+func (p RetryPolicy) Next(err error, a Attempts, now time.Time, rnd func() float64) (delay time.Duration, retry bool) {
+	if !p.Retryable(err, a.N) {
+		return 0, false
+	}
+	if p.MaxErrors > 0 && a.Errors >= p.MaxErrors {
+		return 0, false
+	}
+	delay = p.NextDelay(err, a.N, rnd)
+	if p.Until > 0 && !a.First.IsZero() && now.Add(delay).After(a.First.Add(p.Until)) {
+		return 0, false
+	}
+	return delay, true
+}

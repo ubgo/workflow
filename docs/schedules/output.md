@@ -9,6 +9,8 @@ A nightly export, a weekly cleanup or a report job writes a few log lines and en
 
 ## Step 1: log through OutputLogger
 
+The step asks for its logger on every call: inside a capture, [`OutputLogger`](ds:block?id=mw-outputlogger-r8mzkh57) returns a logger bound to that attempt's capture, so a logger kept from an earlier call would write past it.
+
 <!-- snippet: examples/task-output/main.go#step -->
 ```go
 // report is the nightly task. It logs through middleware.OutputLogger, so
@@ -31,16 +33,16 @@ func report(night *int) workflow.Handler {
 
 ## Step 2: choose a sink and wrap the steps
 
-A sink is an [`OutputSink`](ds:block?id=mw-outputsink-hvdavs34), one method `Deliver(ctx, Output) error`. The built-ins:
+A sink is an [`OutputSink`](ds:block?id=mw-outputsink-hvdavs34), one method `Deliver(ctx, Output) error`. The built-ins, where a [`FileMode`](ds:block?id=mw-filemode-nev3zxnq) says whether a file sink replaces or extends its file:
 
 | Sink | What it does |
 |---|---|
 | [`FileSink(path, FileReplace)`](ds:block?id=mw-filesink-9kuvzn2m) | Writes each attempt's output to the file, replacing what was there, so it holds the latest attempt only |
-| `FileSink(path, FileAppend)` | Appends each attempt's output to the file |
+| [`FileSink(path, FileAppend)`](ds:block?id=mw-fileappend-qkmtw7sw) | Appends each attempt's output to the file |
 | [`WriterSink(w)`](ds:block?id=mw-writersink-83q2bj4g) | Writes each attempt's output to any `io.Writer` |
 | [`OutputSinkFunc(fn)`](ds:block?id=mw-outputsinkfunc-r8g32sem) | Your function: mail, chat, object storage, a database row |
 
-The file sinks create the file with mode 0600, since output holds whatever a step logged. Every built-in writes the text of [`middleware.FormatOutput`](ds:block?id=mw-formatoutput-pa32eb3b), which your own sink can reuse. The example appends every night to a file and mails the failures; mail is the app's own function, since the library sends none:
+The file sinks create the file with [mode 0600](ds:block?id=mw-filesinkperm-puy4jjg9), since output holds whatever a step logged. Every built-in writes the text of [`middleware.FormatOutput`](ds:block?id=mw-formatoutput-pa32eb3b), which your own sink can reuse. The example appends every night to a file and mails the failures; mail is the app's own function, since the library sends none:
 
 <!-- snippet: examples/task-output/main.go#sink -->
 ```go
@@ -88,7 +90,7 @@ Subject: nightly-report failed
 
 ## Keep output in the database
 
-A file or a mail reaches one place; an operator looking at a run on another machine, or in the [admin UI](../admin/ui.md), needs the output stored with the run. `sqlstore.OutputStore` is an `OutputSink` that keeps each attempt's output in `<prefix>outputs`, shared by every process on the database. Build it from a client with `Client.OutputStore(limits)` (`Client.Migrate` creates its table), or alone with `sqlstore.NewOutputStore(db, dialect, limits)` and its own `Migrate`, which is how an app on Hatchet with a database uses it. The program is [`examples/output-store`](../../examples/output-store):
+A file or a mail reaches one place; an operator looking at a run on another machine, or in the [admin UI](../admin/ui.md), needs the output stored with the run. [`sqlstore.OutputStore`](ds:block?id=sql-outputstore-fzkuk4hw) is an `OutputSink` that keeps each attempt's output in `<prefix>outputs`, shared by every process on the database. Build it from a client with [`Client.OutputStore(limits)`](ds:block?id=sql-client-outputstore-9bh2kwaz) (`Client.Migrate` creates its table), or alone with [`sqlstore.NewOutputStore(db, dialect, limits)`](ds:block?id=sql-newoutputstore-v2eznevn) and its own `Migrate`, which is how an app on Hatchet with a database uses it. The program is [`examples/output-store`](../../examples/output-store):
 
 <!-- snippet: examples/output-store/main.go#store -->
 ```go
@@ -108,7 +110,7 @@ c, err := sqlstore.New(db, sqlb.SQLiteDialect{},
 )
 ```
 
-`RunOutput(ctx, runID)` reads a run's attempts back, oldest first, as `StoredOutput` rows (step, attempt, start and finish, the text, whether it was cut, and the error):
+[`RunOutput(ctx, runID)`](ds:block?id=sql-outputstore-runoutput-nsxwadsg) reads a run's attempts back, oldest first, as [`StoredOutput`](ds:block?id=sql-storedoutput-bakcyfzw) rows (step, attempt, start and finish, the text, whether it was cut, and the error):
 
 <!-- snippet: examples/output-store/main.go#read -->
 ```go
@@ -147,7 +149,7 @@ fetch attempt 2 error="" logged fetching feed: true
 admin sees 2 attempts
 ```
 
-`OutputLimits{PerRun, Bytes}` keeps the newest 20 attempts per run and 64 KiB of text per attempt by default (`DefaultOutputPerRun`, `DefaultOutputBytes`), the same bounds as the admin's in-memory store; longer text is cut on a character boundary and marked `Truncated`. A client deletes a run's output with the run (`Delete`, retention); a store used without a client bounds its table with `PruneBefore(ctx, t)`. Output captured outside a driver, with no run to file it under, is refused with `sqlstore.ErrOutputNoRun`.
+[`OutputLimits{PerRun, Bytes}`](ds:block?id=sql-outputlimits-baayz4jr) keeps the newest 20 attempts per run and 64 KiB of text per attempt by default ([`DefaultOutputPerRun`](ds:block?id=sql-defaultoutputperrun-k56bm7ef), [`DefaultOutputBytes`](ds:block?id=sql-defaultoutputbytes-9nqdjpm2)), the same bounds as the admin's in-memory store; longer text is [cut on a character boundary](ds:block?id=sql-cuttext-fz9tqd9m) and marked `Truncated`. A client [deletes a run's output with the run](ds:block?id=sql-client-deleteorphans-w6zn7vsw) (`Delete`, retention); a store used without a client bounds its table with [`PruneBefore(ctx, t)`](ds:block?id=sql-outputstore-prunebefore-5qcustfs). Output captured outside a driver, with no run to file it under, is [refused](ds:block?id=sql-outputstore-deliver-znv6zb92) with [`sqlstore.ErrOutputNoRun`](ds:block?id=sql-erroutputnorun-e5y5xv2n).
 
 ## Try it
 
@@ -197,7 +199,7 @@ Each attempt is stored on its own, so the admin shows both. `go test ./task-outp
 
 | Option | Effect |
 |---|---|
-| `CaptureResult()` | Adds the step's result bytes to `Output.Result`. Off by default, because a result may hold payload data you want kept out of files and mail |
+| [`CaptureResult()`](ds:block?id=mw-captureresult-ndqzbck8) | Adds the step's result bytes to `Output.Result`. Off by default, because a result may hold payload data you want kept out of files and mail |
 | [`CaptureOnlyFailures()`](ds:block?id=mw-captureonlyfailures-8m9wnbcu) | Delivers only attempts that returned an error |
 | [`CaptureLevel(l)`](ds:block?id=mw-capturelevel-kubw9m9x) | Keeps records at or above `l`; the default is Info |
 | [`CaptureTee(h)`](ds:block?id=mw-capturetee-zz3fu929) | Also passes every record to your own `slog.Handler`, so the lines still reach the app's log |
@@ -207,12 +209,12 @@ Each attempt is stored on its own, so the admin shows both. `go test ./task-outp
 
 ## Pitfalls
 
-- **One delivery per attempt.** A step retried three times delivers three outputs. A scheduled task with one step, or a [function by name](../jobs/functions.md), delivers one per run attempt; a workflow with several steps delivers one per step attempt, so filter with `CaptureOnly` or group by `Info.RunID` in your sink.
-- **A slow sink holds the worker.** `Deliver` runs on the step's goroutine after the attempt returns and before the driver records the result. A sink that sends mail or calls a network service should hand the output to its own goroutine or queue.
-- **A sink error never fails the step.** It goes to `CaptureOnSinkError`, which drops it by default; pass a function that logs it.
-- **Only `OutputLogger` lines and step events are captured.** A step that logs through a logger it captured at start-up, or through `slog.Default()` directly, writes past the capture. `CaptureTee` sends the `OutputLogger` lines on to your handler, so you do not lose them from the main log; step events are not teed.
-- **One capture per step.** If two `CaptureOutput` middlewares wrap the same step, the inner one receives the records and the outer one delivers an output with none. Use one capture with a sink that fans out, as the example does.
-- **Two file sinks on one path are not serialised.** Deliveries through one `FileSink` value are; build one sink per file and share it.
+- **One delivery per attempt.** A step retried three times delivers three outputs. A scheduled task with one step, or a [function by name](../jobs/functions.md), delivers one per run attempt; a workflow with several steps delivers one per step attempt ([`CaptureOutput`](ds:block?id=mw-captureoutput-fk79ecqu) wraps each step's handler), so filter with `CaptureOnly` or group by `Info.RunID` in your sink.
+- **A slow sink holds the worker.** `Deliver` runs [on the step's goroutine](ds:block?id=mw-captureoutput-fk79ecqu) after the attempt returns and before the driver records the result. A sink that sends mail or calls a network service should hand the output to its own goroutine or queue.
+- **A sink error never fails the step.** It goes to [`CaptureOnSinkError`](ds:block?id=mw-captureoutput-fk79ecqu), which drops it by default; pass a function that logs it.
+- **Only `OutputLogger` lines and step events are captured.** A step that logs through a logger it captured at start-up, or through `slog.Default()` directly, [writes past the capture](ds:block?id=mw-outputlogger-r8mzkh57). `CaptureTee` sends the `OutputLogger` lines on to your handler, so you do not lose them from the main log; step events are not teed.
+- **One capture per step.** If two [`CaptureOutput`](ds:block?id=mw-captureoutput-fk79ecqu) middlewares wrap the same step, the inner one receives the records and the outer one delivers an output with none. Use one capture with a sink that fans out, as the example does.
+- **Two file sinks on one path are not serialised.** Deliveries through one [`FileSink`](ds:block?id=mw-filesink-9kuvzn2m) value are; build one sink per file and share it.
 - **Stored output is as sensitive as the payloads.** It holds whatever a step logged; only what you wire to the table reads it, and the admin shows it to everyone who may open a run.
 
 ## Related

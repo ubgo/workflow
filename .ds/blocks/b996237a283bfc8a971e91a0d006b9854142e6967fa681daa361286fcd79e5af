@@ -1,0 +1,1 @@
+func (s Status) Valid() bool { return s.valid() }

@@ -1,0 +1,30 @@
+func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
+	c.mu.Lock()
+	if !c.started {
+		c.mu.Unlock()
+		return workflow.DrainReport{}, fmt.Errorf("%w: Drain before Start", workflow.ErrNotStarted)
+	}
+	c.drainTrack.StartDrain()
+	c.draining = true
+	if c.idle == nil {
+		c.idle = make(chan struct{})
+		if c.inflight == 0 {
+			close(c.idle)
+		}
+	}
+	idle, cancel := c.idle, c.cancel
+	c.mu.Unlock()
+	c.wakeAll()
+	var ctxErr error
+	select {
+	case <-idle:
+	case <-ctx.Done():
+		ctxErr = ctx.Err()
+	case <-c.done:
+	}
+	c.drainTrack.Freeze(workflow.DrainRequeued)
+	cancel()
+	<-c.done
+	report := c.drainTrack.Seal()
+	return report, workflow.DrainOutcome(report, ctxErr)
+}

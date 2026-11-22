@@ -12,6 +12,8 @@ import (
 )
 
 // FakeFork is one successful ForkRun call.
+//
+//ds:def id=workflowtest-fakefork-zf39zaz7 owner=@khanakia stability=api
 type FakeFork struct {
 	// From is the forked run, Ref the fork.
 	From, Ref workflow.RunRef
@@ -30,6 +32,8 @@ type FakeFork struct {
 // not issue goes to the pass-through client, or is ErrNotFound without
 // one. After FakeLike(c) with a c that cannot fork it is an
 // UnsupportedError. Use Finish to end a run first.
+//
+//ds:def id=workflowtest-fake-forkrun-je3sttbw owner=@khanakia stability=stable
 func (f *Fake) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -96,6 +100,8 @@ func (f *Fake) Forks() []FakeFork {
 
 // AssertForked fails t unless ref was forked from step, and returns the
 // fork's ref (zero when it was not).
+//
+//ds:def id=workflowtest-fake-assertforked-qu546qnh owner=@khanakia stability=stable
 func (f *Fake) AssertForked(t testing.TB, ref workflow.RunRef, step string) workflow.RunRef {
 	t.Helper()
 	forks := f.Forks()

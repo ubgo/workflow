@@ -1,0 +1,11 @@
+type Outbox struct {
+	db     *sql.DB
+	d      sqlb.Dialect
+	engine string
+	prefix string
+	schema string // Postgres schema (WithSchema); empty: the search_path
+	table  string // quoted, schema-qualified <prefix>outbox
+	ids    IDGenerator
+	clk    clock.Clock
+	log    *slog.Logger
+}

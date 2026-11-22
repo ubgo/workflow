@@ -1,0 +1,23 @@
+func parseFields(expr, trimmed, std string) (Schedule, error) {
+	parts := strings.Fields(std)
+	if len(parts) != len(fields) {
+		return nil, &ParseError{Expr: expr, Field: "expression", Reason: fmt.Sprintf("want 5 fields (minute hour day-of-month month day-of-week), got %d", len(parts))}
+	}
+	s := &spec{expr: trimmed}
+	var bits [5]uint64
+	for i, f := range fields {
+		b, err := parseField(parts[i], f)
+		if err != nil {
+			err.Expr = expr
+			return nil, err
+		}
+		bits[i] = b
+	}
+	s.minute, s.hour, s.dom, s.month = bits[0], bits[1], bits[2], bits[3]
+	// Fold Sunday-as-7 onto 0 so matching only checks bits 0-6.
+	s.dow = bits[4] | bits[4]>>7&1
+	s.dow &^= 1 << 7
+	s.domStar = strings.HasPrefix(parts[2], "*")
+	s.dowStar = strings.HasPrefix(parts[4], "*")
+	return s, nil
+}

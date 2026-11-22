@@ -15,9 +15,13 @@ import (
 // circuit is open. It is retryable on purpose: the retry policy's backoff
 // is what brings the step back after the cooldown, as a release back onto
 // the queue would.
+//
+//ds:def id=mw-errthrottled-ncrmj7xa owner=@khanakia stability=stable
 var ErrThrottled = errors.New("workflow/middleware: step throttled after repeated errors")
 
 // ThrottleConfig configures ThrottleErrors.
+//
+//ds:def id=mw-throttleconfig-m3a2t8jn owner=@khanakia stability=stable
 type ThrottleConfig struct {
 	// Clock reads time for the window and the cooldown of the default
 	// store. Nil means clock.Real. A custom Store keeps its own time.
@@ -65,6 +69,8 @@ type CircuitPolicy struct {
 // throttled call. A RecordError or Reset error never turns a step's result
 // around: it is joined onto a failed step's error and dropped after a
 // successful one, where the worst it can do is let the circuit open early.
+//
+//ds:def id=mw-circuitstore-cxtscnjk owner=@khanakia stability=stable
 type CircuitStore interface {
 	// IsOpen reports whether key's circuit is open now.
 	IsOpen(ctx context.Context, key string) (bool, error)
@@ -86,6 +92,8 @@ type CircuitStore interface {
 //
 // Errors marked Permanent and ErrThrottled itself are not counted: a
 // permanent error is about the input, not the downstream service.
+//
+//ds:def id=mw-throttleerrors-fvbczfxu owner=@khanakia stability=stable
 func ThrottleErrors(cfg ThrottleConfig) (workflow.Middleware, error) {
 	if cfg.MaxErrors < 1 || cfg.Window <= 0 || cfg.Cooldown <= 0 {
 		return nil, fmt.Errorf("%w: ThrottleErrors needs MaxErrors >= 1 and a positive Window and Cooldown", workflow.ErrInvalid)
@@ -105,6 +113,7 @@ type breaker struct {
 	policy CircuitPolicy
 }
 
+//ds:def id=mw-breaker-wrap-2znn3c3t owner=@khanakia stability=stable
 func (b *breaker) wrap(next workflow.Handler) workflow.Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		var key string
@@ -136,6 +145,8 @@ func (b *breaker) wrap(next workflow.Handler) workflow.Handler {
 
 // MemoryCircuit is a CircuitStore inside one process, the default of
 // ThrottleErrors. Use NewMemoryCircuit.
+//
+//ds:def id=mw-memorycircuit-uveb9h55 owner=@khanakia stability=stable
 type MemoryCircuit struct {
 	clk      clock.Clock
 	mu       sync.Mutex
@@ -152,6 +163,8 @@ type circuit struct {
 
 // NewMemoryCircuit returns an empty store reading time from clk (nil means
 // clock.Real).
+//
+//ds:def id=mw-newmemorycircuit-fcnep8zj owner=@khanakia stability=stable
 func NewMemoryCircuit(clk clock.Clock) *MemoryCircuit {
 	if clk == nil {
 		clk = clock.Real{}

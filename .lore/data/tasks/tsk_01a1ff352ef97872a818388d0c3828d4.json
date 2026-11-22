@@ -1,0 +1,64 @@
+{
+  "_hlc": "2026-11-21T18:29:02.401Z/0000/act_eed7179abc3d7c58a0a0613f51dfa322",
+  "_o": {
+    "cmd": "task add",
+    "git": {
+      "branch": "docs/pass2",
+      "commit": "9aea7ae34b51422157a6b9944db9b7b46fa078db",
+      "state": "branch"
+    },
+    "project": "prj_01a115555ae37c48ae7fddcfa96da417",
+    "store": "repo"
+  },
+  "_table": "tasks",
+  "_v": 2,
+  "_w": {
+    "v": "0.1.26"
+  },
+  "body": "Plan, rules and numbers: wf-context/docs-gaps/pass2.md (read \"How a section is bound\" first). Worktree wf-docs2, branch docs/pass2; DOCS_COMMON.md applies. Per-section list: wf-context/docs-gaps/pass2/out-before/binding-sections.md.\n\nRules in short: bind claims, not mentions. For each target section, cite the code its claims depend on: `pass2/dsdef.sh <file>#<Symbol> [stable|api]` prints the id (idempotent, writes `//ds:def` in this repo's style), then link the name in the sentence: [`Name`](ds:block?id=<id>). Defaults and limits cite their const. Pitfalls that state library or driver behaviour cite the code (or the test) that makes it true. Snippet-synced Go blocks stay with `task docs:snippets`; bind the prose around them. Only `//ds:def` lines may change in library files. Never run `ds scan`, `ds ack` or `ds refresh` (the coordinator scans and commits `.ds/` once at the end); `ds check` must stay at 0 errors.\n\nOwns: `docs/jobs/`, `docs/concepts/`, `docs/middleware/`; examples: accelerator-queue, capabilities, client-wrapper, closures, concurrency, deferred-dispatch, delayed-jobs, edit-run, functions, http-status, idempotency, job-guards, manage-runs, message-attributes, middleware-stack, named-queues, push-delivery, queue-guards, queue-limit, queue-weights, release-errors, results-progress, retries, retry-limits, route-jobs, run-control, run-inline, run-reschedule, run-states, run-transitions, snooze-heartbeat, step-events, step-middleware, step-slots, task-output, tenant-spans, trigger-source, typed-payloads, upstream-limits.\n\nBinding now: 36 pages, 247 sections describe library code (Try it and Related excluded), 18 bound.\n\n## Bind (one line per page: target sections, bound now, the unbound ones)\n\n- [x] `docs/concepts/capabilities.md` (6 target, 0 bound): Before you start; What a driver declares; Check a workflow before you run it; Check a schedule; Refusals; Pitfalls\n- [x] `docs/concepts/client.md` (7 target, 0 bound; after: 6 bound, Before you start states no code claim): (top); Before you start; The Client interface; Start and stop; Stop gracefully; Validation; Pitfalls\n- [x] `docs/concepts/errors.md` (6 target, 0 bound): Sentinel errors; Tell a release from a failure; Backend outages; Run errors; Timeouts; Pitfalls\n- [x] `docs/concepts/labels.md` (5 target, 2 bound): (top); Let the owning package through; Pitfalls\n- [x] `docs/concepts/plugins.md` (4 target, 0 bound): (top); Before you start; Add a plugin; Pitfalls\n- [x] `docs/concepts/run-outcome.md` (5 target, 4 bound): Pitfalls\n- [x] `docs/concepts/step-events.md` (5 target, 5 bound): all bound\n- [x] `docs/concepts/time.md` (2 target, 0 bound): The clock interface; Pitfalls\n- [x] `docs/concepts/trigger-source.md` (6 target, 3 bound): Before you start; Step 4: refuse a job without a source; Pitfalls\n- [x] `docs/jobs/cancel-and-status.md` (5 target, 0 bound): (top); Before you start; Cancel a run; Read a run's status; Pitfalls\n- [x] `docs/jobs/closures.md` (5 target, 0 bound): Before you start; Step 1: enqueue a closure; Step 2: treat it as a run; Durable drivers refuse closures; Pitfalls\n- [x] `docs/jobs/concurrency.md` (7 target, 0 bound): Before you start; Limit runs per key; Strategies; Keep one key's runs in order; Share the workers fairly between keys; Rate limits; Pitfalls\n- [x] `docs/jobs/deferred.md` (6 target, 0 bound): Before you start; Step 1: hold enqueues made under a Deferred; Step 2: wrap your HTTP handler; Without HTTP: flush or discard by hand; Deferred dispatch or a transaction; Pitfalls\n- [x] `docs/jobs/delays.md` (4 target, 0 bound): (top); Before you start; Run a job later; Pitfalls\n- [x] `docs/jobs/edit-runs.md` (6 target, 0 bound): (top); Before you start; Step 1 — Edit the run in Go; Step 2 — Edit from the admin in Go; Step 3 — Edit over HTTP, and decide who may change what; Pitfalls\n- [x] `docs/jobs/enqueue.md` (4 target, 0 bound): (top); Enqueue a job; Priority; Pitfalls\n- [x] `docs/jobs/functions.md` (7 target, 0 bound): Before you start; Step 1: define the function; Step 2: register and enqueue; Step 3: enqueue by name alone; Step 4: delay it and survive a restart; Closures or functions; Pitfalls\n- [x] `docs/jobs/guards.md` (11 target, 0 bound): (top); Before you start; Expire a job that did not start in time; Time out the wait for a worker; Bound a queue and cap a tenant; Count with a function of your own; Keep jobs out of quiet hours; Validate payloads at enqueue; Retry on an explicit ladder; State invariants and step conditions; Pitfalls\n- [x] `docs/jobs/http-start.md` (7 target, 0 bound): (top); Before you start; Step 1: say who may do what; Step 2: mount the handler; Step 3: stream output from a step; Routes; Pitfalls\n- [x] `docs/jobs/idempotency.md` (7 target, 0 bound): (top); Before you start; Idempotency keys; Require or ignore keys; Once per period; Drop redelivered messages with an inbox; Pitfalls\n- [x] `docs/jobs/manage-runs.md` (20 target, 0 bound): Before you start; Step 1: list runs; Search by label; The label index on the SQL driver; Search inside payloads; Step 2: re-run a failed run from the step that failed; Re-run a failed run from an earlier step; Reset a run that succeeded; Fork a run into a new run; Step 3: forget a finished run; Step 4: cancel every waiting run; Error history; Force a run to an end; Pause and resume; Suspend one run; Detours: hold, skip, redo; List the runs due soon; Reschedule a delayed run; Cancel one step; Pitfalls\n- [x] `docs/jobs/payloads.md` (6 target, 0 bound): Before you start; Build a job from a struct; Decode a payload or a result; Cap the payload size; Change a payload's shape between releases; Pitfalls\n- [x] `docs/jobs/progress.md` (7 target, 0 bound): (top); Before you start; Report progress from a step; Read progress; Send heartbeats; Catch a hung step; Pitfalls\n- [x] `docs/jobs/push-delivery.md` (5 target, 0 bound): (top); Before you start; The receiving side; The sending side; Pitfalls\n- [x] `docs/jobs/queues.md` (9 target, 0 bound): Before you start; Step 1: give a workflow its queue; Step 2: decide how workers serve queues; Step 3: send one run elsewhere; Run one step on an accelerator; Step 4: pause a queue; Cap a queue across every worker; Share a worker between queues by weight; Pitfalls\n- [x] `docs/jobs/results.md` (6 target, 0 bound): (top); Before you start; What a run's result is; Wait for a result; When the run fails; Pitfalls\n- [x] `docs/jobs/retries.md` (14 target, 0 bound): Before you start; Retry policy; Retries per step; Which policy a step gets; Backoff and jitter; Retry after a delay the error names; Errors that must not retry; Per-dispatch retries; A deadline: Until; Errors, not releases: MaxErrors; Drop the run: Discard; Quiet giving up: DiscardOnExhaust; Snooze a step that is not ready; Pitfalls\n- [x] `docs/jobs/run-inline.md` (5 target, 0 bound): (top); Before you start; Step 1: run it; Step 2: wait steps; Pitfalls\n- [x] `docs/jobs/run-states.md` (10 target, 0 bound): (top); Before you start; Retrying; Discarded; The state machine; Read the machine in code; Guard a status change in a driver of your own; Batches and discarded jobs; Code that switches on statuses; Pitfalls\n- [x] `docs/jobs/slots.md` (6 target, 0 bound): (top); Before you start; Step 1 — Give a step a cost; Step 2 — Let Register catch a step that can never start; Step 4 — Use the shared pool in a driver of your own; Pitfalls\n- [x] `docs/jobs/tenants.md` (8 target, 0 bound): (top); Before you start; Enqueue a job for a tenant; Read the tenant where the run is; Record the tenant on spans; Give a schedule a tenant; List one tenant's runs; Pitfalls\n- [x] `docs/jobs/timeouts.md` (7 target, 0 bound): (top); Before you start; The four deadlines; Cap a whole run; Handle a timeout differently from a failure; Tell timeouts apart; Pitfalls\n- [x] `docs/jobs/upstream-limits.md` (7 target, 0 bound): (top); Before you start; Build a limit; Take before each call; Follow the upstream's own count; Share a bucket across workers; Pitfalls\n- [x] `docs/middleware/codecs.md` (3 target, 0 bound): Transform payloads; Encrypt payloads; Pitfalls\n- [x] `docs/middleware/enqueue-middleware.md` (8 target, 3 bound): (top); Before you start; Route jobs; Unique until a step starts; Pitfalls\n- [x] `docs/middleware/step-middleware.md` (11 target, 1 bound): (top); Before you start; Wrap every step; Recover from panics; Time out a step; Fail on chosen errors; Skip a step; Release a step for later; Throttle a failing dependency; Pitfalls\n\n## Gaps to close\n\n- [x] No open gap rows. Cite instead of typing: `DefaultStreamBuffer`, `DefaultStreamMaxChunk`, `DefaultStreamMaxRunBytes`, `DefaultStreamMaxRunChunks`, `DefaultStreamMaxRuns`, `DefaultStreamRetain`, `DefaultStreamTTL` (jobs/http-start.md), `middleware.DefaultPoolRetry`, `middleware.FireJitterNeeds`, `InlineResult` (run-inline.md); no page names these yet.\n- [x] Every 'which drivers have it' sentence (Before you start) cites the driver capability defs (run `dsdef.sh` on each driver's capability list; idempotent, W3 may have made them already).\n\n## Done when\n\n- [x] `python3 tools/binding.py` + `tools/batches.py` (see pass2.md) show every target section of this batch bound, or the report names the section and why it states no claim worth binding.\n- [x] `ds check` 0 errors; `task docs:wrap docs:links docs:snippets docs:words` pass; `go test -race` of every example touched.\n- [x] Report wf-context/reports/docs-docs2-w2.md (named after the session docs2-w2; was docs-p2-w2.md) with before/after binding counts, defs added (id, file), Shared-file lines, Library bugs, DONE.\n\n## Result\n\nAfter: 249 target sections, 248 bound (client.md Before you start states no code claim); 1,523 citations of 764 defs (710 new). Report: wf-context/reports/docs-docs2-w2.md.",
+  "close_reason": "completed",
+  "commitment": "accepted",
+  "completed_at": "2026-11-21T18:29:02.302345539Z",
+  "created_at": "2026-11-21T17:43:58.043000000Z",
+  "created_by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "created_by_actor_id": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "done_by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "history": [
+    {
+      "at": "2026-11-21T18:10:39Z",
+      "by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+      "field": "status",
+      "from": "todo",
+      "id": "the_01a1ff4da09271668c17a02d54b2b3fd",
+      "to": "in_progress"
+    },
+    {
+      "at": "2026-11-21T18:29:02Z",
+      "by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+      "field": "status",
+      "from": "in_progress",
+      "id": "the_01a1ff5e72de76aeacebf273f7c80e82",
+      "note": "open_items_at_close: 0",
+      "to": "done"
+    },
+    {
+      "at": "2026-11-21T18:29:02Z",
+      "by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+      "field": "close_reason",
+      "id": "the_01a1ff5e72de76b9be0c69b651c10836",
+      "to": "completed"
+    }
+  ],
+  "id": "tsk_01a1ff352ef97872a818388d0c3828d4",
+  "priority": "medium",
+  "project_id": "prj_01a115555ae37c48ae7fddcfa96da417",
+  "started_at": "2026-11-21T18:10:39.889935754Z",
+  "status": "done",
+  "tasklist_id": "tlt_95b6a5727e7971d98869a8451a761e0a",
+  "title": "Docs pass 2: jobs, concepts, middleware: bind to code and close gaps",
+  "updated_at": "2026-11-21T18:29:02.401000000Z",
+  "updated_by": "act_eed7179abc3d7c58a0a0613f51dfa322",
+  "watchers": [
+    "act_eed7179abc3d7c58a0a0613f51dfa322"
+  ]
+}

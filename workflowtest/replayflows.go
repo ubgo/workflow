@@ -17,6 +17,8 @@ import (
 // workflows on a fresh client of the driver built with the Journal plugin
 // over the driver's durable JournalStore (where it has one) and starts
 // it; Promises is a PromiseStore for that client.
+//
+//ds:def id=workflowtest-replayharness-mqdacwgd owner=@khanakia stability=stable
 type ReplayHarness struct {
 	Start    func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
 	Promises func(t *testing.T, c workflow.Client) workflow.PromiseStore
@@ -28,6 +30,8 @@ type ReplayHarness struct {
 // without calling its function again; and code that diverges from its
 // history (another call at a position, or fewer calls) fails the run
 // with the nondeterminism error. The driver needs CapSnooze.
+//
+//ds:def id=workflowtest-runreplayflows-yjyr3ayu owner=@khanakia stability=stable
 func RunReplayFlows(t *testing.T, h ReplayHarness) {
 	t.Run("locals", func(t *testing.T) { replayLocals(t, h) })
 	t.Run("recorded-error", func(t *testing.T) { replayRecordedError(t, h) })

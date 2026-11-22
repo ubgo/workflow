@@ -1,0 +1,10 @@
+const (
+	CodeUnauthorized = "unauthorized"           // 401: Identify failed
+	CodeForbidden    = "forbidden"              // 403: no Auth configured, or Authorize refused
+	CodeInvalid      = "invalid"                // 400: a malformed request or workflow.ErrInvalid
+	CodeNotFound     = "not_found"              // 404: workflow.ErrNotFound, or no such route
+	CodeUnsupported  = "unsupported"            // 501: workflow.ErrUnsupported
+	CodeConflict     = "conflict"               // 409: workflow.ErrWrongState, workflow.ErrDuplicate or workflow.ErrOverlap
+	CodeMediaType    = "unsupported_media_type" // 415: a write without Content-Type: application/json
+	CodeInternal     = "internal"               // 500: anything else; the detail is logged, not sent
+)

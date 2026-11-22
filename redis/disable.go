@@ -17,6 +17,8 @@ import (
 // hash; Enable deletes it. Hashes carry no expiry: a disabled key stays
 // disabled until Enable, and a key's count stays until a success resets
 // it.
+//
+//ds:def id=redis-disablestore-z7vdtw9z owner=@khanakia stability=stable
 type DisableStore struct {
 	rdb  goredis.UniversalClient
 	base string
@@ -25,6 +27,8 @@ type DisableStore struct {
 var _ middleware.DisableStore = (*DisableStore)(nil)
 
 // NewDisableStore returns a DisableStore over rdb under prefix.
+//
+//ds:def id=redis-newdisablestore-uq4nzgeg owner=@khanakia stability=stable
 func NewDisableStore(rdb goredis.UniversalClient, prefix string) (*DisableStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -70,6 +74,8 @@ func (d *DisableStore) Disabled(ctx context.Context, key string) (bool, error) {
 }
 
 // Fail implements middleware.DisableStore in one script.
+//
+//ds:def id=redis-disablestore-fail-5bqt4nbw owner=@khanakia stability=stable
 func (d *DisableStore) Fail(ctx context.Context, key string, after int) (bool, error) {
 	n, err := disableFailScript.Run(ctx, d.rdb, []string{d.key(key)}, after).Int64()
 	if err != nil {

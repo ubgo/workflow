@@ -1,0 +1,3 @@
+func (c *Client) OnTick(workflow.TickObserver) error {
+	return &workflow.UnsupportedError{Field: "OnTick", Missing: workflow.CapTickEvents, Reason: "hybrid: ticks would name the scheduler's forwarder runs"}
+}

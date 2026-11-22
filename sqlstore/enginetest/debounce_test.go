@@ -19,6 +19,8 @@ import (
 // barrier) see every replaced burst exactly once, exactly one of them finds
 // no previous burst, and the burst left is the one nobody got back. It runs
 // over several fresh keys so the first-insert race happens many times.
+//
+//ds:def id=enginetest-testdebounceswaprace-xyrjyux2 owner=@khanakia stability=stable
 func TestDebounceSwapRace(t *testing.T) {
 	const swappers, keys = 12, 8
 	for _, e := range engines(t) {
@@ -174,6 +176,8 @@ func TestDebounceStoreRoundTrip(t *testing.T) {
 // TestDebounceAcrossProcesses runs middleware.Debounce in two "processes"
 // (two debouncers, each with its own SQL store over one table) in front of
 // one memory client: a burst enqueued from both runs once, the last job.
+//
+//ds:def id=enginetest-testdebounceacrossprocesses-9j3drg7t owner=@khanakia stability=stable
 func TestDebounceAcrossProcesses(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {

@@ -1,0 +1,7 @@
+func markCancelled(st *State, now time.Time) effects {
+	if st.Finished || st.Cancelled {
+		return effects{}
+	}
+	st.Cancelled, st.CancelledAt = true, now
+	return effects{cancelRest: true}
+}

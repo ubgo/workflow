@@ -168,6 +168,7 @@ func (errLimiter) Allow(context.Context, string, time.Time) (bool, int, error) {
 	return false, 0, errors.New("store down")
 }
 
+//ds:def id=mw-testalertslimitererrorstillalerts-sau2vn5c owner=@khanakia stability=stable
 func TestAlertsLimiterErrorStillAlerts(t *testing.T) {
 	var rec alertRec
 	middleware.Alerts(&rec, middleware.AlertConfig{Limiter: errLimiter{}})(context.Background(), failed("w", "s"))
@@ -176,6 +177,7 @@ func TestAlertsLimiterErrorStillAlerts(t *testing.T) {
 	}
 }
 
+//ds:def id=mw-testmemoryalertlimiterratecap-pxt3g3xm owner=@khanakia stability=stable
 func TestMemoryAlertLimiterRateCap(t *testing.T) {
 	clk := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	lim := middleware.NewMemoryAlertLimiter(clk, middleware.AlertLimits{Max: 2, Per: time.Minute})
@@ -200,6 +202,7 @@ func TestMemoryAlertLimiterRateCap(t *testing.T) {
 	}
 }
 
+//ds:def id=mw-testreportplugin-gkegv5zs owner=@khanakia stability=stable
 func TestReportPlugin(t *testing.T) {
 	var mu sync.Mutex
 	var got []workflow.Failure

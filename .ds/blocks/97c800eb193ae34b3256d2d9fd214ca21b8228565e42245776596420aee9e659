@@ -1,0 +1,21 @@
+func (c *Client) onSchedules(ctx context.Context, field string, t workflow.ScheduleTarget, op func(workflow.SchedulePauser, context.Context, workflow.ScheduleTarget) error) error {
+	sps, err := every[workflow.SchedulePauser](c, field, workflow.CapSchedulePause)
+	if err != nil {
+		return err
+	}
+	if err := workflow.ValidateScheduleTarget(t); err != nil {
+		return err
+	}
+	if !t.All {
+		name, _, inner, err := c.scheduleRegion(t.ID)
+		if err != nil {
+			return err
+		}
+		return op(sps[name], ctx, workflow.ScheduleTarget{ID: inner})
+	}
+	errs := map[string]error{}
+	for _, name := range c.names {
+		errs[name] = op(sps[name], ctx, t)
+	}
+	return joinRegions(field, c.names, errs)
+}

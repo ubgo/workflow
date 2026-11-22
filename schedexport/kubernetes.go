@@ -12,6 +12,8 @@ import (
 
 // CronJobOptions are the parts of a Kubernetes CronJob a Schedule does not
 // carry.
+//
+//ds:def id=schedexport-cronjoboptions-hzyhec52 owner=@khanakia stability=stable
 type CronJobOptions struct {
 	// Image is the container image. Required.
 	Image string
@@ -56,6 +58,8 @@ var (
 //
 // Target.Command overrides the image's entrypoint and Target.Args are the
 // container's args; both may be empty. The file is named <name>.yaml.
+//
+//ds:def id=schedexport-cronjob-haa7av5t owner=@khanakia stability=stable
 func CronJob(s workflow.Schedule, t Target, o CronJobOptions) (File, error) {
 	const f = FormatKubernetes
 	j, err := prepare(f, s, t)
@@ -168,6 +172,8 @@ func CronJob(s workflow.Schedule, t Target, o CronJobOptions) (File, error) {
 // the two day fields unless one of them is a literal "*" (a stepped "*/2"
 // counts as restricted), so the day fields are written to keep the day
 // rule: "*" only where the rule is AND with that field unrestricted.
+//
+//ds:def id=schedexport-fivefields-zajpjqpq owner=@khanakia stability=stable
 func fiveFields(f Format, fl cron.Fields) (string, error) {
 	if len(fl.Second) != 1 || fl.Second[0] != 0 {
 		return "", refuse(f, "second", "it fires at most once a minute, at second 0")
@@ -191,6 +197,8 @@ func fiveFields(f Format, fl cron.Fields) (string, error) {
 // dayFields writes the day-of-month and day-of-week fields for a parser
 // that ANDs them when one is "*" and ORs them otherwise. list writes a
 // restricted field without a leading "*".
+//
+//ds:def id=schedexport-dayfields-2vyg9nm3 owner=@khanakia stability=stable
 func dayFields(f Format, fl cron.Fields, list func([]int, int, int) string) (string, string, error) {
 	domFull, dowFull := full(fl.DayOfMonth, 1, 31), full(fl.DayOfWeek, 0, 6)
 	switch {

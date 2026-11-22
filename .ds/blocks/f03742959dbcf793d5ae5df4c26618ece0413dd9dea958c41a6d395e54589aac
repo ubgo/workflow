@@ -1,0 +1,16 @@
+func choiceBranch(choice, branch string, run Handler) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		var r choiceRoute
+		if err := json.Unmarshal(in, &r); err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: choice %q: branch %q: decide output does not decode: %w", choice, branch, err))
+		}
+		if r.Branch != branch {
+			return encodeJSON("choice "+choice, choiceOut{})
+		}
+		out, err := run(ctx, r.Input)
+		if err != nil {
+			return nil, err
+		}
+		return encodeJSON("choice "+choice, choiceOut{Taken: true, Output: out})
+	}
+}

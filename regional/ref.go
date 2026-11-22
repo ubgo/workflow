@@ -26,6 +26,8 @@ func splitID(id string) (region, inner string, ok bool) {
 }
 
 // encodeRef prefixes every set ID of a driver's ref with region.
+//
+//ds:def id=regional-encoderef-wyg9u2rm owner=@khanakia stability=stable
 func encodeRef(region string, ref workflow.RunRef) workflow.RunRef {
 	if !ref.RunID.IsZero() {
 		ref.RunID = workflow.RunID(prefix(region) + string(ref.RunID))

@@ -2,17 +2,17 @@
 
 Moving an app from one backend to another without a stop: from SQLite to Postgres when one server becomes three, from the SQL driver to Hatchet when the queue outgrows the database. The old backend still holds runs in flight (an export half done, a run waiting for a reply, delayed jobs due next week) and schedules the app made at run time; the app holds refs to those runs in its own tables. Stopping the old backend loses them, and draining it first means a window where no new work is accepted.
 
-Package `cutover` joins the old and the new client into one: new work goes to the new backend, the old one keeps running what it holds, and every ref says which backend it belongs to, so `Status`, `Cancel` and the run queries reach the right one. `Remaining` tells the app when the old backend is empty and can be dropped.
+Package `cutover` joins the old and the new client into one ([`cutover.New`](ds:block?id=cutover-new-wkttdfys)): new work goes to the new backend, the old one keeps running what it holds, and every ref says which backend it belongs to, so `Status`, `Cancel` and the run queries reach the right one. `Remaining` tells the app when the old backend is empty and can be dropped.
 
 ## Before you start
 
-- Two clients, both unstarted and owned by the cutover client (it registers and starts them): any drivers, for example `sqlstore` on SQLite as the old one and `sqlstore` on Postgres as the new one.
-- `Remaining` needs `CapRunQuery` on the old backend; `MoveSchedules` needs `CapScheduleList` there. The memory, SQL and Redis drivers have both.
+- Two clients, both unstarted and owned by the cutover client (it registers and starts them, [`cutover.New`](ds:block?id=cutover-new-wkttdfys)): any drivers, for example `sqlstore` on SQLite as the old one and `sqlstore` on Postgres as the new one.
+- [`Remaining`](ds:block?id=cutover-client-remaining-qasz4mwf) needs `CapRunQuery` on the old backend; [`MoveSchedules`](ds:block?id=cutover-client-moveschedules-yrmb5kjs) needs `CapScheduleList` there. The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-paritycaps-e5y5vqhk), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have both.
 - The runnable program for this page is [examples/backend-cutover](../../examples/backend-cutover/).
 
 ## Join the two backends
 
-`cutover.New(old, new, opts...)` returns a `workflow.Client`. `Register` and `Start` go to both, so the old backend keeps the handlers of the runs it holds:
+[`cutover.New(old, new, opts...)`](ds:block?id=cutover-new-wkttdfys) returns a `workflow.Client`. [`Register`](ds:block?id=cutover-client-register-dxfjnaqq) and `Start` go to both, so the old backend keeps the handlers of the runs it holds:
 
 <!-- snippet: examples/backend-cutover/main.go#client -->
 ```go
@@ -26,11 +26,11 @@ if err := c.Start(ctx); err != nil {
 }
 ```
 
-A workflow the old backend cannot run (its `CheckCaps` fails, for a feature only the new backend has) is registered on the new backend only; `NewOnly(name)` reports it.
+A workflow the old backend cannot run (its [`CheckCaps`](ds:block?id=checkcaps-eg44ezuh) fails, for a feature only the new backend has) is registered on the new backend only; [`NewOnly(name)`](ds:block?id=cutover-client-newonly-hp38vd62) reports it.
 
 ## New work and old refs
 
-`Enqueue` goes to the new backend only, and its ref carries the prefix `new:` in front of the driver's own ID:
+[`Enqueue`](ds:block?id=cutover-client-enqueue-mdktyder) goes to the new backend only, and its ref carries the prefix `new:` in front of the driver's own ID ([`encodeRef`](ds:block?id=cutover-encoderef-4er3m4bu)):
 
 <!-- snippet: examples/backend-cutover/main.go#enqueue -->
 ```go
@@ -41,7 +41,7 @@ if err != nil {
 fmt.Println("enqueued:", ref.RunID) // new:<the new backend's own ID>
 ```
 
-A ref the app stored before the cutover has no prefix. `Status`, `Cancel`, `Result`, `Retry`, `Delete`, `Reschedule`, `EditRun`, `ResetRun` and `CancelStep` try it on the old backend first and on the new one when the old one answers `ErrNotFound`. Refs with a prefix (`old:` or `new:`) go straight to their backend; `Runs` merges both backends' feeds, newest first, with prefixed refs:
+A ref the app stored before the cutover has no prefix. `Status`, `Cancel`, `Result`, `Retry`, `Delete`, `Reschedule`, `EditRun`, `ResetRun` and `CancelStep` try it on the old backend first and on the new one when the old one answers `ErrNotFound` ([`onRef`](ds:block?id=cutover-client-onref-c9jkt4up)). Refs with a prefix (`old:` or `new:`) go straight to their backend; [`Runs`](ds:block?id=cutover-client-runs-tsymaquu) merges both backends' feeds, newest first, with prefixed refs:
 
 <!-- snippet: examples/backend-cutover/main.go#status -->
 ```go
@@ -58,13 +58,13 @@ if err != nil {
 }
 ```
 
-Two backends can hand out the same bare ID (two memory drivers both count from `run-1`), which is why every ref this client returns names its backend. `Signal` and `SignalWaiting` go to both backends, since a waiting run may sit on either (`SignalWaiting` only when both implement `workflow.TransientSignaller`, and it returns the total resumed); `CancelAll`, `Pause` and `Resume` apply to both; `Drain` drains both, `Nodes` lists both, `Health` is ready while the new backend is, and `OnRunFinished` observes both with prefixed refs. Step handlers see the prefixed `RunID` in `StepInfo`.
+Two backends can hand out the same bare ID (two memory drivers both count from `run-1`), which is why every ref this client returns names its backend. [`Signal`](ds:block?id=cutover-client-signal-4xrqzvqc) and [`SignalWaiting`](ds:block?id=cutover-client-signalwaiting-79gpg9qc) go to both backends, since a waiting run may sit on either (`SignalWaiting` only when both implement `workflow.TransientSignaller`, and it returns the total resumed); `CancelAll`, `Pause` and `Resume` apply to both; [`Drain`](ds:block?id=cutover-client-drain-zqjmfrsf) drains both, [`Nodes`](ds:block?id=cutover-client-nodes-awkvzshn) lists both, [`Health`](ds:block?id=cutover-client-health-j9hxbjx3) is ready while the new backend is, and [`OnRunFinished`](ds:block?id=cutover-client-onrunfinished-tvwmvejt) observes both with prefixed refs. Step handlers see the prefixed `RunID` in `StepInfo`.
 
 ## Move the schedules
 
-Schedules live on one backend, the new one by default, since a schedule on both would fire every tick twice. `Workflow.Cron` is registered on that backend only, so a driver that keeps declared crons in its store drops the old copy at `Start`. `cutover.SchedulesOn(cutover.SideOld)` keeps them on the old backend instead, until the app is ready to move them.
+Schedules live on one backend, the new one by default, since a schedule on both would fire every tick twice. `Workflow.Cron` is registered on that backend only ([`Register`](ds:block?id=cutover-client-register-dxfjnaqq) strips it from the other copy), so a driver that keeps declared crons in its store drops the old copy at `Start`. [`cutover.SchedulesOn(cutover.SideOld)`](ds:block?id=cutover-scheduleson-ya9de99v) keeps them on the old backend instead, until the app is ready to move them.
 
-Schedules the app made with `Client.Schedule` on the old backend stay there until it removes them. `MoveSchedules` copies each one the old backend lists to the new backend, pauses the copy when the original was paused, and unschedules the original; a `ScheduleInfo` carries no `Input`, so the app supplies it:
+Schedules the app made with `Client.Schedule` on the old backend stay there until it removes them. [`MoveSchedules`](ds:block?id=cutover-client-moveschedules-yrmb5kjs) copies each one the old backend lists to the new backend, pauses the copy when the original was paused, and unschedules the original ([`moveOne`](ds:block?id=cutover-client-moveone-69cewga5)); a `ScheduleInfo` carries no `Input`, so the app supplies it:
 
 <!-- snippet: examples/backend-cutover/main.go#move -->
 ```go
@@ -80,9 +80,9 @@ for _, m := range moved { // a cutover.Moved: Name, Workflow, From (old:...), To
 }
 ```
 
-`MoveSchedules` returns one `cutover.Moved` per schedule moved: its `Name` and `Workflow`, `From` (the old, `old:`-prefixed ID) and `To` (the new, `new:`-prefixed ID). Store the new IDs wherever the app kept the old ones. It stops at the first failure and returns what it moved so far; a schedule is never left firing on both, because when the old copy cannot be removed the new copy is unscheduled again before the error is returned. Run it once, from one process.
+`MoveSchedules` returns one [`cutover.Moved`](ds:block?id=cutover-moved-hcz4wvs2) per schedule moved: its `Name` and `Workflow`, `From` (the old, `old:`-prefixed ID) and `To` (the new, `new:`-prefixed ID). Store the new IDs wherever the app kept the old ones. It stops at the first failure and returns what it moved so far; a schedule is never left firing on both, because when the old copy cannot be removed the new copy is unscheduled again before the error is returned. Run it once, from one process.
 
-The two backends are the two values of `cutover.Side`: `cutover.SideOld` and `cutover.SideNew`, which are also the prefixes of every ID the client hands out. An app not ready to move its schedules yet builds the client with `cutover.SchedulesOn(cutover.SideOld)`:
+The two backends are the two values of [`cutover.Side`](ds:block?id=cutover-side-a33cayts): `cutover.SideOld` and `cutover.SideNew`, which are also the prefixes of every ID the client hands out. An app not ready to move its schedules yet builds the client with `cutover.SchedulesOn(cutover.SideOld)`:
 
 <!-- snippet: examples/backend-cutover/main.go#keep-old -->
 ```go
@@ -107,11 +107,11 @@ fmt.Println("MoveSchedules refused under SchedulesOn(SideOld):", errors.Is(err, 
 
 When the app is ready, it builds the client again with the default (`SideNew`) and calls `MoveSchedules`.
 
-`Schedules` lists both backends, so what is still on `old:` is visible. `Schedule` returns an ID with its backend's prefix; `Unschedule`, `PauseSchedule` and `ResumeSchedule` decode it, and an unprefixed ID (stored before the cutover) is tried on the old backend first.
+[`Schedules`](ds:block?id=cutover-client-schedules-kcsh3twn) lists both backends, so what is still on `old:` is visible. [`Schedule`](ds:block?id=cutover-client-schedule-3ktbbxq5) returns an ID with its backend's prefix; [`Unschedule`](ds:block?id=cutover-client-unschedule-n84rqfj5), `PauseSchedule` and `ResumeSchedule` ([`onSchedule`](ds:block?id=cutover-client-onschedule-uhfgu7ju)) decode it, and an unprefixed ID (stored before the cutover) is tried on the old backend first.
 
 ## Retire the old backend
 
-`Remaining` counts the old backend's runs that have not finished (scheduled, queued, running, waiting or retrying):
+[`Remaining`](ds:block?id=cutover-client-remaining-qasz4mwf) counts the old backend's runs that have not finished (scheduled, queued, running, waiting or retrying):
 
 <!-- snippet: examples/backend-cutover/main.go#remaining -->
 ```go
@@ -122,18 +122,18 @@ if err != nil {
 fmt.Println("unfinished runs on the old backend:", n)
 ```
 
-At zero, with the schedules moved, nothing more will run there: deploy the app with the new client alone. Keep the cutover client while you may still `Retry` a failed run of the old backend, since a retry re-opens it there.
+At zero, with the schedules moved, nothing more will run there: deploy the app with the new client alone. Keep the cutover client while you may still `Retry` a failed run of the old backend, since a retry re-opens it there ([`Remaining`](ds:block?id=cutover-client-remaining-qasz4mwf)).
 
 ## Capabilities
 
-`Capabilities` answers for the calls the client routes:
+[`Capabilities`](ds:block?id=cutover-client-capabilities-sq86kg5y) answers for the calls the client routes:
 
 | Family | Whose | Capabilities |
 |---|---|---|
 | Enqueue path | the new backend's | every capability not named below: what `Enqueue`, `Register` and `Start` check |
-| Runs | both backends' | `CapCancel`, `CapRunQuery`, `CapRetryRun`, `CapDeleteRun`, `CapCancelAll`, `CapRunStates`, `CapErrorHistory`, `CapLabelPrefix`, `CapDueQuery`, `CapResult`, `CapPauseWorkflow`, `CapPauseQueue`, `CapDrain`, `CapNodeIdentity`, `CapRunFinished` (which also needs both to implement `workflow.RunNotifier`) |
-| Schedules | the schedule backend's | `CapCron`, `CapCronZone`, `CapCronSeconds`, `CapScheduleWhen`, `CapScheduleWindow`, `CapSchedulePause`, `CapScheduleList`, `CapOverlapSkip`, `CapScheduleHistory`, `CapScheduleActive`, `CapScheduleKeep`, `CapTickTime` and the misfire policies |
-| Not offered | none | `CapScheduleTrigger`, `CapTickEvents`, `CapWorkerScale`, `CapClosure`, `CapForceRun`, `CapDrainReport`: their interfaces are not routed; call `c.Old()` or `c.New()` for those |
+| Runs | both backends' ([`sharedCaps`](ds:block?id=cutover-sharedcaps-848dhjab)) | `CapCancel`, `CapRunQuery`, `CapRetryRun`, `CapDeleteRun`, `CapCancelAll`, `CapRunStates`, `CapErrorHistory`, `CapLabelPrefix`, `CapDueQuery`, `CapResult`, `CapPauseWorkflow`, `CapPauseQueue`, `CapDrain`, `CapNodeIdentity`, `CapRunFinished` (which also needs both to implement `workflow.RunNotifier`) |
+| Schedules | the schedule backend's ([`scheduleCaps`](ds:block?id=cutover-schedulecaps-u6qn43gw)) | `CapCron`, `CapCronZone`, `CapCronSeconds`, `CapScheduleWhen`, `CapScheduleWindow`, `CapSchedulePause`, `CapScheduleList`, `CapOverlapSkip`, `CapScheduleHistory`, `CapScheduleActive`, `CapScheduleKeep`, `CapTickTime` and the misfire policies |
+| Not offered | none ([`unroutedCaps`](ds:block?id=cutover-unroutedcaps-a996f4gq)) | `CapScheduleTrigger`, `CapTickEvents`, `CapWorkerScale`, `CapClosure`, `CapForceRun`, `CapDrainReport`: their interfaces are not routed; call `c.Old()` or `c.New()` for those |
 
 ## Try it
 
@@ -162,12 +162,12 @@ MoveSchedules refused under SchedulesOn(SideOld): true
 
 ## Pitfalls
 
-- Nothing is enqueued on the old backend, not even when the new one is down: the cutover client does not fail over. For that, see [failover](../reliability/failover.md).
-- An unprefixed ref is looked up on the old backend first. If the app also stores bare IDs it got from the new backend directly (not through this client), and both backends could hand out the same ID, store the prefixed ref instead.
-- `Signal` goes to both backends; when one fails the other has already taken the event, and the error names the failing one, so a retried `Signal` may reach that one twice.
-- `MoveSchedules` skips declared crons (they follow `Register`), needs the input func (`ErrInvalid` without it), refuses under `SchedulesOn(SideOld)`, and needs `SchedulePauser` on the new backend for a paused schedule. It stops at the first failure and never leaves a schedule on both: when the old copy cannot be removed, the new copy is removed again. Run it once, from one process.
-- A schedule's `ScheduleWhen` condition is not in its `ScheduleInfo` and does not move; set it again on the new backend.
-- An optional interface whose capability is missing on a backend it needs is refused with an `UnsupportedError`, never answered from one backend alone. The calls without a capability (`Reschedule`, `EditRun`, `ResetRun`, `CancelStep`, `SignalWaiting`) are refused the same way when the backend they reach does not implement them, and `workflow.Supports(c, op)` is true only when both backends do.
+- Nothing is enqueued on the old backend, not even when the new one is down: the cutover client does not fail over ([`Enqueue`](ds:block?id=cutover-client-enqueue-mdktyder)). For that, see [failover](../reliability/failover.md).
+- An unprefixed ref is looked up on the old backend first ([`onRef`](ds:block?id=cutover-client-onref-c9jkt4up)). If the app also stores bare IDs it got from the new backend directly (not through this client), and both backends could hand out the same ID, store the prefixed ref instead.
+- [`Signal`](ds:block?id=cutover-client-signal-4xrqzvqc) goes to both backends; when one fails the other has already taken the event, and the error names the failing one, so a retried `Signal` reaches the backend that took it the first time twice.
+- [`MoveSchedules`](ds:block?id=cutover-client-moveschedules-yrmb5kjs) skips declared crons (they follow `Register`), needs the input func (`ErrInvalid` without it), refuses under `SchedulesOn(SideOld)`, and needs `SchedulePauser` on the new backend for a paused schedule. It stops at the first failure and never leaves a schedule on both: when the old copy cannot be removed, the new copy is removed again. Run it once, from one process.
+- A schedule's `ScheduleWhen` condition is not in its `ScheduleInfo` and does not move ([`moveOne`](ds:block?id=cutover-client-moveone-69cewga5)); set it again on the new backend.
+- An optional interface whose capability is missing on a backend it needs is refused with an `UnsupportedError`, never answered from one backend alone ([`need`](ds:block?id=cutover-client-need-zy5t2vf3), [`both`](ds:block?id=cutover-both-wgpnkv98)). The calls without a capability (`Reschedule`, `EditRun`, `ResetRun`, `CancelStep`, `SignalWaiting`) are refused the same way when the backend they reach does not implement them, and `workflow.Supports(c, op)` is true only when both backends do ([`Supports`](ds:block?id=cutover-client-supports-k9xeak5n)).
 
 ## Related
 

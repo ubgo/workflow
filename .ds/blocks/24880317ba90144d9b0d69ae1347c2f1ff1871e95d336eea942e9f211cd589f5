@@ -1,0 +1,13 @@
+func (b Builder) Days(days ...time.Weekday) Builder {
+	if len(days) == 0 {
+		return b.fail("Days(): name at least one day")
+	}
+	nums := make([]int, 0, len(days))
+	for _, d := range days {
+		if d < time.Sunday || d > time.Saturday {
+			return b.fail("Days(%d): not a weekday", d)
+		}
+		nums = append(nums, int(d))
+	}
+	return b.withDow("Days()", joinInts(nums))
+}

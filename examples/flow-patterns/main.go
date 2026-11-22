@@ -589,6 +589,7 @@ func bookingWorkflow(did *log) (workflow.Workflow, error) {
 // audit step lists the branch steps themselves in After: a local merge
 // that runs once, after the branches taken, and reads what they stored.
 func alertsWorkflow(did *log) (workflow.Workflow, error) {
+	// snippet:merge
 	channels := []string{"email", "sms", "push"}
 	branches := make([]workflow.Branch, len(channels))
 	for i, ch := range channels {
@@ -616,7 +617,6 @@ func alertsWorkflow(did *log) (workflow.Workflow, error) {
 	if err != nil {
 		return workflow.Workflow{}, err
 	}
-	// snippet:merge
 	steps = append(steps, workflow.Step{
 		Name:  "audit",
 		After: []string{"page.email", "page.sms", "page.push"}, // the branch steps, not the join "page"

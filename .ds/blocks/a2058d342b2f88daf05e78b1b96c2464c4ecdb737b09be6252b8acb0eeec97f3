@@ -1,0 +1,7 @@
+func BackfillPlan(spec BackfillSpec) ([]time.Time, error) {
+	t, err := spec.target()
+	if err != nil {
+		return nil, err
+	}
+	return planTicks(spec, t)
+}

@@ -1,0 +1,11 @@
+var secretValueRules = []struct {
+	name string
+	re   *regexp.Regexp
+}{
+	{"pem-private-key", regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`)},
+	{"aws-access-key", regexp.MustCompile(`\b(AKIA|ASIA)[0-9A-Z]{16}\b`)},
+	{"stripe-live-key", regexp.MustCompile(`\b(sk|rk)_live_[0-9A-Za-z]{10,}`)},
+	{"github-token", regexp.MustCompile(`\b(gh[pousr]_[0-9A-Za-z]{30,}|github_pat_[0-9A-Za-z_]{30,})`)},
+	{"slack-token", regexp.MustCompile(`\bxox[abprs]-[0-9A-Za-z-]{10,}`)},
+	{"jwt", regexp.MustCompile(`\beyJ[0-9A-Za-z_-]{8,}\.eyJ[0-9A-Za-z_-]{8,}\.[0-9A-Za-z_-]{8,}`)},
+}

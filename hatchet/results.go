@@ -26,6 +26,8 @@ var (
 // workflow.RunOutput of its final steps' outputs, which the engine keeps
 // with the run's tasks for as long as it keeps the run. A run that has
 // not succeeded returns ErrWrongState, an unknown one ErrNotFound.
+//
+//ds:def id=hatchet-client-result-vs7rxkce owner=@khanakia stability=stable
 func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -104,10 +106,18 @@ func (c *Client) runOutput(name string, d *rest.V1WorkflowRunDetails) ([]byte, b
 // shapeWorkflow rebuilds the step graph of run d from the engine's shape
 // (task names and children), keeping only completed tasks, for a
 // workflow this client did not register. The steps are in name order.
+//
+//ds:def id=hatchet-shapeworkflow-ugsy7nxq owner=@khanakia stability=stable
 func shapeWorkflow(name string, d *rest.V1WorkflowRunDetails) workflow.Workflow {
 	done := map[openapi_types.UUID]bool{}
 	for _, t := range d.Tasks {
 		done[t.TaskExternalId] = t.Status == rest.V1TaskStatusCOMPLETED
+	}
+	// The start gate is the driver's task, not a step.
+	for _, sh := range d.Shape {
+		if sh.TaskName == startGateTask {
+			done[sh.TaskExternalId] = false
+		}
 	}
 	byStep := map[openapi_types.UUID]string{}
 	for _, sh := range d.Shape {
@@ -152,7 +162,15 @@ func shapeWorkflow(name string, d *rest.V1WorkflowRunDetails) workflow.Workflow 
 // engine's database and for a slow poll. Reschedule refuses a start due
 // within it; Cancel deletes such a start and then watches for the run it
 // may still fire (settleLate).
+//
+//ds:def id=hatchet-dueguard-kj9nm3dg owner=@khanakia stability=stable
 const dueGuard = 15 * time.Second
+
+// errRescheduleGated refuses Reschedule of a delayed start with an
+// idempotency key (see Client.Enqueue).
+//
+//ds:def id=hatchet-errreschedulegated-9akd6fmr owner=@khanakia stability=stable
+var errRescheduleGated = workflow.Unsupported("Reschedule", "of a delayed start with an idempotency key: on Hatchet it is a started run whose start gate sleeps until RunAt, and the engine cannot move a durable sleep; Cancel it and Enqueue it again with the new RunAt (the cancel frees the key)")
 
 // Reschedule moves a delayed start that has not fired to at
 // (workflow.RunRescheduler); a zero or past at means now. The RunRef,
@@ -161,7 +179,10 @@ const dueGuard = 15 * time.Second
 // plus the new due time (metaRunAt), then deletes the old one, so the
 // run's ScheduledID is unchanged. A run that has fired, or is due within
 // dueGuard (15s), returns ErrWrongState; an unknown or cancelled
-// one ErrNotFound.
+// one ErrNotFound. A delayed start with an idempotency key, which has a
+// RunID and waits in its start gate, is refused with an UnsupportedError.
+//
+//ds:def id=hatchet-client-reschedule-3nfqbter owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -170,6 +191,13 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 	if ref.ScheduledID.IsZero() {
 		if ref.RunID.IsZero() {
 			return workflow.RunRef{}, fmt.Errorf("%w: empty RunRef", workflow.ErrNotFound)
+		}
+		// A delayed start with an idempotency key is a run whose start
+		// gate sleeps until RunAt; the engine cannot move a durable sleep.
+		if d, err := runDetailsLagged(ctx, sdk, ref.RunID.String(), c.cfg.VisibilityLag); err == nil {
+			if st, _ := c.endStatus(d); st == workflow.StatusScheduled {
+				return workflow.RunRef{}, errRescheduleGated
+			}
 		}
 		return workflow.RunRef{}, fmt.Errorf("%w: run %s has started", workflow.ErrWrongState, ref.RunID)
 	}

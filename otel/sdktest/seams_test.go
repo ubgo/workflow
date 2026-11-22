@@ -56,6 +56,8 @@ func TestParenting(t *testing.T) {
 
 // TestParentLink_KeepsCtxSpan: under ParentLink the span ctx already holds
 // (an engine SDK's) stays the parent; under ParentNewRootLink it does not.
+//
+//ds:def id=sdktest-testparentlink-keepsctxspan-4rsc6p34 owner=@khanakia stability=stable
 func TestParentLink_KeepsCtxSpan(t *testing.T) {
 	for _, p := range []wfotel.Parenting{wfotel.ParentLink, wfotel.ParentNewRootLink} {
 		h := newHarness(t, wfotel.WithParenting(p))
@@ -94,6 +96,7 @@ func TestSpanNames(t *testing.T) {
 	spanNamed(t, h.spans.GetSpans(), "workflow.enqueue w")
 }
 
+//ds:def id=sdktest-testmetriclabels-guusuxq6 owner=@khanakia stability=stable
 func TestMetricLabels(t *testing.T) {
 	h := newHarness(t, wfotel.WithMetricLabels("tier"))
 	h.run(t, noopWF, workflow.Job{Workflow: "w", Labels: map[string]string{"tier": "gold", "user": "u1"}})

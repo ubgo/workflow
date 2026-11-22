@@ -25,6 +25,8 @@ var (
 
 // Supports reports an operation as done only when both backends do it,
 // since a run, or a node, may sit on either.
+//
+//ds:def id=failover-client-supports-ngjgf3fg owner=@khanakia stability=stable
 func (f *Client) Supports(op workflow.Op) bool {
 	return workflow.Supports(f.primary, op) && workflow.Supports(f.secondary, op)
 }
@@ -50,6 +52,8 @@ func (f *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 
 // EditRun edits a scheduled run on the backend its ref names, and
 // prefixes the ref it returns.
+//
+//ds:def id=failover-client-editrun-ybkr9r89 owner=@khanakia stability=stable
 func (f *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
@@ -69,6 +73,8 @@ func (f *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow
 
 // ResetRun re-runs a failed run from step on the backend its ref names,
 // and prefixes the ref it returns.
+//
+//ds:def id=failover-client-resetrun-wc6ug2ny owner=@khanakia stability=stable
 func (f *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := f.onSide(ref, func(sd side, c workflow.Client, inner workflow.RunRef) error {
@@ -92,6 +98,8 @@ func (f *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string)
 // workflow.TransientSignaller; when one does not, nothing is delivered.
 // When one backend fails, the other's deliveries stand and the error
 // names the failing one.
+//
+//ds:def id=failover-client-signalwaiting-vr4r8t7j owner=@khanakia stability=stable
 func (f *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	ps, pok := f.primary.(workflow.TransientSignaller)
 	ss, sok := f.secondary.(workflow.TransientSignaller)
@@ -116,6 +124,8 @@ func (f *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step strin
 
 // Result reads the result from the backend the ref names. Needs CapResult
 // on both.
+//
+//ds:def id=failover-client-result-uhpvxmyj owner=@khanakia stability=stable
 func (f *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error) {
 	if err := f.need("Result", workflow.CapResult); err != nil {
 		return nil, err
@@ -167,6 +177,8 @@ func (f *Client) Health(ctx context.Context) workflow.HealthReport {
 // OnLifecycle registers fn on both backends, with each event's Ref and
 // schedule label prefixed like the refs this client hands out. Both must
 // implement workflow.LifecycleNotifier.
+//
+//ds:def id=failover-client-onlifecycle-wubrqrvt owner=@khanakia stability=stable
 func (f *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 	pl, pok := f.primary.(workflow.LifecycleNotifier)
 	sl, sok := f.secondary.(workflow.LifecycleNotifier)
@@ -200,6 +212,8 @@ func (f *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
 
 // PayloadLimit is the smaller of the backends' hard caps (zero for one
 // without a cap), since a job may land on either.
+//
+//ds:def id=failover-client-payloadlimit-2enw664j owner=@khanakia stability=stable
 func (f *Client) PayloadLimit() int {
 	limit := func(c workflow.Client) int {
 		if l, ok := c.(workflow.PayloadLimiter); ok {

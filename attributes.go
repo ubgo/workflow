@@ -25,6 +25,8 @@ import (
 // AttributeCodec maps a job's metadata to a transport's attributes and
 // back. Attributes is the default; an app whose consumers expect other
 // names implements its own.
+//
+//ds:def id=attributecodec-b4ta84hp owner=@khanakia stability=stable
 type AttributeCodec interface {
 	// Encode returns the attributes that carry job's metadata. The
 	// payload is not encoded: it travels as the message body.
@@ -96,6 +98,7 @@ var (
 	// characters of letters, digits, '_', '-' and '.', not starting or
 	// ending with '.', without "..", and not starting with "AWS." or
 	// "Amazon." in any case. The same rules hold for SNS.
+	//ds:def id=sqsattributes-7ak56yuy owner=@khanakia stability=stable
 	SQSAttributes = AttributeLimits{Name: "SQS", MaxCount: 10, MaxKeyBytes: 256, ValidKey: func(k string) error {
 		if err := keyChars("_-.")(k); err != nil {
 			return err
@@ -112,6 +115,7 @@ var (
 
 	// PubSubAttributes: at most 100 attributes; keys up to 256 bytes,
 	// values up to 1024 bytes; keys must not start with "goog".
+	//ds:def id=pubsubattributes-b9vtxyjr owner=@khanakia stability=stable
 	PubSubAttributes = AttributeLimits{Name: "Pub/Sub", MaxCount: 100, MaxKeyBytes: 256, MaxValueBytes: 1024, ValidKey: func(k string) error {
 		if k == "" {
 			return fmt.Errorf("empty key")
@@ -148,6 +152,7 @@ var (
 	// HTTPHeaders: header names are tokens (letters, digits and
 	// !#$%&'*+-.^_`|~) and case-insensitive; values hold no control
 	// characters but tab, so no value can split a header.
+	//ds:def id=httpheaders-33x53fpr owner=@khanakia stability=stable
 	HTTPHeaders = AttributeLimits{Name: "HTTP", ValidKey: keyChars("!#$%&'*+-.^_`|~"), ValidValue: noControl, CaseInsensitive: true}
 )
 
@@ -164,11 +169,15 @@ func noControl(v string) error {
 
 // DefaultAttributePrefix starts the name of every attribute Attributes
 // writes, except the trace context's standard names.
+//
+//ds:def id=defaultattributeprefix-9hnzab3c owner=@khanakia stability=stable
 const DefaultAttributePrefix = "ubgo-"
 
 // DefaultTraceAttributes maps the trace labels the otel module writes
 // (LabelPrefixOTel plus the W3C propagator's keys) to the standard names
 // other tracers read from message attributes and headers.
+//
+//ds:def id=defaulttraceattributes-nam377yv owner=@khanakia stability=stable
 func DefaultTraceAttributes() map[string]string {
 	return map[string]string{
 		LabelPrefixOTel + "traceparent": "traceparent",
@@ -189,6 +198,8 @@ func DefaultTraceAttributes() map[string]string {
 // name, the count would pass Limits.MaxCount, the transport folds case or
 // PackLabels is set, all together as one JSON object in <prefix>labels.
 // Decode reads both forms.
+//
+//ds:def id=attributes-7zyw3bfr owner=@khanakia stability=stable
 type Attributes struct {
 	// Limits is what the transport accepts. The zero value accepts
 	// anything.
@@ -232,6 +243,8 @@ func (a Attributes) trace() map[string]string {
 }
 
 // Encode implements AttributeCodec.
+//
+//ds:def id=attributes-encode-zx9435tw owner=@khanakia stability=stable
 func (a Attributes) Encode(job Job) (map[string]string, error) {
 	p := a.prefix()
 	out := map[string]string{}
@@ -417,6 +430,8 @@ func (a Attributes) Decode(attrs map[string]string) (DecodedAttributes, error) {
 // to continue the sender's trace. Such labels are reserved: enqueue them
 // under AllowReservedPrefix(ctx, LabelPrefixOTel), and not through the
 // otel module's enqueue middleware, which writes its own.
+//
+//ds:def id=attributes-tracelabels-zagv8x95 owner=@khanakia stability=stable
 func (a Attributes) TraceLabels(d DecodedAttributes) map[string]string {
 	if len(d.Trace) == 0 {
 		return nil
@@ -436,6 +451,8 @@ func (a Attributes) TraceLabels(d DecodedAttributes) map[string]string {
 
 // SetHeader writes attrs into h, one header per attribute, replacing
 // headers of the same names. Encode with HTTPHeaders limits first.
+//
+//ds:def id=setheader-e5daj8aj owner=@khanakia stability=stable
 func SetHeader(h http.Header, attrs map[string]string) {
 	for k, v := range attrs {
 		h.Set(k, v)
@@ -445,6 +462,8 @@ func SetHeader(h http.Header, attrs map[string]string) {
 // HeaderAttributes reads every header of h as an attribute (the first
 // value of each, under its canonical name), for Decode with HTTPHeaders
 // limits, which match names in any case.
+//
+//ds:def id=headerattributes-zm9xyp7h owner=@khanakia stability=stable
 func HeaderAttributes(h http.Header) map[string]string {
 	out := make(map[string]string, len(h))
 	for k, vs := range h {

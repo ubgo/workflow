@@ -1,0 +1,4 @@
+func IsRelease(err error) bool {
+	var r *retryAfterError
+	return errors.As(err, &r)
+}

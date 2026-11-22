@@ -1,0 +1,44 @@
+func (m *Manager) Add(ctx context.Context, id ID, jobs ...workflow.Job) error {
+	if len(jobs) == 0 {
+		return nil
+	}
+	if err := checkJobs(string(id), "added job ", jobs); err != nil {
+		return err
+	}
+	ownerID, err := newID()
+	if err != nil {
+		return err
+	}
+	owner := string(ownerID)
+	var spec []workflow.Job
+	var idxs []int
+	_, err = m.store.Update(ctx, id, func(s *State) error {
+		if s.Finished || s.Cancelled {
+			return fmt.Errorf("batch %s: add jobs: %w", s.ID, ErrClosed)
+		}
+		if err := m.claimChange(s, owner, "Add"); err != nil {
+			return err
+		}
+		first := len(s.Jobs)
+		added := labelJobs(s.ID, first, jobs)
+		spec = make([]workflow.Job, first, first+len(added))
+		if len(s.Spec) == first {
+			copy(spec, s.Spec) // kept by WithRetryableJobs
+		}
+		spec = append(spec, added...)
+		s.Jobs = append(s.Jobs, make([]JobState, len(added))...)
+		idxs = make([]int, len(added))
+		for k := range idxs {
+			idxs[k] = first + k
+		}
+		s.Spec = nil
+		if _, ok := m.client.(GroupRunner); (ok && groupEligible(added)) || m.resumable || m.retainSpecs {
+			s.Spec = spec
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return m.start(ctx, id, owner, spec, idxs)
+}

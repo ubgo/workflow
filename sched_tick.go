@@ -11,10 +11,14 @@ import "time"
 // driver's clock at the trigger. It is under the reserved
 // LabelPrefixInternal, so an app cannot set it by accident. Drivers with
 // CapTickTime set it on every fired run.
+//
+//ds:def id=labeltickat-6ry4j4ub owner=@khanakia stability=stable
 const LabelTickAt = LabelPrefixInternal + "tick-at"
 
 // FiredLabelsAt is FiredLabels plus LabelTickAt set to at. Drivers with
 // CapTickTime build every fired job's labels with it.
+//
+//ds:def id=firedlabelsat-4bvptmsr owner=@khanakia stability=stable
 func FiredLabelsAt(labels map[string]string, id ScheduleID, name string, at time.Time) map[string]string {
 	out := FiredLabels(labels, id, name)
 	out[LabelTickAt] = at.UTC().Format(time.RFC3339Nano)
@@ -24,6 +28,8 @@ func FiredLabelsAt(labels map[string]string, id ScheduleID, name string, at time
 // TickTime returns the tick a run's labels name (LabelTickAt), in UTC;
 // false when the run was not fired by a schedule, or by a driver without
 // CapTickTime, or the label does not parse.
+//
+//ds:def id=ticktime-gzbhf3gj owner=@khanakia stability=stable
 func TickTime(labels map[string]string) (time.Time, bool) {
 	v, ok := labels[LabelTickAt]
 	if !ok {
@@ -38,4 +44,6 @@ func TickTime(labels map[string]string) (time.Time, bool) {
 
 // TickAt returns the tick this run was fired for (see LabelTickAt); false
 // when no schedule fired it.
+//
+//ds:def id=stepinfo-tickat-rt2h9tgz owner=@khanakia stability=stable
 func (i StepInfo) TickAt() (time.Time, bool) { return TickTime(i.Labels) }

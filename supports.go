@@ -7,21 +7,28 @@ type Op string
 
 // The operations Supports answers for.
 const (
-	OpReschedule     Op = "reschedule"      // RunRescheduler
+	OpReschedule Op = "reschedule" // RunRescheduler
+	//ds:def id=opeditrun-9u2hhcey owner=@khanakia stability=stable
 	OpEditRun        Op = "edit-run"        // RunEditor
 	OpResetRun       Op = "reset-run"       // RunResetter
 	OpResetSucceeded Op = "reset-succeeded" // RunResetterWith (ResetOptions.Succeeded)
 	OpForkRun        Op = "fork-run"        // RunForker
-	OpSignalWaiting  Op = "signal-waiting"  // TransientSignaller
-	OpCancelStep     Op = "cancel-step"     // StepCanceller
-	OpNodes          Op = "nodes"           // NodeLister
-	OpLifecycle      Op = "lifecycle"       // LifecycleNotifier
-	OpRunSignals     Op = "run-signals"     // RunSignalReader
+	//ds:def id=opsignalwaiting-z676jv7w owner=@khanakia stability=stable
+	OpSignalWaiting Op = "signal-waiting" // TransientSignaller
+	//ds:def id=opcancelstep-x8n8q838 owner=@khanakia stability=stable
+	OpCancelStep Op = "cancel-step" // StepCanceller
+	OpNodes      Op = "nodes"       // NodeLister
+	//ds:def id=oplifecycle-mcqawhzd owner=@khanakia stability=stable
+	OpLifecycle Op = "lifecycle" // LifecycleNotifier
+	//ds:def id=oprunsignals-tmgz66m8 owner=@khanakia stability=stable
+	OpRunSignals Op = "run-signals" // RunSignalReader
 )
 
 // OpProber is implemented by a client wrapper whose optional methods
 // exist whether or not what it wraps can do them (Forward, failover): it
 // answers for what is underneath.
+//
+//ds:def id=opprober-g847tnv9 owner=@khanakia stability=stable
 type OpProber interface {
 	Supports(op Op) bool
 }
@@ -29,6 +36,8 @@ type OpProber interface {
 // Supports reports whether c really does op: its OpProber's answer when
 // it has one (a wrapper), else whether c implements the operation's
 // interface. An unknown op is false.
+//
+//ds:def id=supports-4xyjjwvz owner=@khanakia stability=stable
 func Supports(c Client, op Op) bool {
 	if p, ok := c.(OpProber); ok {
 		return p.Supports(op)

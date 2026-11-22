@@ -1,0 +1,10 @@
+func (o *Outbox) newID() (string, error) {
+	id, err := o.ids()
+	if err != nil {
+		return "", fmt.Errorf("outbox: generate an entry id: %w", err)
+	}
+	if id == "" || len(id) > maxIDLen {
+		return "", fmt.Errorf("%w: the id generator returned %q; an entry id is 1 to %d bytes", workflow.ErrInvalid, id, maxIDLen)
+	}
+	return id, nil
+}

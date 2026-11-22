@@ -1,0 +1,10 @@
+func Parse(expr string) (Schedule, error) {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return nil, &ParseError{Expr: expr, Field: "expression", Reason: "empty expression"}
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		return parseMacro(expr, trimmed)
+	}
+	return parseFields(expr, trimmed, trimmed)
+}

@@ -1,0 +1,6 @@
+func RequiresPause(t PauseTarget) Caps {
+	if t.Queue != "" {
+		return CapPauseQueue
+	}
+	return CapPauseWorkflow
+}

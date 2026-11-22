@@ -1,0 +1,6 @@
+func (b Backoff) JitteredDelay(n int, u float64) time.Duration {
+	d := b.Delay(n)
+	j := min(max(b.Jitter, 0), 1)
+	u = min(max(u, 0), 1)
+	return d - time.Duration(float64(d)*j*u)
+}

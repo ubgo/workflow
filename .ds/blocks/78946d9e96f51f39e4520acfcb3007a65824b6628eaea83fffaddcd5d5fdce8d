@@ -1,0 +1,26 @@
+func taskDays(fl cron.Fields) (string, error) {
+	const f = FormatTaskScheduler
+	domFull, dowFull, monthFull := full(fl.DayOfMonth, 1, 31), full(fl.DayOfWeek, 0, 6), full(fl.Month, 1, 12)
+	everyDay := (fl.DayOr && (domFull || dowFull)) || (domFull && dowFull)
+	switch {
+	case everyDay && monthFull:
+		return "      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>\n", nil
+	case everyDay:
+		return byMonth(allDays(), fl.Month), nil
+	case fl.DayOr:
+		return "", refuse(f, "day-of-month", "either day may match; a trigger per day field would start the task twice on a day matching both")
+	case domFull && monthFull:
+		return "      <ScheduleByWeek>\n        <WeeksInterval>1</WeeksInterval>\n" + daysOfWeek(fl.DayOfWeek) + "      </ScheduleByWeek>\n", nil
+	case domFull:
+		var b strings.Builder
+		b.WriteString("      <ScheduleByMonthDayOfWeek>\n        <Weeks>\n")
+		for _, w := range []string{"1", "2", "3", "4", "Last"} {
+			b.WriteString("          <Week>" + w + "</Week>\n")
+		}
+		b.WriteString("        </Weeks>\n" + daysOfWeek(fl.DayOfWeek) + months(fl.Month) + "      </ScheduleByMonthDayOfWeek>\n")
+		return b.String(), nil
+	case dowFull:
+		return byMonth(fl.DayOfMonth, fl.Month), nil
+	}
+	return "", refuse(f, "day-of-month", "both day fields are restricted and must both match; no schedule ANDs a date with a weekday")
+}

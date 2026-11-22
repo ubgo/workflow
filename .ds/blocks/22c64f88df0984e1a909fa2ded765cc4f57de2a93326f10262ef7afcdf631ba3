@@ -1,0 +1,10 @@
+func SignalChoice(ctx context.Context, c Client, event, key, branch string, payload []byte) error {
+	if branch == "" {
+		return invalidf("SignalChoice needs a branch")
+	}
+	b, err := json.Marshal(raceSignal{Branch: branch, Payload: payload})
+	if err != nil {
+		return err
+	}
+	return c.Signal(ctx, Event{Name: event, Key: key, Payload: b})
+}

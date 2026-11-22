@@ -1,16 +1,16 @@
 # The SQL driver (sqlstore)
 
-`sqlstore` is the durable driver on `database/sql`: every run, step result, wait, sleep, schedule, signal and lease is a row, so a restart or a dead worker loses nothing. It runs on SQLite (durable on one machine), Postgres and MySQL 8 (many workers on many machines over one database), through [`github.com/ubgo/sqlb`](https://github.com/ubgo/sqlb). Reach for it when work must survive a restart and you do not want to run a workflow engine; it declares every capability but `CapClosure` (a Go function cannot be stored in a row), each proven by the conformance suite on all three databases.
+`sqlstore` is the durable driver on `database/sql`: every run, step result, wait, sleep, schedule, signal and lease is a row, so a restart or a dead worker loses nothing. It runs on SQLite (durable on one machine), Postgres and MySQL 8 (many workers on many machines over one database), through [`github.com/ubgo/sqlb`](https://github.com/ubgo/sqlb). Reach for it when work must survive a restart and you do not want to run a workflow engine; it declares every capability but `CapClosure` (a Go function cannot be stored in a row; the list is [`caps`](ds:block?id=sql-caps-yu37ef2j)), each proven by the conformance suite on all three databases.
 
 ## Before you start
 
 - `go get github.com/ubgo/workflow/sqlstore@latest` plus one database driver from sqlb's contrib modules (see [Pick a database](#pick-a-database)). The module itself requires no database driver: it takes your `*sql.DB` and a dialect, so your app downloads only the driver it opens the pool with.
 - A workflow to run: [First workflow](../start/first-workflow.md).
-- The schema is applied by an explicit `Migrate` call; read [Migrations](../operations/migrations.md) before your first deploy.
+- The schema is applied by an explicit [`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d) call; read [Migrations](../operations/migrations.md) before your first deploy.
 
 ## Create the client
 
-`sqlstore.New(db, dialect, opts...)` takes the app's pool and the sqlb dialect its SQL is written for. It opens nothing and starts nothing. Then the order is always: `Migrate` (explicit, versioned; `Start` never migrates), `Register`, `Start`.
+[`sqlstore.New(db, dialect, opts...)`](ds:block?id=sql-new-89qpbdvm) takes the app's pool and the sqlb dialect its SQL is written for. It opens nothing and starts nothing. Then the order is always: [`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d) (explicit, versioned; `Start` never migrates), `Register`, `Start`.
 
 Step 1: open the database. A SQLite file survives restarts; `:memory:` does not.
 
@@ -50,7 +50,7 @@ if err := c.Migrate(ctx); err != nil { // explicit; Start never migrates
 }
 ```
 
-Step 3: register, start and enqueue. `Start` checks every workflow against the capabilities, refuses expression keys, checks that the tables exist and that no newer release migrated them, records declared crons, then starts the dispatcher and the workers. It does not block.
+Step 3: register, start and enqueue. [`Start`](ds:block?id=sql-client-start-ab8ayzsy) checks every workflow against the capabilities, refuses expression keys ([`exprKeys`](ds:block?id=sql-exprkeys-wxvw57q3)), checks that the tables exist and that no newer release migrated them, records declared crons, then starts the dispatcher and the workers. It does not block.
 
 <!-- snippet: examples/sqlite-worker/main.go#start -->
 ```go
@@ -75,7 +75,7 @@ if err != nil {
 | Database | Dialect | Driver module and open call | Fits |
 |---|---|---|---|
 | SQLite | `sqlb.SQLiteDialect{}` | `github.com/ubgo/sqlb/contrib/driver-sqlite`, `driversqlite.Open(path)` | One machine: a CLI, a desktop app, a single server. Several processes may share the file; they are serialised by SQLite's single writer. |
-| Postgres | `sqlb.PostgresDialect{}` | `github.com/ubgo/sqlb/contrib/driver-pgx`, `driverpgx.Open(dsn)` | Many workers on many machines. Steps are claimed with `FOR UPDATE SKIP LOCKED`. The only engine that takes `WithSchema`. |
+| Postgres | `sqlb.PostgresDialect{}` | `github.com/ubgo/sqlb/contrib/driver-pgx`, `driverpgx.Open(dsn)` | Many workers on many machines. Steps are claimed with `FOR UPDATE SKIP LOCKED` ([`claimFrom`](ds:block?id=sql-client-claimfrom-ucz7r6ys)). The only engine that takes [`WithSchema`](ds:block?id=sql-withschema-es3gsbyz). |
 | MySQL 8 | `sqlb.MySQLDialect{}` | `github.com/ubgo/sqlb/contrib/driver-mysql`, `drivermysql.Open(dsn)` | Many workers, with `FOR UPDATE SKIP LOCKED`. The schema is the database: point the pool at it. |
 
 In code the choice is two values, the pool and its dialect, and the rest of the program does not change. [`examples/sql-options`](../../examples/sql-options) opens each engine this way and runs the SQLite branch:
@@ -101,11 +101,11 @@ func openDB(e engine, dsn string) (*sql.DB, sqlb.Dialect, error) {
 }
 ```
 
-On SQLite a step is claimed with one conditional `UPDATE`. Every engine stores times as `BIGINT` Unix nanoseconds. Another `database/sql` driver works when its errors read like these; otherwise give it an [error classifier](#database-errors).
+On SQLite a step is claimed with one conditional `UPDATE` ([`claimFrom`](ds:block?id=sql-client-claimfrom-ucz7r6ys)). Every engine stores times as `BIGINT` Unix nanoseconds. Another `database/sql` driver works when its errors read like these; otherwise give it an [error classifier](#database-errors).
 
 ## Workers and polling
 
-`WithWorkers(n)` caps how many step attempts one client executes at once (default 8). Waits and sleeps never hold a worker.
+[`WithWorkers(n)`](ds:block?id=sql-withworkers-fe9c8n69) caps how many step attempts one client executes at once (default 8, [`defaultWorkers`](ds:block?id=sql-defaultworkers-2jwwrt75)). Waits and sleeps never hold a worker.
 
 <!-- snippet: examples/sql-options/main.go#workers -->
 ```go
@@ -115,9 +115,9 @@ c, err := sqlstore.New(db, dialect,
 )
 ```
 
-A client wakes at once for work it made due itself (its own `Enqueue`, a step finishing). Work another client made due (a step another node queued, a signal for a run this client did not start) is found by polling every `WithPollInterval` (default one second), unless a notifier wakes it first ([Wake workers at once](#wake-workers-at-once)).
+A client wakes at once for work it made due itself (its own `Enqueue`, a step finishing). Work another client made due (a step another node queued, a signal for a run this client did not start) is found by polling every [`WithPollInterval`](ds:block?id=sql-withpollinterval-4mg6xgyu) (default one second, [`defaultPoll`](ds:block?id=sql-defaultpoll-nn9t9vqu)), unless a notifier wakes it first ([Wake workers at once](#wake-workers-at-once)).
 
-`Client.Wake()` makes this client look for work now instead of at its next poll. Call it after committing a transaction that used `EnqueueTx`, so the run is admitted without waiting up to a poll interval ([Transactional enqueue](../reliability/transactional-enqueue.md#enqueue-inside-your-transaction)). It never blocks and is a no-op on a client that is not running; other clients still find the run at their next poll. In `examples/sql-options` the client above polls once an hour, and the run still starts at once:
+[`Client.Wake()`](ds:block?id=sql-client-wake-vdfsstn6) makes this client look for work now instead of at its next poll. Call it after committing a transaction that used `EnqueueTx`, so the run is admitted without waiting up to a poll interval ([Transactional enqueue](../reliability/transactional-enqueue.md#enqueue-inside-your-transaction)). It never blocks and is a no-op on a client that is not running; other clients still find the run at their next poll. In `examples/sql-options` the client above polls once an hour, and the run still starts at once:
 
 <!-- snippet: examples/sql-options/main.go#wake -->
 ```go
@@ -142,7 +142,7 @@ run enqueued in a transaction ran before the next poll: true
 
 ## Wake workers at once
 
-`WithNotifier(n)` wakes idle clients of the same tables on other machines when this client makes work due (an enqueue, a finished step, a retry, a resume), and wakes this client when another one does. A `sqlstore.Notifier` is two methods, `Notify(ctx, channel)` and `Listen(ctx, channel, wake)`; the channel is derived from the schema and table prefix, so two clusters on one database never wake each other. On Postgres, `sqlstore/pgnotify` implements it with LISTEN/NOTIFY over the pool the client uses:
+[`WithNotifier(n)`](ds:block?id=sql-withnotifier-zmpj2dtv) wakes idle clients of the same tables on other machines when this client makes work due (an enqueue, a finished step, a retry, a resume), and wakes this client when another one does. A [`sqlstore.Notifier`](ds:block?id=sql-notifier-ra7v6r98) is two methods, `Notify(ctx, channel)` and `Listen(ctx, channel, wake)`; the channel is derived from the schema and table prefix ([`notifyChannel`](ds:block?id=sql-client-notifychannel-jjebh9y7)), so two clusters on one database never wake each other. On Postgres, `sqlstore/pgnotify` ([`pgnotify.New`](ds:block?id=pgnotify-new-ubnvrfme)) implements it with LISTEN/NOTIFY over the pool the client uses:
 
 ```go
 db, err := driverpgx.Open(dsn)
@@ -181,23 +181,23 @@ worker, err := sqlstore.New(db, dialect,
 )
 ```
 
-Polling stays on as the fallback, so a lost, late or duplicated notification changes when work starts, never whether it runs. Measured on the host Postgres with a one-second poll, enqueue on one client to step start on another, 15 samples each: polling p50 591 ms, p95 897 ms; with `pgnotify` p50 38 ms, p95 99 ms (a shared development machine under load).
+Polling stays on as the fallback, so a lost, late or duplicated notification changes when work starts, never whether it runs (the [`Notifier`](ds:block?id=sql-notifier-ra7v6r98) contract). Measured on the host Postgres with a one-second poll, enqueue on one client to step start on another, 15 samples each: polling p50 591 ms, p95 897 ms; with `pgnotify` p50 38 ms, p95 99 ms (a shared development machine under load).
 
 - `pgnotify` is its own module, so only an app that uses it downloads pgx: `go get github.com/ubgo/workflow/sqlstore/pgnotify@latest`. Upgrade `sqlstore` to v0.1.1 or later with it: v0.1.0 still carried the package, and the two together are an ambiguous import.
-- `pgnotify`'s `Listen` needs the pgx stdlib driver (`driverpgx.Open` uses it), because `database/sql` cannot wait for a notification; on another driver it returns `pgnotify.ErrDriver` and the client keeps polling. `Notify` works through any Postgres driver.
+- `pgnotify`'s `Listen` needs the pgx stdlib driver (`driverpgx.Open` uses it), because `database/sql` cannot wait for a notification; on another driver it returns [`pgnotify.ErrDriver`](ds:block?id=pgnotify-errdriver-uyq2k4ce) and the client keeps polling. `Notify` works through any Postgres driver.
 - `Listen` holds one pool connection for as long as the client runs: size the pool one connection above the workers.
 - LISTEN does not work through a transaction-mode pooler (PgBouncer in transaction or statement mode); point the pool at Postgres itself or leave the notifier off.
-- An enqueue-only client notifies before `Enqueue` returns, since it has no background sender.
+- An enqueue-only client notifies before `Enqueue` returns, since it has no background sender ([`signalFleet`](ds:block?id=sql-client-signalfleet-4648fmrx)).
 
 ## Leases and crashed workers
 
-A claimed step is a lease. A live worker renews it every third of `WithLease` (default 30 seconds); a step whose lease expires is claimed again by any client, so a step runs at least once. A lease expires when its worker died, and also when a live worker is starved long enough that it cannot renew, for example by a database busy with lock waits; the heartbeat starts before the claimed step's first database write, so only a stall longer than the lease lets another worker take the step. Delivery stays at least once either way, so choose a `WithLease` longer than the worst lock wait you expect. A client that stops cleanly hands its running steps back at once, so they do not wait for the lease.
+A claimed step is a lease. A live worker renews it every third of [`WithLease`](ds:block?id=sql-withlease-gtcuhgcm) (default 30 seconds, [`defaultLease`](ds:block?id=sql-defaultlease-qygq5sbe); [`heartbeat`](ds:block?id=sql-client-heartbeat-uu2x8xhn)); a step whose lease expires is claimed again by any client, so a step runs at least once. A lease expires when its worker died, and also when a live worker is starved long enough that it cannot renew, for example by a database busy with lock waits; the heartbeat starts before the claimed step's first database write, so only a stall longer than the lease lets another worker take the step. Delivery stays at least once either way, so choose a `WithLease` longer than the worst lock wait you expect. A client that stops cleanly hands its running steps back at once, so they do not wait for the lease.
 
-Leases are measured on wall time, set apart by `WithLeaseClock` (default `clock.Real`). `WithClock` drives due times only: a test that moves a fake scheduling clock by an hour must not make every running step look abandoned.
+Leases are measured on wall time, set apart by [`WithLeaseClock`](ds:block?id=sql-withleaseclock-a4ytvmv4) (default `clock.Real`). [`WithClock`](ds:block?id=sql-withclock-43e3rabg) drives due times only: a test that moves a fake scheduling clock by an hour must not make every running step look abandoned.
 
-A step that kills every worker it lands on (an out-of-memory payload, a segfaulting library) would otherwise travel the cluster forever. After more than `WithMaxReclaims` takeovers (default 5; zero fails at the first takeover) the attempt is not run again: it fails with an error wrapping `sqlstore.ErrAbandoned` that names how many workers abandoned it. The retry policy then applies as for any failure, and a retry starts with a fresh count. To fail the run at once instead, give the policy a `NoRetryOn` that returns `errors.Is(err, sqlstore.ErrAbandoned)`.
+A step that kills every worker it lands on (an out-of-memory payload, a segfaulting library) would otherwise travel the cluster forever. After more than [`WithMaxReclaims`](ds:block?id=sql-withmaxreclaims-mq8n5ud9) takeovers (default 5, [`defaultMaxReclaims`](ds:block?id=sql-defaultmaxreclaims-p88haut9); zero fails at the first takeover) the attempt is not run again: it fails with an error wrapping [`sqlstore.ErrAbandoned`](ds:block?id=sql-errabandoned-m79vqdps) that names how many workers abandoned it. The retry policy then applies as for any failure, and a retry starts with a fresh count. To fail the run at once instead, give the policy a `NoRetryOn` that returns `errors.Is(err, sqlstore.ErrAbandoned)`.
 
-[`examples/sql-leader-election`](../../examples/sql-leader-election) plays the whole story on one SQLite file with two clients. node-a claims a step, then stalls: its fake lease clock jumps a whole lease with no renewal landing, so the driver cancels the attempt with `ErrLeaseLost` (see [the next section](#clocks-skew-and-one-fire-node)) and writes nothing. Its `WithLeaseSkew` of an hour keeps it from taking its own step straight back:
+[`examples/sql-leader-election`](../../examples/sql-leader-election) plays the whole story on one SQLite file with two clients. node-a claims a step, then stalls: its fake lease clock jumps a whole lease with no renewal landing, so the driver cancels the attempt with [`ErrLeaseLost`](ds:block?id=sql-errleaselost-qhvxyrbf) (see [the next section](#clocks-skew-and-one-fire-node)) and writes nothing. Its `WithLeaseSkew` of an hour keeps it from taking its own step straight back:
 
 <!-- snippet: examples/sql-leader-election/main.go#lease-holder -->
 ```go
@@ -238,22 +238,22 @@ b, err := sqlstore.New(db, sqlb.SQLiteDialect{},
 node-a stopped its attempt with ErrLeaseLost: true
 node-b took the step over and ran it: run succeeded
 WithMaxReclaims(0): run failed, abandoned: true
-error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 workers (its lease expired 1 times, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
+error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 worker (its lease expired 1 time, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
 ```
 
-The run's stored error is text, so read it as text (`RunInfo.Error`, `RunEvent.Err.Error()`); `errors.Is(err, sqlstore.ErrAbandoned)` holds for the attempt's error inside the process, which is what a retry policy's `NoRetryOn` sees.
+`errors.Is(err, sqlstore.ErrAbandoned)` ([`ErrAbandoned`](ds:block?id=sql-errabandoned-m79vqdps)) holds for the attempt's error inside the process, which is what a retry policy's `NoRetryOn` sees, and for a `RunEvent`'s `Err` after the run ended: the driver stores the failure's class with its text and rebuilds the error from both. `RunInfo.Error` is the text, so read it as text there.
 
 ## Clocks, skew and one fire node
 
 Nodes whose clocks disagree compare due times and lease ends against different "now"s: a holder whose clock runs behind writes lease ends that look expired early to a node whose clock runs ahead. Three options close the gap, each off by default.
 
-- `WithDatabaseClock(resync)` makes the database server's clock the one source of "now" for due times and leases, in place of `WithClock` and `WithLeaseClock`. `Start` reads it first (and fails when it cannot), then again every `resync` (a minute when zero or less); between reads it advances on the local monotonic clock, so a wall-clock jump on a node moves nothing. `sqlstore.DatabaseClock` is the same clock as a value, with `Offset` (how far the database is ahead) and `Uncertainty` (half the last round trip).
-- `WithLeaseSkew(d)` makes the other nodes wait `d` longer past a lease's end before taking its step over; it applies to steps, `OnFailure` handlers, run-end delivery and the prune lock. Set it to the largest clock difference you expect between nodes (with the database clock, a little above its `Uncertainty`).
-- A lease holder fences itself: when a renewal has not landed a whole lease after the last one began, measured on its own monotonic lease clock, the attempt is cancelled with `sqlstore.ErrLeaseLost` and its outcome is not written, because another node may already hold the step. A handler tells it apart with `errors.Is(context.Cause(ctx), sqlstore.ErrLeaseLost)`, as [the lease example above](#leases-and-crashed-workers) does.
+- [`WithDatabaseClock(resync)`](ds:block?id=sql-withdatabaseclock-nww7yjsk) makes the database server's clock the one source of "now" for due times and leases, in place of `WithClock` and `WithLeaseClock`. `Start` reads it first (and fails when it cannot), then again every `resync` (a minute when zero or less, [`defaultClockResync`](ds:block?id=sql-defaultclockresync-8sw3ndbp)); between reads it advances on the local monotonic clock, so a wall-clock jump on a node moves nothing. [`sqlstore.DatabaseClock`](ds:block?id=sql-databaseclock-sn8mw5f7) is the same clock as a value, with `Offset` (how far the database is ahead) and `Uncertainty` (half the last round trip).
+- [`WithLeaseSkew(d)`](ds:block?id=sql-withleaseskew-32k7fs4q) makes the other nodes wait `d` longer past a lease's end before taking its step over; it applies to steps, `OnFailure` handlers, run-end delivery and the prune lock. Set it to the largest clock difference you expect between nodes (with the database clock, a little above its `Uncertainty`).
+- A lease holder fences itself: when a renewal has not landed a whole lease after the last one began, measured on its own monotonic lease clock, the attempt is cancelled with [`sqlstore.ErrLeaseLost`](ds:block?id=sql-errleaselost-qhvxyrbf) ([`heartbeat`](ds:block?id=sql-client-heartbeat-uu2x8xhn)) and its outcome is not written, because another node may already hold the step. A handler tells it apart with `errors.Is(context.Cause(ctx), sqlstore.ErrLeaseLost)`, as [the lease example above](#leases-and-crashed-workers) does.
 
 ### Use the database's clock
 
-`NewDatabaseClock(db, dialect)` reads nothing until `Sync`; after one read its `Now` runs on the local monotonic clock. `WithDatabaseClock` builds the same clock inside the client, and `Client.DatabaseClock()` returns it:
+[`NewDatabaseClock(db, dialect)`](ds:block?id=sql-newdatabaseclock-7xuwrxua) reads nothing until [`Sync`](ds:block?id=sql-databaseclock-sync-9dsn324r); after one read its `Now` runs on the local monotonic clock. `WithDatabaseClock` builds the same clock inside the client, and [`Client.DatabaseClock()`](ds:block?id=sql-client-databaseclock-8yft96gm) returns it:
 
 <!-- snippet: examples/sql-leader-election/main.go#dbclock -->
 ```go
@@ -282,11 +282,11 @@ database clock: offset under 1s: true, uncertainty under 1s: true
 client runs on the database clock: true
 ```
 
-Postgres reads `clock_timestamp()`, MySQL `UTC_TIMESTAMP(6)` and SQLite `julianday('now')`. A SQLite file lives on one machine, so there the database clock only makes the processes of that machine agree, which they already do; it earns its keep on Postgres and MySQL, where the nodes are different machines.
+Postgres reads `clock_timestamp()`, MySQL `UTC_TIMESTAMP(6)` and SQLite `julianday('now')` ([`dbNowQuery`](ds:block?id=sql-dbnowquery-rujnqmj7)). A SQLite file lives on one machine, so there the database clock only makes the processes of that machine agree, which they already do; it earns its keep on Postgres and MySQL, where the nodes are different machines.
 
 ### Elect one fire node
 
-By default every client fires cron ticks and the unique tick row lets one fire per tick win: no election, and it survives a split brain. Where the fire must happen on one known node (a job that talks to a system that allows one caller), `WithLeaderElection(node, opts...)` limits cron firing and housekeeping to the leader of the role `scheduler`. The elector is a lease row (`<prefix>leaders`, migration `007_leader_archive`): the leader renews it, a crash hands the role on after `LeaderLease` (15 seconds by default), and `LeaderElector.Term` grows on every handover as a fencing token. Steps run on every client either way, and the tick row stays as the second guard. `Client.IsLeader` reports the answer. See also [nodes](../operations/nodes.md) for scheduler-only and worker-only processes (`WithSchedulerOnly`, `WithoutScheduler`).
+By default every client fires cron ticks and the unique tick row lets one fire per tick win: no election, and it survives a split brain. Where the fire must happen on one known node (a job that talks to a system that allows one caller), [`WithLeaderElection(node, opts...)`](ds:block?id=sql-withleaderelection-unfdnw9m) limits cron firing and housekeeping to the leader of the role `scheduler` ([`defaultLeaderRole`](ds:block?id=sql-defaultleaderrole-auzsgvfw)). The elector is a lease row (`<prefix>leaders`, migration `007_leader_archive`): the leader renews it, a crash hands the role on after `LeaderLease` (15 seconds by default, [`defaultLeaderLease`](ds:block?id=sql-defaultleaderlease-5sevpk6w)), and [`LeaderElector.Term`](ds:block?id=sql-leaderelector-term-ygkkzyx2) grows on every handover as a fencing token. Steps run on every client either way, and the tick row stays as the second guard. [`Client.IsLeader`](ds:block?id=sql-client-isleader-nt5u9e5p) reports the answer. See also [nodes](../operations/nodes.md) for scheduler-only and worker-only processes (`WithSchedulerOnly`, `WithoutScheduler`).
 
 Give every node the same option with its own node ID (empty means `workflow.DefaultNodeID()`, `host:pid`). The elector campaigns from `Start`, on the client's lease clock and `WithLeaseSkew`, over the client's own tables:
 
@@ -302,7 +302,7 @@ newNode := func(node string) (*sqlstore.Client, error) {
 }
 ```
 
-A client that stops cleanly resigns, so the next node takes the role at its next campaign (every third of its `LeaderLease`) instead of after the lease:
+A client that stops cleanly ([`Client.Stop`](ds:block?id=sql-client-stop-p9pcyebp)) resigns, so the next node takes the role at its next campaign (every third of its `LeaderLease`) instead of after the lease:
 
 <!-- snippet: examples/sql-leader-election/main.go#handover -->
 ```go
@@ -319,7 +319,7 @@ node-a leads: true, node-b leads: false
 after node-a stopped: node-a leads: false, node-b leads: true
 ```
 
-`NewLeaderElector(db, dialect, role, node, opts...)` elects a leader for a role of your own (a nightly export, a single consumer of a partner API) over the leader table a client's `Migrate` created. `Campaign` makes one attempt and reports whether this node leads; `Run(ctx)` campaigns every third of the lease until ctx ends, then resigns. The options are `LeaderLease`, `LeaderSkew` (the margin a taker waits past the lease end), `LeaderClock` (a `DatabaseClock` makes every node compare against the database's time) and `LeaderTablePrefix` and `LeaderSchema`, which must match the client that migrated:
+[`NewLeaderElector(db, dialect, role, node, opts...)`](ds:block?id=sql-newleaderelector-g52t3r59) elects a leader for a role of your own (a nightly export, a single consumer of a partner API) over the leader table a client's `Migrate` created. [`Campaign`](ds:block?id=sql-leaderelector-campaign-k7hpjvpq) makes one attempt and reports whether this node leads; [`Run(ctx)`](ds:block?id=sql-leaderelector-run-xzt28ra6) campaigns every third of the lease until ctx ends, then resigns. The options, each a [`sqlstore.LeaderOption`](ds:block?id=sql-leaderoption-yxppwdwf), are `LeaderLease`, `LeaderSkew` (the margin a taker waits past the lease end), `LeaderClock` (a `DatabaseClock` makes every node compare against the database's time) and `LeaderTablePrefix` and `LeaderSchema`, which must match the client that migrated:
 
 <!-- snippet: examples/sql-leader-election/main.go#elector -->
 ```go
@@ -362,7 +362,7 @@ node-1 won: true (term 1), node-2 won: false
 after node-1 resigned: node-2 won: true (term 2)
 ```
 
-`WithElector(e)` takes any `sqlstore.Elector` instead: one method, `IsLeader() bool`, called on every dispatcher pass, so it answers from memory and campaigns elsewhere. A Redis lock or a Kubernetes Lease fits the same way:
+[`WithElector(e)`](ds:block?id=sql-withelector-kr5pvbzd) takes any [`sqlstore.Elector`](ds:block?id=sql-elector-jdvnhn8d) instead: one method, `IsLeader() bool`, called on every dispatcher pass, so it answers from memory and campaigns elsewhere. A Redis lock or a Kubernetes Lease fits the same way. A worker-only client (`WithoutScheduler`) never asks its elector, built-in or custom, and never leads (`IsLeader` is false), so it fires no cron tick and runs no housekeeping whatever the elector answers; one elector config can sit on every node:
 
 <!-- snippet: examples/sql-leader-election/main.go#custom-elector -->
 ```go
@@ -394,11 +394,11 @@ and once it leads: true
 
 ### Rows per dispatcher query
 
-`WithFetchBatch(n)` sets how many rows one dispatcher query reads (100 by default; values below 1 are ignored): pending runs to admit, delayed runs to start, due sleeps, waits and signals, chains to hand on, schedules to fire, failing runs and run ends. A larger batch drains a backlog in fewer round trips; a smaller one keeps each pass and its transactions short. Workers still claim one step per query on purpose: a claim leases its step, and a lease held for a busy worker would keep the step from every other node. It is one more option on `New`; [`examples/sql-archive`](../../examples/sql-archive) sets it to 50 in [Keep the hot tables small](#keep-the-hot-tables-small).
+[`WithFetchBatch(n)`](ds:block?id=sql-withfetchbatch-pgg8y6vu) sets how many rows one dispatcher query reads (100 by default, [`claimBatch`](ds:block?id=sql-claimbatch-3ambkhnj); values below 1 are ignored): pending runs to admit, delayed runs to start, due sleeps, waits and signals, chains to hand on, schedules to fire, failing runs and run ends. A larger batch drains a backlog in fewer round trips; a smaller one keeps each pass and its transactions short. Workers still claim one step per query on purpose: a claim leases its step, and a lease held for a busy worker would keep the step from every other node. It is one more option on `New`; [`examples/sql-archive`](../../examples/sql-archive) sets it to 50 in [Keep the hot tables small](#keep-the-hot-tables-small).
 
 ## Keep the hot tables small
 
-The queue's tables are hot: claims and admissions rewrite their rows, so on Postgres every finished run kept there adds index entries and every update a dead row for `VACUUM`. [Retention](../operations/retention.md) keeps them small. To keep the history anyway, add `WithArchiveTable()`: `Prune` then moves each finished run, with the outputs of its succeeded steps, into the cold tables `<prefix>runs_archive` and `<prefix>steps_archive` in the transaction that deletes it, so a run is in exactly one of the two places and the queue never reads the cold tables. The cold tables have no retention of their own: trim or partition them as the history's owner decides.
+The queue's tables are hot: claims and admissions rewrite their rows, so on Postgres every finished run kept there adds index entries and every update a dead row for `VACUUM`. [Retention](../operations/retention.md) keeps them small. To keep the history anyway, add [`WithArchiveTable()`](ds:block?id=sql-witharchivetable-kdbpda2a): [`Prune`](ds:block?id=sql-client-prune-ybwksw5e) then moves each finished run, with the outputs of its succeeded steps, into the cold tables `<prefix>runs_archive` and `<prefix>steps_archive` in the transaction that deletes it, so a run is in exactly one of the two places and the queue never reads the cold tables. The cold tables have no retention of their own: trim or partition them as the history's owner decides.
 
 Step 1: give the client a retention and the archive table. `WithArchiveTable` needs `WithRetention`, which decides what is moved and when; a `WithArchive` hook, if set, still sees each chunk first. [`examples/sql-archive`](../../examples/sql-archive) keeps succeeded runs an hour and prunes by hand:
 
@@ -428,13 +428,14 @@ if _, err := c.Status(ctx, first); errors.Is(err, workflow.ErrNotFound) {
 }
 ```
 
-Step 3: read the history back. `Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, Limit})` returns `FinishedRun` values, newest finish first, each with its step outputs; `Limit` is 100 when zero. Page by passing the last `FinishedAt` of one page as the next page's `FinishedBefore`. It reads the tables directly, so it needs `Migrate`, not `Start`:
+Step 3: read the history back. [`Client.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow, RunID, FinishedBefore, AfterRunID, Limit})`](ds:block?id=sql-client-archivedruns-5aamkj97) returns [`FinishedRun`](ds:block?id=sql-finishedrun-exkhvx6z) values, newest finish first (ties by run ID), each with its step outputs; [`Limit`](ds:block?id=sql-archivequery-ygzhmg97) is 100 when zero ([`defaultArchivePage`](ds:block?id=sql-defaultarchivepage-sawcb836)). Page by passing the last run of one page as the next page's cursor: its `FinishedAt` as `FinishedBefore` and its `Ref.RunID` as `AfterRunID`, so runs that finished at the same instant are neither skipped nor repeated. `FinishedBefore` alone is a strict "before" and skips a run that tied with the last one shown. In the example `INV-1` and `INV-2` finish at the same instant and the page boundary falls between them; `INV-2` on page 2 is the tie-breaker at work. It reads the tables directly, so it needs `Migrate`, not `Start`:
 
 <!-- snippet: examples/sql-archive/main.go#read -->
 ```go
-var before time.Time // zero: start from the newest finish
+var before time.Time     // zero: start from the newest finish
+var after workflow.RunID // the tie-breaker: runs that finished at before, after this ID
 for page := 1; ; page++ {
-	runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, Limit: pageSize})
+	runs, err := c.ArchivedRuns(ctx, sqlstore.ArchiveQuery{Workflow: invoice.Name, FinishedBefore: before, AfterRunID: after, Limit: pageSize})
 	if err != nil {
 		return err
 	}
@@ -444,7 +445,8 @@ for page := 1; ; page++ {
 	for _, r := range runs {
 		fmt.Fprintf(w, "page %d: %s %s %s outputs %s\n", page, r.Ref.RunID, r.Status, r.Payload, outputs(r.Outputs))
 	}
-	before = runs[len(runs)-1].FinishedAt // the next page finished before the last one here
+	last := runs[len(runs)-1] // the next page starts after it in (finish, ID) order
+	before, after = last.FinishedAt, last.Ref.RunID
 }
 ```
 
@@ -452,17 +454,17 @@ for page := 1; ; page++ {
 pruned 3 runs from the hot tables
 status of run_000001: not found (it left the queue)
 page 1: run_000003 succeeded "INV-3" outputs render="pdf:INV-3" send="sent"
-page 1: run_000002 succeeded "INV-2" outputs render="pdf:INV-2" send="sent"
-page 2: run_000001 succeeded "INV-1" outputs render="pdf:INV-1" send="sent"
+page 1: run_000001 succeeded "INV-1" outputs render="pdf:INV-1" send="sent"
+page 2: run_000002 succeeded "INV-2" outputs render="pdf:INV-2" send="sent"
 ```
 
 ## Per-run facts, journal and bucket state
 
-Migration `008_run_info_nodes` adds one `run_info` row per run: its tenant, the result written when it succeeds, the latest progress, and the nodes that claimed its attempts. That is what makes the SQL driver declare `CapTenant`, `CapResult`, `CapNodeIdentity`, `CapSnooze`, `CapHeartbeat`, `CapRunTimeout`, `CapKeyFIFO` and `CapDueQuery`, and what lets `Reschedule`, `CancelStep`, `ReportProgress` and `OnLifecycle` work across clients (see [results](../jobs/results.md), [progress](../jobs/progress.md), [tenants](../jobs/tenants.md) and [nodes](../operations/nodes.md)). A cancel of one step reaches a running attempt on another client at that client's next lease renewal. Migration `009_schedule_tenant` stores `Schedule.Tenant` in a side table (an `ALTER TABLE` cannot be written to run twice on MySQL) and sets it as the tenant of every run the schedule fires or is triggered to run; `ScheduleInfo.Tenant` reports it.
+Migration `008_run_info_nodes` adds one `run_info` row per run: its tenant, the result written when it succeeds, the latest progress, and the nodes that claimed its attempts. That is what makes the SQL driver declare ([`p5Caps`](ds:block?id=sql-p5caps-wggh6esn)) `CapTenant`, `CapResult`, `CapNodeIdentity`, `CapSnooze`, `CapHeartbeat`, `CapRunTimeout`, `CapKeyFIFO` and `CapDueQuery`, and what lets `Reschedule`, `CancelStep`, `ReportProgress` and `OnLifecycle` work across clients (see [results](../jobs/results.md), [progress](../jobs/progress.md), [tenants](../jobs/tenants.md) and [nodes](../operations/nodes.md)). A cancel of one step reaches a running attempt on another client at that client's next lease renewal. Migration `009_schedule_tenant` stores `Schedule.Tenant` in a side table (an `ALTER TABLE` cannot be written to run twice on MySQL) and sets it as the tenant of every run the schedule fires or is triggered to run; `ScheduleInfo.Tenant` reports it.
 
-Two stores keep workflow state in the same database. `Client.JournalStore()` is a durable `workflow.JournalStore`, so the results `workflow.Memo` stored survive a crash and a retry on any node ([memoisation](../workflows/memoisation.md)). `Client.BucketStore()` is a durable `workflow.BucketStore` whose `Take` locks the bucket's row before reading its level, so every worker calling one upstream draws from one leaky bucket ([upstream limits](../jobs/upstream-limits.md)). Both can also be built over any `*sql.DB` with `sqlstore.NewJournalStore` and `sqlstore.NewBucketStore`, each with its own `Migrate` and its own migration list in the shared ledger, so an app on another driver gets durable state without running the SQL queue.
+Two stores keep workflow state in the same database. [`Client.JournalStore()`](ds:block?id=sql-client-journalstore-wdbnns8s) is a durable `workflow.JournalStore`, so the results `workflow.Memo` stored survive a crash and a retry on any node ([memoisation](../workflows/memoisation.md)). [`Client.BucketStore()`](ds:block?id=sql-client-bucketstore-wtdv6ta9) is a durable `workflow.BucketStore` whose `Take` locks the bucket's row before reading its level, so every worker calling one upstream draws from one leaky bucket ([upstream limits](../jobs/upstream-limits.md)). Both can also be built over any `*sql.DB` with [`sqlstore.NewJournalStore`](ds:block?id=sql-newjournalstore-f8patmxf) and [`sqlstore.NewBucketStore`](ds:block?id=sql-newbucketstore-3dydanaz), each with its own `Migrate` and its own migration list in the shared ledger, so an app on another driver gets durable state without running the SQL queue.
 
-The same holds for every shared store: `sqlstore.NewDataStore` ([shared data](../workflows/memoisation.md#share-data-across-runs)), `NewPromiseStore`, `NewInbox`, `NewJournalStore`, `NewBucketStore` and `NewAggregateStore` each take the pool, the dialect and the client options. Of those options only `WithTablePrefix`, `WithSchema`, `WithTxAttempts` and `WithErrorClassifier` apply; the rest configure a client and are ignored. Each store's `Migrate` creates its own table and nothing else. The Redis driver has the same six constructors ([Redis shared stores](redis.md#shared-stores)). From [`examples/sql-options`](../../examples/sql-options), on a database no driver client runs on:
+The same holds for every shared store: [`sqlstore.NewDataStore`](ds:block?id=sql-newdatastore-nhsan4b5) ([shared data](../workflows/memoisation.md#share-data-across-runs)), `NewPromiseStore`, `NewInbox`, `NewJournalStore`, `NewBucketStore` and `NewAggregateStore` each take the pool, the dialect and the client options. Of those options only `WithTablePrefix`, `WithSchema`, `WithTxAttempts` and `WithErrorClassifier` apply; the rest configure a client and are ignored. Each store's `Migrate` creates its own table and nothing else. The Redis driver has the same six constructors ([Redis shared stores](redis.md#shared-stores)). From [`examples/sql-options`](../../examples/sql-options), on a database no driver client runs on:
 
 <!-- snippet: examples/sql-options/main.go#stores -->
 ```go
@@ -496,23 +498,23 @@ journal store without a client: fetch "page-1" (found true)
 
 ## Fair turns between keys
 
-Migration `011_fair_turns` adds `fair_keys` (each round-robin key's place in its workflow's turns) and `run_fair` (each admitted round-robin run's turn). They make the SQL driver declare `CapRoundRobin` and `CapKeyWeights`: under `ConcurrencyRoundRobin` the keys of a workflow take turns for the workers, in proportion to `Concurrency.Weight` ([Share the workers fairly between keys](../jobs/concurrency.md#share-the-workers-fairly-between-keys)). Turns are written by the admission transaction, which already holds the workflow's lock row, so they add no lock; a claim that picks a step of a round-robin workflow makes one more read to hand that place to the waiting step with the earliest turn, and a workflow without round robin claims as before. The admission read also passes over runs whose bucket is full, so one tenant's backlog never fills the fetch window (`WithFetchBatch`).
+Migration `011_fair_turns` adds `fair_keys` (each round-robin key's place in its workflow's turns) and `run_fair` (each admitted round-robin run's turn). They make the SQL driver declare `CapRoundRobin` and `CapKeyWeights` ([`caps`](ds:block?id=sql-caps-yu37ef2j)): under `ConcurrencyRoundRobin` the keys of a workflow take turns for the workers, in proportion to `Concurrency.Weight` ([Share the workers fairly between keys](../jobs/concurrency.md#share-the-workers-fairly-between-keys)). Turns are written by the admission transaction ([`fairAssign`](ds:block?id=sql-client-fairassign-5q36yg5q)), which already holds the workflow's lock row, so they add no lock; a claim that picks a step of a round-robin workflow makes one more read to hand that place to the waiting step with the earliest turn, and a workflow without round robin claims as before. The admission read also passes over runs whose bucket is full ([`fullBuckets`](ds:block?id=sql-fullbuckets-ygt6hxvr)), so one tenant's backlog never fills the fetch window (`WithFetchBatch`).
 
 ## Enqueue inside a pgx transaction
 
-`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`, its own module (`go get github.com/ubgo/workflow/sqlstore/pgxtx@latest`, with `sqlstore` v0.1.1 or later): `pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })` hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
+`Client.EnqueueTx` takes the app's `*sql.Tx`. An app whose transactions are pgx transactions passes them through `sqlstore/pgxtx`, its own module (`go get github.com/ubgo/workflow/sqlstore/pgxtx@latest`, with `sqlstore` v0.1.1 or later): [`pgxtx.Run(ctx, tx, func(stx *sql.Tx) error { ... })`](ds:block?id=pgxtx-run-e5kbumn5) hands `EnqueueTx` (or `outbox.Write`) a `*sql.Tx` whose statements run on the app's `pgx.Tx`, so the run commits or rolls back with the app's own pgx writes. `tx` is a [`pgxtx.Querier`](ds:block?id=pgxtx-querier-uhw2kjfc): `pgx.Tx` satisfies it, and so do `*pgx.Conn` and a pgxpool connection, for an app that runs `BEGIN` itself. The `*sql.Tx` is a view: its `Commit` and `Rollback` do nothing and it is valid only inside the function. Postgres only. See [Transactional enqueue](../reliability/transactional-enqueue.md).
 
 ## Database errors
 
-The driver's correctness guards are unique indexes (an idempotency key held twice, a cron tick fired twice), and some transactions lose lock races. So it must sort each database error, which an `ErrorClassifier` does. It returns an `ErrorClass`:
+The driver's correctness guards are unique indexes (an idempotency key held twice, a cron tick fired twice), and some transactions lose lock races. So it must sort each database error, which an `ErrorClassifier` ([`WithErrorClassifier`](ds:block?id=sql-witherrorclassifier-jjq8my6v)) does. It returns an [`ErrorClass`](ds:block?id=sql-errorclass-ct5h2saw):
 
 | Field | Meaning | What the driver does |
 |---|---|---|
 | `UniqueViolation` | A unique constraint refused the write | Treats it as "someone else won the race". Say true only when sure. |
-| `Retryable` | A deadlock, a serialization failure, SQLite busy | Retries the whole transaction, up to `WithTxAttempts` (default 5; 1 turns retrying off) |
+| `Retryable` | A deadlock, a serialization failure, SQLite busy | Retries the whole transaction, up to [`WithTxAttempts`](ds:block?id=sql-withtxattempts-4aey9mx7) (default 5, [`defaultTxAttempts`](ds:block?id=sql-defaulttxattempts-vkdfysz7); 1 turns retrying off) |
 | `Unavailable` | Refused, reset or dropped connection, server shutting down | Marks the error with `workflow.Unavailable`, so `errors.Is(err, workflow.ErrUnavailable)` holds and a [failover client](../reliability/failover.md#decide-what-counts-as-an-outage) can tell an outage from a bad request |
 
-The zero value, "neither", is the safe answer: the error reaches the caller. `DefaultErrorClassifier` knows the drivers sqlb's contrib modules open: Postgres by SQLSTATE (23505 unique; 40P01 and 40001 retryable; class 08 and 57P01 to 57P03 unavailable), MySQL by "Error 1062", "Error 1213"/"Error 1205" and "invalid connection"/"Error 1040"/"Error 1053", SQLite by "UNIQUE constraint failed" and "SQLITE_BUSY"/"database is locked"; on any engine a `*net.OpError`, `driver.ErrBadConn`, `sql.ErrConnDone` or a pgx "failed to connect to" error is unavailable. A driver, proxy or wrapper whose errors read differently needs its own classifier, usually checking its own forms and falling back to the default. Without one, a lost idempotency race comes back as an error and a deadlock is not retried.
+The zero value, "neither", is the safe answer: the error reaches the caller. [`DefaultErrorClassifier`](ds:block?id=sql-defaulterrorclassifier-he4afwga) knows the drivers sqlb's contrib modules open: Postgres by SQLSTATE (23505 unique; 40P01 and 40001 retryable; class 08 and 57P01 to 57P03 unavailable), MySQL by "Error 1062", "Error 1213"/"Error 1205" and "invalid connection"/"Error 1040"/"Error 1053", SQLite by "UNIQUE constraint failed" and "SQLITE_BUSY"/"database is locked"; on any engine a `*net.OpError`, `driver.ErrBadConn`, `sql.ErrConnDone` or a pgx "failed to connect to" error is unavailable. A driver, proxy or wrapper whose errors read differently needs its own classifier, usually checking its own forms and falling back to the default. Without one, a lost idempotency race comes back as an error and a deadlock is not retried.
 
 Step 1: write the classifier. It is called only with a non-nil error, which may be wrapped (use `errors.As`), and must be safe for concurrent use. [`examples/sql-options`](../../examples/sql-options) sorts a proxy's own codes and leaves the rest to the default:
 
@@ -570,7 +572,7 @@ The classifier also counts what the driver sees: Step 2 of [Create the client](#
 
 ## Run IDs
 
-`WithIDGenerator` decides how run IDs, delayed-start IDs, step IDs and unnamed schedule IDs are made. It is called with an `IDKind`: `sqlstore.IDRun` ("run"), `IDScheduled` ("sched"), `IDStep` ("step") or `IDSchedule` ("sch"). The default, `DefaultIDGenerator`, returns the kind, an underscore and 32 hex characters. Use your own for time-sortable IDs (UUIDv7, ULID) or IDs that line up with the app's:
+[`WithIDGenerator`](ds:block?id=sql-withidgenerator-jnvdknyn) decides how run IDs, delayed-start IDs, step IDs and unnamed schedule IDs are made. It is called with an `IDKind`: [`sqlstore.IDRun`](ds:block?id=sql-idrun-a2xeh3xu) ("run"), [`IDScheduled`](ds:block?id=sql-idscheduled-gss6h33a) ("sched"), [`IDStep`](ds:block?id=sql-idstep-3c5s37gd) ("step") or [`IDSchedule`](ds:block?id=sql-idschedule-m223789f) ("sch"). The default, [`DefaultIDGenerator`](ds:block?id=sql-defaultidgenerator-s4a7t379), returns the kind, an underscore and 32 hex characters. Use your own for time-sortable IDs (UUIDv7, ULID) or IDs that line up with the app's:
 
 <!-- snippet: examples/sqlite-worker/main.go#ids -->
 ```go
@@ -610,15 +612,15 @@ func (s *sequentialIDs) next(kind sqlstore.IDKind) (string, error) {
 }
 ```
 
-An ID must be 1 to 64 bytes (the columns are `VARCHAR(64)`). A generator that returns an error, or an ID that is empty or too long, makes the driver refuse the operation that needed it; no bad row is written.
+An ID must be 1 to 64 bytes (the columns are `VARCHAR(64)`, [`maxIDLen`](ds:block?id=sql-maxidlen-dshvfbhv)). A generator that returns an error, or an ID that is empty or too long, makes the driver refuse the operation that needed it; no bad row is written.
 
-A named schedule's ID is derived from its workflow and name, so the same name is the same row on every node and boot; the generator is not asked for it. Lease and failure tokens are internal and always 128 random bits.
+A named schedule's ID is derived from its workflow and name, so the same name is the same row on every node and boot; the generator is not asked for it ([`IDSchedule`](ds:block?id=sql-idschedule-m223789f)). Lease and failure tokens are internal and always 128 random bits.
 
 ## Queues, pauses and run admin
 
-Every client of one database shares the same rows, so the queue and run controls work across a cluster: run separate worker processes per queue, pause a queue from any process, and list, retry and forget runs from whichever client an operator uses. The driver declares `CapQueue`, `CapQueueOverride`, `CapJobRetry`, `CapRetryUntil`, `CapRetryMaxErrors`, `CapDiscard`, `CapRunQuery`, `CapRetryRun`, `CapDeleteRun`, `CapCancelAll`, `CapPauseWorkflow`, `CapPauseQueue`, `CapSchedulePause`, `CapScheduleWhen`, `CapScheduleWindow`, `CapTickEvents`, `CapScheduleList` and `CapDrain`. The tables behind them come from migration `003_queues_admin`, so run `Migrate` first. It also declares `CapOverlapSkip`, `CapScheduleTrigger` and `CapScheduleHistory` ([Overlap, trigger now and last fire](../schedules/overlap.md); migration `006_schedule_history`), `CapEnqueueOnly`, `CapErrorHistory`, `CapShutdownRequeue` and `CapForceRun` ([Manage runs](../jobs/manage-runs.md#force-a-run-to-an-end)), and `CapLabelPrefix`: label searches, exact and by prefix, read the label index of migration `005_run_labels` ([Search by label](../jobs/manage-runs.md#search-by-label)).
+Every client of one database shares the same rows, so the queue and run controls work across a cluster: run separate worker processes per queue, pause a queue from any process, and list, retry and forget runs from whichever client an operator uses. The driver declares ([`parityCaps`](ds:block?id=sql-paritycaps-e5y5vqhk)) `CapQueue`, `CapQueueOverride`, `CapJobRetry`, `CapRetryUntil`, `CapRetryMaxErrors`, `CapDiscard`, `CapRunQuery`, `CapRetryRun`, `CapDeleteRun`, `CapCancelAll`, `CapPauseWorkflow`, `CapPauseQueue`, `CapSchedulePause`, `CapScheduleWhen`, `CapScheduleWindow`, `CapTickEvents`, `CapScheduleList` and `CapDrain`. The tables behind them come from migration `003_queues_admin`, so run `Migrate` first. It also declares ([`p4Caps`](ds:block?id=sql-p4caps-ns9ehh5e)) `CapOverlapSkip`, `CapScheduleTrigger` and `CapScheduleHistory` ([Overlap, trigger now and last fire](../schedules/overlap.md); migration `006_schedule_history`), `CapEnqueueOnly`, `CapErrorHistory`, `CapShutdownRequeue` and `CapForceRun` ([Manage runs](../jobs/manage-runs.md#force-a-run-to-an-end)), and `CapLabelPrefix`: label searches, exact and by prefix, read the label index of migration `005_run_labels` ([Search by label](../jobs/manage-runs.md#search-by-label)).
 
-Step 1: give each workflow a queue and each worker process the queues it serves. A client built with `WithQueues` claims only those queues; runs of other queues wait in the table for a client that serves them. `Workers` caps one queue's attempts at once on that client, and a higher `Priority` queue is always drained first. `Limit` is the queue's ceiling across every client on the database (`CapQueueLimitGlobal`): `Workers: 4` on three nodes allows twelve attempts, `Limit: 5` keeps them to five ([named queues](../jobs/queues.md#cap-a-queue-across-every-worker)). A discard policy and the drain report work here too: `RetryPolicy.DiscardOnExhaust` ends a run out of retries `discarded`, and `DrainWithReport` lists the attempts it handed back as `requeued` ([deploy](../operations/deploy.md#give-running-steps-a-grace-period-and-see-what-was-cut-off)).
+Step 1: give each workflow a queue and each worker process the queues it serves. A client built with [`WithQueues`](ds:block?id=sql-withqueues-jk2r8vnt) claims only those queues; runs of other queues wait in the table for a client that serves them. `Workers` caps one queue's attempts at once on that client, and a higher `Priority` queue is always drained first. `Limit` is the queue's ceiling across every client on the database (`CapQueueLimitGlobal`): `Workers: 4` on three nodes allows twelve attempts, `Limit: 5` keeps them to five ([named queues](../jobs/queues.md#cap-a-queue-across-every-worker)). A discard policy and the drain report work here too: `RetryPolicy.DiscardOnExhaust` ends a run out of retries `discarded`, and [`DrainWithReport`](ds:block?id=sql-client-drainwithreport-dvhyw82q) lists the attempts it handed back as `requeued` ([deploy](../operations/deploy.md#give-running-steps-a-grace-period-and-see-what-was-cut-off)).
 
 <!-- snippet: examples/sql-queue-workers/main.go#workflows -->
 ```go
@@ -654,7 +656,7 @@ if err != nil {
 }
 ```
 
-Step 2: pause and resume. A pause is a row the claim statement reads, so it holds every client at once and survives restarts; running attempts finish, new attempts wait as queued, and `Enqueue` keeps working. `Pause` works on a client that was never started.
+Step 2: pause and resume. A pause ([`Pause`](ds:block?id=sql-client-pause-jgngycbf), [`Resume`](ds:block?id=sql-client-resume-q4jewu5k)) is a row the claim statement ([`claimFilter`](ds:block?id=sql-client-claimfilter-fxuq8cus)) reads, so it holds every client at once and survives restarts; running attempts finish, new attempts wait as queued, and `Enqueue` keeps working. `Pause` works on a client that was never started.
 
 <!-- snippet: examples/sql-queue-workers/main.go#pause -->
 ```go
@@ -669,7 +671,7 @@ if err != nil {
 }
 ```
 
-Step 3: find failed runs, retry them from the step that failed, and forget them. `Runs` lists runs of every workflow in the database, newest first, with an opaque cursor; `Retry` keeps the outputs of steps that succeeded and takes the run's idempotency key again (`ErrDuplicate` when another unfinished run holds it); `Delete` and `CancelAll` act on finished and not-yet-started runs.
+Step 3: find failed runs, retry them from the step that failed, and forget them. [`Runs`](ds:block?id=sql-client-runs-vc45txxc) lists runs of every workflow in the database, newest first, with an opaque cursor; [`Retry`](ds:block?id=sql-client-retry-g8xttdeg) keeps the outputs of steps that succeeded and takes the run's idempotency key again (`ErrDuplicate` when another unfinished run holds it); [`Delete`](ds:block?id=sql-client-delete-66sf2tgg) and [`CancelAll`](ds:block?id=sql-client-cancelall-6kz9c3xk) act on finished and not-yet-started runs.
 
 <!-- snippet: examples/sql-queue-workers/main.go#admin -->
 ```go
@@ -688,7 +690,7 @@ if err != nil {
 }
 ```
 
-Step 4: stop a worker gracefully. `Drain` stops claiming, waits for running attempts to finish and their outcomes to be written, then stops; an attempt cut off by its ctx is handed back as ready for another client. `WithStopWhenIdle(grace)` drains on its own once no unfinished run of the client's workflows (on its queues) has existed for `grace`.
+Step 4: stop a worker gracefully. [`Drain`](ds:block?id=sql-client-drain-r7gfg6uq) stops claiming, waits for running attempts to finish and their outcomes to be written, then stops; an attempt cut off by its ctx is handed back as ready for another client. [`WithStopWhenIdle(grace)`](ds:block?id=sql-withstopwhenidle-azx5aahg) drains on its own once no unfinished run of the client's workflows (on its queues) has existed for `grace`.
 
 <!-- snippet: examples/sql-queue-workers/main.go#drain -->
 ```go
@@ -699,7 +701,7 @@ fmt.Println("mail worker drained:", err == nil)
 <-mail.Done()
 ```
 
-`EnqueueMany(ctx, jobs)` writes several runs in one transaction, all or none, and is what `batch.EnqueueMany` uses on this driver; `BatchStore` implements `batch.Pruner`, so `Manager.Prune` deletes old batch state.
+[`EnqueueMany(ctx, jobs)`](ds:block?id=sql-client-enqueuemany-w7j399jb) writes several runs in one transaction, all or none, and is what `batch.EnqueueMany` uses on this driver; `BatchStore` implements `batch.Pruner`, so `Manager.Prune` deletes old batch state.
 
 Schedules get the same treatment: `Schedules` lists declared and run-time schedules with their next fire, `PauseSchedule` and `ResumeSchedule` stop and restart them (stored, so every node obeys), `Workflow.ScheduleWhen` and `Schedule.Windows` (or `Workflow.CronWindows`) decide each tick on the firing node, and `OnTick` reports every fired, skipped and misfired tick once, from the node that handled it. Runs a schedule fires carry the `workflow.LabelSchedule` label.
 
@@ -709,28 +711,28 @@ The options not covered above:
 
 | Option | What it sets | Default |
 |---|---|---|
-| `WithClock(c)` | Every due time: delayed starts, sleeps, wait deadlines, retry backoff, step timeouts, rate-limit windows, cron fires | `clock.Real` |
-| `WithLogger(l)` | Where the driver reports what it cannot return to a caller (a failed poll, an `OnFailure` error, a cron fire that could not enqueue) | discard |
-| `WithMiddleware(mw...)` | Step middleware around every step and `OnFailure` handler, first outermost | none |
-| `WithJitterSource(rnd)` | Where `Backoff.Jitter` draws values in [0, 1), so tests can pin them; must be safe for concurrent use | `math/rand/v2` |
-| `WithCronParser(p)` | Another cron dialect; every client of one database must use the same parser, because stored expressions are parsed again when they fire | `cron.Parse` |
-| `WithTablePrefix(p)`, `WithSchema(name)` | Table names and a Postgres schema: [Migrations › Table names and schemas](../operations/migrations.md#table-names-and-schemas) | `wf_`, none |
-| `WithRetention`, `WithArchive`, `WithPruneInterval`, `WithPruneChunk`, `WithoutAutoPrune` | Deleting finished runs: [Retention](../operations/retention.md) | keep forever |
-| `WithQueues(qs...)` | The queues this client serves, each with a `Workers` cap, a cluster-wide `Limit` and a `Priority`; New refuses an invalid list | every queue, one pool |
-| `WithStopWhenIdle(grace)` | Drain once no unfinished run of this client's workflows (on its queues) existed for `grace` on the scheduling clock | off |
-| `WithRecycle(r)` | Drain and stop at a `workflow.Recycle` limit (jobs, time, memory) so a supervisor starts a fresh process; unclaimed runs stay queued; `StopCause` and `workflow.Serve` report it ([Worker recycling](../operations/recycling.md)) | off |
-| `WithNotifier(n)` | Wake-ups between clients of one database ([Wake workers at once](#wake-workers-at-once)); `pgnotify.New(db)` on Postgres | none (polling only) |
-| `WithEnqueueOnly()` | A client that enqueues and reads status without `Start` and runs nothing ([Deploy workers › Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)) | off |
-| `WithDatabaseClock(resync)`, `WithLeaseSkew(d)` | The database's clock as the one "now", and the margin other nodes wait past a lease: [Clocks, skew and one fire node](#clocks-skew-and-one-fire-node) | off, 0 |
-| `WithLeaderElection(node, opts...)`, `WithElector(e)` | Cron firing and housekeeping on one elected node | every client fires |
-| `WithFetchBatch(n)` | Rows one dispatcher query reads | 100 |
-| `WithArchiveTable()` | Prune moves finished runs to the cold tables: [Keep the hot tables small](#keep-the-hot-tables-small) | drop them |
-| `WithNodeID(id)`, `WithSchedulerOnly()`, `WithoutScheduler()` | The node's name, and a process that only fires schedules or only runs steps: [nodes](../operations/nodes.md) | `host:pid`, full node |
-| `WithPayloadLimit(n)` | Refuse a payload over `n` bytes at `Enqueue`, `EnqueueTx` and `EnqueueMany` | none |
-| `WithErrorHistory(n)` | How many failed attempts each run keeps in `RunInfo.Errors`, newest kept; `n <= 0` turns it off ([Error history](../jobs/manage-runs.md#error-history)) | 20 |
-| `WithTickRetention`, `WithHousekeepingEvery` | Clean-up cadence: [Tuning › Housekeeping](../operations/tuning.md#housekeeping) | 24h, 50 passes |
+| [`WithClock(c)`](ds:block?id=sql-withclock-43e3rabg) | Every due time: delayed starts, sleeps, wait deadlines, retry backoff, step timeouts, rate-limit windows, cron fires | `clock.Real` |
+| [`WithLogger(l)`](ds:block?id=sql-withlogger-f5zjhse4) | Where the driver reports what it cannot return to a caller (a failed poll, an `OnFailure` error, a cron fire that could not enqueue) | discard |
+| [`WithMiddleware(mw...)`](ds:block?id=sql-withmiddleware-hkqu69ab) | Step middleware around every step and `OnFailure` handler, first outermost | none |
+| [`WithJitterSource(rnd)`](ds:block?id=sql-withjittersource-bcd4dpzh) | Where `Backoff.Jitter` draws values in [0, 1), so tests can pin them; must be safe for concurrent use | `math/rand/v2` |
+| [`WithCronParser(p)`](ds:block?id=sql-withcronparser-dqejw86q) | Another cron dialect; every client of one database must use the same parser, because stored expressions are parsed again when they fire | `cron.Parse` |
+| [`WithTablePrefix(p)`](ds:block?id=sql-withtableprefix-27tumk8t), [`WithSchema(name)`](ds:block?id=sql-withschema-es3gsbyz) | Table names and a Postgres schema: [Migrations › Table names and schemas](../operations/migrations.md#table-names-and-schemas) | `wf_`, none |
+| [`WithRetention`](ds:block?id=sql-withretention-dk86xzbt), `WithArchive`, `WithPruneInterval`, `WithPruneChunk`, `WithoutAutoPrune` | Deleting finished runs: [Retention](../operations/retention.md) | keep forever |
+| [`WithQueues(qs...)`](ds:block?id=sql-withqueues-jk2r8vnt) | The queues this client serves, each with a `Workers` cap, a cluster-wide `Limit` and a `Priority`; New refuses an invalid list | every queue, one pool |
+| [`WithStopWhenIdle(grace)`](ds:block?id=sql-withstopwhenidle-azx5aahg) | Drain once no unfinished run of this client's workflows (on its queues) existed for `grace` on the scheduling clock | off |
+| [`WithRecycle(r)`](ds:block?id=sql-withrecycle-tekpfn73) | Drain and stop at a `workflow.Recycle` limit (jobs, time, memory) so a supervisor starts a fresh process; unclaimed runs stay queued; `StopCause` and `workflow.Serve` report it ([Worker recycling](../operations/recycling.md)) | off |
+| [`WithNotifier(n)`](ds:block?id=sql-withnotifier-zmpj2dtv) | Wake-ups between clients of one database ([Wake workers at once](#wake-workers-at-once)); `pgnotify.New(db)` on Postgres | none (polling only) |
+| [`WithEnqueueOnly()`](ds:block?id=sql-withenqueueonly-z8xgtkdr) | A client that enqueues and reads status without `Start` and runs nothing ([Deploy workers › Web nodes that only enqueue](../operations/deploy.md#web-nodes-that-only-enqueue)) | off |
+| [`WithDatabaseClock(resync)`](ds:block?id=sql-withdatabaseclock-nww7yjsk), [`WithLeaseSkew(d)`](ds:block?id=sql-withleaseskew-32k7fs4q) | The database's clock as the one "now", and the margin other nodes wait past a lease: [Clocks, skew and one fire node](#clocks-skew-and-one-fire-node) | off, 0 |
+| [`WithLeaderElection(node, opts...)`](ds:block?id=sql-withleaderelection-unfdnw9m), [`WithElector(e)`](ds:block?id=sql-withelector-kr5pvbzd) | Cron firing and housekeeping on one elected node | every client fires |
+| [`WithFetchBatch(n)`](ds:block?id=sql-withfetchbatch-pgg8y6vu) | Rows one dispatcher query reads | 100 ([`claimBatch`](ds:block?id=sql-claimbatch-3ambkhnj)) |
+| [`WithArchiveTable()`](ds:block?id=sql-witharchivetable-kdbpda2a) | Prune moves finished runs to the cold tables: [Keep the hot tables small](#keep-the-hot-tables-small) | drop them |
+| [`WithNodeID(id)`](ds:block?id=sql-withnodeid-hrqyznwf), `WithSchedulerOnly()`, `WithoutScheduler()` | The node's name, and a process that only fires schedules or only runs steps: [nodes](../operations/nodes.md) | `host:pid`, full node |
+| [`WithPayloadLimit(n)`](ds:block?id=sql-withpayloadlimit-vufzfrhq) | Refuse a payload over `n` bytes at `Enqueue`, `EnqueueTx` and `EnqueueMany` | none |
+| [`WithErrorHistory(n)`](ds:block?id=sql-witherrorhistory-fzd4btky) | How many failed attempts each run keeps in `RunInfo.Errors`, newest kept; `n <= 0` turns it off ([Error history](../jobs/manage-runs.md#error-history)) | 20 |
+| [`WithTickRetention`](ds:block?id=sql-withtickretention-t9qcn2w7), [`WithHousekeepingEvery`](ds:block?id=sql-withhousekeepingevery-q4fj6uq9) | Clean-up cadence: [Tuning › Housekeeping](../operations/tuning.md#housekeeping) | 24h, 50 passes |
 
-The four options every app may want to set look like this in [`examples/sql-options`](../../examples/sql-options); the middleware prints each step it wraps:
+Step 1: set the four options every app may want, as [`examples/sql-options`](../../examples/sql-options) does: [`WithClock`](ds:block?id=sql-withclock-43e3rabg) for every due time, [`WithLogger`](ds:block?id=sql-withlogger-f5zjhse4) for what the driver cannot return to a caller (it discards by default), [`WithMiddleware`](ds:block?id=sql-withmiddleware-hkqu69ab) around every step and `OnFailure` handler (the first is outermost) and [`WithJitterSource`](ds:block?id=sql-withjittersource-bcd4dpzh) to pin `Backoff.Jitter`'s draws in a test (nil is ignored; the source must be safe for concurrent use). The middleware prints each step it wraps:
 
 <!-- snippet: examples/sql-options/main.go#options -->
 ```go
@@ -751,7 +753,7 @@ c, err := sqlstore.New(db, dialect,
 )
 ```
 
-`Client.DB()` returns the pool the client was built with: the escape hatch for reading the tables directly (a dashboard, a report) or running `Migrate` inside a wider schema step.
+Step 2: reach the tables. [`Client.DB()`](ds:block?id=sql-client-db-3rs7y8ey) returns the pool the client was built with: the escape hatch for reading the tables directly (a dashboard, a report) or running `Migrate` inside a wider schema step.
 
 <!-- snippet: examples/sql-options/main.go#db -->
 ```go
@@ -814,22 +816,22 @@ The recorder's end-to-end suite runs its driver cases on this driver on SQLite, 
 
 ## Pitfalls
 
-- **One more pool connection with `pgnotify`.** Its listener holds a connection for as long as the client runs; a pool sized exactly to the workers starves a worker.
-- `Start` never migrates. A database that has not been migrated (or that lacks a table a newer release added, such as `002_schedule_misfire`'s) fails `Start` with "table ... is not readable (run Migrate, or apply MigrationScripts, first)".
-- Concurrency and rate-limit keys must be Go functions (`workflow.KeyFunc`); a `workflow.KeyExpr` is refused at `Start`, because SQL has no engine expression language.
-- A client only claims, admits, fires and delivers for the workflows it registered. A run of a workflow no running client registered waits in the table.
-- Cancel reaches a step running on another client at that client's next lease renewal (a third of the lease), not at once.
-- A custom classifier that says `UniqueViolation` for an error that is not one makes the driver treat a failure as "someone else won".
-- `Until` and `MaxErrors` are judged when an attempt's failure is recorded, on the scheduling clock; an attempt cut off by a stop or a dead worker counts as neither.
-- A tick that falls due while its schedule is paused never fires, not even on resume, whatever the misfire policy: the schedule resumes at its next tick. The misfire policy still governs ticks missed while no client was running.
-- `Runs` filters labels and the exact status of an admitted run (queued, running, waiting) in Go after the SQL read, so a narrow label filter over a large table reads more rows than it returns.
-- Every client of one database must use the same cron parser and the same table prefix to be workers of one queue; two prefixes share nothing.
-- `WithArchiveTable` moves only what `Prune` would delete: without `WithRetention`, `Prune` deletes nothing, so nothing reaches the cold tables either. The guards still apply: a run that holds an idempotency key, whose end was never delivered (unless `Retention.Undelivered`), or whose batch is open stays in the hot tables.
-- `WithDatabaseClock` makes `Start` read the database first and fail when it cannot. It overrides `WithClock` and `WithLeaseClock` whatever the order of options, so a test that passes a fake clock and the database clock gets the database clock.
-- With `WithLeaderElection`, a crashed leader's cron fires pause until its `LeaderLease` (15 seconds by default) has passed, plus `WithLeaseSkew`; a clean `Stop` resigns and hands over at once. Where a few seconds without fires matter less than a split brain, keep the default (every client fires, the tick row picks one).
-- An `Elector`'s `IsLeader` is called on every dispatcher pass: it must answer from memory, never by asking a server.
-- A takeover after `ErrLeaseLost` counts toward `WithMaxReclaims`, so a database that stalls often can fail healthy steps with `ErrAbandoned`. Choose a `WithLease` longer than the worst stall, and a reclaim count above the takeovers a stall may cause.
-- A run's stored error is text: `errors.Is(err, sqlstore.ErrAbandoned)` holds inside the attempt (and for `NoRetryOn`), not on the error a status read or a `RunEvent` returns later.
+- **One more pool connection with `pgnotify`.** Its listener ([`pgnotify.Notifier.Listen`](ds:block?id=pgnotify-notifier-listen-sc6f8es4)) holds a connection for as long as the client runs; a pool sized exactly to the workers starves a worker.
+- [`Start`](ds:block?id=sql-client-start-ab8ayzsy) never migrates. A database that has not been migrated (or that lacks a table a newer release added, such as `002_schedule_misfire`'s) fails `Start` with "table ... is not readable (run Migrate, or apply MigrationScripts, first)" ([`checkSchema`](ds:block?id=sql-client-checkschema-5y2gj6z7)).
+- Concurrency and rate-limit keys must be Go functions (`workflow.KeyFunc`); a `workflow.KeyExpr` is refused at `Start` ([`exprKeys`](ds:block?id=sql-exprkeys-wxvw57q3)), because SQL has no engine expression language.
+- A client only claims, admits, fires and delivers for the workflows it registered ([`claimFilter`](ds:block?id=sql-client-claimfilter-fxuq8cus)). A run of a workflow no running client registered waits in the table.
+- Cancel reaches a step running on another client at that client's next lease renewal (a third of the lease, [`heartbeat`](ds:block?id=sql-client-heartbeat-uu2x8xhn)), not at once.
+- A custom classifier that says [`UniqueViolation`](ds:block?id=sql-errorclass-ct5h2saw) for an error that is not one makes the driver treat a failure as "someone else won".
+- `Until` and `MaxErrors` are judged when an attempt's failure is recorded ([`recordFailure`](ds:block?id=sql-client-recordfailure-xw2rpzdx)), on the scheduling clock; an attempt cut off by a stop or a dead worker counts as neither.
+- A tick that falls due while its schedule is paused never fires, not even on resume ([`skipPausedTicks`](ds:block?id=sql-client-skippausedticks-yqj9zkhn)), whatever the misfire policy: the schedule resumes at its next tick. The misfire policy still governs ticks missed while no client was running.
+- [`Runs`](ds:block?id=sql-client-runs-vc45txxc) filters labels and the exact status of an admitted run (queued, running, waiting) in Go after the SQL read, so a narrow label filter over a large table reads more rows than it returns.
+- Every client of one database must use the same cron parser ([`WithCronParser`](ds:block?id=sql-withcronparser-dqejw86q)) and the same table prefix ([`WithTablePrefix`](ds:block?id=sql-withtableprefix-27tumk8t)) to be workers of one queue; two prefixes share nothing.
+- [`WithArchiveTable`](ds:block?id=sql-witharchivetable-kdbpda2a) moves only what [`Prune`](ds:block?id=sql-client-prune-ybwksw5e) would delete: without `WithRetention`, `Prune` deletes nothing, so nothing reaches the cold tables either. The guards ([`guards`](ds:block?id=sql-client-guards-raaht9rz)) still apply: a run that holds an idempotency key, whose end was never delivered (unless `Retention.Undelivered`), or whose batch is open stays in the hot tables.
+- [`WithDatabaseClock`](ds:block?id=sql-withdatabaseclock-nww7yjsk) makes `Start` read the database first and fail when it cannot. It overrides `WithClock` and `WithLeaseClock` whatever the order of options ([`build`](ds:block?id=sql-build-8nb2xeb9) applies it after every option), so a test that passes a fake clock and the database clock gets the database clock.
+- With `WithLeaderElection`, a crashed leader's cron fires pause until its `LeaderLease` (15 seconds by default, [`defaultLeaderLease`](ds:block?id=sql-defaultleaderlease-5sevpk6w)) has passed, plus `WithLeaseSkew`; a clean `Stop` resigns and hands over at once. Where a few seconds without fires matter less than a split brain, keep the default (every client fires, the tick row picks one).
+- An [`Elector`](ds:block?id=sql-elector-jdvnhn8d)'s `IsLeader` is called on every dispatcher pass of a client that may fire: it must answer from memory, never by asking a server. A `WithoutScheduler` client never calls it ([`Client.IsLeader`](ds:block?id=sql-client-isleader-nt5u9e5p)). Before v0.2.2 a worker-only client asked a custom `WithElector` and, when it said yes, reported leadership and ran the leader's housekeeping.
+- A takeover after [`ErrLeaseLost`](ds:block?id=sql-errleaselost-qhvxyrbf) counts toward [`WithMaxReclaims`](ds:block?id=sql-withmaxreclaims-mq8n5ud9), so a database that stalls often can fail healthy steps with `ErrAbandoned`. Choose a `WithLease` longer than the worst stall, and a reclaim count above the takeovers a stall may cause.
+- A run's stored error is text plus a class: a `RunEvent`'s `Err` after the run ended matches `sqlstore.ErrAbandoned` and the timeout sentinels again ([`failureCause`](ds:block?id=sql-failurecause-f23v6gxx)), never an app's own sentinel; `RunInfo.Error` is only the text. A run abandoned before this release has no stored class and matches by text only.
 
 ## Related
 

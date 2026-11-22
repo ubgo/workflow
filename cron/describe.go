@@ -23,6 +23,8 @@ import (
 // are the schedule's wall clock, 24-hour; the text names no zone, since
 // the expression carries none. An invalid expression returns the parser's
 // *ParseError.
+//
+//ds:def id=cron-describe-e5rw59ey owner=@khanakia stability=stable
 func Describe(expr string) (string, error) {
 	trimmed := strings.TrimSpace(expr)
 	if _, err := ParseExtended(expr); err != nil {
@@ -38,6 +40,8 @@ func Describe(expr string) (string, error) {
 // (seconds first): "*/10 * * * * *" is "Every 10 seconds", "30 0 9 * *
 // MON-FRI" is "At 09:00:30, Monday through Friday". Macros and "@every"
 // read as they do in Describe.
+//
+//ds:def id=cron-describeseconds-vjkqt6sr owner=@khanakia stability=stable
 func DescribeSeconds(expr string) (string, error) {
 	trimmed := strings.TrimSpace(expr)
 	if _, err := ParseSeconds(expr); err != nil {
@@ -285,6 +289,7 @@ func hourQualifier(items []citem, minuteAt bool) string {
 	return ", during hours " + joinList(itemTexts(items, hh))
 }
 
+//ds:def id=cron-describedays-mn5tyxmv owner=@khanakia stability=stable
 func describeDays(domText, dowText string) string {
 	domStar := strings.HasPrefix(domText, "*") && !strings.ContainsAny(strings.ToUpper(domText), "LW")
 	dowStar := strings.HasPrefix(dowText, "*") && !strings.ContainsAny(dowText, "#Ll")

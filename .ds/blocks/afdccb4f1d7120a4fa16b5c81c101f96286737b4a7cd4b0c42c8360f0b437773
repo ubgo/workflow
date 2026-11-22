@@ -1,0 +1,12 @@
+func (m *MemoryStream) prune(now time.Time) {
+	for id, rs := range m.runs {
+		expired := now.Sub(rs.lastAt) >= m.opt.TTL
+		retained := !rs.closedAt.IsZero() && now.Sub(rs.closedAt) >= m.opt.Retain
+		if expired || retained {
+			for sub := range rs.subs {
+				sub.close()
+			}
+			delete(m.runs, id)
+		}
+	}
+}

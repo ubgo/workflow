@@ -1,0 +1,5 @@
+func (e *LeaderElector) Term() int64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.term
+}

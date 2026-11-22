@@ -1,0 +1,30 @@
+func (c *Client) beginWait(h *held, s workflow.Step, job workflow.Job, now time.Time) (out []byte, got bool, deadline int64, err error) {
+	if v, ok := h.waitVals[s.Name]; ok {
+		return v, true, 0, nil
+	}
+	key, err := s.Wait.ResolveKeyFor(job, workflow.RunID(h.id)) // Start refused Expr keys, so this is Func, the fixed Key or the run address
+	if err != nil {
+		return nil, false, 0, err
+	}
+	switch {
+	case !s.Wait.Deadline.IsZero():
+		deadline = s.Wait.Deadline.UnixNano()
+	case s.Wait.Timeout > 0:
+		deadline = now.Add(s.Wait.Timeout).UnixNano()
+	}
+	ctx, cancel := c.writeCtx()
+	defer cancel()
+	res, err := waitScript.Run(ctx, c.rdb, c.keys(), c.base, h.id, h.token, s.Name, sigKey(s.Wait.Event, key), deadline).Slice()
+	if err != nil {
+		return nil, false, 0, classify(err)
+	}
+	switch str(res[0]) {
+	case "lost":
+		h.cancel(errLost)
+		return nil, false, 0, errLost
+	case "got":
+		return []byte(str(res[1])), true, 0, nil
+	}
+	d, _ := strconv.ParseInt(str(res[1]), 10, 64)
+	return nil, false, d, nil
+}

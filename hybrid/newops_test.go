@@ -38,6 +38,8 @@ func startOver(t *testing.T, sched, jobs workflow.Client, wfs ...workflow.Workfl
 // TestResetAndSignalFlows runs the shared ResetRun and signal suites
 // through hybrid: ResetRun, SignalWaiting and the other run-side calls
 // reach the jobs client, where the runs live.
+//
+//ds:def id=hybrid-testresetandsignalflows-dks2u4vp owner=@khanakia stability=stable
 func TestResetAndSignalFlows(t *testing.T) {
 	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: startHybrid})
 	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: startHybrid,
@@ -77,6 +79,8 @@ type bareClient struct{ workflow.Client }
 // TestNewOps_RefusedWhenTheJobsClientLacksThem: a jobs client without the
 // interfaces makes each call an UnsupportedError and Supports says no,
 // whatever the scheduler client does.
+//
+//ds:def id=hybrid-testnewops-refusedwhenthejobsclientlacksthem-mhnntuuh owner=@khanakia stability=stable
 func TestNewOps_RefusedWhenTheJobsClientLacksThem(t *testing.T) {
 	wait := workflow.Workflow{Name: "wait", Steps: []workflow.Step{{Name: "w", Wait: &workflow.WaitSpec{Event: "go"}}}}
 	c := startOver(t, memory.New(), bareClient{memory.New()}, wait)

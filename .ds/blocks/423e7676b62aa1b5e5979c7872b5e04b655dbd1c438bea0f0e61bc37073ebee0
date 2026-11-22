@@ -1,0 +1,20 @@
+func PromiseResult(ctx context.Context, store PromiseStore, id string) (value []byte, settled bool, err error) {
+	if store == nil || id == "" {
+		return nil, false, invalidf("promise result: needs a store and an id")
+	}
+	raw, ok, err := store.Get(ctx, id)
+	if err != nil {
+		return nil, false, fmt.Errorf("workflow: promise %q: read: %w", id, err)
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	var s settlement
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return nil, true, fmt.Errorf("workflow: promise %q: stored value: %w", id, err)
+	}
+	if !s.OK {
+		return nil, true, &PromiseRejectedError{ID: id, Reason: s.Reason}
+	}
+	return s.Value, true, nil
+}

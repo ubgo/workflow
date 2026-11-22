@@ -1,0 +1,14 @@
+type BackoffDef struct {
+	// Initial is the first retry's wait, as a duration string.
+	Initial string `json:"initial,omitempty"`
+
+	// Factor multiplies the wait per retry; below 1 counts as 1.
+	Factor float64 `json:"factor,omitempty"`
+
+	// Max caps the wait, as a duration string.
+	Max string `json:"max,omitempty"`
+
+	// Jitter is Backoff.Jitter, a fraction in [0, 1]. Needs
+	// CapRetryJitter when set.
+	Jitter float64 `json:"jitter,omitempty"`
+}

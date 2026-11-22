@@ -1,0 +1,17 @@
+func (h *handler[P]) lookup(ctx context.Context, ref workflow.RunRef) (info *workflow.RunInfo, err error) {
+	q, ok := h.c.(workflow.RunQuerier)
+	if !ok || !h.c.Capabilities().Has(workflow.CapRunQuery) {
+		return nil, nil
+	}
+	page, err := q.Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
+	if err != nil {
+		if errors.Is(err, workflow.ErrNotFound) || errors.Is(err, workflow.ErrUnsupported) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if len(page.Runs) == 0 {
+		return nil, nil
+	}
+	return &page.Runs[0], nil
+}

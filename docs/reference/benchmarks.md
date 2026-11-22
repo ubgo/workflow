@@ -122,6 +122,6 @@ task bench -- -separate-producer             # enqueue through a worker-less cli
 task bench -- -concurrency 100               # more workers (and enqueuers)
 ```
 
-`bench/run.sh` points the harness at the host Postgres (`postgres://$USER@localhost:5432/postgres`; it creates and drops one database per system beside it), at Redis on `localhost:7012` (`REDIS_ADDR` overrides it) and at the Hatchet engine of the local stack, reading the engine token from the stack's `.env` without printing it. A system whose service is not configured is skipped. Run `go run . -h` in `bench/` for every flag: job count, payload size, warm-up, probe count and pauses, timeouts, the load limit and sqlstore's Postgres pool size.
+`bench/run.sh` points the harness at the host Postgres (`postgres://$USER@localhost:5432/postgres`; it creates and drops one database per system beside it), at Redis on `localhost:7012` (`REDIS_ADDR` overrides it) and at the Hatchet engine of the local stack, reading the engine token from the `.env` file named by `STACK_ENV` (required; set it empty to take `HATCHET_CLIENT_TOKEN` and `REDIS_PASSWORD` from the environment) without printing it. A system whose service is not configured is skipped. Run `go run . -h` in `bench/` for every flag: job count, payload size, warm-up, probe count and pauses, timeouts, the load limit and sqlstore's Postgres pool size.
 
 The harness prints the machine, the Go and library versions, the Postgres and Redis server versions, the load at start and each system's row as soon as it finishes, then the whole table.

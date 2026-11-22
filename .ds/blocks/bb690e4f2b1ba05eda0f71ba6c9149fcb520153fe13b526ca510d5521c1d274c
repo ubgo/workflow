@@ -1,0 +1,6 @@
+func (r *Recorder) AssertNothingEnqueued(t testing.TB) {
+	t.Helper()
+	if jobs := r.Jobs(); len(jobs) != 0 {
+		t.Errorf("%d jobs were enqueued, want none (first: %q)", len(jobs), jobs[0].Workflow)
+	}
+}

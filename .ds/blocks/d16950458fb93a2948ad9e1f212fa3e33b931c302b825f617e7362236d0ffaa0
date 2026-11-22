@@ -1,0 +1,31 @@
+func Trail(ctx context.Context, client workflow.Client, correlation string, q workflow.RunQuery) ([]workflow.RunInfo, error) {
+	if correlation == "" {
+		return nil, fmt.Errorf("%w: events: Trail needs a correlation", workflow.ErrInvalid)
+	}
+	if client == nil {
+		return nil, fmt.Errorf("%w: events: client is nil", workflow.ErrInvalid)
+	}
+	rq, ok := client.(workflow.RunQuerier)
+	if !ok || !client.Capabilities().Has(workflow.CapRunQuery) {
+		return nil, &workflow.UnsupportedError{Field: "events.Trail", Missing: workflow.CapRunQuery,
+			Reason: "listing a choreography's runs needs run queries"}
+	}
+	labels := maps.Clone(q.Labels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[LabelCorrelation] = correlation
+	q.Labels = labels
+	var out []workflow.RunInfo
+	for {
+		page, err := rq.Runs(ctx, q)
+		if err != nil {
+			return out, fmt.Errorf("events: trail %q: %w", correlation, err)
+		}
+		out = append(out, page.Runs...)
+		if page.Next == "" {
+			return out, nil
+		}
+		q.Cursor = page.Next
+	}
+}

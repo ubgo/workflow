@@ -210,6 +210,7 @@ func TestInterleavedRouting(t *testing.T) {
 	}
 }
 
+//ds:def id=teststartwhenholdsuntilready-ea7yfcvn owner=@khanakia stability=stable
 func TestStartWhenHoldsUntilReady(t *testing.T) {
 	clk := clock.NewFake(time.Date(1970, 1, 1, 0, 0, 10, 0, time.UTC))
 	c := memory.New(memory.WithClock(clk))
@@ -239,6 +240,7 @@ func TestStartWhenHoldsUntilReady(t *testing.T) {
 	}
 }
 
+//ds:def id=teststartwhenerrors-d9cyqwrc owner=@khanakia stability=stable
 func TestStartWhenErrors(t *testing.T) {
 	boom := errors.New("ntp down")
 	c := memory.New()

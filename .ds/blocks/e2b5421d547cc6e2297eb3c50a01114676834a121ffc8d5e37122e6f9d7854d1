@@ -1,0 +1,22 @@
+func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
+	if err := workflow.CheckPause(c.capabilities(), t); err != nil {
+		return err
+	}
+	req, err := unpauseRequest()
+	if err != nil {
+		return fmt.Errorf("hatchet driver: resume request: %w", err)
+	}
+	if !t.All {
+		return c.updateWithVariant(ctx, t.Workflow, req)
+	}
+	paused, err := c.Paused(ctx)
+	if err != nil {
+		return err
+	}
+	for _, p := range paused {
+		if err := c.updateWithVariant(ctx, p.Workflow, req); err != nil {
+			return err
+		}
+	}
+	return nil
+}

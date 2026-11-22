@@ -1,0 +1,89 @@
+func (n *notifier) poll() {
+	now := time.Now() // wall clock: compared with engine creation times
+	live, err := n.list(liveStatuses, now.Add(-n.c.cfg.RunFinishedWindow))
+	if err != nil {
+		n.c.cfg.Logger.ErrorContext(n.ctx, "hatchet driver: run-finished poll: list live runs", "error", err)
+		return
+	}
+	stillLive := map[string]bool{}
+	for _, r := range live {
+		if n.ours(r.AdditionalMetadata) {
+			stillLive[r.WorkflowRunExternalId.String()] = true
+		}
+	}
+	n.mu.Lock()
+	var ended []string
+	for id := range n.tracked {
+		if !stillLive[id] {
+			ended = append(ended, id)
+		}
+	}
+	for id := range stillLive {
+		n.tracked[id] = true
+	}
+	since := n.since
+	n.mu.Unlock()
+
+	for _, id := range ended {
+		d, err := n.c.sdk.Runs().Get(n.ctx, id)
+		if isNotFound(err) {
+			n.untrack(id)
+			continue
+		}
+		if err != nil || d == nil {
+			if err == nil {
+				err = errors.New("engine returned no run")
+			}
+			n.c.cfg.Logger.ErrorContext(n.ctx, "hatchet driver: run-finished poll: read ended run", "run", id, "error", err)
+			continue
+		}
+		st, err := n.c.endStatus(d)
+		if err != nil {
+			continue
+		}
+		if ev, ok := n.event(id, st, d.Run.AdditionalMetadata, d.Run.ErrorMessage, d.Run.FinishedAt); ok {
+			n.deliver(id, n.c.withFailure(ev, d))
+		}
+	}
+
+	done, err := n.list(terminalStatuses, since)
+	if err != nil {
+		n.c.cfg.Logger.ErrorContext(n.ctx, "hatchet driver: run-finished poll: list finished runs", "error", err)
+		return
+	}
+	for _, r := range done {
+		id := r.WorkflowRunExternalId.String()
+		if r.Status == rest.V1TaskStatusFAILED {
+			// A FAILED row may be the moment before a retry: read the
+			// run and let endStatus judge it (failed.go), once per end.
+			if n.seen(id, r.FinishedAt) || !n.ours(r.AdditionalMetadata) {
+				continue
+			}
+			st, d, err := n.c.readEndStatus(n.ctx, n.c.sdk, id)
+			if err != nil {
+				n.c.cfg.Logger.ErrorContext(n.ctx, "hatchet driver: run-finished poll: read failed run", "run", id, "error", err)
+				continue
+			}
+			if ev, ok := n.event(id, st, d.Run.AdditionalMetadata, d.Run.ErrorMessage, d.Run.FinishedAt); ok {
+				n.deliver(id, n.c.withFailure(ev, d))
+			}
+			continue
+		}
+		st, err := runStatus(r.Status)
+		if err != nil {
+			continue
+		}
+		if ev, ok := n.event(id, st, r.AdditionalMetadata, r.ErrorMessage, r.FinishedAt); ok {
+			n.deliver(id, ev)
+		}
+	}
+	local := n.c.cfg.Clock.Now()
+	n.mu.Lock()
+	n.since = now.Add(-listOverlap(n.c.cfg.VisibilityLag))
+	for id, at := range n.delivered {
+		if local.Sub(at) > n.c.cfg.RunFinishedWindow {
+			delete(n.delivered, id)
+		}
+	}
+	n.mu.Unlock()
+}

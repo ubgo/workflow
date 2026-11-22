@@ -1,0 +1,10 @@
+func (g gcmCodec) Decode(enc []byte) ([]byte, error) {
+	plain, err := gcmOpen(g.aead, enc)
+	for _, old := range g.old {
+		if err == nil {
+			break
+		}
+		plain, err = gcmOpen(old, enc)
+	}
+	return plain, err
+}

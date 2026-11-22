@@ -1,0 +1,19 @@
+func TestClaimCheck_Config(t *testing.T) {
+	if _, err := middleware.NewClaimCheck(nil, 1); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil store: %v", err)
+	}
+	if _, err := middleware.NewClaimCheck(middleware.NewMemoryBlobStore(), 0); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("zero threshold: %v", err)
+	}
+	for _, k := range []string{"", "a/b"} {
+		cc, err := middleware.NewClaimCheck(middleware.NewMemoryBlobStore(), 1,
+			middleware.WithClaimKeys(func() (string, error) { return k, nil }))
+		if err != nil {
+			t.Fatal(err)
+		}
+		enq := cc.Enqueue()(func(context.Context, workflow.Job) (workflow.RunRef, error) { return workflow.RunRef{}, nil })
+		if _, err := enq(context.Background(), workflow.Job{}); !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("key %q: %v", k, err)
+		}
+	}
+}

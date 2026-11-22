@@ -1,0 +1,10 @@
+func DeleteData(ctx context.Context, scope DataScope, name string) error {
+	store, scope, err := dataFrom(ctx, scope, name)
+	if err != nil {
+		return err
+	}
+	if err := store.Delete(ctx, scope, name); err != nil {
+		return fmt.Errorf("workflow: %s data %q: delete: %w", scope, name, err)
+	}
+	return nil
+}

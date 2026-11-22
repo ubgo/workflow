@@ -1,0 +1,3 @@
+func AnyExcluded(cals ...ExclusionCalendar) ExclusionCalendar {
+	return anyCalendar(append([]ExclusionCalendar(nil), cals...))
+}

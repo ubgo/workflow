@@ -1,0 +1,15 @@
+type JobState struct {
+	// Ref is the run, set once Enqueue returns; zero before that or when
+	// the job was never enqueued.
+	Ref workflow.RunRef
+
+	// Status is the run's terminal status, or "" while it has not
+	// finished. Only terminal statuses are recorded.
+	Status workflow.Status
+
+	// Attempt is 0 for the job's first run and grows by one each time
+	// Manager.RetryFailed starts it again. A retried job's run carries it
+	// in LabelAttempt, and a run end whose attempt differs is ignored, so
+	// the late end of an earlier run never counts for the new one.
+	Attempt int `json:",omitempty"`
+}

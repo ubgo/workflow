@@ -1,0 +1,7 @@
+func WithOnDead(fn DeadFunc) RelayOption {
+	return func(r *Relay) {
+		if fn != nil {
+			r.onDead = fn
+		}
+	}
+}

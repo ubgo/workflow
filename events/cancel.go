@@ -12,6 +12,8 @@ import (
 // default: every status that is not terminal, so a run that is running
 // or waiting is cut short too (workflow.CancelAll alone cancels only runs
 // not yet started).
+//
+//ds:def id=events-unfinishedstatuses-h9ta9rw2 owner=@khanakia stability=stable
 var UnfinishedStatuses = []workflow.Status{
 	workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning,
 	workflow.StatusWaiting, workflow.StatusRetrying,
@@ -40,6 +42,8 @@ var UnfinishedStatuses = []workflow.Status{
 // would cancel the divert run itself whenever it carries the cancelled
 // label (the message's labels are copied onto it), so a divert needs a
 // client with workflow.RunQuerier (CapRunQuery).
+//
+//ds:def id=events-cancelsubscription-eqr493yk owner=@khanakia stability=stable
 type CancelSubscription struct {
 	// Name identifies the subscription; unique within the bus across
 	// subscriptions and cancel subscriptions, and stable across deploys
@@ -80,6 +84,8 @@ type CancelSubscription struct {
 }
 
 // Cancellation is what one cancel subscription did with one message.
+//
+//ds:def id=events-cancellation-5uvt9g2f owner=@khanakia stability=stable
 type Cancellation struct {
 	Subscription string
 
@@ -106,6 +112,8 @@ type Cancellation struct {
 // Publish runs cancels before it starts any run, so the runs a message
 // starts are never cancelled by the same message, and Replay never runs
 // them.
+//
+//ds:def id=events-bus-subscribecancel-6bxys433 owner=@khanakia stability=stable
 func (b *Bus) SubscribeCancel(s CancelSubscription) error {
 	if s.Name == "" || s.Event == "" || s.Label == "" {
 		return fmt.Errorf("%w: events: cancel subscription needs a Name, an Event and a Label", workflow.ErrInvalid)
@@ -133,6 +141,8 @@ func (b *Bus) SubscribeCancel(s CancelSubscription) error {
 }
 
 // cancelQuery is the CancelAll query s runs for label value key.
+//
+//ds:def id=events-cancelquery-ndzcm36d owner=@khanakia stability=stable
 func cancelQuery(s CancelSubscription, key string) workflow.RunQuery {
 	st := s.Statuses
 	if len(st) == 0 {
@@ -143,6 +153,8 @@ func cancelQuery(s CancelSubscription, key string) workflow.RunQuery {
 
 // runCancels runs every cancel subscription matching m, then every
 // divert, and returns one Cancellation per match and the errors.
+//
+//ds:def id=events-bus-runcancels-w2bhnty2 owner=@khanakia stability=stable
 func (b *Bus) runCancels(ctx context.Context, cancels []CancelSubscription, m Message) ([]Cancellation, []error) {
 	var out []Cancellation
 	var errs []error
@@ -201,6 +213,8 @@ func (b *Bus) runCancels(ctx context.Context, cancels []CancelSubscription, m Me
 }
 
 // findDivert looks for the divert run s started for m, in any status.
+//
+//ds:def id=events-bus-finddivert-ecbdgdn8 owner=@khanakia stability=stable
 func (b *Bus) findDivert(ctx context.Context, s CancelSubscription, m Message) (workflow.RunRef, bool, error) {
 	q, ok := b.client.(workflow.RunQuerier)
 	if !ok {

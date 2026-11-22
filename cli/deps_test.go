@@ -16,6 +16,8 @@ import (
 // its core, which a go.work would let compile without a require line)
 // would make installing the CLI download what an operator's laptop does
 // not need, and tie it to one version of the server.
+//
+//ds:def id=cli-testguard-stdlibonly-27tfnnex owner=@khanakia stability=stable
 func TestGuard_StdlibOnly(t *testing.T) {
 	mod, err := os.ReadFile("go.mod")
 	if err != nil {

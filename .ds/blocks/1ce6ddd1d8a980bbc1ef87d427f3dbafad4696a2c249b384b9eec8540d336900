@@ -1,0 +1,65 @@
+var cancelCases = []testCase{
+	{"Cancel stops a running run, and cancelling twice is fine", func(e *env) {
+		e.need(workflow.CapCancel)
+		var c, ended counter
+		wf := oneStep(e.name("w"), blockUntilDone(&c, &ended))
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.eventually("the step to start", 0, func() bool { return c.count() > 0 })
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if err := e.c.Cancel(ctx, ref); err != nil {
+			e.t.Fatalf("Cancel: %v", err)
+		}
+		e.waitStatus(ref, workflow.StatusCancelled, 0)
+		e.eventually("the step's context to end", 0, func() bool { return ended.count() > 0 })
+		if err := e.c.Cancel(ctx, ref); err != nil {
+			e.t.Fatalf("second Cancel: %v, want nil", err)
+		}
+		e.quiet()
+		if got := c.count(); got != 1 {
+			e.t.Fatalf("a cancelled step ran %d times, want 1 (no retry after cancel)", got)
+		}
+	}},
+	{"Cancel stops a scheduled run before it starts", func(e *env) {
+		e.need(workflow.CapsOf(workflow.CapCancel, workflow.CapDelayedStart))
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name, RunAt: e.now().Add(e.tm.unit)})
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if err := e.c.Cancel(ctx, ref); err != nil {
+			e.t.Fatalf("Cancel of a scheduled run: %v", err)
+		}
+		e.waitStatus(ref, workflow.StatusCancelled, 0)
+		if e.clk != nil {
+			e.clk.Advance(2 * e.tm.unit)
+			e.quiet()
+		} else {
+			time.Sleep(e.tm.unit + e.tm.quiet)
+		}
+		if got := c.count(); got != 0 {
+			e.t.Fatalf("a cancelled scheduled run started %d times", got)
+		}
+		if err := e.c.Cancel(ctx, ref); err != nil {
+			e.t.Fatalf("second Cancel: %v, want nil", err)
+		}
+	}},
+	{"Cancel of a finished run is a no-op", func(e *env) {
+		e.need(workflow.CapCancel)
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusSucceeded, 0)
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		if err := e.c.Cancel(ctx, ref); err != nil {
+			e.t.Fatalf("Cancel of a finished run: %v, want nil", err)
+		}
+		if st := e.status(ref); st != workflow.StatusSucceeded {
+			e.t.Fatalf("Cancel changed a finished run's status to %q", st)
+		}
+	}},
+}

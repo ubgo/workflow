@@ -1,0 +1,9 @@
+func (p RetryPolicy) Retryable(err error, attempts int) bool {
+	if err == nil || IsPermanent(err) || IsDiscarded(err) || errors.Is(err, ErrCancelled) {
+		return false
+	}
+	if p.NoRetryOn != nil && p.NoRetryOn(err) {
+		return false
+	}
+	return attempts <= p.Max
+}

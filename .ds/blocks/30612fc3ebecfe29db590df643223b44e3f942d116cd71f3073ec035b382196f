@@ -1,0 +1,13 @@
+func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err := c.usable(); err != nil {
+		return 0, err
+	}
+	n, err := transientSignalScript.Run(ctx, c.rdb, c.keys(), c.base, sigKey(ev.Name, ev.Key), string(ev.Payload), c.clk.Now().UnixMilli()).Int()
+	if err != nil {
+		return 0, fmt.Errorf("redis: transient signal: %w", classify(err))
+	}
+	return n, nil
+}

@@ -1,0 +1,25 @@
+func TestDebounce_StoreErrorFailsClosed(t *testing.T) {
+	clk := clock.NewFake(time.Unix(1000, 0))
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
+	key := func(workflow.Job) string { return "k" }
+	ctx := context.Background()
+
+	getFails := &sharedDebounce{inner: middleware.NewMemoryDebounce(clk), err: errBoom}
+	mw, _ := middleware.Debounce(stub, clk, key, time.Second, 0, middleware.WithDebounceStore(getFails))
+	if _, err := middleware.WrapClient(stub, mw).Enqueue(ctx, workflow.Job{Workflow: "w"}); !errors.Is(err, errBoom) {
+		t.Fatalf("get error: err = %v", err)
+	}
+	if len(stub.jobs) != 0 {
+		t.Fatal("a job was enqueued although the store failed")
+	}
+
+	swapFails := &swapFailStore{}
+	mw, _ = middleware.Debounce(stub, clk, key, time.Second, 0, middleware.WithDebounceStore(swapFails))
+	ref, err := middleware.WrapClient(stub, mw).Enqueue(ctx, workflow.Job{Workflow: "w"})
+	if !errors.Is(err, errBoom) || !ref.IsZero() {
+		t.Fatalf("swap error: ref=%+v err=%v", ref, err)
+	}
+	if len(stub.jobs) != 1 || len(stub.cancelled) != 1 || stub.cancelled[0].ScheduledID != "1" {
+		t.Fatalf("new run not cancelled after a swap error: jobs=%d cancelled=%+v", len(stub.jobs), stub.cancelled)
+	}
+}

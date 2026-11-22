@@ -1,0 +1,1 @@
+	defaultRetention = 24 * time.Hour

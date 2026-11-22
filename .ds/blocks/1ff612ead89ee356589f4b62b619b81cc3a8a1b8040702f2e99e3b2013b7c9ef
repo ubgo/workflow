@@ -1,0 +1,23 @@
+func (s *batchSource) poll(ctx context.Context, m *batch.Manager) {
+	if _, err := s.c.ready(); err != nil {
+		return
+	}
+	open, err := s.store.Unfinished(ctx)
+	if err != nil {
+		s.log.ErrorContext(ctx, "hatchet batch source: list unfinished batches", "error", err)
+		return
+	}
+	for _, st := range open {
+		s.pollBatch(ctx, m, st)
+	}
+	// As batch.PollSource does: a callback whose enqueue failed is retried
+	// here, since a finished batch gets no further job end to retry it.
+	if err := m.RetryCallbacks(ctx); err != nil {
+		s.log.ErrorContext(ctx, "hatchet batch source: retry callbacks", "error", err)
+	}
+	// A dispatch whose process died part-way is finished here, once its
+	// lease has ended (batch.Manager.ResumeDispatches).
+	if err := m.ResumeDispatches(ctx); err != nil {
+		s.log.ErrorContext(ctx, "hatchet batch source: resume dispatches", "error", err)
+	}
+}

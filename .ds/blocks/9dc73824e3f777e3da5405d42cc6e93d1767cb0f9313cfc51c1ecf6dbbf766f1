@@ -1,0 +1,1 @@
+var ErrCompensated = errors.New("workflow: saga compensated")

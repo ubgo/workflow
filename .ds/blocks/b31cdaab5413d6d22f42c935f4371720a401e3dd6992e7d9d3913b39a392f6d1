@@ -1,0 +1,1 @@
+func JournalKeepFailed() JournalOption { return func(p *journalPlugin) { p.keepFailed = true } }

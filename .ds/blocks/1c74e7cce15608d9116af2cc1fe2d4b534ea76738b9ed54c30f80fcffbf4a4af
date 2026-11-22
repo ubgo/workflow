@@ -1,0 +1,10 @@
+func (rc *ReplayCtx) childSpawnName(name string) string {
+	if rc.children == nil {
+		rc.children = map[string]int{}
+	}
+	rc.children[name]++
+	if n := rc.children[name]; n > 1 {
+		return "replay-child#" + strconv.Itoa(n) + "/" + name
+	}
+	return "replay-child/" + name
+}

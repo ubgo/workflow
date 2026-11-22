@@ -1,0 +1,124 @@
+func compileMachine[D any](spec MachineSpec[D]) (*machine[D], error) {
+	if spec.Name == "" || spec.Initial == "" || len(spec.States) == 0 || spec.Store == nil {
+		return nil, invalidf("machine needs a Name, an Initial state, States and a Store")
+	}
+	m := &machine[D]{
+		spec:    spec,
+		root:    &mnode{spec: -1},
+		nodes:   make(map[string]*mnode, len(spec.States)),
+		trans:   map[*mnode][]*mtrans{},
+		history: map[*mnode]bool{},
+		clk:     spec.Clock,
+		keep:    spec.KeepLog,
+	}
+	if m.clk == nil {
+		m.clk = clock.Real{}
+	}
+	if m.keep == 0 {
+		m.keep = DefaultMachineLog
+	}
+	fail := func(format string, args ...any) error {
+		return invalidf("machine %q: "+format, append([]any{spec.Name}, args...)...)
+	}
+	for i, s := range spec.States {
+		if s.Name == "" {
+			return nil, fail("state %d has no name", i)
+		}
+		if _, dup := m.nodes[s.Name]; dup {
+			return nil, fail("state %q is defined twice", s.Name)
+		}
+		m.nodes[s.Name] = &mnode{name: s.Name, parallel: s.Parallel, final: s.Final, spec: i}
+		for j, tm := range s.After {
+			if tm.Delay <= 0 || tm.Event == "" {
+				return nil, fail("state %q timer %d needs a positive Delay and an Event", s.Name, j)
+			}
+			m.timers = true
+		}
+	}
+	for _, s := range spec.States {
+		n := m.nodes[s.Name]
+		parent := m.root
+		if s.Parent != "" {
+			p, ok := m.nodes[s.Parent]
+			if !ok {
+				return nil, fail("state %q has an unknown parent %q", s.Name, s.Parent)
+			}
+			parent = p
+		}
+		n.parent = parent
+		parent.children = append(parent.children, n)
+	}
+	// A parent chain that does not reach the root is a cycle.
+	for _, n := range m.nodes {
+		steps := 0
+		for p := n.parent; p != m.root; p = p.parent {
+			if p == nil || steps > len(m.nodes) {
+				return nil, fail("state %q is in a parent cycle", n.name)
+			}
+			steps++
+		}
+	}
+	m.root.initial = m.nodes[spec.Initial]
+	if m.root.initial == nil || m.root.initial.parent != m.root {
+		return nil, fail("Initial %q is not a top-level state", spec.Initial)
+	}
+	for _, s := range spec.States {
+		n := m.nodes[s.Name]
+		switch {
+		case n.final && len(n.children) > 0:
+			return nil, fail("final state %q has children", s.Name)
+		case n.parallel && len(n.children) == 0:
+			return nil, fail("parallel state %q has no children", s.Name)
+		case n.compound():
+			c, ok := m.nodes[s.Initial]
+			if s.Initial == "" || !ok || c.parent != n {
+				return nil, fail("compound state %q needs an Initial that is one of its children", s.Name)
+			}
+			n.initial = c
+		case s.Initial != "" && !n.parallel:
+			return nil, fail("state %q has an Initial but no children", s.Name)
+		}
+	}
+	var walk func(n *mnode)
+	walk = func(n *mnode) {
+		for _, c := range n.children {
+			c.order = len(m.ordered)
+			m.ordered = append(m.ordered, c)
+			walk(c)
+		}
+	}
+	walk(m.root)
+	for i, t := range spec.Transitions {
+		src, ok := m.nodes[t.From]
+		if !ok {
+			return nil, fail("transition %d has an unknown From %q", i, t.From)
+		}
+		if t.Event == "" {
+			return nil, fail("transition %d from %q has no Event", i, t.From)
+		}
+		mt := &mtrans{src: src, spec: i, event: t.Event, history: t.History, reenter: t.Reenter}
+		if t.To != "" {
+			if mt.dst, ok = m.nodes[t.To]; !ok {
+				return nil, fail("transition %d from %q has an unknown To %q", i, t.From, t.To)
+			}
+		}
+		if t.History != HistoryNone {
+			if mt.dst == nil || len(mt.dst.children) == 0 {
+				return nil, fail("transition %d from %q enters %q with history, which needs a compound or parallel target", i, t.From, t.To)
+			}
+			m.history[mt.dst] = true
+		}
+		m.trans[src] = append(m.trans[src], mt)
+	}
+	if m.timers {
+		if spec.Client == nil {
+			return nil, fail("states with timers need a Client")
+		}
+		need := CapsOf(CapDelayedStart, CapIdempotencyKey)
+		if missing := spec.Client.Capabilities().Missing(need); !missing.IsZero() {
+			return nil, &UnsupportedError{Field: "State.After", Missing: missing,
+				Reason: "machine " + spec.Name + ": a timer is a delayed run of the machine, sent once per state entry"}
+		}
+	}
+	return m, nil
+}

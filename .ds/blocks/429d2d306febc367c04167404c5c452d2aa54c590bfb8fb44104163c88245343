@@ -1,0 +1,15 @@
+func (r *MachineRegistry[D]) Action(name string, a workflow.MachineAction[D]) error {
+	if name == "" || a == nil {
+		return fieldErr("", "an action needs a name and a function")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, dup := r.actions[name]; dup {
+		return fieldErr("", "action %q is registered twice", name)
+	}
+	if r.actions == nil {
+		r.actions = map[string]workflow.MachineAction[D]{}
+	}
+	r.actions[name] = a
+	return nil
+}

@@ -1,0 +1,1 @@
+func (c *Client) JournalStore() *JournalStore { return &JournalStore{rdb: c.rdb, base: c.base} }

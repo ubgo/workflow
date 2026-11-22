@@ -1,0 +1,36 @@
+func (c *Client) Prune(ctx context.Context) (PruneResult, error) {
+	var res PruneResult
+	if c.retention == nil {
+		return res, nil
+	}
+	rules, err := c.pruneRules(ctx)
+	if err != nil {
+		return res, err
+	}
+	for _, rule := range rules {
+		if err := c.countHeld(ctx, rule, &res); err != nil {
+			return res, err
+		}
+		skip := map[string]bool{} // runs a guard kept, so the next chunk moves on
+		for {
+			runs, err := c.pruneCandidates(ctx, rule, skip, &res.HeldBatch)
+			if err != nil {
+				return res, err
+			}
+			if len(runs) == 0 {
+				break
+			}
+			n, err := c.deleteChunk(ctx, rule, runs)
+			res.Deleted += n
+			if err != nil {
+				return res, err
+			}
+			if n == 0 { // every run changed since it was read: move past them
+				for _, fr := range runs {
+					skip[string(fr.Ref.RunID)] = true
+				}
+			}
+		}
+	}
+	return res, nil
+}

@@ -1,0 +1,67 @@
+func (r *machineRun[D]) microstep(ts []*mtrans, ev MachineEvent) error {
+	r.steps++
+	if r.steps > MaxMachineMicrosteps {
+		return Permanent(fmt.Errorf("%w (machine %q key %q, event %q)", errMachineLoop, r.m.spec.Name, r.key, ev.Name))
+	}
+	r.rec.Seq++
+	exit := map[*mnode]bool{}
+	for _, t := range ts {
+		for n := range r.exitSet(t) {
+			exit[n] = true
+		}
+	}
+	exiting := make([]*mnode, 0, len(exit))
+	for n := range exit {
+		exiting = append(exiting, n)
+	}
+	slices.SortFunc(exiting, func(a, b *mnode) int { return b.order - a.order }) // descendants first
+	for _, n := range exiting {
+		if r.m.history[n] {
+			var remembered []string
+			for _, d := range r.m.ordered {
+				if r.active[d] && d.descendantOf(n) {
+					remembered = append(remembered, d.name)
+				}
+			}
+			if r.rec.History == nil {
+				r.rec.History = map[string][]string{}
+			}
+			r.rec.History[n.name] = remembered
+		}
+	}
+	for _, n := range exiting {
+		for i, a := range r.m.spec.States[n.spec].Exit {
+			if err := a(r.ctx, r.mctx(n.name, ev)); err != nil {
+				return fmt.Errorf("workflow: machine %q key %q: exit action %d of %q: %w", r.m.spec.Name, r.key, i, n.name, err)
+			}
+		}
+		delete(r.active, n)
+		delete(r.rec.Entered, n.name)
+	}
+	for _, t := range ts {
+		for i, a := range r.m.spec.Transitions[t.spec].Actions {
+			if err := a(r.ctx, r.mctx(t.src.name, ev)); err != nil {
+				return fmt.Errorf("workflow: machine %q key %q: action %d of the %q transition from %q: %w", r.m.spec.Name, r.key, i, t.event, t.src.name, err)
+			}
+		}
+	}
+	entry := map[*mnode]bool{}
+	for _, t := range ts {
+		d := r.domain(t)
+		if d == nil {
+			continue
+		}
+		r.addDescendants(t.dst, entry, t.history)
+		for a := t.dst.parent; a != nil && a != d; a = a.parent {
+			entry[a] = true
+			if a.parallel {
+				for _, c := range a.children {
+					if !hasInOrBelow(entry, c) {
+						r.addDescendants(c, entry, HistoryNone)
+					}
+				}
+			}
+		}
+	}
+	return r.enter(entry, ev)
+}

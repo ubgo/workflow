@@ -1,0 +1,12 @@
+type PromiseStore interface {
+	// Settle stores val under id unless a value is stored already. It
+	// returns the value stored after the call and whether this call
+	// stored it.
+	Settle(ctx context.Context, id string, val []byte) (stored []byte, first bool, err error)
+
+	// Get returns the value stored under id, and false when none is.
+	Get(ctx context.Context, id string) ([]byte, bool, error)
+
+	// Delete removes id's value; deleting an unknown id is not an error.
+	Delete(ctx context.Context, id string) error
+}

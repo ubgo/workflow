@@ -1,0 +1,34 @@
+type AggregateConfig struct {
+	// Workflows names the workflows whose jobs are aggregated. A job of
+	// another workflow passes through untouched. At least one is
+	// required.
+	Workflows []string
+
+	// Group returns the group a job's payload joins: one flush run
+	// carries the items of one group (the user ID for a per-user digest).
+	// A job for which it returns "" is not aggregated and passes through
+	// as an ordinary run. Nil puts every job of a workflow in one group
+	// named after the workflow.
+	Group func(workflow.Job) string
+
+	// Window is how long a group collects items: the flush run starts
+	// Window after the group's oldest pending item was appended.
+	// Required, positive.
+	Window time.Duration
+
+	// MaxItems caps one flush: when a group reaches it, a flush run is
+	// enqueued to start now instead of at the window's end, and a flush
+	// takes at most MaxItems items. Zero means no cap: one flush per
+	// window takes the whole group. Every process enqueuing a group must
+	// use the same value.
+	MaxItems int
+
+	// RawItems accepts payloads that are not JSON. By default Aggregate
+	// refuses such a payload (ErrInvalid) before storing it, because
+	// AggregateInput hands the items to the step as one JSON array; with
+	// RawItems the step reads them with AggregatedItems instead.
+	RawItems bool
+
+	// Clock is the time source; nil means clock.Real.
+	Clock clock.Clock
+}

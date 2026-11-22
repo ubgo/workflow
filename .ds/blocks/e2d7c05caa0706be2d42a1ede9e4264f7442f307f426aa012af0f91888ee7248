@@ -1,0 +1,6 @@
+type CatchRoute struct {
+	// Kind is the name the failure gets; not empty.
+	Kind string
+	// Match reports whether err is of this kind.
+	Match func(err error) bool
+}

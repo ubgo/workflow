@@ -1,0 +1,1 @@
+func PoolRetryAfter() PoolOption { return func(c *poolConfig) { c.retryAfter = true } }

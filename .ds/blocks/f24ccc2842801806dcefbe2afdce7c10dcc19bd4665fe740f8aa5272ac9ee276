@@ -1,0 +1,3 @@
+func ResolvePromise(ctx context.Context, client Client, store PromiseStore, id string, value []byte) error {
+	return settlePromise(ctx, client, store, id, settlement{OK: true, Value: value})
+}

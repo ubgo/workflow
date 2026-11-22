@@ -1,0 +1,1 @@
+func ExpireFail() ExpireOption { return func(c *expireConfig) { c.fail = true } }

@@ -1,0 +1,32 @@
+func (c *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	if wf.CronOverlap == workflow.OverlapSkip {
+		return workflow.Unsupported("Workflow.CronOverlap", "hybrid: the scheduler sees only its forwarder runs, not the jobs")
+	}
+	if wf.CronKeepRuns > 0 {
+		return workflow.Unsupported("Workflow.CronKeepRuns", "hybrid: the jobs client keeps the runs; use its retention")
+	}
+	run := wf
+	run.Cron, run.CronLocation, run.Misfire, run.CronWindows, run.ScheduleWhen = nil, nil, workflow.Misfire{}, workflow.Windows{}, nil
+	run.CronOverlap, run.CronSeconds, run.CronActive = "", false, workflow.Active{}
+	if err := c.jobs.Register(run); err != nil {
+		return fmt.Errorf("hybrid: jobs: %w", err)
+	}
+	fwd := workflow.Workflow{
+		Name:         wf.Name,
+		Steps:        []workflow.Step{{Name: "forward", Run: c.forward(wf.Name), Retry: &forwardRetry}},
+		Cron:         wf.Cron,
+		CronLocation: wf.CronLocation,
+		Misfire:      wf.Misfire,
+		CronWindows:  wf.CronWindows,
+		ScheduleWhen: wf.ScheduleWhen,
+		CronSeconds:  wf.CronSeconds,
+		CronActive:   wf.CronActive,
+	}
+	if err := c.sched.Register(fwd); err != nil {
+		return fmt.Errorf("hybrid: scheduler: %w", err)
+	}
+	return nil
+}

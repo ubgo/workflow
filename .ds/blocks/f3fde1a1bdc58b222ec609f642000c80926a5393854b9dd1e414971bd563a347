@@ -1,0 +1,19 @@
+func Run(ctx context.Context, tx Querier, fn func(*sql.Tx) error) error {
+	if tx == nil || fn == nil {
+		return errors.New("pgxtx: Run needs a transaction and a function")
+	}
+	db := sql.OpenDB(connector{q: tx})
+	// Closing only drops the throwaway pool around tx; it never touches tx,
+	// so there is no failure here the caller could act on.
+	defer func() { _ = db.Close() }()
+	db.SetMaxOpenConns(1)
+	stx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("pgxtx: open the view: %w", err)
+	}
+	ferr := fn(stx)
+	// Ends the view's database/sql transaction so its connection returns to
+	// the throwaway pool; nothing reaches tx.
+	_ = stx.Rollback()
+	return ferr
+}

@@ -1,0 +1,41 @@
+func TestEnqueueTxRollbackLeavesNoRun(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			c, db, orders, runs := txSetup(t, e, workflow.IdempotencyOptional)
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = tx.Rollback() }) // a no-op after Commit; frees locks when a check fails first
+			if _, err := tx.Exec("INSERT INTO " + orders + " (id) VALUES ('o1')"); err != nil {
+				t.Fatal(err)
+			}
+			ref, err := c.EnqueueTx(ctx, tx, workflow.Job{Workflow: "ship", IdempotencyKey: "o1"})
+			if err != nil {
+				t.Fatalf("EnqueueTx: %v", err)
+			}
+			if err := tx.Rollback(); err != nil {
+				t.Fatal(err)
+			}
+			c.Wake()
+			// Several polls: a run that leaked out of the rollback would be
+			// admitted and executed in this time.
+			time.Sleep(20 * testPoll)
+			if _, err := c.Status(ctx, ref); !errors.Is(err, workflow.ErrNotFound) {
+				t.Fatalf("Status after rollback = %v, want ErrNotFound", err)
+			}
+			if n := runs.Load(); n != 0 {
+				t.Fatalf("step ran %d times after a rollback, want 0", n)
+			}
+			// The key was never held, so a later enqueue with it starts a run.
+			ref2, err := c.Enqueue(ctx, workflow.Job{Workflow: "ship", IdempotencyKey: "o1"})
+			if err != nil {
+				t.Fatalf("Enqueue after rollback: %v", err)
+			}
+			if ref2 == ref {
+				t.Fatalf("the rolled-back run's ref came back: %+v", ref2)
+			}
+		})
+	}
+}

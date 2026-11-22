@@ -1,0 +1,66 @@
+func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	qs, err := every[workflow.RunQuerier](c, "Runs", workflow.CapRunQuery)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.ValidateRunQuery(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := workflow.CheckRunQuery(c.Capabilities(), q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	cur, err := c.decodeCursor(q.Cursor)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	only := "" // with a Ref set, the one region asked
+	if !q.Ref.IsZero() {
+		var ok bool
+		only, q.Ref, ok = decodeRef(q.Ref)
+		if !ok {
+			only = "\x00" // names no region: no feed is asked
+		}
+	}
+	feeds := make([]*feed, 0, len(c.names))
+	for _, name := range c.names {
+		fd := &feed{region: name, src: qs[name], pos: cur[name]}
+		var holds bool
+		fd.q, holds = regionQuery(q, name)
+		if !holds || (only != "" && only != name) {
+			fd.pos = feedPos{Done: true}
+		}
+		feeds = append(feeds, fd)
+	}
+	limit := q.PageLimit()
+	for _, fd := range feeds {
+		if err := fd.load(ctx, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("regional: %s: %w", fd.region, err)
+		}
+	}
+	var page workflow.RunPage
+	for len(page.Runs) < limit {
+		var pick *feed
+		for _, fd := range feeds {
+			if len(fd.buf) > 0 && (pick == nil || newer(fd.head(), pick.head())) {
+				pick = fd
+			}
+		}
+		if pick == nil {
+			break
+		}
+		page.Runs = append(page.Runs, pick.head())
+		if err := pick.take(ctx, limit); err != nil {
+			return workflow.RunPage{}, fmt.Errorf("regional: %s: %w", pick.region, err)
+		}
+	}
+	next := runsCursor{}
+	more := false
+	for _, fd := range feeds {
+		next[fd.region] = fd.pos
+		more = more || fd.more()
+	}
+	if more {
+		page.Next = encodeCursor(next)
+	}
+	return page, nil
+}

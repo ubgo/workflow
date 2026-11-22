@@ -1,0 +1,18 @@
+type ConcurrencyDef struct {
+	// KeyLabel names the job label whose value is the run's concurrency
+	// key: Build turns it into a workflow.KeyFunc reading
+	// Job.Labels[KeyLabel]. Empty means one key for every run, so MaxRuns
+	// caps the whole workflow.
+	KeyLabel string `json:"key_label,omitempty"`
+
+	// MaxRuns is Concurrency.MaxRuns, at least 1.
+	MaxRuns int `json:"max_runs"`
+
+	// Strategy is Concurrency.Strategy ("queue_newest", "drop_newest",
+	// "cancel_newest", "cancel_in_progress", "round_robin"); empty means
+	// queue_newest.
+	Strategy string `json:"strategy,omitempty"`
+
+	// FIFO is Concurrency.FIFO. Needs CapKeyFIFO when set.
+	FIFO bool `json:"fifo,omitempty"`
+}

@@ -1,0 +1,16 @@
+func (f *Fake) AssertPromiseResolved(t testing.TB, id string, value []byte) {
+	t.Helper()
+	v, settled, err := workflow.PromiseResult(context.Background(), f.Promises(), id)
+	switch {
+	case !settled:
+		t.Errorf("promise %q is not settled in the Fake's Promises store", id)
+		return
+	case err != nil:
+		t.Errorf("promise %q was not resolved: %v", id, err)
+		return
+	case value != nil && !bytes.Equal(v, value):
+		t.Errorf("promise %q resolved with %q, want %q", id, v, value)
+		return
+	}
+	f.assertPromiseSignalled(t, id)
+}

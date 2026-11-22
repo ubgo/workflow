@@ -1,0 +1,9 @@
+func EveryHours(n int) Builder {
+	if n < 1 || n > 23 || 24%n != 0 {
+		return failed("EveryHours(%d): n must divide 24 (1, 2, 3, 4, 6, 8, 12)", n)
+	}
+	if n == 1 {
+		return Hourly()
+	}
+	return builderFields("0", "*/"+strconv.Itoa(n), wild, wild, wild, false)
+}

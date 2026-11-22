@@ -1,0 +1,49 @@
+type TriggerSpec struct {
+	// Table is the app table the trigger watches. Required.
+	Table string
+
+	// TableSchema is the Postgres schema holding Table (and the trigger
+	// function); empty uses the search_path. Refused on MySQL and SQLite,
+	// where a trigger lives beside its table.
+	TableSchema string
+
+	// Ops are the changes the trigger fires on: OnInsert, OnUpdate,
+	// OnDelete, each at most once. Required.
+	Ops []ChangeOp
+
+	// Workflow is the job's workflow name. Required. It is written into the
+	// SQL as a string literal, so it is limited to letters, digits and
+	// _ . : / @ - (1 to 191 characters).
+	Workflow string
+
+	// Columns are the table's columns copied into the job's payload, a
+	// JSON object with one field per column under the column's name: the
+	// new row's values on insert and update, the old row's on delete.
+	// Required, 1 to 50 (Postgres's json_build_object takes 100
+	// arguments). A binary column is refused by SQLite's json_object at
+	// change time, failing the app's statement: leave it out.
+	Columns []string
+
+	// OpField, when set, adds the change to the payload under this name:
+	// "insert", "update" or "delete". It must be a plain identifier and
+	// not one of Columns.
+	OpField string
+
+	// KeyColumn, when set, makes the column's value (as text) the job's
+	// idempotency key, so a target honouring keys runs one job per row
+	// while that row's run is unfinished: a second change of the row
+	// before then is dropped by the target. Empty: every change gets its
+	// own job (the relay sends the entry ID as the key).
+	KeyColumn string
+
+	// Priority is the job's Priority.
+	Priority int
+
+	// Name is the trigger's name. The default is the outbox's table
+	// prefix, Table and "_outbox" (wf_orders_outbox); set it to put two
+	// triggers on one table. On MySQL and SQLite it gets a suffix per
+	// operation (_ins, _upd, _del); on Postgres the trigger function is
+	// Name plus "_fn". It must be a plain identifier, short enough for the
+	// suffix within 63 characters (Name at most 59).
+	Name string
+}

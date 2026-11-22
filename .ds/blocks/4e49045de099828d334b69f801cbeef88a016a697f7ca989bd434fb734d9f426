@@ -1,0 +1,24 @@
+func (a *Admin) Run(ctx context.Context, ref workflow.RunRef) (workflow.RunInfo, error) {
+	if err := a.check(OpRun); err != nil {
+		return workflow.RunInfo{}, err
+	}
+	if ref.IsZero() {
+		return workflow.RunInfo{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	rq, _ := a.reader()
+	page, err := rq.Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1})
+	if err != nil {
+		return workflow.RunInfo{}, err
+	}
+	if len(page.Runs) == 0 && a.rq != nil {
+		if crq, ok := a.c.(workflow.RunQuerier); ok && a.c.Capabilities().Has(workflow.CapRunQuery) {
+			if page, err = crq.Runs(ctx, workflow.RunQuery{Ref: ref, Limit: 1}); err != nil {
+				return workflow.RunInfo{}, err
+			}
+		}
+	}
+	if len(page.Runs) == 0 {
+		return workflow.RunInfo{}, fmt.Errorf("%w: admin: run %s", workflow.ErrNotFound, refString(ref))
+	}
+	return page.Runs[0], nil
+}

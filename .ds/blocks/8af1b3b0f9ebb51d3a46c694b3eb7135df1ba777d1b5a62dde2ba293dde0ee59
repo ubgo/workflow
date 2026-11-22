@@ -1,0 +1,19 @@
+func fiveFields(f Format, fl cron.Fields) (string, error) {
+	if len(fl.Second) != 1 || fl.Second[0] != 0 {
+		return "", refuse(f, "second", "it fires at most once a minute, at second 0")
+	}
+	if fl.Year != nil {
+		return "", refuse(f, "year", "it has no year field")
+	}
+	dom, dow, err := dayFields(f, fl, func(vals []int, lo, hi int) string { return cronList(vals, lo, hi, false) })
+	if err != nil {
+		return "", err
+	}
+	return strings.Join([]string{
+		cronList(fl.Minute, 0, 59, true),
+		cronList(fl.Hour, 0, 23, true),
+		dom,
+		cronList(fl.Month, 1, 12, true),
+		dow,
+	}, " "), nil
+}

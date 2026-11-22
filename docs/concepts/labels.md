@@ -1,6 +1,6 @@
 # Labels
 
-`Job.Labels` is a `map[string]string` of app metadata that travels with a run: a tenant, a source, a request ID. It reaches every step through `StepInfo.Labels` and every run-finished observer through `RunEvent.Labels`, so middleware can require one or log it without trusting a context convention. A few prefixes are kept for the library's own packages, which write labels onto the jobs they pass down; this page says which, and how to keep app labels out of them.
+`Job.Labels` is a `map[string]string` of app metadata that travels with a run: a tenant, a source, a request ID. It reaches every step through [`StepInfo.Labels`](ds:block?id=stepinfo-kun3n4c3) and every run-finished observer through [`RunEvent.Labels`](ds:block?id=runevent-upvhdx59), so middleware can require one or log it without trusting a context convention. A few prefixes are kept for the library's own packages, which write labels onto the jobs they pass down; this page says which, and how to keep app labels out of them.
 
 ## Before you start
 
@@ -34,13 +34,13 @@ ValidateLabels: workflow: invalid spec: label "workflow.batch.id" uses the reser
 
 Where the check runs:
 
-- `workflow.ValidateSchedule` calls it, so `Schedule.Labels` under a reserved prefix are refused by every driver (schedules are written only by apps).
-- Each owning package refuses incoming labels under its own prefix: `middleware.Unique` and `ClaimCheck.Enqueue` refuse a job that already carries their labels (so a caller cannot release someone else's lock or point a run at another run's blobs), `batch` refuses reserved batch labels on `Batch.Labels`, and the `otel` enqueue middleware refuses incoming `otel.` labels.
+- [`workflow.ValidateSchedule`](ds:block?id=validateschedule-knj437ed) calls it, so `Schedule.Labels` under a reserved prefix are refused by every driver (schedules are written only by apps).
+- Each owning package refuses incoming labels under its own prefix: `middleware.Unique` and `ClaimCheck.Enqueue` refuse a job that already carries their labels ([`refuseInternalLabels`](ds:block?id=mw-refuseinternallabels-2brs9sqg)) (so a caller cannot release someone else's lock or point a run at another run's blobs), `batch` refuses reserved batch labels on `Batch.Labels` ([`refuseBatchLabels`](ds:block?id=batch-refusebatchlabels-68cnbjj7)), and the `otel` enqueue middleware ([`Instrumentation.Enqueue`](ds:block?id=otel-instrumentation-enqueue-9865m6xu)) refuses incoming `otel.` labels.
 - Every driver's public `Enqueue` (and `EnqueueTx`, `EnqueueMany` and group dispatch) calls [`workflow.CheckJobLabels(ctx, job)`](ds:block?id=checkjoblabels-p6m28b9h), which refuses a reserved label on the job or a chained job with `workflow.ErrInvalid` unless the package that owns it allowed that key on the context ([`workflow.AllowReservedLabels`](ds:block?id=allowreservedlabels-4czg8eyz), [`AllowReservedPrefix`](ds:block?id=allowreservedprefix-f884j92u)). A label typed by the app or copied from a request is refused; a label the library stamped passes. It is a guard against accidents and untrusted input, not a sandbox: only the owning package should call the allow functions.
 
 ### Let the owning package through
 
-Code that owns a prefix (a plugin of your own that stamps labels under one, or the library packages above) allows its keys on the context of the `Enqueue` that carries them. `AllowReservedLabels(ctx, keys...)` allows exactly the keys it names; `AllowReservedPrefix(ctx, prefix)` allows every key under a prefix. Both add to what `ctx` already allows. The example uses the batch prefix to show the three outcomes; in an app only the `batch` package writes those labels:
+Code that owns a prefix (a plugin of your own that stamps labels under one, or the library packages above) allows its keys on the context of the `Enqueue` that carries them. [`AllowReservedLabels(ctx, keys...)`](ds:block?id=allowreservedlabels-4czg8eyz) allows exactly the keys it names; [`AllowReservedPrefix(ctx, prefix)`](ds:block?id=allowreservedprefix-f884j92u) allows every key under a prefix. Both add to what `ctx` already allows. The example uses the batch prefix to show the three outcomes; in an app only the `batch` package writes those labels:
 
 <!-- snippet: examples/capabilities/main.go#allow-reserved -->
 ```go
@@ -66,7 +66,7 @@ one key allowed: workflow: invalid spec: job for "ping": label "workflow.batch.i
 prefix allowed: true
 ```
 
-Allowing one key leaves its siblings refused: the second enqueue fails on `workflow.batch.index`, the next key in sorted order. Keep the allowed context local to the one call; a context that allows a prefix and is then passed on to request handling lets any label under it through.
+Allowing one key leaves its siblings refused: the second enqueue fails on `workflow.batch.index`, the next key in sorted order ([`CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h)). Keep the allowed context local to the one call; a context that allows a prefix and is then passed on to request handling lets any label under it through.
 
 ## Try it
 
@@ -83,10 +83,11 @@ Two keys under `ubgo.workflow/` are reserved yet app-settable: [`workflow.LabelS
 
 ## Pitfalls
 
-- A job enqueued straight on the driver, bypassing the owning middleware, is not checked. Do not copy labels from one run's `RunEvent.Labels` onto a new job: they include the reserved ones the middleware stamped.
+- A job enqueued straight on the driver skips the owning middleware's own checks; only the driver's [`CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h) still runs. Do not copy labels from one run's `RunEvent.Labels` onto a new job: they include the reserved ones the library stamped, so the enqueue is refused (the source labels excepted).
 - Labels are not secret and not small-payload storage: they are written next to the run in the database or the engine and may be shown in a dashboard. Put data in the payload, and encrypt it when it is personal ([Encrypt payloads](../middleware/codecs.md#encrypt-payloads)).
-- Labels are recorded on spans only on opt-in, so a tenant ID does not reach your tracing backend by accident ([Job labels on spans](../observability/opentelemetry.md#job-labels-on-spans)).
-- Drivers pass the run's own map to steps and observers; treat `StepInfo.Labels` and `RunEvent.Labels` as read-only.
+- Labels are recorded on spans only on opt-in ([`otel.WithLabelFilter`](ds:block?id=otel-withlabelfilter-8xrwxdpa)), so a tenant ID does not reach your tracing backend by accident ([Job labels on spans](../observability/opentelemetry.md#job-labels-on-spans)).
+- Drivers pass the run's own map to steps and observers ([`StepInfo`](ds:block?id=stepinfo-kun3n4c3)); treat `StepInfo.Labels` and `RunEvent.Labels` as read-only.
+- **Hatchet reserves more names.** The Hatchet driver refuses a label under `wf__` or `hatchet__`, or named `traceparent` (field `Job.Labels`, [`runMetadata`](ds:block?id=hatchet-runmetadata-hrnkbdru)): those are the driver's and the engine's own run metadata. See [Hatchet limitations](../drivers/hatchet.md#limitations).
 
 ## Related
 

@@ -1,0 +1,13 @@
+func stepStatus(counts map[string]int64) workflow.Status {
+	switch {
+	case counts[stepRunning] > 0:
+		return workflow.StatusRunning
+	case counts[stepBackoff] > 0:
+		return workflow.StatusRetrying
+	case counts[stepReady] > 0:
+		return workflow.StatusQueued
+	case counts[stepWaiting]+counts[stepSleeping]+counts[stepSnoozed] > 0:
+		return workflow.StatusWaiting
+	}
+	return workflow.StatusQueued
+}

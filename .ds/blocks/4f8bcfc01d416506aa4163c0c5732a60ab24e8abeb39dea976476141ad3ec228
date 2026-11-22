@@ -1,0 +1,11 @@
+func newGCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("%w: Encrypt key must be 16, 24 or 32 bytes", workflow.ErrInvalid)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("workflow/middleware: gcm: %w", err)
+	}
+	return aead, nil
+}

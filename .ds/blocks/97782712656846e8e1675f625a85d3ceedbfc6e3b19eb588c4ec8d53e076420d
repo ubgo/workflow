@@ -1,0 +1,1 @@
+	ErrStepTimeout = errors.New("workflow: step attempt timed out")

@@ -1,0 +1,39 @@
+func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return 0, err
+	}
+	if err := workflow.CheckRunQuery(caps, q); err != nil {
+		return 0, err
+	}
+	q.Statuses = workflow.CancelStatuses(q)
+	q.Limit = workflow.MaxRunsLimit
+	var refs []workflow.RunRef
+	for {
+		page, err := c.Runs(ctx, q)
+		if err != nil {
+			return 0, err
+		}
+		for _, info := range page.Runs {
+			refs = append(refs, info.Ref)
+		}
+		if page.Next == "" {
+			break
+		}
+		q.Cursor = page.Next
+	}
+	want := map[workflow.Status]bool{}
+	for _, s := range q.Statuses {
+		want[s] = true
+	}
+	n := 0
+	for _, ref := range refs {
+		ok, err := c.cancelIf(ctx, ref, want)
+		if err != nil {
+			return n, err
+		}
+		if ok {
+			n++
+		}
+	}
+	return n, nil
+}

@@ -1,0 +1,28 @@
+type ThrottleConfig struct {
+	// Clock reads time for the window and the cooldown of the default
+	// store. Nil means clock.Real. A custom Store keeps its own time.
+	Clock clock.Clock
+
+	// Store holds each key's circuit. Nil means a MemoryCircuit of the
+	// middleware's own, so each process trips its own circuit; a store
+	// shared by the fleet (a SQL table, Redis) gives one circuit per key
+	// across every worker, for a downstream with a fleet-wide error
+	// budget.
+	Store CircuitStore
+
+	// Key picks the circuit a call belongs to, such as the downstream API
+	// the step calls. Nil keys by the workflow name from the
+	// workflow.StepInfo on ctx, so one failing workflow does not throttle
+	// the others; a ctx without StepInfo falls into the "" circuit.
+	Key func(ctx context.Context, in []byte) string
+
+	// MaxErrors is how many errors inside Window open the circuit; at
+	// least 1.
+	MaxErrors int
+
+	// Window is how long errors are counted from the first one; positive.
+	Window time.Duration
+
+	// Cooldown is how long an open circuit fails fast; positive.
+	Cooldown time.Duration
+}

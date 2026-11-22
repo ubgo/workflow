@@ -15,11 +15,11 @@ The core module holds the contract (`workflow.Client`, the specs, capabilities, 
 go get github.com/ubgo/workflow@latest
 ```
 
-Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints a single line, the module's own Go version (`github.com/ubgo/workflow@v0.2.1 go@1.24.0`) and no other module: the core module requires no other module (a `deps_test.go` in the repository fails the build if its `go.mod` ever gains a `require` line).
+Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints a single line, the module's own Go version (`github.com/ubgo/workflow@v0.2.1 go@1.24.0`) and no other module: the core module requires no other module ([`TestGuard_CoreModuleIsStdlibOnly`](ds:block?id=testguard-coremoduleisstdlibonly-pje3bjqj) in the repository's `deps_test.go` fails the build if its `go.mod` ever gains a `require` line).
 
 ## Step 2 — Check the install with a program
 
-Put a `main.go` next to your `go.mod`: a one-step workflow on the in-memory driver, which needs no server. Inside `main`, register the workflow on a client:
+Put a `main.go` next to your `go.mod`: a one-step workflow on the in-memory driver, which needs no server. Inside `main`, register the workflow on a client ([`Register`](ds:block?id=memory-client-register-ngcr2sck) validates it on the spot):
 
 <!-- snippet: examples/quickstart/main.go#register -->
 ```go
@@ -39,7 +39,7 @@ if err != nil {
 }
 ```
 
-Then start the workers and enqueue a job:
+Then start the workers ([`Start`](ds:block?id=memory-client-start-umc68snk) returns at once) and enqueue a job:
 
 <!-- snippet: examples/quickstart/main.go#start -->
 ```go
@@ -78,7 +78,7 @@ The version is the newest tag when you run it. `hello Ada` is the step's output:
 
 ## Pick your modules
 
-Packages that bring a third-party dependency are separate modules, so an app pays for the Hatchet SDK, OpenTelemetry, go-redis, sentry-go or a SQL driver only when it imports them. The `admin` module needs only the standard library and the core, but is separate so an app that never exposes an admin surface never builds it; the `cli` module needs only the standard library and talks to the admin API over HTTP.
+Packages that bring a third-party dependency are separate modules, so an app pays for the Hatchet SDK, OpenTelemetry, go-redis, sentry-go or a SQL driver only when it imports them (the core's `go.mod` has no `require` line: [`TestGuard_CoreModuleIsStdlibOnly`](ds:block?id=testguard-coremoduleisstdlibonly-pje3bjqj)). The `admin` module needs only the standard library and the core, but is separate so an app that never exposes an admin surface never builds it; the `cli` module needs only the standard library and talks to the admin API over HTTP.
 
 | You want | Import | Module |
 |---|---|---|
@@ -139,8 +139,8 @@ The minimums are proven, not claimed: `task gomin` vets each module under the Go
 
 - `go get` before any code imports the module writes it to `go.mod` as `// indirect`. Run `go mod tidy` once your code imports it, or a later tidy in CI shows an unexpected diff.
 - Run the examples from the repository clone (`cd workflow/examples`), not with `go run github.com/ubgo/workflow/examples/...@latest`: the examples module is wired to the working tree by the committed `go.work` and is not meant to be installed.
-- The memory driver keeps everything in the process. It declares every capability except `CapDurable`, so nothing refuses it; a queued job is gone when the process exits. Pick a durable driver for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
-- `sqlstore` never creates its tables at `Start`. Run `Client.Migrate` from your deploy first ([migrations](../operations/migrations.md#run-the-migrations)).
+- The memory driver keeps everything in the process. It declares every capability except `CapDurable`, `CapEnqueueOnly` and `CapShutdownRequeue` ([`memory capabilities`](ds:block?id=memory-caps-yxkuq583)), so no workflow feature is refused; a queued job is gone when the process exits. Pick a durable driver for work you cannot lose ([Choose a driver](../choosing/drivers.md)).
+- `sqlstore` never creates its tables at `Start`. Run [`Client.Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d) from your deploy first ([migrations](../operations/migrations.md#run-the-migrations)).
 
 ## Next
 

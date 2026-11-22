@@ -1,0 +1,45 @@
+func (o *Outbox) ListDead(ctx context.Context, q DeadQuery) ([]DeadEntry, error) {
+	limit := q.Limit
+	switch {
+	case limit <= 0:
+		limit = defaultDeadPage
+	case limit > maxDeadPage:
+		limit = maxDeadPage
+	}
+	where := "status = ?"
+	args := []any{statusDead}
+	if q.Workflow != "" {
+		where += " AND workflow = ?"
+		args = append(args, q.Workflow)
+	}
+	if q.After != "" {
+		var seq int64
+		err := sqlb.One(ctx, o.db, sqlb.NewQuery(o.sql("SELECT seq FROM {t} WHERE id = ? AND status = ?"), []any{q.After, statusDead}, []any{&seq}))
+		if errors.Is(err, sqlb.ErrNoRows) {
+			return nil, fmt.Errorf("%w: dead entry %q", workflow.ErrNotFound, q.After)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("outbox: read dead entry %q: %w", q.After, err)
+		}
+		where += " AND seq > ?"
+		args = append(args, seq)
+	}
+	args = append(args, limit)
+	var out []DeadEntry
+	var e entry
+	var lastErr sql.NullString
+	err := sqlb.Each(ctx, o.db, sqlb.NewQuery(o.sql("SELECT "+entryCols+", last_err FROM {t} WHERE "+where+" ORDER BY seq LIMIT ?"),
+		args, append(e.targets(), &lastErr)), func() error {
+		job, jerr := e.job(false)
+		if jerr != nil {
+			o.log.Error("outbox: dead entry listed without labels", "entry", e.id, "error", jerr)
+		}
+		job.Payload = append([]byte(nil), job.Payload...)
+		out = append(out, DeadEntry{ID: e.id, Job: job, Attempts: int(e.attempts), LastErr: lastErr.String, CreatedAt: time.Unix(0, e.created).UTC()})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("outbox: list dead entries: %w", err)
+	}
+	return out, nil
+}

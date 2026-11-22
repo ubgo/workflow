@@ -1,0 +1,35 @@
+func (s *extSpec) dayMatches(day time.Time) bool {
+	d := day.Day()
+	domOK := s.spec.dom&(1<<uint(d)) != 0
+	for _, it := range s.dom {
+		if domOK {
+			break
+		}
+		switch it.kind {
+		case domLast:
+			domOK = d == lastDay(day)-it.n
+		case domNearest:
+			domOK = d == nearestWeekday(day, it.n)
+		case domLastWeekday:
+			domOK = d == lastWeekday(day)
+		}
+	}
+	dowOK := s.spec.dow&(1<<uint(day.Weekday())) != 0
+	for _, it := range s.dow {
+		if dowOK {
+			break
+		}
+		if day.Weekday() != it.day {
+			continue
+		}
+		if it.nth == 0 {
+			dowOK = d+7 > lastDay(day)
+		} else {
+			dowOK = (d-1)/7+1 == it.nth
+		}
+	}
+	if s.domStar || s.dowStar {
+		return domOK && dowOK
+	}
+	return domOK || dowOK
+}

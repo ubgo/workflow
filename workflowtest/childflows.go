@@ -16,6 +16,8 @@ import (
 // register wfs on a client that has the Journal plugin (workflow.Use with
 // workflow.Journal over the driver's durable JournalStore where it has
 // one), start it, and stop it when t ends.
+//
+//ds:def id=workflowtest-flowharness-d56mnkx2 owner=@khanakia stability=stable
 type FlowHarness struct {
 	Start func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
 }
@@ -95,9 +97,12 @@ func flowStatus(t *testing.T, c workflow.Client, ref workflow.RunRef, want workf
 
 // RunChildFlows proves the child-run helpers of the core on a driver:
 // JoinChildren (discriminator, cancelling and completing partial joins, a
-// failed join), CancelChildren and MapRuns. The driver needs CapSnooze,
-// CapIdempotencyKey, CapResult, CapCancel, CapCancelAll, CapForceRun and
-// CapRunQuery; a driver without one of them skips the cases that need it.
+// failed join), CancelChildren (running and scheduled children) and
+// MapRuns. The driver needs CapSnooze, CapIdempotencyKey, CapResult,
+// CapCancel, CapCancelAll, CapForceRun, CapRunQuery and CapDelayedStart;
+// a driver without one of them skips the cases that need it.
+//
+//ds:def id=workflowtest-runchildflows-26d5egbe owner=@khanakia stability=stable
 func RunChildFlows(t *testing.T, h FlowHarness) {
 	t.Run("discriminator", func(t *testing.T) {
 		g := newChildGate("flow-child")
@@ -248,6 +253,68 @@ func RunChildFlows(t *testing.T, h FlowHarness) {
 		if err != nil || n != 2 {
 			t.Fatalf("CancelChildren = %d, %v; want 2", n, err)
 		}
+	})
+
+	// A child spawned with a later RunAt is StatusScheduled, which is
+	// unfinished: CancelChildren cancels it with the running ones. Spawn
+	// always gives a child an idempotency key, so a driver with
+	// CapDelayedStart and CapIdempotencyKey must take the pair: the key
+	// holds while the child waits for its RunAt (a second Enqueue with it
+	// returns the same child), and the waiting child reads scheduled.
+	t.Run("cancel-children-delayed", func(t *testing.T) {
+		g := newChildGate("flow-child")
+		defer g.release()
+		var c workflow.Client
+		key := fmt.Sprintf("flow-delayed-%d", time.Now().UnixNano())
+		runAt := time.Now().Add(time.Hour)
+		type spawnResult struct {
+			parent workflow.RunID
+			refs   []workflow.RunRef
+			err    error
+		}
+		spawned := make(chan spawnResult, 1)
+		parent := workflow.Workflow{Name: "flow-parent", Steps: []workflow.Step{{Name: "fan", Run: func(ctx context.Context, _ []byte) ([]byte, error) {
+			jobs := g.jobs("hold", "ok")
+			jobs[1].RunAt = runAt
+			jobs[1].IdempotencyKey = key
+			refs, err := workflow.Spawn(ctx, c, "kids", jobs)
+			info, _ := workflow.StepInfoFrom(ctx)
+			select {
+			case spawned <- spawnResult{parent: info.RunID, refs: refs, err: err}:
+			default:
+			}
+			return nil, err
+		}}}}
+		c = h.Start(t, g.workflow(), parent)
+		needCaps(t, c, workflow.CapIdempotencyKey, workflow.CapCancelAll, workflow.CapRunQuery, workflow.CapDelayedStart)
+		ref, err := c.Enqueue(context.Background(), workflow.Job{Workflow: "flow-parent"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var res spawnResult
+		select {
+		case res = <-spawned:
+			if res.err != nil {
+				t.Fatalf("Spawn of a delayed child = %v; a driver with CapDelayedStart and CapIdempotencyKey must take Job.RunAt with a key", res.err)
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("the parent step never ran")
+		}
+		flowStatus(t, c, ref, workflow.StatusSucceeded)
+		delayed := res.refs[1]
+		flowStatus(t, c, delayed, workflow.StatusScheduled)
+		again, err := c.Enqueue(context.Background(), workflow.Job{Workflow: g.name, Payload: []byte(`"ok"`), RunAt: runAt, IdempotencyKey: key})
+		if err != nil {
+			t.Fatalf("a second Enqueue with the delayed child's key = %v", err)
+		}
+		if again != delayed {
+			t.Fatalf("a second Enqueue with the delayed child's key = %+v, want the child %+v", again, delayed)
+		}
+		n, err := workflow.CancelChildren(context.Background(), c, res.parent, "")
+		if err != nil || n != 2 {
+			t.Fatalf("CancelChildren = %d, %v; want 2 (one running, one scheduled)", n, err)
+		}
+		flowStatus(t, c, delayed, workflow.StatusCancelled)
 	})
 
 	t.Run("map-runs", func(t *testing.T) {

@@ -1,0 +1,47 @@
+func (f *Fake) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !f.does(workflow.OpResetRun) {
+		return workflow.RunRef{}, workflow.Unsupported("ResetRun", "the client the Fake is like does not implement it")
+	}
+	if opts.Succeeded && !f.does(workflow.OpResetSucceeded) {
+		return workflow.RunRef{}, workflow.Unsupported("ResetRunWith", "the client the Fake is like does not reset a succeeded run")
+	}
+	f.mu.Lock()
+	r, ok := f.byRef[ref]
+	if !ok {
+		f.mu.Unlock()
+		if f.inner != nil {
+			if opts == (workflow.ResetOptions{}) {
+				return f.Forward.ResetRun(ctx, ref, step)
+			}
+			return f.Forward.ResetRunWith(ctx, ref, step, opts)
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	defer f.mu.Unlock()
+	if workflow.StepsFrom(f.wfs[r.job.Workflow], step) == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %q has no step %q", workflow.ErrInvalid, r.job.Workflow, step)
+	}
+	if !workflow.ResetStatusOK(r.status, opts) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s; it cannot be reset with %+v", workflow.ErrWrongState, ref, r.status, opts)
+	}
+	redo := r.status == workflow.StatusSucceeded
+	if r.key != ([2]string{}) {
+		if holder, held := f.idem[r.key]; held && holder != r {
+			return workflow.RunRef{}, fmt.Errorf("%w: run %+v holds the key %q", workflow.ErrDuplicate, holder.ref, r.key[1])
+		}
+		f.idem[r.key] = r
+	}
+	r.status = workflow.StatusQueued
+	if redo {
+		r.job.Labels = maps.Clone(r.job.Labels)
+		if r.job.Labels == nil {
+			r.job.Labels = map[string]string{}
+		}
+		r.job.Labels[workflow.LabelRedo] = "true"
+	}
+	f.resets = append(f.resets, FakeReset{Ref: ref, Step: step, Succeeded: redo})
+	return r.ref, nil
+}

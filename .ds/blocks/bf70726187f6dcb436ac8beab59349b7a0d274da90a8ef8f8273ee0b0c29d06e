@@ -1,0 +1,10 @@
+func (f *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	ps, pok := f.primary.(workflow.TransientSignaller)
+	ss, sok := f.secondary.(workflow.TransientSignaller)
+	if !pok || !sok {
+		return 0, workflow.Unsupported("SignalWaiting", "both failover backends must implement workflow.TransientSignaller")
+	}
+	pn, perr := ps.SignalWaiting(ctx, ev)
+	sn, serr := ss.SignalWaiting(ctx, ev)
+	return pn + sn, joinSides("SignalWaiting", perr, serr)
+}

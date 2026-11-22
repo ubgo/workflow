@@ -1,0 +1,4 @@
+func FairStride(w int) int64 {
+	w = min(max(w, 1), MaxKeyWeight)
+	return MaxKeyWeight / int64(w)
+}

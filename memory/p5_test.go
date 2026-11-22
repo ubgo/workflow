@@ -11,6 +11,7 @@ import (
 	"github.com/ubgo/workflow/memory"
 )
 
+//ds:def id=memory-testrunallrunsdelayedretriedsnoozedandsleepingworknow-rjaujjth owner=@khanakia stability=stable
 func TestRunAllRunsDelayedRetriedSnoozedAndSleepingWorkNow(t *testing.T) {
 	var mu sync.Mutex
 	calls := map[string]int{}
@@ -56,6 +57,7 @@ func TestRunAllRunsDelayedRetriedSnoozedAndSleepingWorkNow(t *testing.T) {
 	}
 }
 
+//ds:def id=memory-testrunallreportsastall-6b4hvsj9 owner=@khanakia stability=stable
 func TestRunAllReportsAStall(t *testing.T) {
 	c, _ := newClient(t, []workflow.Workflow{one("held", ok)})
 	if err := c.Pause(context.Background(), workflow.PauseTarget{Workflow: "held"}); err != nil {
@@ -235,6 +237,8 @@ func TestRunErrorKeepsTheStepMessage(t *testing.T) {
 // the waiter can finish the run before RunAll starts; RunAll then does not
 // cover it (it reports only runs unfinished when it began), so the check
 // is the run's own status the moment RunAll returns, plus no Waiting.
+//
+//ds:def id=memory-testrunallrightaftersignal-g8fg3vdt owner=@khanakia stability=stable
 func TestRunAllRightAfterSignal(t *testing.T) {
 	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
 		{Name: "wait", Wait: &workflow.WaitSpec{Event: "go"}},

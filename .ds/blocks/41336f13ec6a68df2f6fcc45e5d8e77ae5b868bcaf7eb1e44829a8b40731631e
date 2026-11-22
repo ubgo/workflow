@@ -1,0 +1,1 @@
+	CapPauseQueue = defineCap(27, "PauseQueue")

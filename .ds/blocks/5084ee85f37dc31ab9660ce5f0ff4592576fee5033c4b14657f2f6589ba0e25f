@@ -1,0 +1,8 @@
+func HeapObjectBytes() uint64 {
+	s := []metrics.Sample{{Name: heapObjectsMetric}}
+	metrics.Read(s)
+	if s[0].Value.Kind() != metrics.KindUint64 {
+		return 0
+	}
+	return s[0].Value.Uint64()
+}

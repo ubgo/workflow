@@ -1,0 +1,49 @@
+func validateStep(s Step) error {
+	if s.Kind() == "" {
+		return errors.New("exactly one of Run, Wait and Sleep must be set")
+	}
+	if s.Sleep < 0 {
+		return errors.New("negative Sleep")
+	}
+	if s.Timeout < 0 {
+		return errors.New("negative Timeout")
+	}
+	if s.HeartbeatTimeout < 0 {
+		return errors.New("HeartbeatTimeout is negative")
+	}
+	if s.HeartbeatTimeout > 0 && s.Kind() != StepRun {
+		return errors.New("HeartbeatTimeout is only for Run steps")
+	}
+	if s.Slots < 0 {
+		return errors.New("negative Slots")
+	}
+	if s.Slots > 1 && s.Kind() != StepRun {
+		return errors.New("Slots is only for Run steps")
+	}
+	if w := s.Wait; w != nil {
+		if w.Event == "" {
+			return errors.New("Wait.Event is empty")
+		}
+		if !w.Deadline.IsZero() && w.Timeout != 0 {
+			return errors.New("Wait sets both Deadline and Timeout")
+		}
+		if w.Timeout < 0 {
+			return errors.New("Wait.Timeout is negative")
+		}
+		if w.Key != "" && !w.KeyFrom.IsZero() {
+			return errors.New("Wait sets both Key and KeyFrom")
+		}
+		if w.KeyFrom.Func != nil && w.KeyFrom.Expr != "" {
+			return errors.New("Wait.KeyFrom sets both Func and Expr")
+		}
+		if w.OwnRun && (w.Key != "" || !w.KeyFrom.IsZero()) {
+			return errors.New("Wait sets OwnRun with Key or KeyFrom")
+		}
+	}
+	if s.Retry != nil {
+		if err := validateRetry(*s.Retry); err != nil {
+			return err
+		}
+	}
+	return nil
+}

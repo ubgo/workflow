@@ -1,0 +1,1 @@
+const DefaultPollInterval = 5 * time.Second

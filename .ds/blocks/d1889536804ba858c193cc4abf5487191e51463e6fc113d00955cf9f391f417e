@@ -1,0 +1,1 @@
+func StepInfoOf(info workflow.StepInfo) StepOption { return func(s *stepRun) { s.info = info } }

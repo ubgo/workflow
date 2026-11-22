@@ -16,6 +16,8 @@ var (
 // prefix stripped, so the run's own address matches what its driver
 // resolved (workflow.RunSignaller). A ref without a region prefix of this
 // client goes, addressed as given, to the regions Signal would reach.
+//
+//ds:def id=regional-client-signalrun-xj8vwpgd owner=@khanakia stability=stable
 func (c *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow.Event) error {
 	if name, inner, ok := decodeRef(ref); ok {
 		if rc, known := c.regions[name]; known {
@@ -30,6 +32,8 @@ func (c *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow
 // (workflow.RunSignalReader); steps see prefixed RunIDs, so the run
 // OnSignals reads is always one of this client's. A run of no region
 // here has none. The region must implement workflow.RunSignalReader.
+//
+//ds:def id=regional-client-pendingsignals-4e47r89a owner=@khanakia stability=stable
 func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
 	var out []workflow.RunSignal
 	err := onRegion(c, "PendingSignals", workflow.Caps{}, workflow.RunRef{RunID: run}, func(_ string, r workflow.RunSignalReader, inner workflow.RunRef) error {

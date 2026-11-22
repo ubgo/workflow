@@ -15,11 +15,15 @@ import "context"
 // not an error. A client implements it when its driver can; the call
 // answers for itself, so there is no capability bit (UnsupportedError from
 // a wrapper whose inner client lacks it).
+//
+//ds:def id=transientsignaller-cww6hkhu owner=@khanakia stability=stable
 type TransientSignaller interface {
 	SignalWaiting(ctx context.Context, ev Event) (int, error)
 }
 
 // SignalWaiting forwards to Inner's TransientSignaller.
+//
+//ds:def id=forward-signalwaiting-swx7yvja owner=@khanakia stability=stable
 func (f Forward) SignalWaiting(ctx context.Context, ev Event) (int, error) {
 	if i, ok := f.Inner.(TransientSignaller); ok {
 		return i.SignalWaiting(ctx, ev)

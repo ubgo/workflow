@@ -1,0 +1,16 @@
+func ValidateQueueName(name string) error {
+	if name == "" {
+		return invalidf("queue name is empty")
+	}
+	if len(name) > maxQueueName {
+		return invalidf("queue name %q is longer than %d characters", name, maxQueueName)
+	}
+	for _, r := range name {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == ':' || r == '-'
+		if !ok {
+			return invalidf("queue name %q has the character %q; use letters, digits and . _ : -", name, r)
+		}
+	}
+	return nil
+}

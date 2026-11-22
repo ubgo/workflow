@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -19,6 +20,8 @@ import (
 // Start, with the client Start will return, so a machine with timers can
 // be defined against it; drivers whose Start builds the client return it
 // from Client and reuse it in Start.
+//
+//ds:def id=workflowtest-machineharness-aghhe7m6 owner=@khanakia stability=stable
 type MachineHarness struct {
 	Client func(t *testing.T) workflow.Client
 	Start  func(t *testing.T, c workflow.Client, wfs ...workflow.Workflow)
@@ -33,6 +36,8 @@ type MachineHarness struct {
 // one key handled one at a time and each applied once; and MachineReject.
 // The driver needs CapConcurrencyKey with Go key functions, and
 // CapDelayedStart and CapIdempotencyKey for the timer case.
+//
+//ds:def id=workflowtest-runmachineflows-6a9ymgxa owner=@khanakia stability=stable
 func RunMachineFlows(t *testing.T, h MachineHarness) {
 	t.Run("lifecycle", func(t *testing.T) { machineLifecycle(t, h) })
 	t.Run("statechart", func(t *testing.T) { machineStatechart(t, h) })
@@ -328,41 +333,54 @@ func machineTimers(t *testing.T, h MachineHarness) {
 	needCaps(t, c, workflow.CapConcurrencyKey, workflow.CapDelayedStart, workflow.CapIdempotencyKey)
 	store := h.Store(t, c)
 	const delay = 400 * time.Millisecond
-	wf, err := workflow.DefineMachine(workflow.MachineSpec[flowData]{
-		Name:    "sm-timer",
-		Initial: "waiting",
-		Store:   store,
-		Client:  c,
-		States: []workflow.MachineState[flowData]{
-			{Name: "waiting", After: []workflow.StateTimer{{Delay: delay, Event: "timeout"}}},
-			{Name: "answered"},
-			{Name: "expired"},
-		},
-		Transitions: []workflow.MachineTransition[flowData]{
-			{From: "waiting", Event: "timeout", To: "expired"},
-			{From: "waiting", Event: "answer", To: "answered"},
-			{From: "waiting", Event: "ping", To: "waiting", Reenter: true},
-			{From: "answered", Event: "reopen", To: "waiting"},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
+	define := func(name string, delay time.Duration) workflow.Workflow {
+		t.Helper()
+		wf, err := workflow.DefineMachine(workflow.MachineSpec[flowData]{
+			Name:    name,
+			Initial: "waiting",
+			Store:   store,
+			Client:  c,
+			States: []workflow.MachineState[flowData]{
+				{Name: "waiting", After: []workflow.StateTimer{{Delay: delay, Event: "timeout"}}},
+				{Name: "answered"},
+				{Name: "expired"},
+			},
+			Transitions: []workflow.MachineTransition[flowData]{
+				{From: "waiting", Event: "timeout", To: "expired"},
+				{From: "waiting", Event: "answer", To: "answered"},
+				{From: "waiting", Event: "ping", To: "waiting", Reenter: true},
+				{From: "answered", Event: "reopen", To: "waiting"},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return wf
 	}
-	h.Start(t, c, wf)
+	// The Reenter case needs its ping applied before the first entry's
+	// timer fires, which no delay guarantees on a loaded machine. Each
+	// rung of this ladder is a machine with twice the delay of the one
+	// before, tried when the ping of the rung before came too late.
+	ladder := []time.Duration{delay, 2 * delay, 4 * delay, 8 * delay}
+	wfs := []workflow.Workflow{define("sm-timer", delay)}
+	for _, d := range ladder {
+		wfs = append(wfs, define(fmt.Sprintf("sm-timer-%d", d.Milliseconds()), d))
+	}
+	h.Start(t, c, wfs...)
 	ctx := context.Background()
-	await := func(key, state string, within time.Duration) {
+	await := func(machine, key, state string, within time.Duration) workflow.MachineSnapshot[flowData] {
 		t.Helper()
 		deadline := time.Now().Add(within)
 		for {
-			snap, ok, err := workflow.MachineStatus[flowData](ctx, store, "sm-timer", key)
+			snap, ok, err := workflow.MachineStatus[flowData](ctx, store, machine, key)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if ok && snap.In(state) {
-				return
+				return snap
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("key %s: not in %s after %s: %+v", key, state, within, snap)
+				t.Fatalf("%s key %s: not in %s after %s: %+v", machine, key, state, within, snap)
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
@@ -372,7 +390,7 @@ func machineTimers(t *testing.T, h MachineHarness) {
 	if _, err := workflow.StartMachine(ctx, c, "sm-timer", "t1", flowData{}, workflow.Job{}); err != nil {
 		t.Fatal(err)
 	}
-	await("t1", "expired", 20*time.Second)
+	await("sm-timer", "t1", "expired", 20*time.Second)
 	if waited := time.Since(start); waited < delay {
 		t.Fatalf("expired after %s, before the %s timer", waited, delay)
 	}
@@ -383,21 +401,61 @@ func machineTimers(t *testing.T, h MachineHarness) {
 	if res := send(t, c, "sm-timer", "t2", "reopen", nil); !slices.Equal(res.States, []string{"waiting"}) {
 		t.Fatalf("reopen: %+v", res)
 	}
-	await("t2", "expired", 20*time.Second)
+	await("sm-timer", "t2", "expired", 20*time.Second)
 	if waited := time.Since(reopened); waited < delay {
 		t.Fatalf("the first entry's timer moved the second entry after %s", waited)
 	}
-	// A Reenter self-transition restarts the timer.
-	if _, err := workflow.StartMachine(ctx, c, "sm-timer", "t3", flowData{}, workflow.Job{}); err != nil {
-		t.Fatal(err)
+	// A Reenter self-transition restarts the timer: the ping goes in
+	// halfway through the first entry's timer, and the instance expires
+	// no sooner than a whole delay after it. Had the first timer stayed
+	// live, it would expire the instance half a delay after the ping
+	// (plus the driver's firing latency, which must stay under half a
+	// delay for the check to tell the two apart; it is a poll interval).
+	// The instance's own log times the start and the expiry, so neither
+	// this test's polling nor the scheduler's delay in starting the ping
+	// skews the measure.
+	for i, d := range ladder {
+		machine, key := fmt.Sprintf("sm-timer-%d", d.Milliseconds()), fmt.Sprintf("t3-%d", i)
+		ref, err := workflow.StartMachine(ctx, c, machine, key, flowData{}, workflow.Job{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res := machineResult(t, c, ref); !res.Started {
+			t.Fatalf("%s start: %+v", machine, res)
+		}
+		snap, _, err := workflow.MachineStatus[flowData](ctx, store, machine, key)
+		if err != nil || len(snap.Log) != 1 {
+			t.Fatalf("%s after the start: %+v %v", machine, snap, err)
+		}
+		time.Sleep(time.Until(snap.Log[0].At.Add(d / 2)))
+		pinged := time.Now() // before the send: the re-entry, and its timer, come after it
+		res := send(t, c, machine, key, "ping", nil)
+		if !res.Handled && slices.Equal(res.States, []string{"expired"}) {
+			// The first timer fired before the ping reached the
+			// instance: a loaded worker, not a stale timer. Proves
+			// nothing; the next rung leaves the ping more time.
+			t.Logf("%s: the ping arrived %s after the start, after the %s timer; next rung", machine, time.Since(snap.Log[0].At), d)
+			continue
+		}
+		if !res.Handled || !slices.Equal(res.States, []string{"waiting"}) {
+			t.Fatalf("%s ping: %+v, want a re-entry of waiting", machine, res)
+		}
+		snap = await(machine, key, "expired", 20*time.Second+d)
+		var events []string
+		for _, s := range snap.Log {
+			events = append(events, s.Event)
+		}
+		// Only the second entry's timer moved the instance: the first
+		// one fired into a state entered again since, and was stale.
+		if want := []string{workflow.MachineStartEvent, "ping", "timeout"}; !slices.Equal(events, want) {
+			t.Fatalf("%s log %v, want %v", machine, events, want)
+		}
+		if waited := snap.Log[2].At.Sub(pinged); waited < d {
+			t.Fatalf("%s expired %s after the re-entry, before its own %s timer", machine, waited, d)
+		}
+		return
 	}
-	time.Sleep(delay / 2)
-	pinged := time.Now() // before the send: the re-entry, and its timer, come after it
-	send(t, c, "sm-timer", "t3", "ping", nil)
-	await("t3", "expired", 20*time.Second)
-	if waited := time.Since(pinged); waited < delay {
-		t.Fatalf("expired %s after the re-entry, before its own timer", waited)
-	}
+	t.Fatalf("no ping reached its instance before the first entry's timer, up to a %s delay", ladder[len(ladder)-1])
 }
 
 // machineSerial: concurrent events of one key are handled one at a time,

@@ -1,0 +1,9 @@
+func CheckStep(op string, ref workflow.RunRef, step string, attempt int) error {
+	if ref.RunID.IsZero() {
+		return fmt.Errorf("%w: recorder %s: a step write needs the RunID", workflow.ErrInvalid, op)
+	}
+	if step == "" || attempt < 1 {
+		return fmt.Errorf("%w: recorder %s: step %q attempt %d", workflow.ErrInvalid, op, step, attempt)
+	}
+	return nil
+}

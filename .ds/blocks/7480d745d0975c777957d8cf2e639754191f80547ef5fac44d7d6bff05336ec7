@@ -1,0 +1,18 @@
+func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
+	if step == "" {
+		return workflow.RunRef{}, fmt.Errorf("%w: ResetRun needs a step", workflow.ErrInvalid)
+	}
+	r, err := c.lookup(ctx, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	reg := c.reg(r.workflow)
+	if reg == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: ResetRun: workflow %s is not registered on this client, so its steps are unknown", workflow.ErrInvalid, r.workflow)
+	}
+	rerun := workflow.StepsFrom(reg.wf, step)
+	if rerun == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %s has no step %q", workflow.ErrInvalid, r.workflow, step)
+	}
+	return c.retryFrom(ctx, ref, rerun, opts)
+}

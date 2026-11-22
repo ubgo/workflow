@@ -1,0 +1,106 @@
+func CronJob(s workflow.Schedule, t Target, o CronJobOptions) (File, error) {
+	const f = FormatKubernetes
+	j, err := prepare(f, s, t)
+	if err != nil {
+		return File{}, err
+	}
+	if len(j.name) > maxCronJobName || !dnsSubdomain.MatchString(j.name) {
+		return File{}, invalid(f, "name %q must be lower-case letters, digits, '-' and '.', at most %d characters", j.name, maxCronJobName)
+	}
+	if o.Namespace != "" && !dnsLabel.MatchString(o.Namespace) {
+		return File{}, invalid(f, "namespace %q is not a DNS label", o.Namespace)
+	}
+	container := o.Container
+	if container == "" {
+		container = "job"
+	}
+	if len(container) > 63 || !dnsLabel.MatchString(container) {
+		return File{}, invalid(f, "container name %q is not a DNS label", container)
+	}
+	restart := o.RestartPolicy
+	switch restart {
+	case "":
+		restart = "OnFailure"
+	case "OnFailure", "Never":
+	default:
+		return File{}, invalid(f, "RestartPolicy %q: want OnFailure or Never", restart)
+	}
+	if strings.TrimSpace(o.Image) == "" || strings.IndexFunc(o.Image, isControl) >= 0 {
+		return File{}, invalid(f, "CronJobOptions.Image is required")
+	}
+	if err := j.noWindows(f); err != nil {
+		return File{}, err
+	}
+	if !s.Active.IsZero() {
+		return File{}, refuse(f, "Active", "a CronJob has no start or end; create and delete it at those times")
+	}
+	fl, err := j.fields(f)
+	if err != nil {
+		return File{}, err
+	}
+	expr, err := fiveFields(f, fl)
+	if err != nil {
+		return File{}, err
+	}
+	zone, err := zoneName(f, s.Location)
+	if err != nil {
+		return File{}, err
+	}
+	policy := "Allow"
+	if s.Overlap == workflow.OverlapSkip {
+		policy = "Forbid"
+	}
+	m, err := classify(f, s.Misfire)
+	if err != nil {
+		return File{}, err
+	}
+	deadline := ""
+	switch m {
+	case misfireSkip:
+		deadline = strconv.Itoa(int(workflow.MisfireGrace / time.Second))
+	case misfireDeadline:
+		if s.Misfire.Within%time.Second != 0 {
+			return File{}, refuse(f, "Misfire", "Within %s: startingDeadlineSeconds takes whole seconds", s.Misfire.Within)
+		}
+		deadline = strconv.Itoa(int(s.Misfire.Within / time.Second))
+	}
+
+	var b strings.Builder
+	w := func(indent int, line string) {
+		b.WriteString(strings.Repeat("  ", indent))
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	w(0, "apiVersion: batch/v1")
+	w(0, "kind: CronJob")
+	w(0, "metadata:")
+	w(1, "name: "+yamlString(j.name))
+	if o.Namespace != "" {
+		w(1, "namespace: "+yamlString(o.Namespace))
+	}
+	w(0, "spec:")
+	w(1, "schedule: "+yamlString(expr))
+	if zone != "" {
+		w(1, "timeZone: "+yamlString(zone))
+	}
+	w(1, "concurrencyPolicy: "+policy)
+	if deadline != "" {
+		w(1, "startingDeadlineSeconds: "+deadline)
+	}
+	w(1, "suspend: "+strconv.FormatBool(o.Suspend))
+	w(1, "jobTemplate:")
+	w(2, "spec:")
+	w(3, "template:")
+	w(4, "spec:")
+	w(5, "restartPolicy: "+restart)
+	w(5, "containers:")
+	w(6, "- name: "+yamlString(container))
+	w(7, "image: "+yamlString(o.Image))
+	if len(t.Command) > 0 {
+		w(7, "command: "+yamlList(t.Command))
+	}
+	if len(t.Args) > 0 {
+		w(7, "args: "+yamlList(t.Args))
+	}
+	return File{Name: j.name + ".yaml", Data: []byte(b.String())}, nil
+}

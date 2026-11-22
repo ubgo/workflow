@@ -1,0 +1,8 @@
+func (cc *codecClient) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	sealed, err := seal(cc.codec, s.Input)
+	if err != nil {
+		return "", fmt.Errorf("workflow/middleware: encode schedule input: %w", err)
+	}
+	s.Input = sealed
+	return cc.Client.Schedule(ctx, s)
+}

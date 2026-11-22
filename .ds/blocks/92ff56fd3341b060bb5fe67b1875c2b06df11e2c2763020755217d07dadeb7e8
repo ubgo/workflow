@@ -1,0 +1,6 @@
+func (o StepOutcome) Released() (time.Duration, bool) {
+	if o.Err == nil || o.Permanent() || o.Discarded() {
+		return 0, false
+	}
+	return workflow.RetryAfterDelay(o.Err, 1)
+}

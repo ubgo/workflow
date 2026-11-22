@@ -1,0 +1,3 @@
+func failedRunError(id, wf, step string, cause error) error {
+	return &workflow.RunError{RunID: workflow.RunID(id), Workflow: wf, Step: step, Err: cause}
+}

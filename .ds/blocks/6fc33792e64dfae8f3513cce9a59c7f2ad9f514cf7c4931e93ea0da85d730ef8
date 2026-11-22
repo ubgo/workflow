@@ -1,0 +1,13 @@
+func workflowContext(f workflow.Failure) sentrygo.Context {
+	c := sentrygo.Context{"run_id": string(f.Ref.RunID)}
+	if !f.Ref.ScheduledID.IsZero() {
+		c["scheduled_id"] = string(f.Ref.ScheduledID)
+	}
+	if f.Attempt > 0 {
+		c["attempt"] = f.Attempt
+	}
+	if !f.At.IsZero() {
+		c["at"] = f.At
+	}
+	return c
+}

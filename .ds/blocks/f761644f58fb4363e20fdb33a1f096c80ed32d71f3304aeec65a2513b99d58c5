@@ -1,0 +1,14 @@
+func Await(ctx context.Context, c Client, ref RunRef, opts AwaitOptions) (Status, error) {
+	for {
+		st, err := c.Status(ctx, ref)
+		if err != nil {
+			return "", err
+		}
+		if st.IsTerminal() {
+			return st, nil
+		}
+		if err := opts.sleep(ctx); err != nil {
+			return st, err
+		}
+	}
+}

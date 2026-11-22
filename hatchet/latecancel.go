@@ -21,6 +21,8 @@ import (
 // error says which, and the start's RunRef now resolves to that run. It
 // also matches workflow.ErrWrongState. A nil Cancel of a delayed start
 // means the engine did not fire it and will not.
+//
+//ds:def id=hatchet-errcanceltoolate-s9c8yhrj owner=@khanakia stability=stable
 var ErrCancelTooLate = errors.New("hatchet driver: delayed start fired before the cancel reached the engine")
 
 // lateWatchPoll is how often a late cancel lists the run it watches for.
@@ -55,6 +57,8 @@ func (s *lateStart) err() error {
 // to run-finished observers, and no lateStart is returned. Otherwise the
 // returned lateStart must go through settleLate before the cancel is
 // known to have held.
+//
+//ds:def id=hatchet-client-cancelref-55mg6gda owner=@khanakia stability=stable
 func (c *Client) cancelRef(ctx context.Context, sdk *hatchetsdk.Client, ref workflow.RunRef) (*lateStart, error) {
 	runID, state, err := c.resolve(ctx, sdk, ref)
 	if err != nil {

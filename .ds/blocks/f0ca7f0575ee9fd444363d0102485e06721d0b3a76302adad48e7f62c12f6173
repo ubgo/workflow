@@ -1,0 +1,26 @@
+func (c *Client) rateCheckLocked(r *run, now time.Time) (time.Time, bool) {
+	var wake time.Time
+	ok := true
+	for i, rl := range r.reg.wf.RateLimits {
+		rk := rateKey{workflow: r.reg.wf.Name, limit: i, key: r.rateKeys[i]}
+		starts := c.rates[rk]
+		cut := 0
+		for cut < len(starts) && !starts[cut].Add(rl.Per).After(now) {
+			cut++
+		}
+		starts = starts[cut:]
+		if len(starts) == 0 {
+			delete(c.rates, rk)
+		} else {
+			c.rates[rk] = starts
+		}
+		if len(starts) >= rl.Limit {
+			ok = false
+			at := starts[len(starts)-rl.Limit].Add(rl.Per)
+			if wake.IsZero() || at.After(wake) {
+				wake = at // every limit must allow, so wait for the latest
+			}
+		}
+	}
+	return wake, ok
+}

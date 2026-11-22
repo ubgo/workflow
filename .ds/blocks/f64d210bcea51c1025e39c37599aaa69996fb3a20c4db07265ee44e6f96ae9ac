@@ -1,0 +1,1 @@
+func (c *Client) SpawnsGroups() bool { return c.cfg.BatchCoordinator }

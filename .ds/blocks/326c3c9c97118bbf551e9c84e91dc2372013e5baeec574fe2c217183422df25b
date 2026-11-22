@@ -1,0 +1,14 @@
+func ExcludeDates(loc *time.Location, dates ...string) (ExclusionCalendar, error) {
+	if err := calendarZone("ExcludeDates", loc); err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(dates))
+	for _, d := range dates {
+		t, err := time.Parse(time.DateOnly, d)
+		if err != nil || t.Format(time.DateOnly) != d {
+			return nil, invalidf("ExcludeDates: %q is not a date in YYYY-MM-DD form", d)
+		}
+		set[d] = true
+	}
+	return dateSet{loc: loc, dates: set}, nil
+}

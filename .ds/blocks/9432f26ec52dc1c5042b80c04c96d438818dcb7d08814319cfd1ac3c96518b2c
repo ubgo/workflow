@@ -1,0 +1,44 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return nil, err
+	}
+	list, err := sdk.Workers().List(ctx)
+	if err != nil {
+		return nil, engineErr(err, "list workers")
+	}
+	if list.Rows == nil {
+		return nil, nil
+	}
+	byNode := map[string]*workflow.NodeInfo{}
+	for _, row := range *list.Rows {
+		if row.Status == nil || *row.Status != rest.ACTIVE {
+			continue
+		}
+		// The list leaves out labels and slots; the worker read has them.
+		w, err := sdk.Workers().Get(ctx, row.Metadata.Id)
+		if isNotFound(err) {
+			continue // stopped between the list and the read
+		}
+		if err != nil {
+			return nil, engineErr(err, "read worker")
+		}
+		node := workerLabel(*w, workerLabelNode)
+		if node == "" {
+			continue
+		}
+		n := byNode[node]
+		if n == nil {
+			n = &workflow.NodeInfo{ID: node, Mode: workflow.NodeFull}
+			byNode[node] = n
+		}
+		mergeWorker(n, *w)
+	}
+	out := make([]workflow.NodeInfo, 0, len(byNode))
+	for _, n := range byNode {
+		sort.Strings(n.Queues)
+		out = append(out, *n)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}

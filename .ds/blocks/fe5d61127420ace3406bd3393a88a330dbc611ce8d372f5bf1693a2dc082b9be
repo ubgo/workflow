@@ -1,0 +1,6 @@
+func Main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	code := Run(ctx, os.Args[1:], Options{Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv})
+	stop()
+	os.Exit(code)
+}

@@ -1,0 +1,47 @@
+func TestClaimCheck_WithCodec(t *testing.T) {
+	store := &recordingStore{MemoryBlobStore: middleware.NewMemoryBlobStore()}
+	cc := newClaimCheck(t, store)
+	codec, _ := middleware.Encrypt(testKey(7))
+	mem := memory.New(memory.WithMiddleware(cc.Step(), middleware.DecodeStep(codec)))
+	c := middleware.WithCodec(mem, codec, cc.Enqueue())
+
+	secret := []byte(strings.Repeat("secret", 40))
+	got := make(chan []byte, 1)
+	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
+		{Name: "a", Run: func(_ context.Context, in []byte) ([]byte, error) { return in, nil }},
+		{Name: "b", After: []string{"a"}, Run: func(_ context.Context, in []byte) ([]byte, error) {
+			got <- bytes.Clone(in)
+			return nil, nil
+		}},
+	}}
+	if err := c.Register(wf); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer mem.Stop()
+	if _, err := c.Enqueue(ctx, workflow.Job{Workflow: "w", Payload: secret}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case in := <-got:
+		if !bytes.Equal(in, secret) {
+			t.Fatalf("step b saw %d bytes, want the plain payload", len(in))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("step b never ran")
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.puts) != 2 {
+		t.Fatalf("store got %d puts, want the payload and a's output", len(store.puts))
+	}
+	for _, b := range store.puts {
+		if bytes.Contains(b, []byte("secret")) {
+			t.Fatal("store holds plaintext: the claim check ran before the codec")
+		}
+	}
+}

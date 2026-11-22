@@ -1,0 +1,7 @@
+type MemoryAlertLimiter struct {
+	clk  clock.Clock
+	lim  AlertLimits
+	mu   sync.Mutex
+	keys map[string]*alertKeyState
+	sent []time.Time // alerts let through within Per, oldest first
+}

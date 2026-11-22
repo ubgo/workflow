@@ -10,8 +10,10 @@
 //
 // What Hatchet cannot express is refused with an error wrapping
 // workflow.ErrUnsupported that names the field (and, where one applies,
-// the missing capability), never dropped. Workflows are refused at
-// Register, schedules at Schedule, jobs at Enqueue:
+// the missing capability), never dropped. The guide's Limitations table
+// (docs/drivers/hatchet.md) lists every refusal and difference below with
+// the engine fact behind it and what to use instead. Workflows are refused
+// at Register, schedules at Schedule, jobs at Enqueue:
 // Concurrency.Key.Func (keys are CEL, use workflow.KeyExpr),
 // WaitSpec.KeyFrom.Expr (use workflow.KeyFunc), a Workflow.CronLocation or
 // Schedule.Location other than UTC (Hatchet evaluates crons in UTC only;
@@ -22,8 +24,15 @@
 // whose Initial is not Factor seconds (Hatchet waits Factor^n seconds), a
 // Backoff.Jitter (no CapRetryJitter) and a RetryPolicy.DelayFor such as
 // workflow.RetryAfterDelay (the engine never takes a retry's delay from
-// the error; no CapRetryDelay), a negative Job.Priority,
-// Job.IdempotencyKey together with Job.RunAt, a RateLimit.Per other than
+// the error; no CapRetryDelay), a negative Job.Priority, a label under
+// the wf__ or hatchet__ prefix or named traceparent (Job.Labels) and a
+// JSON object payload with a top-level _wf_payload key (Job.Payload),
+// both the driver's own run data, a step named wf__start or a workflow
+// name ending in __wf_delayed (ErrInvalid: the start gate's and the
+// delayed variants' names), Job.IdempotencyKey together with Job.RunAt
+// on a workflow with a Concurrency, past Config.IdempotencyMaxHold or on
+// a client that did not register the workflow (see below), a
+// RateLimit.Per other than
 // a second, minute, hour, day or week, and RateLimits on a workflow with
 // more than one first step (Hatchet limits tasks, not runs), a
 // RetryPolicy.Until or MaxErrors (Hatchet fixes a task's retries when it
@@ -44,7 +53,8 @@
 // CapScheduleActive), Workflow.CronKeepRuns and Schedule.KeepRuns (the
 // engine keeps runs for its retention and has no run delete; no
 // CapScheduleKeep), Workflow.RunTimeout and OnTimeout (the engine times
-// out tasks, not runs, with its own error text; no CapRunTimeout),
+// out tasks, not runs, with its own error text; no CapRunTimeout; the
+// worker enforces Step.Timeout instead, see below),
 // Step.HeartbeatTimeout (see below; no CapHeartbeat) and a
 // QueueConfig.Weight (refused at Start: each queue is its own worker, so
 // no worker picks between queues). The core's
@@ -54,6 +64,55 @@
 // (GroupChunkRuns over 1000, GroupChunkBytes over 2 MiB) and a
 // BatchCoordinatorRetry Hatchet cannot express (as above, or with
 // NoRetryOn).
+//
+// Step.Timeout (or Workflow.Timeout) is enforced by the worker, not left
+// to the engine, so a step timeout behaves as on the other drivers: the
+// attempt's context is cancelled with workflow.TimeoutError(ErrStepTimeout,
+// ...), the attempt fails with it whatever the handler returns unless a
+// step tolerated by workflow.WithRules claimed it (workflow.ClaimTimeout,
+// recorded as FailureTimeout for RuleOneFailedOf), and the run-finished
+// error of such a run matches ErrStepTimeout. The engine's execution
+// timeout is the step's timeout rounded up to whole seconds plus five
+// seconds, so it only ends a handler that ignores its context (with the
+// engine's own error text) and is when a step on a dead worker is
+// reclaimed. A step without a timeout runs under Config.StepTimeout on
+// the engine only. The workflowtest harness says so with
+// Harness.StepTimeoutHandshake, which runs the step-timeout conformance
+// cases without CapRunTimeout.
+//
+// The engine holds an idempotency key until the first task created with
+// the run ends (it releases a key when a task carrying it reaches a
+// terminal state), not until the run ends, and at most
+// Config.IdempotencyMaxHold: during the later steps of a multi-step run
+// an Enqueue with the same key starts a second run (checked live).
+//
+// A delayed start with an idempotency key (Job.RunAt and
+// Job.IdempotencyKey, which workflow.Spawn always sets) cannot be a
+// Hatchet scheduled run, which takes no key. It is started at once
+// instead, as a run of the workflow's delayed variant: a second engine
+// workflow (the name plus __wf_delayed) that Start declares beside each
+// workflow without IdempotencyOff or a Concurrency, with the same steps,
+// idempotency expression, rate limits and on-failure step, no cron, and a
+// start gate, a durable task (wf__start) before the first steps that
+// sleeps on the engine until RunAt (about a second late at most). The
+// gate is the variant's first task, so the engine holds the key from the
+// Enqueue until RunAt, and keys are shared with the workflow's other
+// runs. Meanwhile the run reads StatusScheduled (Status, Runs, a RunQuery
+// for StatusScheduled), RunInfo.RunAt is its RunAt and StartedAt stays
+// zero; its RunRef holds the RunID and no ScheduledID, a duplicate Enqueue
+// (delayed or not) gets the same RunRef, Cancel, CancelAll and
+// workflow.CancelChildren cancel it (freeing the key), and Pause and
+// Resume of the workflow pause and resume its variant too (Paused lists
+// only the workflow). Reschedule refuses it with an UnsupportedError: a
+// durable sleep cannot be moved. The gate is not on the workflow itself
+// because it would be every run's first task, which would release every
+// key a moment after the enqueue. A workflow with a Concurrency has no
+// variant and refuses such a start, because the engine keeps concurrency
+// slots per workflow, so a variant could not share the workflow's; so does
+// a RunAt further ahead than Config.IdempotencyMaxHold, and a client that
+// did not register the workflow (an enqueue-only client cannot tell
+// whether the workers declared a variant). A delayed start without a key
+// stays a Hatchet scheduled run.
 //
 // An engine call that fails because the engine could not be reached (a
 // gRPC Unavailable status, a network error from the REST client, an HTTP
@@ -321,7 +380,16 @@
 // while the contract has the handler's return decide the step and a
 // failure end the run without a retry), workflow.LifecycleNotifier (the
 // engine has no insert or start callback) or a progress store
-// (workflow.ReportProgress returns an UnsupportedError).
+// (workflow.ReportProgress returns an UnsupportedError), nor
+// workflow.TransientSignaller (the engine cannot tell which runs are
+// suspended on a wait at one moment), workflow.RunEditor,
+// workflow.RunResetter or workflow.RunForker (a run's input and shape are
+// the engine's once it is created, and its replay re-runs failed tasks
+// only). It offers none of the durable stores the core helpers take
+// (JournalStore, PromiseStore, DataStore, BucketStore, Inbox, the unique,
+// debounce, aggregate, disable and lineage stores): the engine keeps no
+// app data, so those helpers keep their in-memory defaults unless given
+// the SQL or Redis driver's store.
 //
 // Hatchet engine quirks (hatchet-lite v0.110.5, SDK v0.107.1) and the
 // workaround for each:
@@ -408,9 +476,29 @@
 //     execution timeout expires and then retried (it needs a retry
 //     left): the live crash case abandons a client mid-step with a 15s
 //     timeout and the step reruns about 28s later. In production the
-//     delay is the step's timeout (Config.StepTimeout, 24h by default),
-//     so set Step.Timeout near the step's real duration. Reclaim through
-//     missed worker heartbeats is not tested.
+//     delay is the step's timeout plus five seconds (Config.StepTimeout,
+//     24h by default, for a step without one), so set Step.Timeout near
+//     the step's real duration. Reclaim through missed worker heartbeats
+//     is not tested.
+//   - A durable task's sleep counts against its execution timeout (seen
+//     live): the start gate is declared with Config.IdempotencyMaxHold
+//     plus five seconds, and a keyed delayed start further ahead than
+//     IdempotencyMaxHold is refused. A wait step is a durable task too,
+//     and its event wait counts the same way, so the driver declares a
+//     wait step's execution timeout as long as the wait can last plus
+//     five seconds: its Timeout, or the time left to its Deadline when
+//     the client starts, in whole seconds; Step.Timeout (else
+//     Workflow.Timeout) raises it and never lowers it. A wait that
+//     reaches its Timeout or Deadline fails with workflow.TimeoutError
+//     (ErrWaitTimeout), as on the other drivers. A wait with neither
+//     gets Config.StepTimeout (or a longer Step.Timeout), after which the
+//     engine ends it with its own text. A sleep step is not affected:
+//     its sleep is a condition the engine holds before the task starts
+//     (TestLongWaitLive).
+//   - A task's error message comes back as a JSON string, in double
+//     quotes, in the run details and the run list: RunInfo.Error and the
+//     run-finished error keep the text as read (marker stripped), and a
+//     step or wait timeout is matched inside the quotes.
 //   - The engine rejects a rate limit without Key even when KeyExpr is
 //     set ("Validation failed" at worker registration): every limit
 //     carries a Key naming it.

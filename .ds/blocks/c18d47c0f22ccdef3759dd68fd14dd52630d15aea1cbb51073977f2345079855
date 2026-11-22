@@ -1,0 +1,46 @@
+func (c *Client) RunAll(ctx context.Context) (RunAllReport, error) {
+	c.mu.Lock()
+	if err := c.usableLocked(); err != nil {
+		c.mu.Unlock()
+		return RunAllReport{}, err
+	}
+	startSeq := c.seq
+	covered := map[*run]bool{}
+	for _, r := range c.allRunsLocked() {
+		if !r.status.IsTerminal() {
+			covered[r] = true
+		}
+	}
+	c.mu.Unlock()
+
+	still, lastProgress := 0, -1
+	for {
+		c.mu.Lock()
+		busy, progress := c.runAllStateLocked(covered, startSeq)
+		close(c.hurry)
+		c.hurry = make(chan struct{})
+		var rep RunAllReport
+		if !busy || still >= runAllStall {
+			rep = c.runAllReportLocked(covered, startSeq)
+		}
+		c.mu.Unlock()
+		switch {
+		case !busy:
+			return rep, nil
+		case still >= runAllStall:
+			return rep, fmt.Errorf("%w: runs are left that only the clock, a resume or a free slot can move", ErrRunAllStalled)
+		}
+		if progress != lastProgress {
+			still, lastProgress = 0, progress
+		} else {
+			still++
+		}
+		t := time.NewTimer(runAllPoll)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return RunAllReport{}, ctx.Err()
+		case <-t.C:
+		}
+	}
+}

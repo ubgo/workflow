@@ -38,6 +38,8 @@ import (
 //
 // updated_at is the store's clock at the last write, for an operator
 // reading the table; nothing decides by it.
+//
+//ds:def id=sql-disablestore-d9gwsxgk owner=@khanakia stability=stable
 type DisableStore struct {
 	st    *store
 	clk   clock.Clock
@@ -50,15 +52,21 @@ var _ middleware.DisableStore = (*DisableStore)(nil)
 // a list of its own, applied by DisableStore.Migrate, so a database with
 // no sqlstore queue gets only the one table. Client.Migrate does not
 // apply it: call Migrate on the store.
+//
+//ds:def id=sql-disablemigrationowner-am6g4z2t owner=@khanakia stability=stable
 const DisableMigrationOwner = "ubgo/workflow/sqlstore/disable"
 
 // tblDisabled is DisableStore's table stem, resolved by the store itself
 // because the table belongs to its own migration list.
+//
+//ds:def id=sql-tbldisabled-r4qv45z7 owner=@khanakia stability=stable
 const tblDisabled = "disabled_endpoints"
 
 // disableMigrations is every DisableStore schema change, in order, under
 // the same rules as migrations: never edit a released one, append a new
 // one.
+//
+//ds:def id=sql-disablestore-disablemigrations-qejfpcxy owner=@khanakia stability=stable
 func (s *DisableStore) disableMigrations() []migrate.Migration {
 	stmts := s.st.render(disableDefs(typesFor(s.st.engine)))
 	for i, q := range stmts {
@@ -98,6 +106,8 @@ func disableDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithClock (updated_at),
 // WithTxAttempts and WithErrorClassifier apply; the others configure a
 // Client and are ignored. Call Migrate before the first Fail.
+//
+//ds:def id=sql-newdisablestore-32zvw798 owner=@khanakia stability=stable
 func NewDisableStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DisableStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -109,6 +119,8 @@ func NewDisableStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DisableStore,
 // DisableStore returns the disable store in this client's database,
 // prefix and scheduling clock. Its table is created by the store's
 // Migrate, not by Client.Migrate.
+//
+//ds:def id=sql-client-disablestore-u46jz3ve owner=@khanakia stability=stable
 func (c *Client) DisableStore() *DisableStore {
 	return &DisableStore{st: c.st, clk: c.clk, names: strings.NewReplacer("{"+tblDisabled+"}", c.st.table(tblDisabled))}
 }
@@ -167,6 +179,8 @@ const failSet = `tripped = CASE WHEN {disabled_endpoints}.disabled = 0 AND {disa
 // Fail implements middleware.DisableStore, atomically across processes
 // (see DisableStore). A transaction that loses a lock race (SQLite busy,
 // a deadlock) is tried again, up to WithTxAttempts.
+//
+//ds:def id=sql-disablestore-fail-za8eg5mc owner=@khanakia stability=stable
 func (s *DisableStore) Fail(ctx context.Context, key string, after int) (bool, error) {
 	h, now := keyHash(key), s.clk.Now().UnixNano()
 	first := int64(0)

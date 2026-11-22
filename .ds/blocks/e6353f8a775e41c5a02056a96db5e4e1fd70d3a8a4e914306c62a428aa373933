@@ -1,0 +1,13 @@
+type QueueReport struct {
+	Queues []QueueStat
+	// Truncated is true when more than the max scan of queued runs exist:
+	// every Depth is then a lower bound and the oldest run may be missed.
+	Truncated bool
+	// At is when the report was taken, on the Admin's clock.
+	At time.Time
+	// Workers is true when the client implements workflow.WorkerScaler
+	// and declares CapWorkerScale: each QueueStat then carries Workers
+	// and Running, and every queue the client serves is listed, even
+	// with nothing queued.
+	Workers bool
+}

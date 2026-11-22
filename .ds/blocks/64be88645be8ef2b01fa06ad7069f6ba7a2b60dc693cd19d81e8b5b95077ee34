@@ -1,0 +1,16 @@
+func (r *inlineRun) wait(s Step) ([]byte, error) {
+	key, err := s.Wait.ResolveKeyFor(r.job, InlineRunID)
+	if err != nil {
+		return nil, err
+	}
+	if !s.Wait.Deadline.IsZero() && !r.cfg.now().Before(s.Wait.Deadline) {
+		return nil, fmt.Errorf("workflow: RunInline: wait step %q is past its Deadline: %w", s.Name, context.DeadlineExceeded)
+	}
+	for i, ev := range r.cfg.events {
+		if !r.taken[i] && ev.Name == s.Wait.Event && ev.Key == key {
+			r.taken[i] = true
+			return ev.Payload, nil
+		}
+	}
+	return nil, fmt.Errorf("workflow: RunInline: no InlineEvents event %q with key %q for wait step %q: %w", s.Wait.Event, key, s.Name, context.DeadlineExceeded)
+}

@@ -1,0 +1,30 @@
+func (h *handler[P]) newTenantGate() *tenantGate[P] {
+	if h.cfg.tenant == nil {
+		return nil
+	}
+	g := &tenantGate[P]{}
+	scope, ok := h.cfg.tenant.(TenantScope[P])
+	if !ok {
+		g.closed = errScopeType
+		return g
+	}
+	g.scope = scope
+	missing := h.a.c.Capabilities().Missing(workflow.CapTenant)
+	if h.a.rq != nil {
+		missing = missing.With(h.a.rqCaps.Missing(workflow.CapTenant))
+	}
+	if !missing.IsZero() {
+		g.closed = &workflow.UnsupportedError{Field: "admin.WithTenantScope", Missing: missing, Reason: "the client cannot store or filter a run's tenant"}
+		return g
+	}
+	g.mux = http.NewServeMux()
+	for pattern, tr := range tenantRoutes {
+		g.mux.HandleFunc(pattern, h.scoped(tr))
+	}
+	// Default deny: a path no pattern matches is refused rather than
+	// served unscoped.
+	g.mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeError(w, http.StatusForbidden, CodeForbidden, "not allowed for a tenant-scoped caller")
+	})
+	return g
+}

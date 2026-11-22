@@ -136,6 +136,8 @@ const (
 
 // fileSinkPerm is the permission a FileSink creates its file with: owner
 // read and write only, since output can hold whatever a step logged.
+//
+//ds:def id=mw-filesinkperm-puy4jjg9 owner=@khanakia stability=stable
 const fileSinkPerm = 0o600
 
 // FileSink writes each Output to the file at path with FormatOutput,

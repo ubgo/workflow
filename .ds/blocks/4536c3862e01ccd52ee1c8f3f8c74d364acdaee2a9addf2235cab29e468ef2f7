@@ -1,0 +1,20 @@
+type MapRunsOptions struct {
+	// InFlight is how many child runs are kept running at once; zero
+	// means DefaultMapInFlight.
+	InFlight int
+
+	// MaxFailures is how many items may fail before the map fails; zero
+	// tolerates none, MapUnlimitedFailures any number.
+	MaxFailures int
+
+	// KeepFailed bounds MapRunsResult.Failed; zero means
+	// DefaultMapKeepFailed.
+	KeepFailed int
+
+	// Poll is the snooze between looks; zero means DefaultChildPoll.
+	Poll time.Duration
+
+	// Parent is the client the calling step's workflow runs on (it must
+	// honour Snooze); nil means client.
+	Parent Client
+}

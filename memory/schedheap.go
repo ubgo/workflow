@@ -28,6 +28,8 @@ import (
 //
 // Use it for many schedules in one process (thousands of per-tenant
 // crons), where a goroutine and a timer each is the cost that matters.
+//
+//ds:def id=memory-withscheduleheap-4r7u9kqg owner=@khanakia stability=stable
 func WithScheduleHeap() Option { return func(m *Client) { m.schedHeap = true } }
 
 // schedEntry is one schedule in the heap, due at at. seq breaks ties in
@@ -103,6 +105,8 @@ func (c *Client) pokeSchedulerLocked() {
 // timer pending and advances a fake clock never races a stop and re-arm,
 // which could read the clock before the advance and arm the tick a period
 // late.
+//
+//ds:def id=memory-client-scheduler-xqnr8ude owner=@khanakia stability=stable
 func (c *Client) scheduler() {
 	defer c.wg.Done()
 	var t clock.Timer

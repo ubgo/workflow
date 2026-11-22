@@ -1,0 +1,7 @@
+func (m *Manager) renew(s *State, owner string) error {
+	if s.Dispatched || s.DispatchOwner != owner {
+		return errLeaseLost
+	}
+	s.DispatchUntil = m.clk.Now().Add(m.dispatchLease)
+	return nil
+}

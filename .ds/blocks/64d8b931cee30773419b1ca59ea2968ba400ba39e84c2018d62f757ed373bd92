@@ -1,0 +1,46 @@
+func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflow.Job, idxs []int) error {
+	if len(idxs) == 0 {
+		return m.finishDispatch(ctx, id, owner)
+	}
+	sub := make([]workflow.Job, len(idxs))
+	for k, i := range idxs {
+		sub[k] = jobs[i]
+	}
+	if gr, ok := m.client.(GroupRunner); ok && groupEligible(sub) {
+		if handled, err := m.dispatchGroup(ctx, gr, id, owner, idxs, sub); handled {
+			return err
+		}
+	}
+	for k, i := range idxs {
+		ref, enqErr := m.client.Enqueue(owned(ctx), sub[k])
+		if enqErr != nil {
+			// The failed Enqueue may have landed anyway (a timeout after
+			// the engine accepted the job), so its run is cancelled by
+			// the batch label where the client can (CapCancelAll); it is
+			// best effort, since a plain Enqueue error is no sign of a
+			// started run.
+			return errors.Join(fmt.Errorf("batch %s: enqueue job %d: %w", id, i, enqErr), m.abortJobs(ctx, id, owner, idxs[k:], nil, true))
+		}
+		saved, err := m.store.Update(ctx, id, func(s *State) error {
+			if err := m.renew(s, owner); err != nil {
+				return err
+			}
+			s.Jobs[i].Ref = ref
+			if !m.resumable {
+				m.dropSpec(s)
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("batch %s: save job %d: %w", id, i, err)
+		}
+		// A failure or Cancel may have cancelled the batch while this job
+		// was being enqueued, before its ref was saved; cancel it here and
+		// stop enqueuing.
+		if saved.Cancelled {
+			cerr := m.cancelRun(ctx, saved.Jobs[i])
+			return errors.Join(cerr, m.abortJobs(ctx, id, owner, idxs[k+1:], nil, false))
+		}
+	}
+	return m.finishDispatch(ctx, id, owner)
+}

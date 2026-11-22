@@ -1,0 +1,36 @@
+type QueueConfig struct {
+	// Name is the queue; it must pass ValidateQueueName.
+	Name string
+
+	// Workers caps how many step attempts of this queue execute at once
+	// on this client. Zero means no per-queue cap: only the driver's pool
+	// size limits it.
+	Workers int
+
+	// Limit caps the in-flight step attempts of this queue across EVERY
+	// client sharing the store, not only this one: Workers is per client
+	// (per node), Limit is the queue's whole-cluster ceiling. Zero means no
+	// cluster cap. It needs CapQueueLimitGlobal; a driver without it
+	// refuses a non-zero Limit at Start (CheckQueueLimits). An attempt
+	// holds its slot from claim to outcome, and a slot whose holder died is
+	// freed when the attempt's lease expires, never leaked. Every client
+	// that serves the queue should declare the same Limit: a client that
+	// declares none does not enforce it (it still counts toward it).
+	Limit int
+
+	// Priority orders queues when a worker is free: the ready attempts of
+	// a higher queue are always taken before a lower one's. Equal priorities fall back to Job.Priority,
+	// then arrival. A driver that cannot order queues refuses a non-zero
+	// Priority at Start.
+	Priority int
+
+	// Weight shares a worker between queues of equal Priority: when
+	// several of them have ready work, a free worker picks one at random
+	// in proportion to the weights (PickWeighted), so a queue of weight 3
+	// gets about three times the turns of a queue of weight 1 and none
+	// starves. Zero means strict order within the priority: Job.Priority,
+	// then arrival, as before. A queue with weight among queues without
+	// counts as weight 1. A driver that cannot weight queues refuses a
+	// non-zero Weight at Start.
+	Weight int
+}

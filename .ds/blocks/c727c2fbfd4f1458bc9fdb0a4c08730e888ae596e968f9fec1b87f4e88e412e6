@@ -1,0 +1,5 @@
+func (s *store) dataMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(DataMigrationOwner), Name: "001_data", Script: s.script(s.render(dataDefs(typesFor(s.engine))))},
+	}
+}

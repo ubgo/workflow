@@ -1,0 +1,4 @@
+type DebounceStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}

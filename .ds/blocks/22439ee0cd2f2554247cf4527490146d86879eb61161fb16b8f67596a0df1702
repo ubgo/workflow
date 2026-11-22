@@ -1,0 +1,14 @@
+func LoadZone(name string) (*time.Location, error) {
+	trimmed := strings.TrimSpace(name)
+	switch trimmed {
+	case "":
+		return nil, fmt.Errorf("%w: empty zone name; use \"UTC\" for UTC", ErrZone)
+	case "Local":
+		return nil, fmt.Errorf("%w: %q is the host's zone and differs between machines; name the zone", ErrZone, name)
+	}
+	loc, err := time.LoadLocation(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %q: %w (import github.com/ubgo/workflow/cron/tzdata when the host has no zoneinfo)", ErrZone, name, err)
+	}
+	return loc, nil
+}

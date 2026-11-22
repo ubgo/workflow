@@ -1,0 +1,22 @@
+func Aggregate(c workflow.Client, store AggregateStore, cfg AggregateConfig) (workflow.EnqueueMiddleware, error) {
+	if c == nil || store == nil {
+		return nil, fmt.Errorf("%w: Aggregate needs a client and a store", workflow.ErrInvalid)
+	}
+	if missing := c.Capabilities().Missing(aggregateNeeds); !missing.IsZero() {
+		return nil, &workflow.UnsupportedError{Field: "Aggregate", Missing: missing}
+	}
+	if len(cfg.Workflows) == 0 || cfg.Window <= 0 || cfg.MaxItems < 0 {
+		return nil, fmt.Errorf("%w: Aggregate needs at least one workflow, a positive Window and a MaxItems of zero or more", workflow.ErrInvalid)
+	}
+	a := &aggregator{store: store, cfg: cfg, wfs: map[string]bool{}, failed: map[string]bool{}}
+	for _, w := range cfg.Workflows {
+		if w == "" {
+			return nil, fmt.Errorf("%w: Aggregate: an empty workflow name", workflow.ErrInvalid)
+		}
+		a.wfs[w] = true
+	}
+	if a.cfg.Clock == nil {
+		a.cfg.Clock = clock.Real{}
+	}
+	return a.wrap, nil
+}

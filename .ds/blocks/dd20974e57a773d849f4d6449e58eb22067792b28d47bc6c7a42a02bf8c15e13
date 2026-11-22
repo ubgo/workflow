@@ -1,0 +1,48 @@
+func New[P any](c workflow.Client, cfg Config[P]) http.Handler {
+	if cfg.MaxBody <= 0 {
+		cfg.MaxBody = DefaultMaxBody
+	}
+	if cfg.Poll <= 0 {
+		cfg.Poll = DefaultPoll
+	}
+	if cfg.Heartbeat <= 0 {
+		cfg.Heartbeat = DefaultHeartbeat
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = clock.Real{}
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+	h := &handler[P]{c: c, cfg: cfg, workflows: map[string]bool{}, media: map[string]bool{}}
+	for _, w := range cfg.Workflows {
+		h.workflows[w] = true
+	}
+	types := cfg.MediaTypes
+	if len(types) == 0 {
+		types = []string{MediaTypeJSON}
+	}
+	for _, t := range types {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t != "" && !slices.Contains(corsSimple, t) {
+			h.media[t] = true
+		}
+	}
+	if ln, ok := c.(workflow.LifecycleNotifier); ok {
+		hb := newHub()
+		if err := ln.OnLifecycle(hb.observe); err != nil {
+			cfg.Logger.Info("httprun: live lifecycle events are off; the events route polls Status", "err", err)
+		} else {
+			h.hub = hb
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /{workflow}", h.start)
+	mux.HandleFunc("GET /runs/{id}", h.status)
+	mux.HandleFunc("GET /runs/{id}/events", h.events)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such route")
+	})
+	h.mux = mux
+	return h
+}

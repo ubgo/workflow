@@ -1,0 +1,50 @@
+func NewHandler[P any](a *Admin, auth Auth[P], opts ...HandlerOption) http.Handler {
+	h := &handler[P]{a: a, auth: auth, cfg: handlerConfig{maxBody: DefaultMaxBody}}
+	for _, o := range opts {
+		if o != nil {
+			o(&h.cfg)
+		}
+	}
+	if h.cfg.logger == nil {
+		h.cfg.logger = slog.New(slog.DiscardHandler)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /capabilities", h.capabilities)
+	mux.HandleFunc("GET /runs", h.listRuns)
+	mux.HandleFunc("GET /runs/{id}", h.showRun)
+	mux.HandleFunc("GET /failures", h.listFailures)
+	mux.HandleFunc("GET /discarded", h.listDiscarded)
+	mux.HandleFunc("POST /runs/{id}/retry", h.retryRun)
+	mux.HandleFunc("POST /runs/{id}/cancel", h.cancelRun)
+	mux.HandleFunc("DELETE /runs/{id}", h.deleteRun)
+	mux.HandleFunc("POST /runs/cancel", h.cancelRuns)
+	mux.HandleFunc("POST /pause", h.pause)
+	mux.HandleFunc("POST /resume", h.resume)
+	mux.HandleFunc("GET /pauses", h.listPauses)
+	mux.HandleFunc("GET /schedules", h.listSchedules)
+	mux.HandleFunc("GET /queues", h.queues)
+	mux.HandleFunc("POST /schedules/{id}/pause", h.pauseSchedule)
+	mux.HandleFunc("POST /schedules/{id}/resume", h.resumeSchedule)
+	mux.HandleFunc("GET /schedules/{id}", h.showSchedule)
+	mux.HandleFunc("POST /schedules/{id}/trigger", h.triggerSchedule)
+	mux.HandleFunc("POST /runs/{id}/complete", h.forceComplete)
+	mux.HandleFunc("POST /runs/{id}/fail", h.forceFail)
+	mux.HandleFunc("GET /runs/{id}/output", h.showOutput)
+	mux.HandleFunc("POST /runs/retry", h.retryRuns)
+	mux.HandleFunc("POST /runs/delete", h.deleteRuns)
+	mux.HandleFunc("GET /metrics", h.showMetrics)
+	mux.HandleFunc("GET /nodes", h.listNodes)
+	mux.HandleFunc("GET /health", h.health)
+	mux.HandleFunc("POST /runs/{id}/reschedule", h.reschedule)
+	mux.HandleFunc("POST /runs/{id}/edit", h.editRun)
+	mux.HandleFunc("POST /runs/{id}/reset", h.resetRun)
+	mux.HandleFunc("POST /runs/{id}/fork", h.forkRun)
+	mux.HandleFunc("POST /signals/waiting", h.signalWaiting)
+	mux.HandleFunc("POST /runs/{id}/steps/{step}/cancel", h.cancelStep)
+	mux.HandleFunc("GET /{$}", h.uiRedirect)
+	mux.HandleFunc("GET /ui", h.uiRedirect)
+	mux.HandleFunc("GET /ui/{file...}", h.uiFile)
+	h.mux = mux
+	h.tenant = h.newTenantGate()
+	return h
+}

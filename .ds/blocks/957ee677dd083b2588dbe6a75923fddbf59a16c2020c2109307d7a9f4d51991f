@@ -1,0 +1,5 @@
+func (p *Pinger) Run(target string) func(ctx context.Context, ev workflow.RunEvent) {
+	return func(ctx context.Context, ev workflow.RunEvent) {
+		p.ping(ctx, target, slog.String("workflow", ev.Workflow), slog.String("status", string(ev.Status)))
+	}
+}

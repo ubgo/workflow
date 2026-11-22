@@ -1,0 +1,55 @@
+type Job struct {
+	// Workflow is the registered workflow name.
+	Workflow string
+
+	// Payload is the input of the first steps.
+	Payload []byte
+
+	// RunAt delays the start. Zero means now. Needs CapDelayedStart.
+	RunAt time.Time
+
+	// IdempotencyKey dedups enqueues while a run holding the key has not
+	// finished. Honoured per the workflow's Idempotency policy; needs
+	// CapIdempotencyKey.
+	IdempotencyKey string
+
+	// Labels carry app metadata (source, trace) explicitly, so a
+	// middleware can require one instead of trusting a context convention.
+	Labels map[string]string
+
+	// Tenant is the tenant the run belongs to, a first-class field rather
+	// than a label convention: drivers store it, report it on
+	// StepInfo.Tenant and RunInfo.Tenant, and filter by it
+	// (RunQuery.Tenant). Empty means none. It must pass ValidateTenant.
+	// Each chained job carries its own Tenant. Needs CapTenant.
+	Tenant string
+
+	// Priority orders runs waiting for a worker: higher goes first. Zero
+	// is the default priority.
+	Priority int
+
+	// Queue overrides the workflow's queue for this run. Empty means the workflow's (EffectiveQueue). Needs
+	// CapQueue, and CapQueueOverride when it differs from the workflow's
+	// queue (CheckJobQueue).
+	Queue string
+
+	// Retry replaces every step's effective policy for this run (a retry
+	// budget chosen per dispatch), so it wins over Step.Retry and Workflow.Retry;
+	// see EffectiveRetriesFor. It is data only: NoRetryOn and DelayFor
+	// must be nil (ValidateJob refuses them), because a durable driver
+	// stores the job and cannot store a function. Nil means no override.
+	// Needs CapJobRetry plus what the policy itself needs.
+	Retry *RetryPolicy
+
+	// Chain lists the jobs that run after this one, in order: when this
+	// run succeeds the driver enqueues Chain[0] carrying Chain[1:] as its
+	// own Chain (NextInChain), so each job starts only once the one before
+	// it succeeded. A run that fails, is discarded or is cancelled ends
+	// the chain. A running step may edit the rest of its run's chain with
+	// PrependToChain and AppendToChain. The chain is data stored with the
+	// run, so on a durable driver it survives a crash. Enqueue middleware
+	// runs for this job only, not for the jobs the driver enqueues later.
+	// At most MaxChainJobs jobs; each passes ValidateJob. Needs CapChain
+	// plus what every chained job needs.
+	Chain []Job
+}

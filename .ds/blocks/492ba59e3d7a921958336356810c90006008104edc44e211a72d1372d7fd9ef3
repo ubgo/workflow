@@ -1,0 +1,46 @@
+func (c *Client) deliver(ctx context.Context) error {
+	c.mu.Lock()
+	obs := c.observers
+	c.mu.Unlock()
+	until := c.leaseClk.Now().Add(c.lease).UnixMilli()
+	args := []any{c.base, c.leaseClk.Now().UnixMilli(), until, deliverBatch}
+	for _, n := range c.names {
+		args = append(args, n)
+	}
+	res, err := deliverScript.Run(ctx, c.rdb, c.keys(), args...).Slice()
+	if err != nil {
+		return classify(err)
+	}
+	for i := 0; i+2 < len(res); i += 3 {
+		wf, id := str(res[i]), str(res[i+1])
+		flat, _ := res[i+2].([]any)
+		h := make(map[string]string, len(flat)/2)
+		for j := 0; j+1 < len(flat); j += 2 {
+			h[str(flat[j])] = str(flat[j+1])
+		}
+		r, err := decodeRun(id, h)
+		if err != nil {
+			c.log.Error("redis: decode an ended run (its end is not delivered)", "run", id, "error", err)
+			continue
+		}
+		ev := workflow.RunEvent{
+			Ref:        workflow.RunRef{RunID: workflow.RunID(id), ScheduledID: workflow.ScheduledID(r.sid)},
+			Workflow:   wf,
+			Status:     r.status,
+			Err:        r.runError(),
+			Labels:     r.labels,
+			Tenant:     r.tenant,
+			FinishedAt: r.finished,
+		}
+		if r.status == workflow.StatusFailed {
+			ev.Step = r.failedStep
+		}
+		for _, fn := range obs {
+			c.observe(ctx, fn, ev)
+		}
+		if err := ackScript.Run(ctx, c.rdb, c.keys(), c.base, wf, id, until).Err(); err != nil {
+			return classify(err)
+		}
+	}
+	return nil
+}

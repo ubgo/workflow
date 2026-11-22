@@ -1,0 +1,82 @@
+type RunInfo struct {
+	// Ref is the run.
+	Ref RunRef
+
+	// Workflow is the workflow name.
+	Workflow string
+
+	// Queue is the run's queue (EffectiveQueue).
+	Queue string
+
+	// Status is where the run is now.
+	Status Status
+
+	// Error is why the run failed, was discarded or was cancelled; while
+	// it is StatusRetrying (CapRunStates), the error of the failed attempt
+	// that waits on its backoff; empty otherwise. It is a string because
+	// an engine stores only the message.
+	Error string
+
+	// FailedStep is the step whose failure ended the run; empty otherwise.
+	FailedStep string
+
+	// Labels are the run's Job.Labels. Callers must not modify them.
+	Labels map[string]string
+
+	// Payload is the job's payload as the driver stored it (after any
+	// codec or claim check ran).
+	Payload []byte
+
+	// Priority is Job.Priority.
+	Priority int
+
+	// EnqueuedAt is when Enqueue accepted the run, on the driver's clock.
+	EnqueuedAt time.Time
+
+	// StartedAt is when the first step attempt started; zero before.
+	StartedAt time.Time
+
+	// FinishedAt is when the run became terminal; zero before.
+	FinishedAt time.Time
+
+	// Attempts counts the step attempts made across the run.
+	Attempts int
+
+	// NextAttempt is the attempt number a step waiting on its retry
+	// backoff will run as (2 for the first retry), and NextAttemptAt
+	// when it becomes ready; with several steps in backoff, the one
+	// ready first. Both are zero unless the run is StatusRetrying, and
+	// are filled only by drivers with CapRunStates.
+	NextAttempt   int
+	NextAttemptAt time.Time
+
+	// Errors is the run's error history: one entry per failed step
+	// attempt, oldest first, bounded by the driver's error-history
+	// option. Filled only by drivers with CapErrorHistory.
+	Errors []AttemptError
+
+	// Tenant is Job.Tenant (CapTenant).
+	Tenant string
+
+	// Version is the run's workflow version (Workflow.Version of the
+	// client that enqueued it, CapWorkflowVersion); zero when unversioned.
+	Version int
+
+	// RunAt is the time a delayed run is (or was) due: Job.RunAt, or the
+	// time Reschedule moved it to. Zero for a run enqueued to start now.
+	// Filled by drivers with CapDueQuery.
+	RunAt time.Time
+
+	// Output is the run's result (RunOutput) once it succeeded; nil
+	// before and for other ends. Filled by drivers with CapResult.
+	Output []byte
+
+	// Progress is the latest progress a step reported (ReportProgress);
+	// nil when none was reported or the driver keeps none.
+	Progress *Progress
+
+	// AttemptedBy lists the nodes that ran the run's step attempts, in
+	// the order each first ran one, without repeats. Filled by drivers
+	// with CapNodeIdentity.
+	AttemptedBy []string
+}

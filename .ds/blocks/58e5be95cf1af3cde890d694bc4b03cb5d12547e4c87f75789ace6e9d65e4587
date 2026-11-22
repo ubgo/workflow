@@ -1,0 +1,9 @@
+func (st *State) counted(s workflow.Status) workflow.Status {
+	if s != workflow.StatusDiscarded {
+		return s
+	}
+	if st.DiscardedAs == "" {
+		return workflow.StatusFailed
+	}
+	return st.DiscardedAs
+}

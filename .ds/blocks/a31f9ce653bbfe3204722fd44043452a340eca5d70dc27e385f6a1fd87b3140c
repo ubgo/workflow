@@ -1,0 +1,11 @@
+func (f *Fake) Closures(names ...string) []workflow.ClosureJob {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []workflow.ClosureJob
+	for _, c := range f.closures {
+		if len(names) == 0 || slices.Contains(names, c.Name) {
+			out = append(out, c)
+		}
+	}
+	return out
+}

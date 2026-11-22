@@ -1,0 +1,4 @@
+func (c *Client) Region(name string) (workflow.Client, bool) {
+	rc, ok := c.regions[name]
+	return rc, ok
+}

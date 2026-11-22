@@ -1,0 +1,1 @@
+func Requirements(op Operation) workflow.Caps { return requirements[op] }

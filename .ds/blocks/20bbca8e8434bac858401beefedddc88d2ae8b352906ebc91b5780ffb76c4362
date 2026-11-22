@@ -1,0 +1,4 @@
+func DeferredFrom(ctx context.Context) (*Deferred, bool) {
+	d, ok := ctx.Value(deferredKey{}).(*Deferred)
+	return d, ok
+}

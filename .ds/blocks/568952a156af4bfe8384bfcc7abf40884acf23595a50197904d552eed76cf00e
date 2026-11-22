@@ -1,0 +1,7 @@
+var allCaps = workflow.CapsOf(
+	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
+	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
+	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+)

@@ -1,0 +1,5 @@
+func HasRetry(p workflow.RetryPolicy) JobMatcher {
+	return Where(fmt.Sprintf("retry %+v", p), func(j workflow.Job) bool {
+		return j.Retry != nil && reflect.DeepEqual(*j.Retry, p)
+	})
+}

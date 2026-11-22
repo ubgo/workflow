@@ -1,0 +1,22 @@
+func (h HMAC) Verify(r *http.Request, body []byte) (string, error) {
+	if h.Header == "" || len(h.Secrets) == 0 {
+		return "", fmt.Errorf("%w: HMAC verifier has no Header or Secrets", ErrSignature)
+	}
+	v, ok := strings.CutPrefix(r.Header.Get(h.Header), h.Prefix)
+	if !ok || v == "" {
+		return "", ErrSignature
+	}
+	got, err := h.decode(v)
+	if err != nil {
+		return "", ErrSignature
+	}
+	for _, s := range h.Secrets {
+		if len(s) > 0 && hmac.Equal(got, h.mac(s, body)) {
+			if h.IDHeader != "" {
+				return r.Header.Get(h.IDHeader), nil
+			}
+			return "", nil
+		}
+	}
+	return "", ErrSignature
+}

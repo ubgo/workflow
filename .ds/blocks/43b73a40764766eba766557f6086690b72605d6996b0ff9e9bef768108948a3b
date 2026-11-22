@@ -1,0 +1,14 @@
+func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	var out []workflow.NodeInfo
+	errs := map[string]error{}
+	for _, name := range c.names {
+		nl, ok := c.regions[name].(workflow.NodeLister)
+		if !ok {
+			return nil, workflow.Unsupported("Nodes", "every region must implement workflow.NodeLister")
+		}
+		ns, err := nl.Nodes(ctx)
+		out = append(out, ns...)
+		errs[name] = err
+	}
+	return out, joinRegions("Nodes", c.names, errs)
+}

@@ -1,0 +1,3 @@
+func Bounded(depth DepthFunc, limit func(workflow.Job) int, opts ...BoundedOption) workflow.EnqueueMiddleware {
+	return gate("Bounded", ErrQueueFull, depth, limit, opts)
+}

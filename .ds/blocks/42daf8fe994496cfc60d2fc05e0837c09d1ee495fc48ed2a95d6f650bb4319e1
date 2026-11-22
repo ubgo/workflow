@@ -1,0 +1,16 @@
+func (h *handler[P]) callScope(scope TenantScope[P], r *http.Request, who P) (tenant string, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			h.cfg.logger.Error("admin: TenantScope panicked", "panic", fmt.Sprint(p))
+			err = errors.New("admin: TenantScope panicked")
+		}
+	}()
+	tenant, err = scope(r, who)
+	switch {
+	case err != nil:
+		return "", err
+	case tenant == AllTenants:
+		return tenant, nil
+	}
+	return tenant, workflow.ValidateTenant(tenant)
+}

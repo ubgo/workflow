@@ -1,0 +1,1 @@
+type PingFunc func(ctx context.Context, target string) error

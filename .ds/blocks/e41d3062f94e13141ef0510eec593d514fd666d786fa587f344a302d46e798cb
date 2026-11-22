@@ -1,0 +1,3 @@
+func (u *UpstreamLimit) Observe(ctx context.Context, key string, level float64) error {
+	return u.store.Observe(ctx, key, u.spec, level, u.clk.Now())
+}

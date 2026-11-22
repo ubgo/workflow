@@ -1,0 +1,22 @@
+func TestMonitor_Validation(t *testing.T) {
+	a := New(seeded())
+	rec := &recorder{}
+	for name, ths := range map[string][]Threshold{
+		"none":        nil,
+		"negative":    {{MaxDepth: -1}},
+		"empty":       {{Queue: "q"}},
+		"bad queue":   {{Queue: "a b", MaxDepth: 1}},
+		"dup queue":   {{Queue: "q", MaxDepth: 1}, {Queue: "q", MaxWait: time.Second}},
+		"dup default": {{MaxDepth: 1}, {MaxWait: time.Second}},
+	} {
+		if _, err := NewMonitor(a, rec, ths); !errors.Is(err, workflow.ErrInvalid) {
+			t.Errorf("%s: err = %v, want ErrInvalid", name, err)
+		}
+	}
+	if _, err := NewMonitor(a, nil, []Threshold{{MaxDepth: 1}}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Errorf("nil alerter: %v", err)
+	}
+	if _, err := NewMonitor(New(&fakeClient{}), rec, []Threshold{{MaxDepth: 1}}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("client without RunQuery: %v", err)
+	}
+}

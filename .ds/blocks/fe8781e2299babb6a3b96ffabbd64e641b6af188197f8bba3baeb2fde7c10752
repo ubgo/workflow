@@ -1,0 +1,1 @@
+	Cancel(ctx context.Context, ref RunRef) error

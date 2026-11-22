@@ -1,0 +1,22 @@
+func (q Query) Match(r RunRecord) bool {
+	if !q.RunQuery.Match(r.RunInfo) {
+		return false
+	}
+	if len(q.Sources) > 0 && !slices.Contains(q.Sources, r.Source) {
+		return false
+	}
+	if len(q.Outcomes) > 0 && !slices.Contains(q.Outcomes, r.Outcome) {
+		return false
+	}
+	if q.OnlyStale && !r.Stale {
+		return false
+	}
+	if q.Search != "" {
+		needle := strings.ToLower(q.Search)
+		hay := []string{string(r.Ref.RunID), string(r.Ref.ScheduledID), r.Workflow, r.SourceRef}
+		if !slices.ContainsFunc(hay, func(h string) bool { return strings.Contains(strings.ToLower(h), needle) }) {
+			return false
+		}
+	}
+	return true
+}

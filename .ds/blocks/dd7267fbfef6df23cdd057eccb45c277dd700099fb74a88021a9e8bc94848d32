@@ -1,0 +1,6 @@
+func checkScheduleZone(loc *time.Location) error {
+	if !workflow.IsUTC(loc) {
+		return unsupported("Schedule.Location", workflow.CapCronZone, "Hatchet evaluates crons in UTC only, not "+loc.String())
+	}
+	return nil
+}

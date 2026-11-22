@@ -1,0 +1,9 @@
+func (c *Client) enqueueReg(name string) (*registered, error) {
+	if reg := c.reg(name); reg != nil {
+		return reg, nil
+	}
+	if c.enqueueOnly {
+		return &registered{wf: workflow.Workflow{Name: name}, stub: true}, nil
+	}
+	return nil, fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, name)
+}

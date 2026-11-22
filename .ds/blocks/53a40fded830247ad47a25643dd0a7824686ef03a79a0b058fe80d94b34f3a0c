@@ -1,0 +1,7 @@
+func AwaitPoll(d time.Duration) AwaitOption {
+	return func(c *awaitConfig) {
+		if d > 0 {
+			c.poll = d
+		}
+	}
+}

@@ -1,0 +1,3 @@
+func LadderPolicy(delays ...time.Duration) RetryPolicy {
+	return RetryPolicy{Max: len(delays), DelayFor: RetryLadder(delays...)}
+}

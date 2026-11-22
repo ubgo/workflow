@@ -16,9 +16,11 @@ import (
 // label they are a guard, not a sandbox (see AllowReservedLabels).
 const (
 	// LabelParentRun is the RunID of the run whose step spawned the job.
+	//ds:def id=labelparentrun-26n8sedy owner=@khanakia stability=stable
 	LabelParentRun = LabelPrefixInternal + "parent-run"
 
 	// LabelParentStep is the name of that step.
+	//ds:def id=labelparentstep-h46cdgpg owner=@khanakia stability=stable
 	LabelParentStep = LabelPrefixInternal + "parent-step"
 )
 
@@ -32,6 +34,8 @@ type spawnConfig struct{ allowDuplicates bool }
 // enqueueing a job twice, except when the process dies between an enqueue
 // and the journal's save of its RunRef; with this option that window can
 // start a job twice.
+//
+//ds:def id=spawnallowduplicates-7mvcevv3 owner=@khanakia stability=stable
 func SpawnAllowDuplicates() SpawnOption { return func(c *spawnConfig) { c.allowDuplicates = true } }
 
 // Spawn enqueues jobs from inside a step as runs of their own and returns
@@ -51,6 +55,8 @@ func SpawnAllowDuplicates() SpawnOption { return func(c *spawnConfig) { c.allowD
 // client is the client the app enqueues with (a step has no client of its
 // own); pass the same one the step's workflow is registered on, or
 // another one to spawn onto another backend.
+//
+//ds:def id=spawn-jrs3a39f owner=@khanakia stability=stable
 func Spawn(ctx context.Context, client Client, name string, jobs []Job, opts ...SpawnOption) ([]RunRef, error) {
 	var cfg spawnConfig
 	for _, o := range opts {

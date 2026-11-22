@@ -1,0 +1,14 @@
+type ReplayOptions struct {
+	// Client, when set, is checked for CapSnooze, which waits need (a
+	// suspended wait is a snooze). Pass the client the workflow is
+	// registered on; nil skips the check.
+	Client Client
+
+	// Clock is the time source of Sleep, SleepUntil and Now; nil means
+	// clock.Real.
+	Clock clock.Clock
+
+	// Poll is how long a wait on an unsettled promise sleeps between
+	// looks; zero means DefaultPromisePoll.
+	Poll time.Duration
+}

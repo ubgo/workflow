@@ -1,0 +1,11 @@
+func (c *Client) usableLocked() error {
+	switch {
+	case !c.started:
+		return workflow.ErrNotStarted
+	case c.stopped:
+		return fmt.Errorf("%w: the client was stopped", workflow.ErrNotStarted)
+	case c.draining:
+		return fmt.Errorf("%w: the client is draining", workflow.ErrNotStarted)
+	}
+	return nil
+}

@@ -1,0 +1,9 @@
+func (a *Admin) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	if err := a.check(OpSignalWaiting); err != nil {
+		return 0, err
+	}
+	if ev.Name == "" {
+		return 0, fmt.Errorf("%w: admin: event name is empty", workflow.ErrInvalid)
+	}
+	return a.c.(workflow.TransientSignaller).SignalWaiting(ctx, ev)
+}

@@ -1,0 +1,1 @@
+func declaredID(wf string, i int) string { return declaredPrefix + wf + ":" + strconv.Itoa(i) }

@@ -1,0 +1,3 @@
+func (f *Client) Supports(op workflow.Op) bool {
+	return workflow.Supports(f.primary, op) && workflow.Supports(f.secondary, op)
+}

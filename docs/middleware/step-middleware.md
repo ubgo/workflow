@@ -1,18 +1,18 @@
 # Step middleware
 
-Step middleware wraps every step attempt on a driver: logging, panic recovery, an app-wide timeout, errors that must not be retried, steps to skip, a circuit breaker for a failing dependency, tracing. It is written once against `workflow.Handler` and runs the same way on the memory, SQL, Redis and Hatchet drivers, so cross-cutting behaviour never lives inside handlers and never depends on which backend runs them. The stock pieces are in package `middleware`: skip a step, throttle a failing dependency, fail on chosen errors, release a step for later, capture a step's log and timeline events.
+Step middleware wraps every step attempt on a driver: logging, panic recovery, an app-wide timeout, errors that must not be retried, steps to skip, a circuit breaker for a failing dependency, tracing. It is written once against `workflow.Handler` and runs the same way on the memory, SQL, Redis and Hatchet drivers, so cross-cutting behaviour never lives inside handlers and never depends on which backend runs them. The stock pieces are in package `middleware`: skip a step, throttle a failing dependency, fail on chosen errors, release a step for later, capture a step's log and timeline events. Three more are taught on other pages: `Pool` and `CriticalSection` ([Pools](../reliability/pools.md)) make a step that finds no free slot wait [`DefaultPoolRetry`](ds:block?id=mw-defaultpoolretry-u39sdeum), one second, before it tries again (`Pool` takes another wait with `PoolRetry`), and `FireJitter` ([Spread fires with jitter](../schedules/backfill.md#spread-fires-with-jitter)) needs the two driver capabilities in [`FireJitterNeeds`](ds:block?id=mw-firejitterneeds-j76ggebk), `CapTickTime` and `CapSnooze`.
 
 ## Before you start
 
 - A driver and the `middleware` package (core module, no extra dependency).
-- Middleware is given to the driver when it is built: `memory.WithMiddleware`, `sqlstore.WithMiddleware`, `redis.WithMiddleware` or `hatchet.Config.Middleware`. The same chain works on all four.
+- Middleware is given to the driver when it is built: [`memory.WithMiddleware`](ds:block?id=memory-withmiddleware-yea2tnqr), [`sqlstore.WithMiddleware`](ds:block?id=sql-withmiddleware-hkqu69ab), [`redis.WithMiddleware`](ds:block?id=redis-withmiddleware-28r4tn9t) or [`hatchet.Config.Middleware`](ds:block?id=hatchet-config-wdky3m9f). The same chain works on all four.
 - The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/), every piece in one chain. [examples/step-middleware](../../examples/step-middleware/) shows `Recover`, `Timeout`, `FailOn` and `Skip` one at a time, each on a client of its own; the four sections below copy it.
 
 ## Wrap every step
 
-A `workflow.Middleware` is `func(next workflow.Handler) workflow.Handler`: it gets the step's context and input bytes, may act before and after calling `next`, and returns the output and error the driver records. Before the chain runs, every driver puts a `workflow.StepInfo` on the context (workflow, step, run ID, attempt and the run's labels), so middleware can tell runs and attempts apart with `workflow.StepInfoFrom(ctx)` without knowing the driver.
+A [`workflow.Middleware`](ds:block?id=middleware-bsp4zm4w) is `func(next workflow.Handler) workflow.Handler`: it gets the step's context and input bytes, may act before and after calling `next`, and returns the output and error the driver records. Before the chain runs, every driver puts a [`workflow.StepInfo`](ds:block?id=stepinfo-kun3n4c3) on the context (workflow, step, run ID, attempt and the run's labels), so middleware can tell runs and attempts apart with [`workflow.StepInfoFrom(ctx)`](ds:block?id=stepinfofrom-rr9mwh2c) without knowing the driver.
 
-`middleware.Chain(a, b)` composes middleware into one, and the first argument is the outermost: `a` runs first on the way in and last on the way out. Nil entries are skipped, so a list can hold optional pieces. The drivers' `WithMiddleware` options follow the same rule.
+[`middleware.Chain(a, b)`](ds:block?id=mw-chain-xz7pjtss) composes middleware into one, and the first argument is the outermost: `a` runs first on the way in and last on the way out. Nil entries are skipped, so a list can hold optional pieces. The drivers' `WithMiddleware` options follow the same rule.
 
 <!-- snippet: examples/middleware-stack/main.go#chain -->
 ```go
@@ -54,7 +54,7 @@ Writing your own middleware is covered in [Write step middleware](../extending/w
 
 ## Recover from panics
 
-`middleware.Recover(logger)` turns a panic in a step into an error wrapping `middleware.ErrPanic`, so one bad step fails its attempt instead of killing the worker. The panic value goes into the error; the stack goes to the logger at Error (a nil logger drops it) and never into the error string, which ends up in run status where it would leak file paths.
+[`middleware.Recover(logger)`](ds:block?id=mw-recover-a7qbjc9u) turns a panic in a step into an error wrapping [`middleware.ErrPanic`](ds:block?id=mw-errpanic-363z3krr), so one bad step fails its attempt instead of killing the worker. The panic value goes into the error; the stack goes to the logger at Error (a nil logger drops it) and never into the error string, which ends up in run status where it would leak file paths.
 
 The error is retryable on purpose: whether a panic deserves a retry is the retry policy's decision. Here the policy allows three retries for passing errors, and `NoRetryOn` refuses to retry a panic:
 
@@ -95,7 +95,7 @@ for _, e := range page.Runs[0].Errors {
 
 ## Time out a step
 
-`middleware.Timeout(d)` gives every step attempt a context that ends after `d`, a cap the app sets across every workflow; `Step.Timeout` and `Workflow.Timeout` set one per step, and the drivers apply those themselves. A `d` of zero or less is a no-op. The timeout is cooperative: the step must watch `ctx`, because abandoning a goroutine that keeps running would leak it and let two attempts of one step overlap.
+[`middleware.Timeout(d)`](ds:block?id=mw-timeout-52xzkfgg) gives every step attempt a context that ends after `d`, a cap the app sets across every workflow; `Step.Timeout` and `Workflow.Timeout` set one per step, and the drivers apply those themselves. A `d` of zero or less is a no-op. The timeout is cooperative: the step must watch `ctx`, because abandoning a goroutine that keeps running would leak it and let two attempts of one step overlap.
 
 <!-- snippet: examples/step-middleware/main.go#timeout -->
 ```go
@@ -117,7 +117,7 @@ The feed server never answers, so the attempt ends after 50 ms with `context dea
 
 ## Fail on chosen errors
 
-`middleware.FailOn(match)` marks an error permanent (`workflow.Permanent`) when `match` reports true, so the step fails at once instead of spending its retries. An error already permanent stays so, and a nil `match` is a no-op. `match` gets the handler's error as returned, so `errors.Is` sees through `%w` wrapping:
+[`middleware.FailOn(match)`](ds:block?id=mw-failon-pnqdj4g7) marks an error permanent (`workflow.Permanent`) when `match` reports true, so the step fails at once instead of spending its retries. An error already permanent stays so, and a nil `match` is a no-op. `match` gets the handler's error as returned, so `errors.Is` sees through `%w` wrapping:
 
 <!-- snippet: examples/step-middleware/main.go#fail-on -->
 ```go
@@ -141,7 +141,7 @@ The `charge` workflow has two retries. A declined card fails after one attempt; 
 
 ## Skip a step
 
-`middleware.Skip(skip)` does not call the step when `skip(ctx, in)` reports true and returns a nil output and a nil error, so the step counts as done. A nil `skip` is a no-op. `skip` sees the step's input and its context, so `workflow.StepInfoFrom(ctx)` tells it which workflow, step and attempt is about to run:
+[`middleware.Skip(skip)`](ds:block?id=mw-skip-2qh78qjd) does not call the step when `skip(ctx, in)` reports true and returns a nil output and a nil error, so the step counts as done. A nil `skip` is a no-op. `skip` sees the step's input and its context, so `workflow.StepInfoFrom(ctx)` tells it which workflow, step and attempt is about to run:
 
 <!-- snippet: examples/step-middleware/main.go#skip -->
 ```go
@@ -164,9 +164,9 @@ The first run calls `notify`; the second asks for quiet, succeeds, and `notify` 
 
 ## Release a step for later
 
-`middleware.Release(when, delay)` does not call the step when `when(ctx, in)` reports true: the attempt ends with `workflow.RetryAfter(middleware.ErrReleased, delay)`, so the driver tries the step again after `delay`. It suits a condition the app knows before any work starts: a partner API in maintenance, a tenant over its quota for the hour, a dependency that is not ready yet. To release unless a condition holds, negate the condition; a nil `when` is a no-op. To release from inside a handler, after work has started, return `workflow.RetryAfter(err, d)` there instead.
+[`middleware.Release(when, delay)`](ds:block?id=mw-release-ek3ppr3h) does not call the step when `when(ctx, in)` reports true: the attempt ends with `workflow.RetryAfter(middleware.ErrReleased, delay)`, so the driver tries the step again after `delay`. It suits a condition the app knows before any work starts: a partner API in maintenance, a tenant over its quota for the hour, a dependency that is not ready yet. To release unless a condition holds, negate the condition; a nil `when` is a no-op. To release from inside a handler, after work has started, return `workflow.RetryAfter(err, d)` there instead.
 
-Two rules come from the retry policy, not from the middleware, and hold on every driver. The delay is honoured only under a policy whose `DelayFor` reads it, `workflow.RetryAfterDelay`; under any other policy a released attempt waits the policy's normal `Backoff`. And a release is an attempt: it counts against `RetryPolicy.Max`, and a step released on its last attempt fails its run with an error wrapping `middleware.ErrReleased`. The program for this section is [examples/release-jobs](../../examples/release-jobs/):
+Two rules come from the retry policy, not from the middleware, and hold on every driver. The delay is honoured only under a policy whose `DelayFor` reads it, [`workflow.RetryAfterDelay`](ds:block?id=retryafterdelay-pgsc6bvn) ([`RetryPolicy.NextDelay`](ds:block?id=retrypolicy-nextdelay-94cqz66r)); under any other policy a released attempt waits the policy's normal `Backoff`. And a release is an attempt: it counts against `RetryPolicy.Max`, and a step released on its last attempt fails its run with an error wrapping [`middleware.ErrReleased`](ds:block?id=mw-errreleased-qtkkhua5). The program for this section is [examples/release-jobs](../../examples/release-jobs/):
 
 <!-- snippet: examples/release-jobs/main.go#release -->
 ```go
@@ -216,9 +216,9 @@ The `attempts` middleware in the example is outside `Release`, so it sees each r
 
 ## Throttle a failing dependency
 
-`middleware.ThrottleErrors(cfg)` is a circuit breaker per key. After `MaxErrors` errors within `Window` (counted from the first of them) the key's circuit opens, and every call for that key returns an error wrapping `middleware.ErrThrottled` without running the step until `Cooldown` has passed. A success resets the count. Errors marked permanent, and `ErrThrottled` itself, are not counted: a permanent error is about the input, not the downstream service.
+[`middleware.ThrottleErrors(cfg)`](ds:block?id=mw-throttleerrors-fvbczfxu) is a circuit breaker per key. After `MaxErrors` errors within `Window` (counted from the first of them) the key's circuit opens, and every call for that key returns an error wrapping [`middleware.ErrThrottled`](ds:block?id=mw-errthrottled-ncrmj7xa) without running the step until `Cooldown` has passed. A success resets the count. Errors marked permanent, and `ErrThrottled` itself, are not counted: a permanent error is about the input, not the downstream service.
 
-`ThrottleConfig.Key` picks the circuit a call belongs to, such as the downstream API it calls. Left nil, it keys by the workflow name from the `StepInfo`, so one failing workflow does not throttle the others. `ThrottleErrors` returns an error wrapping `workflow.ErrInvalid` unless `MaxErrors` is at least 1 and `Window` and `Cooldown` are positive.
+[`ThrottleConfig.Key`](ds:block?id=mw-throttleconfig-m3a2t8jn) picks the circuit a call belongs to, such as the downstream API it calls. Left nil, it keys by the workflow name from the `StepInfo`, so one failing workflow does not throttle the others. [`ThrottleErrors`](ds:block?id=mw-throttleerrors-fvbczfxu) returns an error wrapping `workflow.ErrInvalid` unless `MaxErrors` is at least 1 and `Window` and `Cooldown` are positive.
 
 <!-- snippet: examples/middleware-stack/main.go#throttle -->
 ```go
@@ -235,7 +235,7 @@ if err != nil {
 }
 ```
 
-The circuits live in a `CircuitStore`. The default, `middleware.NewMemoryCircuit(clock)`, keeps them in the process, so each worker process trips its own circuit, which is the point of a breaker that protects a downstream from this process's calls. A store shared by the fleet (a SQL table, Redis) gives one circuit per key across every worker, for a downstream with a fleet-wide error budget. The store owns the counting, so a shared store can count every worker's errors in one atomic step: it implements `IsOpen(ctx, key)`, `RecordError(ctx, key, policy)` (the `CircuitPolicy` carries `MaxErrors`, `Window` and `Cooldown`) and `Reset(ctx, key)`. The example's store wraps a `MemoryCircuit` and announces when a circuit opens:
+The circuits live in a [`CircuitStore`](ds:block?id=mw-circuitstore-cxtscnjk). The default, [`middleware.NewMemoryCircuit(clock)`](ds:block?id=mw-newmemorycircuit-fcnep8zj), keeps them in the process, so each worker process trips its own circuit, which is the point of a breaker that protects a downstream from this process's calls. A store shared by the fleet (a SQL table, Redis) gives one circuit per key across every worker, for a downstream with a fleet-wide error budget. The store owns the counting, so a shared store can count every worker's errors in one atomic step: it implements `IsOpen(ctx, key)`, `RecordError(ctx, key, policy)` (the `CircuitPolicy` carries `MaxErrors`, `Window` and `Cooldown`) and `Reset(ctx, key)`. The example's store wraps a `MemoryCircuit` and announces when a circuit opens:
 
 <!-- snippet: examples/middleware-stack/main.go#circuit-store -->
 ```go
@@ -390,17 +390,17 @@ With `Max: 3`, the second run gets four attempts (the first plus three retries),
 
 ## Pitfalls
 
-- **Order is behaviour.** `Recover` outside `Logging` hides panics from the log; `FailOn` outside `ThrottleErrors` lets a bad input count against the circuit, because the breaker sees the error before it is marked permanent. The first middleware in the list is the outermost.
-- **A throttled run with no retries just fails.** `ErrThrottled` is retryable so that the retry policy's backoff brings the step back after the cooldown, the same way a released step comes back. A workflow without retries fails its run instead, as the third `call-api` run shows; give a throttled workflow a backoff longer than the cooldown.
-- **`MemoryCircuit` is per process.** Ten workers trip ten separate circuits. Use a shared `CircuitStore` when the budget is the downstream's, not the worker's.
-- **A circuit store error never hides a step's result.** An `IsOpen` error fails closed (the step is not run and the error wraps `ErrThrottled`); a `RecordError` error is joined onto the failed step's error; a `Reset` error after a success is dropped.
-- **`Timeout` cannot stop a step that ignores its context.** The step keeps running past the deadline and its result is whatever it returns late.
-- **`Skip` gives children empty input.** A step whose children read its output should not be skipped.
-- **A release without `RetryAfterDelay` waits the Backoff.** `Release`'s delay reaches the driver only through a policy with `DelayFor: workflow.RetryAfterDelay`; without it, a released step comes back on the policy's normal backoff, or not at all when the workflow has no retries.
-- **Releases spend retries.** Each release is an attempt against `RetryPolicy.Max`, so a step that may be released for an hour at ten-minute steps needs `Max` of at least six.
-- **An event sink runs on the step's goroutine.** A sink bound with `WithStepEventSink` must be safe for concurrent use and must not block; a slow one slows every step that records events.
-- **A recovered panic is retried by default.** Add `NoRetryOn` for `middleware.ErrPanic` when a panic means a bug that a retry cannot fix.
-- **`FailOn` sees the error as it reaches it.** A handler that wraps with `%v` instead of `%w`, or middleware between `FailOn` and the handler that replaces the error, hides the sentinel from `errors.Is`, and the error is retried as usual.
+- **Order is behaviour.** `Recover` outside [`Logging`](ds:block?id=mw-logging-zanq5b67) hides panics from the log; `FailOn` outside `ThrottleErrors` lets a bad input count against the circuit, because the breaker sees the error before it is marked permanent. The first middleware in the list is the outermost ([`Chain`](ds:block?id=mw-chain-xz7pjtss)).
+- **A throttled run with no retries just fails.** [`ErrThrottled`](ds:block?id=mw-errthrottled-ncrmj7xa) is retryable so that the retry policy's backoff brings the step back after the cooldown, the same way a released step comes back. A workflow without retries fails its run instead, as the third `call-api` run shows; give a throttled workflow a backoff longer than the cooldown.
+- **`MemoryCircuit` is per process.** A [`MemoryCircuit`](ds:block?id=mw-memorycircuit-uveb9h55) keeps its circuits in a map inside the process, so ten workers trip ten separate circuits. Use a shared `CircuitStore` when the budget is the downstream's, not the worker's.
+- **A circuit store error never hides a step's result.** An `IsOpen` error fails closed ([`ThrottleErrors`' wrapper](ds:block?id=mw-breaker-wrap-2znn3c3t): the step is not run and the error wraps `ErrThrottled`); a `RecordError` error is joined onto the failed step's error; a `Reset` error after a success is dropped.
+- **`Timeout` cannot stop a step that ignores its context.** [`Timeout`](ds:block?id=mw-timeout-52xzkfgg) only cancels the step's context; the step keeps running past the deadline and its result is whatever it returns late.
+- **`Skip` gives children empty input.** [`Skip`](ds:block?id=mw-skip-2qh78qjd) returns a nil output, so a step whose children read its output should not be skipped.
+- **A release without `RetryAfterDelay` waits the Backoff.** `Release`'s delay reaches the driver only through a policy with `DelayFor: workflow.RetryAfterDelay` ([`RetryPolicy.NextDelay`](ds:block?id=retrypolicy-nextdelay-94cqz66r)); without it, a released step comes back on the policy's normal backoff, or not at all when the workflow has no retries.
+- **Releases spend retries.** Each [`Release`](ds:block?id=mw-release-ek3ppr3h) is an attempt against `RetryPolicy.Max`, so a step that may be released for an hour at ten-minute steps needs `Max` of at least six.
+- **An event sink runs on the step's goroutine.** A sink bound with [`WithStepEventSink`](ds:block?id=withstepeventsink-ehcpt8xf) must be safe for concurrent use and must not block; a slow one slows every step that records events.
+- **A recovered panic is retried by default.** [`Recover`](ds:block?id=mw-recover-a7qbjc9u) returns a retryable error. Add `NoRetryOn` for `middleware.ErrPanic` when a panic means a bug that a retry cannot fix.
+- **`FailOn` sees the error as it reaches it.** [`FailOn`](ds:block?id=mw-failon-pnqdj4g7) matches the error it gets back from `next`, so a handler that wraps with `%v` instead of `%w`, or middleware between `FailOn` and the handler that replaces the error, hides the sentinel from `errors.Is`, and the error is retried as usual.
 
 ## Related
 

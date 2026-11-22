@@ -1,0 +1,39 @@
+func healthCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) > 0 {
+			return usagef("health takes no arguments")
+		}
+		var out struct {
+			Live   bool `json:"live"`
+			Ready  bool `json:"ready"`
+			Checks []struct {
+				Name   string `json:"name"`
+				OK     bool   `json:"ok"`
+				Detail string `json:"detail"`
+			} `json:"checks"`
+		}
+		raw, err := e.api.get(ctx, "health", &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			if err := e.printJSON(raw); err != nil {
+				return err
+			}
+		} else {
+			t := newTable(e.out, "CHECK", "OK", "DETAIL")
+			t.row("live", yesNo(out.Live), "")
+			t.row("ready", yesNo(out.Ready), "")
+			for _, c := range out.Checks {
+				t.row(c.Name, yesNo(c.OK), c.Detail)
+			}
+			if err := t.flush(); err != nil {
+				return err
+			}
+		}
+		if !out.Live || !out.Ready {
+			return errors.New("health: not ready")
+		}
+		return nil
+	}
+}

@@ -226,7 +226,7 @@ worker-1  full  default,emails  2        0        2026-10-14 09:00:00
 exit 0 cli.ExitOK
 ## exit codes
 $ myapp admin reset run-3 --step transform
-myapp admin: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-3 is succeeded; only a failed run can be retried
+myapp admin: admin API: HTTP 409 conflict: workflow: run is in the wrong state for this call: run run-3 is succeeded; only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)
 exit 1 cli.ExitError
 $ myapp admin reschedule delayed-41 --scheduled
 myapp admin: --at "": want an RFC 3339 time such as 2026-10-15T09:00:00Z

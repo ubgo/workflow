@@ -1,0 +1,31 @@
+func (r *machineRun[D]) enter(set map[*mnode]bool, ev MachineEvent) error {
+	entering := make([]*mnode, 0, len(set))
+	for n := range set {
+		if !r.active[n] {
+			entering = append(entering, n)
+		}
+	}
+	slices.SortFunc(entering, func(a, b *mnode) int { return a.order - b.order })
+	for _, n := range entering {
+		r.active[n] = true
+		r.rec.Entered[n.name] = r.rec.Seq
+		for i, a := range r.m.spec.States[n.spec].Entry {
+			if err := a(r.ctx, r.mctx(n.name, ev)); err != nil {
+				return fmt.Errorf("workflow: machine %q key %q: entry action %d of %q: %w", r.m.spec.Name, r.key, i, n.name, err)
+			}
+		}
+		if !n.final {
+			continue
+		}
+		p := n.parent
+		if p == r.m.root {
+			r.rec.Done = true
+			continue
+		}
+		r.internal = append(r.internal, MachineEvent{Name: DoneEvent(p.name)})
+		if g := p.parent; g != r.m.root && g.parallel && r.inFinal(g) {
+			r.internal = append(r.internal, MachineEvent{Name: DoneEvent(g.name)})
+		}
+	}
+	return nil
+}

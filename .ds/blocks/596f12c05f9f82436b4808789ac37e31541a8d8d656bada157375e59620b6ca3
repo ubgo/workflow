@@ -1,0 +1,34 @@
+func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
+	clk := clock.NewFake(time.Unix(1000, 0))
+	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
+	key := func(j workflow.Job) string { return j.Labels["user"] }
+	job := workflow.Job{Workflow: "sync", Labels: map[string]string{"user": "u1"}}
+	ctx := context.Background()
+
+	store := &sharedDebounce{inner: middleware.NewMemoryDebounce(clk)}
+	mwA, err := middleware.Debounce(stub, clk, key, 10*time.Second, 0, middleware.WithDebounceStore(store))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mwB, _ := middleware.Debounce(stub, clk, key, 10*time.Second, 0, middleware.WithDebounceStore(store))
+	a, b := middleware.WrapClient(stub, mwA), middleware.WrapClient(stub, mwB)
+
+	r1, _ := a.Enqueue(ctx, job)
+	clk.Advance(time.Second)
+	if _, err := b.Enqueue(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if len(stub.cancelled) != 1 || stub.cancelled[0] != r1 {
+		t.Fatalf("shared store: process B did not cancel A's run: %+v", stub.cancelled)
+	}
+
+	// Default: two debouncers keep separate tables and cancel nothing.
+	stub2 := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
+	mwC, _ := middleware.Debounce(stub2, clk, key, 10*time.Second, 0)
+	mwD, _ := middleware.Debounce(stub2, clk, key, 10*time.Second, 0)
+	_, _ = middleware.WrapClient(stub2, mwC).Enqueue(ctx, job)
+	_, _ = middleware.WrapClient(stub2, mwD).Enqueue(ctx, job)
+	if len(stub2.cancelled) != 0 {
+		t.Fatalf("default store shared state between debouncers: %+v", stub2.cancelled)
+	}
+}

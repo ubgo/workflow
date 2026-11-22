@@ -1,0 +1,22 @@
+func (c *Client) startStep(r *run, s workflow.Step, ss *stepState) {
+	switch s.Kind() {
+	case workflow.StepRun:
+		c.mu.Lock()
+		c.pushTaskLocked(r, s, ss.in, 1)
+		c.mu.Unlock()
+	case workflow.StepSleep:
+		c.mu.Lock()
+		r.suspended++
+		r.park(s.Name)
+		c.mu.Unlock()
+		t := c.clk.NewTimer(s.Sleep)
+		in := ss.in
+		c.forward(r, t, runEvent{step: s.Name, kind: evSleepDone, out: in}, func() {
+			c.mu.Lock()
+			r.suspended--
+			c.mu.Unlock()
+		})
+	case workflow.StepWait:
+		c.startWait(r, s)
+	}
+}

@@ -1,0 +1,29 @@
+func QuietHours(w workflow.Windows, zoneOf func(workflow.Job) *time.Location, clk clock.Clock) workflow.EnqueueMiddleware {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if err := checkWindows(w); err != nil {
+				return workflow.RunRef{}, err
+			}
+			var loc *time.Location
+			if zoneOf != nil {
+				loc = zoneOf(job)
+			}
+			start := job.RunAt
+			if start.IsZero() {
+				start = clk.Now()
+			}
+			if w.Allows(start, loc) {
+				return next(ctx, job)
+			}
+			at, ok := nextAllowed(w, start, loc)
+			if !ok {
+				return workflow.RunRef{}, fmt.Errorf("%w: QuietHours: the windows allow no minute of the day", workflow.ErrInvalid)
+			}
+			job.RunAt = at
+			return next(ctx, job)
+		}
+	}
+}

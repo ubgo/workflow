@@ -1,0 +1,6 @@
+func (u *UpstreamLimit) Wait(ctx context.Context, key string, cost float64) (time.Duration, error) {
+	if cost < 0 || cost > u.spec.Capacity || math.IsNaN(cost) {
+		return 0, Permanent(invalidf("upstream limit: cost %v is outside 0..%v", cost, u.spec.Capacity))
+	}
+	return u.store.Take(ctx, key, u.spec, cost, u.clk.Now())
+}

@@ -1,0 +1,1 @@
+func WithResumableDispatch() Option { return func(m *Manager) { m.resumable = true } }

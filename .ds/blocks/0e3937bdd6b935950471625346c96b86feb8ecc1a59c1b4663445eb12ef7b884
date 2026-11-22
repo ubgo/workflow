@@ -1,0 +1,40 @@
+func New(rdb goredis.UniversalClient, opts ...Option) (*Client, error) {
+	if rdb == nil {
+		return nil, fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)
+	}
+	c := &Client{
+		rdb:         rdb,
+		prefix:      defaultPrefix,
+		clk:         clock.Real{},
+		leaseClk:    clock.Real{},
+		lease:       defaultLease,
+		poll:        defaultPoll,
+		workers:     defaultWorkers,
+		maxReclaims: defaultMaxReclaims,
+		retention:   defaultRetention,
+		errHistory:  workflow.DefaultErrorHistory,
+		log:         slog.New(slog.DiscardHandler),
+		parse:       cron.Parse,
+		wfs:         map[string]*registered{},
+		running:     map[string]*held{},
+		wakeCh:      make(chan struct{}),
+		dispCh:      make(chan struct{}, 1),
+		notifyCh:    make(chan struct{}, 1),
+		lifeCh:      make(chan workflow.LifecycleEvent, lifecycleBuffer),
+		node:        workflow.DefaultNodeID(),
+		heldQ:       map[string]int{},
+		queueCfg:    map[string]workflow.QueueConfig{},
+		done:        make(chan struct{}),
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	if !prefixPattern.MatchString(c.prefix) {
+		return nil, fmt.Errorf("%w: redis: prefix %q must match %s", workflow.ErrInvalid, c.prefix, prefixPattern)
+	}
+	c.base = "{" + c.prefix + "}"
+	if c.newID == nil {
+		c.newID = c.defaultID
+	}
+	return c, nil
+}

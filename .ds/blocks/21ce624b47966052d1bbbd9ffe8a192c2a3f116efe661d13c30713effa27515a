@@ -1,0 +1,16 @@
+func (e *entry) job(entryKey bool) (workflow.Job, error) {
+	job := workflow.Job{Workflow: e.workflow, Payload: e.payload, Priority: int(e.priority)}
+	if entryKey {
+		job.IdempotencyKey = e.id
+	}
+	if e.idem.Valid {
+		job.IdempotencyKey = e.idem.String
+	}
+	if e.runAt != 0 {
+		job.RunAt = time.Unix(0, e.runAt).UTC()
+	}
+	if err := json.Unmarshal([]byte(e.labels), &job.Labels); err != nil {
+		return job, fmt.Errorf("outbox: entry %s labels: %w", e.id, err)
+	}
+	return job, nil
+}

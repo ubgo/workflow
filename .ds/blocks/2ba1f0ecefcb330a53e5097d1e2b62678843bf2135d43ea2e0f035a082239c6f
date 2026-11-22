@@ -1,0 +1,14 @@
+type StateDef struct {
+	Name     string `json:"name"`
+	Parent   string `json:"parent,omitempty"`
+	Initial  string `json:"initial,omitempty"`
+	Parallel bool   `json:"parallel,omitempty"`
+	Final    bool   `json:"final,omitempty"`
+
+	// Entry and Exit name registered actions, run in order.
+	Entry []string `json:"entry,omitempty"`
+	Exit  []string `json:"exit,omitempty"`
+
+	// After are the state's timers.
+	After []TimerDef `json:"after,omitempty"`
+}

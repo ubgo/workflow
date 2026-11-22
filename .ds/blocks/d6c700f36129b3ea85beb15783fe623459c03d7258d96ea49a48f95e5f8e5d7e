@@ -1,0 +1,8 @@
+func (p *Pinger) ping(ctx context.Context, target string, attrs ...slog.Attr) {
+	ctx, cancel := context.WithTimeout(ctx, p.timeout)
+	defer cancel()
+	if err := p.send(ctx, target); err != nil && p.logger != nil {
+		attrs = append(attrs, slog.String("error", err.Error()))
+		p.logger.LogAttrs(ctx, slog.LevelWarn, "workflow schedule ping failed", attrs...)
+	}
+}

@@ -1,0 +1,8 @@
+type UniqueHolders interface {
+	// SetHolder records ref as the run of key while owner holds it; a key
+	// held by another owner, or free, is left alone.
+	SetHolder(ctx context.Context, key, owner string, ref workflow.RunRef) error
+	// Holder reports the owner and run of a held, unexpired key whose run
+	// was recorded; ok is false otherwise.
+	Holder(ctx context.Context, key string) (owner string, ref workflow.RunRef, ok bool, err error)
+}

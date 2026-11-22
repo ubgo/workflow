@@ -31,8 +31,10 @@ import (
 const (
 	// tblFairKeys holds each round-robin key's pass: where its last
 	// admitted run ends in virtual time.
+	//ds:def id=sql-tblfairkeys-6ddtxj45 owner=@khanakia stability=stable
 	tblFairKeys = "fair_keys"
 	// tblRunFair holds each admitted round-robin run's start tag.
+	//ds:def id=sql-tblrunfair-sgxyns7d owner=@khanakia stability=stable
 	tblRunFair = "run_fair"
 )
 
@@ -96,6 +98,8 @@ func (c *Client) fairBegin(ctx context.Context, tx *sql.Tx, name string) (*fairP
 
 // fairAssign gives run r, being admitted in tx, its start tag and moves
 // its key's pass on. A run admitted again (after Retry) gets a new tag.
+//
+//ds:def id=sql-client-fairassign-5q36yg5q owner=@khanakia stability=stable
 func (c *Client) fairAssign(ctx context.Context, tx *sql.Tx, fp *fairPass, reg *registered, r *runRow) error {
 	name := reg.wf.Name
 	pass, ok := fp.pass[r.bucket]
@@ -136,6 +140,8 @@ func (c *Client) fairAssign(ctx context.Context, tx *sql.Tx, fp *fairPass, reg *
 // key behind it. A run whose keys are not evaluated yet (an enqueue-only
 // client wrote it) stays in, so it gets evaluated. Arguments: the
 // unevaluated marker, workflow, the two slot-holding statuses, MaxRuns.
+//
+//ds:def id=sql-fullbuckets-ygt6hxvr owner=@khanakia stability=stable
 const fullBuckets = " AND (r.rate_keys = ? OR r.bucket NOT IN (SELECT a.bucket FROM {runs} a WHERE a.workflow = ? AND a.status IN (?, ?) GROUP BY a.bucket HAVING COUNT(*) >= ?))"
 
 // fairArgs are fullBuckets' arguments for wf, or nil when wf is not round

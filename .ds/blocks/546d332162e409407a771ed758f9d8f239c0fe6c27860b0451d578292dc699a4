@@ -1,0 +1,11 @@
+func (f *Client) EnqueueClosure(ctx context.Context, c workflow.ClosureJob) (workflow.RunRef, error) {
+	ce, err := primaryAs[workflow.ClosureEnqueuer](f, "EnqueueClosure", workflow.CapClosure)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	ref, err := ce.EnqueueClosure(ctx, c)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return encodeRef(primarySide, ref), nil
+}

@@ -35,6 +35,8 @@ var (
 
 // both returns the two backends as I, or an UnsupportedError naming caps
 // when Capabilities lacks it or either backend does not implement I.
+//
+//ds:def id=cutover-both-wgpnkv98 owner=@khanakia stability=stable
 func both[I any](c *Client, field string, caps workflow.Caps) (o, n I, err error) {
 	if err := c.need(field, caps); err != nil {
 		return o, n, err
@@ -54,6 +56,8 @@ func both[I any](c *Client, field string, caps workflow.Caps) (o, n I, err error
 // stable. A Ref filter asks only the backend it names (an unprefixed one
 // asks both); a LabelSchedule filter holding a prefixed ID asks only that
 // backend, with its own ID. Needs CapRunQuery on both.
+//
+//ds:def id=cutover-client-runs-tsymaquu owner=@khanakia stability=stable
 func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	oq, nq, err := both[workflow.RunQuerier](c, "Runs", workflow.CapRunQuery)
 	if err != nil {
@@ -348,6 +352,7 @@ func (c *Client) ResumeSchedule(ctx context.Context, t workflow.ScheduleTarget) 
 	})
 }
 
+//ds:def id=cutover-client-onschedule-uhfgu7ju owner=@khanakia stability=stable
 func (c *Client) onSchedule(ctx context.Context, field string, t workflow.ScheduleTarget, fn func(context.Context, workflow.SchedulePauser, workflow.ScheduleTarget) error) error {
 	if err := c.need(field, workflow.CapSchedulePause); err != nil {
 		return err
@@ -379,6 +384,8 @@ func (c *Client) onSchedule(ctx context.Context, field string, t workflow.Schedu
 // ScheduleLister, each ID prefixed by its backend, sorted by Workflow,
 // then Name, old first: the old backend's are the ones still to move
 // (MoveSchedules). Needs CapScheduleList (the schedule backend's).
+//
+//ds:def id=cutover-client-schedules-kcsh3twn owner=@khanakia stability=stable
 func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	if err := c.need("Schedules", workflow.CapScheduleList); err != nil {
 		return nil, err
@@ -409,6 +416,8 @@ func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error)
 
 // Drain drains both backends at once and returns when both have stopped
 // or ctx ends. Needs CapDrain on both.
+//
+//ds:def id=cutover-client-drain-zqjmfrsf owner=@khanakia stability=stable
 func (c *Client) Drain(ctx context.Context) error {
 	od, nd, err := both[workflow.Drainer](c, "Drain", workflow.CapDrain)
 	if err != nil {
@@ -444,6 +453,8 @@ func (c *Client) Done() <-chan struct{} {
 // Nodes lists the nodes of both backends, old first. A node ID is the
 // backend's own; the same process appears twice when it runs workers for
 // both. Both must implement workflow.NodeLister.
+//
+//ds:def id=cutover-client-nodes-awkvzshn owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	on, ook := c.old.(workflow.NodeLister)
 	nn, nok := c.new.(workflow.NodeLister)
@@ -458,6 +469,8 @@ func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // Health is live while both backends are live, since the old one still
 // runs work, and ready while the new one is ready, since every Enqueue
 // goes there. Each check is named after its backend.
+//
+//ds:def id=cutover-client-health-j9hxbjx3 owner=@khanakia stability=stable
 func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 	o, n := workflow.CheckHealth(ctx, c.old), workflow.CheckHealth(ctx, c.new)
 	out := workflow.HealthReport{Live: o.Live && n.Live, Ready: n.Ready}
@@ -504,6 +517,8 @@ func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step strin
 
 // EditRun edits a scheduled run on the backend its ref names and returns
 // its ref with that backend's prefix.
+//
+//ds:def id=cutover-client-editrun-ydkzez9d owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
@@ -523,6 +538,8 @@ func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow
 // ResetRun re-runs a failed run from step on the backend its ref names (a
 // run on the old backend is reset there) and returns its ref with that
 // backend's prefix.
+//
+//ds:def id=cutover-client-resetrun-hj3x2j64 owner=@khanakia stability=stable
 func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
 	var out workflow.RunRef
 	err := c.onRef(ref, func(s Side, b workflow.Client, inner workflow.RunRef) error {
@@ -544,6 +561,8 @@ func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string)
 // it resumed in all. Both must implement workflow.TransientSignaller;
 // when one does not, nothing is delivered. When one fails, the other's
 // deliveries stand and the error names the failing one.
+//
+//ds:def id=cutover-client-signalwaiting-79gpg9qc owner=@khanakia stability=stable
 func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	ot, ook := c.old.(workflow.TransientSignaller)
 	nt, nok := c.new.(workflow.TransientSignaller)
@@ -558,6 +577,8 @@ func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, err
 // Supports reports an operation this client implements as done only when
 // both backends do it, since a run, or a node, may sit on either; the
 // one it does not implement (OnLifecycle) is false.
+//
+//ds:def id=cutover-client-supports-k9xeak5n owner=@khanakia stability=stable
 func (c *Client) Supports(op workflow.Op) bool {
 	switch op {
 	case workflow.OpReschedule, workflow.OpCancelStep, workflow.OpEditRun, workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun,

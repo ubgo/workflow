@@ -1,0 +1,9 @@
+func (f *Fake) AssertTriggered(t testing.TB, id workflow.ScheduleID) {
+	t.Helper()
+	for _, got := range f.Triggers() {
+		if got == id {
+			return
+		}
+	}
+	t.Errorf("schedule %q was not triggered; triggered: %v", id, f.Triggers())
+}

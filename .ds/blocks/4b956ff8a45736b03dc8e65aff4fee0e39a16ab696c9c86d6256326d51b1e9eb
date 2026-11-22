@@ -1,0 +1,43 @@
+func (c *Client) SpawnGroup(ctx context.Context, group string, jobs []workflow.Job) (workflow.RunRef, error) {
+	if !c.cfg.BatchCoordinator {
+		return workflow.RunRef{}, fmt.Errorf("%w: hatchet driver: Config.BatchCoordinator is off", workflow.ErrInvalid)
+	}
+	in := coordinatorInput{Batch: group, Runs: make([]coordRun, len(jobs))}
+	size := 0
+	for i, job := range jobs {
+		if !job.RunAt.IsZero() || job.IdempotencyKey != "" {
+			return workflow.RunRef{}, workflow.Unsupported("Job.RunAt/Job.IdempotencyKey", "group "+group+" job "+strconv.Itoa(i)+" needs Enqueue")
+		}
+		if err := workflow.CheckJobLabels(ctx, job); err != nil {
+			return workflow.RunRef{}, fmt.Errorf("hatchet driver: group %s job %d: %w", group, i, err)
+		}
+		run, err := c.prepare(job)
+		if err != nil {
+			return workflow.RunRef{}, fmt.Errorf("hatchet driver: group %s job %d: %w", group, i, err)
+		}
+		size += runSize(run)
+		cr := coordRun{Workflow: job.Workflow, Input: run.input, Meta: run.md}
+		if run.priority != nil {
+			p := int(*run.priority)
+			cr.Priority = &p
+		}
+		in.Runs[i] = cr
+	}
+	if size > c.cfg.BatchCoordinatorMaxInput {
+		return workflow.RunRef{}, workflow.Unsupported("batch coordinator", fmt.Sprintf("group %s carries %d bytes of input, over the coordinator's %d", group, size, c.cfg.BatchCoordinatorMaxInput))
+	}
+	c.mu.Lock()
+	hw := c.coordinator
+	c.mu.Unlock()
+	if hw == nil {
+		return workflow.RunRef{}, workflow.ErrNotStarted
+	}
+	ref, err := hw.RunNoWait(ctx, in, hatchetsdk.WithRunMetadata(map[string]string{batch.LabelBatch: group}))
+	if collision, ok := hatchetsdk.IsIdempotencyCollisionError(err); ok {
+		return workflow.RunRef{RunID: workflow.RunID(collision.ExistingRunExternalId)}, nil
+	}
+	if err != nil {
+		return workflow.RunRef{}, engineErr(err, "start batch coordinator for %s", group)
+	}
+	return workflow.RunRef{RunID: workflow.RunID(ref.RunId)}, nil
+}

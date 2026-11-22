@@ -1,0 +1,19 @@
+func (c *Client) Delete(ctx context.Context, ref workflow.RunRef) error {
+	r, err := c.lookup(ctx, ref)
+	if err != nil {
+		return err
+	}
+	return c.st.tx(ctx, func(tx *sql.Tx) error {
+		row, err := c.touch(ctx, tx, r.id)
+		if err != nil {
+			return err
+		}
+		if !isTerminalRun(row.status) {
+			return fmt.Errorf("%w: run %s is %s, only a finished run can be deleted", workflow.ErrWrongState, row.id, row.status)
+		}
+		if _, err := c.st.exec(ctx, tx, "DELETE FROM {runs} WHERE id = ?", row.id); err != nil {
+			return err
+		}
+		return c.deleteOrphans(ctx, tx, []any{row.id})
+	})
+}

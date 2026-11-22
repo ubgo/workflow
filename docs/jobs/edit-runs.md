@@ -1,18 +1,18 @@
 # Edit a scheduled run
 
-A reminder is scheduled for tomorrow with the wrong address. Cancelling it and enqueuing a new one loses its RunRef, its place in the admin and its idempotency key; editing it keeps them. `workflow.RunEditor` changes a delayed run's payload, priority and start before it runs, and the admin module offers the same edit to operators in Go and over HTTP, with an `Authorizer` that can judge each field.
+A reminder is scheduled for tomorrow with the wrong address. Cancelling it and enqueuing a new one loses its RunRef, its place in the admin and its idempotency key; editing it keeps them. [`workflow.RunEditor`](ds:block?id=runeditor-ss73q99q) changes a delayed run's payload, priority and start before it runs, and the admin module offers the same edit to operators in Go and over HTTP, with an `Authorizer` that can judge each field.
 
-Use it when a run is right in kind but wrong in detail: a typo in an address, a priority that should jump the queue, a start that should move. When the run must change workflow, labels, queue or idempotency key, cancel it and enqueue a new job instead.
+Use it when a run is right in kind but wrong in detail: a typo in an address, a priority that should jump the queue, a start that should move. When the run must change workflow, labels, queue or idempotency key ([`JobEdit`](ds:block?id=jobedit-aut4bg45) has no field for them), cancel it and enqueue a new job instead.
 
 ## Before you start
 
-- `RunEditor` is an optional interface with no capability bit, like `RunRescheduler`. The memory, SQL and Redis drivers have it; Hatchet does not (its scheduled runs cannot be edited). Every wrapper in the library (`workflow.Use`, `failover`, `regional`, `cutover`, `hybrid`) has the method and forwards it, so a type assertion succeeds on any wrapper; `workflow.Supports(c, workflow.OpEditRun)` asks the client underneath, and a wrapper over a client without it returns an `UnsupportedError` from the call.
-- Only a run that has not started can be edited: one enqueued with a future `Job.RunAt` (needs `workflow.CapDelayedStart`), in `StatusScheduled`.
+- [`RunEditor`](ds:block?id=runeditor-ss73q99q) is an optional interface with no capability bit, like `RunRescheduler`. The [memory](ds:block?id=memory-client-editrun-3afh5vbv), [SQL](ds:block?id=sql-client-editrun-fwr9u4yr) and [Redis](ds:block?id=redis-client-editrun-fwewy3st) drivers have it; Hatchet does not (its scheduled runs cannot be edited). Every wrapper in the library (`workflow.Use` and `hybrid` through [`workflow.Forward`](ds:block?id=forward-editrun-9nwm59f3), [`failover`](ds:block?id=failover-client-editrun-ybkr9r89), [`regional`](ds:block?id=regional-client-editrun-d4b8fp5g), [`cutover`](ds:block?id=cutover-client-editrun-ydkzez9d)) has the method and forwards it, so a type assertion succeeds on any wrapper; [`workflow.Supports(c, workflow.OpEditRun)`](ds:block?id=supports-4xyjjwvz) asks the client underneath, and a wrapper over a client without it returns an `UnsupportedError` from the call. See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- Only a run that has not started can be edited: one enqueued with a future `Job.RunAt` (needs [`workflow.CapDelayedStart`](ds:block?id=capdelayedstart-qbxsx6hb)), in `StatusScheduled` ([memory `EditRun`](ds:block?id=memory-client-editrun-3afh5vbv)).
 - The example is [`examples/edit-run`](../../examples/edit-run), on the in-memory driver. Run it with `go run ./edit-run` from `examples/`. The admin part needs the `github.com/ubgo/workflow/admin` module.
 
 ## Step 1 — Edit the run in Go
 
-Assert the interface on the client you hold, and pass a `workflow.JobEdit` with only the fields to change. Here a reminder due tomorrow gets a new address, a higher priority and a start of now:
+Assert the interface on the client you hold, and pass a [`workflow.JobEdit`](ds:block?id=jobedit-aut4bg45) with only the fields to change. Here a reminder due tomorrow gets a new address, a higher priority and a start of now:
 
 <!-- snippet: examples/edit-run/main.go#edit -->
 ```go
@@ -29,15 +29,15 @@ if err != nil {
 }
 ```
 
-A `JobEdit` field left nil is not changed: `Payload` replaces the payload (the driver's payload limit applies, as at `Enqueue`), `Priority` replaces `Job.Priority`, `RunAt` moves the start as `Reschedule` does (a past time means now). The run keeps its RunRef, labels, idempotency key and queue. A concurrency or rate key computed from the payload is computed again from the new one. `EditRun` returns the run's ref after the edit: a `RunAt` of now or in the past admits the run at once, so the returned ref then carries its `RunID` as well as its `ScheduledID`. Keep the returned ref, not the one you passed.
+A [`JobEdit`](ds:block?id=jobedit-aut4bg45) field left nil is not changed: `Payload` replaces the payload (the driver's payload limit applies, as at `Enqueue`), `Priority` replaces `Job.Priority`, `RunAt` moves the start as `Reschedule` does (a past time means now). The run keeps its RunRef, labels, idempotency key and queue. A concurrency or rate key computed from the payload is computed again from the new one ([memory](ds:block?id=memory-client-editrun-3afh5vbv), [SQL](ds:block?id=sql-client-editrun-fwr9u4yr), [Redis](ds:block?id=redis-client-editrun-fwewy3st)). `EditRun` returns the run's ref after the edit. A `RunAt` of now or in the past admits the run at once; on Redis the returned ref then carries its `RunID` as well as its `ScheduledID` ([`Reschedule`](ds:block?id=redis-client-reschedule-j5u3fw5f)), while the memory and SQL drivers return it with the `ScheduledID` only, read before the run was admitted ([memory](ds:block?id=memory-client-editrun-3afh5vbv), [SQL](ds:block?id=sql-client-editrun-fwr9u4yr)). Either ref keeps finding the run. Keep the returned ref, not the one you passed.
 
-`workflow.CheckJobEdit` refuses an edit that changes nothing with `ErrInvalid`; every driver calls it first, and so can a form that builds an edit from operator input.
+[`workflow.CheckJobEdit`](ds:block?id=checkjobedit-xnynunz4) refuses an edit that changes nothing with `ErrInvalid`; every driver calls it first, and so can a form that builds an edit from operator input.
 
 <a id="from-the-admin"></a>
 
 ## Step 2 — Edit from the admin in Go
 
-`admin.Admin` wraps a client for operator tools. `Admin.EditRun` is the same operation (`admin.OpEditRun` in its list of operations): it checks the client can edit, refuses an empty ref or an empty edit with `ErrInvalid`, then calls the driver:
+`admin.Admin` wraps a client for operator tools. [`Admin.EditRun`](ds:block?id=admin-admin-editrun-yxk3t4zu) is the same operation ([`admin.OpEditRun`](ds:block?id=admin-opeditrun-rccmgvd7) in its list of operations): it checks the client can edit ([`Admin.check`](ds:block?id=admin-admin-check-re2vjymn)), refuses an empty ref or an empty edit with `ErrInvalid`, then calls the driver:
 
 <!-- snippet: examples/edit-run/main.go#admin-go -->
 ```go
@@ -51,7 +51,7 @@ if err != nil {
 
 ## Step 3 — Edit over HTTP, and decide who may change what
 
-The admin handler serves `POST /runs/{id}/edit` with a body of `{"payload": <JSON>, "priority": n, "run_at": "RFC 3339"}`, each field optional, behind the action `admin.ActionEditRun`. The handler hands the parsed edit to your `Authorizer` in `Resource.Edit` before it runs, so the decision can depend on the fields. This one lets any named operator move a run or change its priority, and only a lead change its payload:
+The admin handler serves `POST /runs/{id}/edit` with a body of `{"payload": <JSON>, "priority": n, "run_at": "RFC 3339"}`, each field optional, behind the action [`admin.ActionEditRun`](ds:block?id=admin-actioneditrun-rzvgr253). The handler ([`editRun`](ds:block?id=admin-handler-editrun-bzau6dfy)) hands the parsed edit to your `Authorizer` in [`Resource.Edit`](ds:block?id=admin-resource-6fktgbm8) before it runs, so the decision can depend on the fields. This one lets any named operator move a run or change its priority, and only a lead change its payload:
 
 <!-- snippet: examples/edit-run/main.go#admin-auth -->
 ```go
@@ -117,7 +117,7 @@ if err != nil {
 }
 ```
 
-The handler maps the errors the way every admin route does: `ErrInvalid` (an empty edit, a bad body) is 400, `ErrNotFound` 404, `ErrWrongState` 409, an `UnsupportedError` 501. The payload travels as JSON in the body, so a payload that is not JSON cannot be set over HTTP; use `Admin.EditRun` for that.
+The handler maps the errors the way every admin route does ([`fail`](ds:block?id=admin-handler-fail-nf9d8sqp)): `ErrInvalid` (an empty edit, a bad body) is 400, `ErrNotFound` 404, `ErrWrongState` 409, an `UnsupportedError` 501. The payload travels as JSON in the body ([`editRun`](ds:block?id=admin-handler-editrun-bzau6dfy)), so a payload that is not JSON cannot be set over HTTP; use `Admin.EditRun` for that.
 
 ## Try it
 
@@ -138,11 +138,11 @@ The first line is the reminder that ran with its edited address; the second, the
 
 ## Pitfalls
 
-- **Only a run in `StatusScheduled` can be edited.** A run that was admitted may already be running on another node, so any other status returns `ErrWrongState`, and so does an edit that races the run's due time and loses. An unknown ref returns `ErrNotFound`, an edit that changes nothing `ErrInvalid`.
-- **A type assertion is not proof.** Wrappers have `EditRun` whether or not their inner client does. Ask `workflow.Supports(c, workflow.OpEditRun)` before offering an edit button, as the admin does.
-- **Moving the start to now admits the run.** Keep the ref `EditRun` returns, which then carries the `RunID`, and address the run by it (no `?scheduled=1`) in later admin calls.
-- **Labels, queue and idempotency key cannot be edited.** Cancel and enqueue again for that.
-- **The `Authorizer` decides on the edit, not on the result.** It sees `Resource.Edit` before the driver runs; an edit it allows can still fail with `ErrWrongState` if the run started meanwhile.
+- **Only a run in `StatusScheduled` can be edited.** A run that was admitted may already be running on another node, so any other status returns `ErrWrongState`, and so does an edit that races the run's due time and loses ([SQL](ds:block?id=sql-client-editrun-fwr9u4yr), [Redis](ds:block?id=redis-client-editrun-fwewy3st)). An unknown ref returns `ErrNotFound`, an edit that changes nothing `ErrInvalid` ([`CheckJobEdit`](ds:block?id=checkjobedit-xnynunz4)).
+- **A type assertion is not proof.** Wrappers have `EditRun` whether or not their inner client does ([`Forward.EditRun`](ds:block?id=forward-editrun-9nwm59f3)). Ask [`workflow.Supports`](ds:block?id=supports-4xyjjwvz) with [`workflow.OpEditRun`](ds:block?id=opeditrun-9u2hhcey) before offering an edit button, as the admin does.
+- **Moving the start to now admits the run.** It cannot be edited again. On Redis the ref `EditRun` returns carries the `RunID`, so later admin calls address the run by it (no `?scheduled=1`); on the memory and SQL drivers it holds the `ScheduledID` only ([memory](ds:block?id=memory-client-editrun-3afh5vbv), [SQL](ds:block?id=sql-client-editrun-fwr9u4yr)), which keeps finding the run with `?scheduled=1` until you read its `RunID` from `RunInfo`.
+- **Labels, queue and idempotency key cannot be edited** ([`JobEdit`](ds:block?id=jobedit-aut4bg45)). Cancel and enqueue again for that.
+- **The `Authorizer` decides on the edit, not on the result.** It sees `Resource.Edit` before the driver runs ([`editRun`](ds:block?id=admin-handler-editrun-bzau6dfy)); an edit it allows can still fail with `ErrWrongState` if the run started meanwhile.
 
 ## Related
 

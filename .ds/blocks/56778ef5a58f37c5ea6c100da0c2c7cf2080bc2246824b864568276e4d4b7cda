@@ -1,0 +1,3 @@
+func Producers(ctx context.Context, store LineageStore, dataset string) ([]Lineage, error) {
+	return store.Find(ctx, LineageQuery{Kind: LineageProduced, Dataset: dataset})
+}

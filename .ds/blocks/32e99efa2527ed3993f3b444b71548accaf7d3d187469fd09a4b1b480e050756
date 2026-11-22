@@ -1,0 +1,1 @@
+var debounceNeeds = workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)

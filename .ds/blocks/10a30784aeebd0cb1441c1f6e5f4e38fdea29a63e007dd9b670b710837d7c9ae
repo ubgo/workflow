@@ -1,0 +1,63 @@
+func forkCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
+	step := fs.String("step", "", "the step the new run starts from; the steps before it keep the original's outputs (required)")
+	key := fs.String("key", "", "the new run's idempotency key (the original's is never copied)")
+	var labels multiFlag
+	fs.Var(&labels, "label", "add label key=value to the new run, repeatable")
+	dry := fs.Bool("dry-run", false, "check the run can be forked and start nothing")
+	return func(ctx context.Context, e *env, args []string) error {
+		if len(args) != 1 {
+			return usagef("fork takes one run ID")
+		}
+		if *step == "" {
+			return usagef("fork needs --step")
+		}
+		var lm map[string]string
+		for _, l := range labels {
+			k, v, ok := strings.Cut(l, "=")
+			if !ok || k == "" {
+				return usagef("--label %q: want key=value", l)
+			}
+			if lm == nil {
+				lm = map[string]string{}
+			}
+			lm[k] = v
+		}
+		id := args[0]
+		if *dry {
+			var r runJSON
+			raw, err := e.api.get(ctx, runPath(id, false, ""), &r)
+			if err != nil {
+				return err
+			}
+			if !terminal[r.Status] {
+				return fmt.Errorf("dry run: fork would be refused: run %s is %s; only a finished run can be forked", r.Ref, r.Status)
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would fork run %s (%s, %s) from step %s; nothing started\n", r.Ref, r.Workflow, r.Status, *step)
+			return nil
+		}
+		var out struct {
+			Ref       refJSON `json:"ref"`
+			Duplicate bool    `json:"duplicate"`
+		}
+		raw, err := e.api.do(ctx, "POST", runPath(id, false, "/fork"), struct {
+			Step           string            `json:"step"`
+			IdempotencyKey string            `json:"idempotency_key,omitempty"`
+			Labels         map[string]string `json:"labels,omitempty"`
+		}{*step, *key, lm}, &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		if out.Duplicate {
+			fprintf(e.out, "key %s is held by run %s; nothing started\n", *key, out.Ref)
+			return nil
+		}
+		fprintf(e.out, "forked %s from step %s as run %s\n", id, *step, out.Ref)
+		return nil
+	}
+}

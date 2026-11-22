@@ -1,11 +1,11 @@
 # Escalation and signal handlers
 
-A run often needs to hear from someone who knows exactly which run they mean: an operator approving run 42, a child telling its parent that a receipt is over the limit, a payment service answering the order that asked. Every run has an address, its own ID, and a signal sent to that address reaches that run alone. The run takes it in one of two ways: a wait step that blocks until it arrives, or a handler that runs between the run's steps while the run goes on (a BPMN event sub-process).
+A run often needs to hear from someone who knows exactly which run they mean: an operator approving run 42, a child telling its parent that a receipt is over the limit, a payment service answering the order that asked. Every run has an address, its own ID ([`RunKey`](ds:block?id=runkey-d4ha7dbn)), and a signal sent to that address reaches that run alone. The run takes it in one of two ways: a wait step that blocks until it arrives, or a handler that runs between the run's steps while the run goes on (a BPMN event sub-process).
 
 ## Before you start
 
-- A driver with `workflow.CapWaitOwnRun` for a wait on the run's own address: memory, SQL, Redis and Hatchet have it.
-- A driver with `workflow.RunSignalReader` for handlers between steps (`workflow.Supports(c, workflow.OpRunSignals)`): memory, SQL and Redis. Hatchet does not have one, so `OnSignals` is refused there.
+- A driver with [`workflow.CapWaitOwnRun`](ds:block?id=capwaitownrun-2fd6b64v) for a wait on the run's own address: [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) have it.
+- A driver with [`workflow.RunSignalReader`](ds:block?id=runsignalreader-wpdh9gjr) for handlers between steps (`workflow.Supports(c, workflow.OpRunSignals)` ([`workflow.OpRunSignals`](ds:block?id=oprunsignals-tmgz66m8))): [memory](ds:block?id=memory-client-pendingsignals-npvn9fcu), [SQL](ds:block?id=sql-client-pendingsignals-5mm5s92m) and [Redis](ds:block?id=redis-client-pendingsignals-77ueus8d). Hatchet does not have one, so `OnSignals` is refused there ([BindClient](ds:block?id=signalsplugin-bindclient-g8nk42vn)).
 - [Wait for an event](signals.md) and [child runs](children.md).
 - The examples are [`examples/escalation`](../../examples/escalation) (waits, escalation, handlers, and approvals, races and updates by run ID) and [`examples/escalation-wrappers`](../../examples/escalation-wrappers) (the same address behind `regional`, `failover`, `cutover` and `hybrid`, and a plugin that binds its client). Both run on the memory driver. Run them with `go run ./escalation` and `go run ./escalation-wrappers` from `examples/`.
 
@@ -13,7 +13,7 @@ A run often needs to hear from someone who knows exactly which run they mean: an
 
 **Problem:** a wait step matches events by name and key, and `WaitSpec.KeyFrom` sees the job, not the run, so to reach one run you had to invent a key, store it in the job and keep it next to the run ID.
 
-**Fix:** set `WaitSpec.OwnRun`. The wait takes only the signals addressed to its own run, and the driver resolves that address from the run's ID when the wait begins:
+**Fix:** set [`WaitSpec.OwnRun`](ds:block?id=waitspec-9t4kcwbt). The wait takes only the signals addressed to its own run, and the driver resolves that address from the run's ID when the wait begins ([memory](ds:block?id=memory-client-startwait-6hz3d5h6)):
 
 <!-- snippet: examples/escalation/main.go#address -->
 ```go
@@ -25,7 +25,7 @@ order := workflow.Workflow{Name: "order", Steps: []workflow.Step{
 }}
 ```
 
-Send with `workflow.SignalRun` and the run's ref:
+Send with [`workflow.SignalRun`](ds:block?id=signalrun-rr37h4py) and the run's ref:
 
 <!-- snippet: examples/escalation/main.go#send -->
 ```go
@@ -34,13 +34,13 @@ if err := workflow.SignalRun(ctx, c, second, "payment", []byte(`"card 4242"`)); 
 }
 ```
 
-`SignalRun` is a `Client.Signal` whose key is `workflow.RunKey(id)`, so the [signal contract](signals.md) holds: a signal sent before the run reaches its wait is kept, and the run takes it once. A plain `Signal` on the same event name, with or without a key, does not reach an `OwnRun` wait. `Key`, `KeyFrom` and `OwnRun` are exclusive; `Register` refuses a driver without `CapWaitOwnRun`.
+[`SignalRun`](ds:block?id=signalrun-rr37h4py) is a `Client.Signal` whose key is [`workflow.RunKey(id)`](ds:block?id=runkey-d4ha7dbn), so the [signal contract](signals.md) holds: a signal sent before the run reaches its wait is kept, and the run takes it once. A plain `Signal` on the same event name, with or without a key, does not reach an `OwnRun` wait. `Key`, `KeyFrom` and `OwnRun` are exclusive ([`validateStep`](ds:block?id=validatestep-x6aebswc)); `Register` refuses a driver without `CapWaitOwnRun` ([`Requires`](ds:block?id=requires-6tcjbcfj)).
 
 ## Escalate from a child to its parent
 
 **Problem:** a child run finds something its parent must decide (BPMN escalation), but it should not fail or stop to say so, and the parent may be busy waiting for it.
 
-**Fix:** the child calls `workflow.SignalParent` from a step. It sends to the run that spawned it (the `LabelParentRun` that `Spawn`, `AwaitChild` and `JoinChildren` set) and returns; the child goes on. The parent takes the signal with an `OwnRun` wait or an `OnSignals` handler:
+**Fix:** the child calls [`workflow.SignalParent`](ds:block?id=signalparent-bmdph8ke) from a step. It sends to the run that spawned it (the `LabelParentRun` that `Spawn`, `AwaitChild` and `JoinChildren` set: [`ParentRun`](ds:block?id=parentrun-s9vhkq7y)) and returns; the child goes on. The parent takes the signal with an `OwnRun` wait or an `OnSignals` handler:
 
 <!-- snippet: examples/escalation/main.go#escalate -->
 ```go
@@ -71,13 +71,13 @@ expense := workflow.Workflow{Name: "expense", Steps: []workflow.Step{
 }}
 ```
 
-`client` is the client the parent runs on. A run that is no child gets a `Permanent` `ErrInvalid`, so the step does not retry it.
+`client` is the client the parent runs on. A run that is no child gets a `Permanent` `ErrInvalid`, so the step does not retry it ([`SignalParent`](ds:block?id=signalparent-bmdph8ke)).
 
 ## Handle signals between steps
 
 **Problem:** a wait step stops the run until a signal comes, and a signal that may never come would keep the run open forever. You want the run to go on and react to a signal whenever one arrives: a progress note, a "slow shard" warning, a changed address.
 
-**Fix:** the `workflow.OnSignals` plugin. Before each step attempt of a run of `SignalHandlers.Workflow`, it lists the run's pending signals whose name has a handler, calls each handler in the order the signals were sent, and takes each one its handler accepted. Then the step runs:
+**Fix:** the [`workflow.OnSignals`](ds:block?id=onsignals-c9rrpw3d) plugin. Before each step attempt of a run of [`SignalHandlers.Workflow`](ds:block?id=signalhandlers-butqebnf), it lists the run's pending signals whose name has a handler, calls each handler in the order the signals were sent, and takes each one its handler accepted ([`handleRunSignals`](ds:block?id=handlerunsignals-ftq8w68n), run from [the step middleware](ds:block?id=signalsplugin-stepmiddleware-4c6jkyxr)). Then the step runs:
 
 <!-- snippet: examples/escalation/main.go#handlers -->
 ```go
@@ -97,18 +97,18 @@ What a handler returns decides what happens next:
 | Handler returns | What happens |
 |---|---|
 | `nil` | The signal is taken and the step runs (non-interrupting). |
-| An error | The step's attempt fails with it and the signal stays; the retry handles it again. |
+| An error | The step's attempt fails with it and the signal stays; the retry handles it again ([`handleRunSignals`](ds:block?id=handlerunsignals-ftq8w68n)). |
 | A `workflow.Permanent` error | The step fails without a retry, so the run fails (interrupting). |
 
-To end the run early instead, call `workflow.EndRun` (with the `EndRuns` plugin) or `Client.Cancel` from the handler. Signals of names without a handler are left for wait steps or other handlers; a wait step and a handler on one name share one queue, and whichever looks first takes a signal.
+To end the run early instead, call [`workflow.EndRun`](ds:block?id=endrun-m4p8qurp) (with the `EndRuns` plugin) or `Client.Cancel` from the handler. Signals of names without a handler are left for wait steps or other handlers; a wait step and a handler on one name share one queue, and whichever looks first takes a signal.
 
-`Use` binds the plugin to the client it wraps (the `workflow.ClientBinder` hook) and refuses a client without `RunSignalReader` with an `UnsupportedError`, before anything is registered.
+`Use` binds the plugin to the client it wraps (the [`workflow.ClientBinder`](ds:block?id=clientbinder-q2955cf2) hook) and refuses a client without `RunSignalReader` with an `UnsupportedError`, before anything is registered ([BindClient](ds:block?id=signalsplugin-bindclient-g8nk42vn)).
 
 ### Bind the client in a plugin
 
 **Problem:** your own plugin needs the driver behind the client (here to read a run's pending signals), and asking the app to pass the client twice, once to `Use` and once to the plugin, invites passing the wrong one.
 
-**Fix:** implement `workflow.ClientBinder` next to `Name`. `Use` calls `BindClient(c)` with the client it wraps, in plugin order and before it collects any middleware, so the plugin keeps what it needs and refuses a client that lacks it. A `BindClient` error fails `Use`, naming the plugin. This gauge counts a run's pending signals before each step and leaves them for wait steps and handlers:
+**Fix:** implement [`workflow.ClientBinder`](ds:block?id=clientbinder-q2955cf2) next to `Name`. [`Use`](ds:block?id=use-yq9nazws) calls `BindClient(c)` with the client it wraps, in plugin order and before it collects any middleware, so the plugin keeps what it needs and refuses a client that lacks it. A `BindClient` error fails `Use`, naming the plugin. This gauge counts a run's pending signals before each step and leaves them for wait steps and handlers:
 
 <!-- snippet: examples/escalation-wrappers/main.go#binder -->
 ```go
@@ -151,7 +151,7 @@ The app passes the plugin to `Use` like any other, here over the regional wrappe
 c, err := workflow.Use(base, &gauge{names: []string{noteEvent}, log: log})
 ```
 
-`RunSignalReader` is also yours to call outside any plugin. `PendingSignals` lists the signals addressed to a run that it has not taken, oldest first, for the names you give (a limit of zero means all); `TakeSignal` records that the run took one and reports `false` when someone took it first. Through a wrapper, pass the prefixed `RunID` the ref carries:
+`RunSignalReader` is also yours to call outside any plugin. `PendingSignals` lists the signals addressed to a run that it has not taken, oldest first, for the names you give (a limit of zero means all); `TakeSignal` records that the run took one and reports `false` when someone took it first ([`RunSignalReader`](ds:block?id=runsignalreader-wpdh9gjr)). Through a wrapper, pass the prefixed `RunID` the ref carries:
 
 <!-- snippet: examples/escalation-wrappers/main.go#read-take -->
 ```go
@@ -173,7 +173,7 @@ if err != nil {
 }
 ```
 
-`OnSignals` does exactly this between steps; the program takes `"first"` by hand while the run's first step works, so the gauge sees one signal left before the second step. Use `Supports(c, workflow.OpRunSignals)` and not the type assertion alone: a wrapper may have the methods and still lack a backend that answers them.
+`OnSignals` does exactly this between steps; the program takes `"first"` by hand while the run's first step works, so the gauge sees one signal left before the second step. Use `Supports(c, workflow.OpRunSignals)` ([`workflow.OpRunSignals`](ds:block?id=oprunsignals-tmgz66m8)) and not the type assertion alone: a wrapper may have the methods and still lack a backend that answers them.
 
 ## Approvals, races and updates by run ID
 
@@ -181,11 +181,11 @@ The helpers that build wait steps take `OwnRun` too, each with a sender that add
 
 | Wait | Sender |
 |---|---|
-| `ApprovalStep(ApprovalSpec{OwnRun: true})` | `ApproveRun`, `RejectRun` |
-| `Race(RaceSpec{OwnRun: true})` | `SignalChoiceRun` |
-| A wait with `OwnRun` before an `UpdateHandler` step | `UpdateRun` |
+| [`ApprovalStep(ApprovalSpec{OwnRun: true})`](ds:block?id=approvalstep-2yvb5vyr) | [`ApproveRun`](ds:block?id=approverun-nseec3ru), [`RejectRun`](ds:block?id=rejectrun-9eznrn6w) |
+| [`Race(RaceSpec{OwnRun: true})`](ds:block?id=race-mu522hb9) | [`SignalChoiceRun`](ds:block?id=signalchoicerun-6pdrsj34) |
+| A wait with `OwnRun` before an [`UpdateHandler`](ds:block?id=updatehandler-cegfe95e) step | [`UpdateRun`](ds:block?id=updaterun-gu9rgx9r) |
 
-Build the steps with `OwnRun` set. `ApprovalStep` needs exactly one of `Key`, `KeyFrom` and `OwnRun` and refuses the step otherwise; `Race` passes the flag to its wait step (`"<Name>.wait"`); an update is a plain `OwnRun` wait followed by a step whose body is `workflow.UpdateHandler`, which answers through a `PromiseStore` both sides share:
+Build the steps with `OwnRun` set. [`ApprovalStep`](ds:block?id=approvalstep-2yvb5vyr) needs exactly one of `Key`, `KeyFrom` and `OwnRun` and refuses the step otherwise; [`Race`](ds:block?id=race-mu522hb9) passes the flag to its wait step (`"<Name>.wait"`); an update is a plain `OwnRun` wait followed by a step whose body is `workflow.UpdateHandler`, which answers through a `PromiseStore` both sides share:
 
 <!-- snippet: examples/escalation/main.go#by-run-steps -->
 ```go
@@ -218,7 +218,7 @@ cart := workflow.Workflow{Name: "cart", Steps: []workflow.Step{
 }}
 ```
 
-Answer an approval with the run's ref. `ApproveRun` and `RejectRun` send a `workflow.Decision` through `SignalRun`, so each answer reaches only the run it names; the step after the approval reads it with `workflow.DecisionOf`:
+Answer an approval with the run's ref. [`ApproveRun`](ds:block?id=approverun-nseec3ru) and [`RejectRun`](ds:block?id=rejectrun-9eznrn6w) send a `workflow.Decision` through `SignalRun`, so each answer reaches only the run it names; the step after the approval reads it with `workflow.DecisionOf`:
 
 <!-- snippet: examples/escalation/main.go#approve-run -->
 ```go
@@ -230,7 +230,7 @@ if err := workflow.RejectRun(ctx, c, refunds[1], "bo", "duplicate"); err != nil 
 }
 ```
 
-Decide a race for one run with `SignalChoiceRun`. The first signal the run takes picks the branch, which receives the payload; a later one is never taken by that run. A signal sent before the run reaches its wait is kept, so the program sends it right after the enqueue:
+Decide a race for one run with [`SignalChoiceRun`](ds:block?id=signalchoicerun-6pdrsj34). The first signal the run takes picks the branch, which receives the payload; a later one is never taken by that run. A signal sent before the run reaches its wait is kept, so the program sends it right after the enqueue:
 
 <!-- snippet: examples/escalation/main.go#choice-run -->
 ```go
@@ -239,7 +239,7 @@ if err := workflow.SignalChoiceRun(ctx, c, ref, "carrier", "express", []byte(`"n
 }
 ```
 
-Send an update and wait for the run's answer with `UpdateRun`. It wraps the payload in a `workflow.UpdateRequest` carrying a fresh promise ID, sends it through `SignalRun`, and blocks until the run settles that promise or `ctx` ends, so give it a deadline:
+Send an update and wait for the run's answer with [`UpdateRun`](ds:block?id=updaterun-gu9rgx9r). It wraps the payload in a [`workflow.UpdateRequest`](ds:block?id=updaterequest-amk77jum) carrying a fresh promise ID ([`update`](ds:block?id=update-khsw5ev5)), sends it through `SignalRun`, and blocks until the run settles that promise or `ctx` ends, so give it a deadline:
 
 <!-- snippet: examples/escalation/main.go#update-run -->
 ```go
@@ -251,13 +251,13 @@ if err != nil {
 }
 ```
 
-A `Permanent` error from the update's handler rejects the update: `UpdateRun` returns a `*workflow.PromiseRejectedError`. Any other error goes to the step's retry policy while the caller keeps waiting. The promise is deleted once read.
+A `Permanent` error from the update's handler rejects the update: `UpdateRun` returns a `*workflow.PromiseRejectedError` ([`UpdateHandler`](ds:block?id=updatehandler-cegfe95e)). Any other error goes to the step's retry policy while the caller keeps waiting. The promise is deleted once read ([`update`](ds:block?id=update-khsw5ev5)).
 
 ## Behind wrappers
 
 **Problem:** a driver resolves an `OwnRun` wait to the run ID it handed out, but `regional`, `failover` and `cutover` hand the app a ref prefixed with a region or a backend (`us:`, `primary:` or `secondary:`, `old:` or `new:`), and the `RunID` a step sees carries the prefix too. A key built from the prefixed ID would match no run.
 
-**Fix:** nothing in your code. The three wrappers implement `workflow.RunSignaller`: `SignalRun` hands them the ref, they strip the prefix and call `SignalRun` on the backend that holds the run, so the address matches what its driver resolved. `PendingSignals` and `TakeSignal` read the prefix of the run ID and ask that backend, so `OnSignals` works behind them. `hybrid` hands out its jobs client's refs unprefixed and forwards these calls to the jobs client, where every run lives; the client `Use` returns forwards them to what it wraps. The example runs the same order behind each wrapper, every one over two memory clients:
+**Fix:** nothing in your code. The three wrappers implement [`workflow.RunSignaller`](ds:block?id=runsignaller-6w6xw3vh) ([regional](ds:block?id=regional-client-signalrun-xj8vwpgd), [failover](ds:block?id=failover-client-signalrun-cx8k2hjf), [cutover](ds:block?id=cutover-client-signalrun-r4bhq358)): `SignalRun` hands them the ref, they strip the prefix and call `SignalRun` on the backend that holds the run, so the address matches what its driver resolved. `PendingSignals` and `TakeSignal` read the prefix of the run ID and ask that backend ([regional](ds:block?id=regional-client-pendingsignals-4e47r89a), [failover](ds:block?id=failover-client-pendingsignals-6dcgfyn8), [cutover](ds:block?id=cutover-client-pendingsignals-aq22dbuz)), so `OnSignals` works behind them. `hybrid` hands out its jobs client's refs unprefixed and forwards these calls to the jobs client, where every run lives ([its embedded `Forward`](ds:block?id=hybrid-client-spwwj95u)); the client `Use` returns forwards them to what it wraps ([also a `Forward`](ds:block?id=pluginclient-6pzv2fwv)). The example runs the same order behind each wrapper, every one over two memory clients:
 
 <!-- snippet: examples/escalation-wrappers/main.go#wrappers -->
 ```go
@@ -293,20 +293,20 @@ if err := workflow.SignalRun(ctx, c, ref, paymentEvent, []byte(`"card 4242"`)); 
 }
 ```
 
-A ref without a prefix the wrapper knows (an ID a step read from `StepInfo` of another backend, or a run the old backend held before a cutover) is signalled at the run's address wherever `Signal` goes: every region, or the ones `regional.WithSignalRouter` picks, and both backends of `failover` and `cutover`. `regional` answers `PendingSignals` for a run of no region it knows with no signals.
+A ref without a prefix the wrapper knows (an ID a step read from `StepInfo` of another backend, or a run the old backend held before a cutover) is signalled at the run's address wherever `Signal` goes: every region, or the ones [`regional.WithSignalRouter`](ds:block?id=regional-withsignalrouter-jjp6ts9d) picks, and both backends of `failover` and `cutover`. `regional` answers `PendingSignals` for a run of no region it knows with no signals ([PendingSignals](ds:block?id=regional-client-pendingsignals-4e47r89a)).
 
 ## Which drivers
 
 | Driver | `OwnRun` wait (`CapWaitOwnRun`) | Handlers between steps (`RunSignalReader`) |
 |---|---|---|
-| memory | yes | yes |
-| SQL (SQLite, Postgres, MySQL) | yes | yes: the signals table and the run's consumed rows, the take under the run's row lock |
-| Redis | yes | yes: Lua scripts over the signal sets and the run's consumed markers |
-| Hatchet | yes: the durable wait resolves the key from the engine's run ID | no: the engine keeps no record a step could read of which events a run took |
+| memory | [yes](ds:block?id=memory-caps-yxkuq583) | yes ([read](ds:block?id=memory-client-pendingsignals-npvn9fcu), [take](ds:block?id=memory-client-takesignal-6neqmtnc)) |
+| SQL (SQLite, Postgres, MySQL) | [yes](ds:block?id=sql-caps-yu37ef2j) | yes: the signals table and the run's consumed rows, [the take under the run's row lock](ds:block?id=sql-client-takesignal-v4extys7) |
+| Redis | [yes](ds:block?id=redis-caps-bfgdst9t) | yes: Lua scripts over the signal sets and the run's consumed markers ([read](ds:block?id=redis-client-pendingsignals-77ueus8d), [take](ds:block?id=redis-client-takesignal-hdqe5brh)) |
+| Hatchet | [yes](ds:block?id=hatchet-caps-d6x9fv8z): [the durable wait resolves the key from the engine's run ID](ds:block?id=hatchet-client-waitfunc-ed3hwy7u) | no: the engine keeps no record a step could read of which events a run took |
 
 ### Prove it on your driver
 
-`workflowtest.RunEscalationFlows` is the suite behind this table. It runs the `OwnRun` wait (including a signal kept until the wait begins), `SignalParent` from a child to a waiting parent and the refusal outside a child, `OnSignals` handlers in send order, escalations heard while the parent joins its children, a handler error retried with its step, the `RunSignalReader` contract (take once, unknown IDs are `ErrNotFound`), `ApproveRun`, `RejectRun`, `SignalChoiceRun` and `UpdateRun` reaching only the run they name, and a handler that fails the run. A case whose capability or `RunSignalReader` the client lacks skips. Your `workflowtest.EscalationHarness.Start` applies the `Journal` plugin and then the suite's plugins with `workflow.Use`, over the driver client itself so `OnSignals` binds its reader, registers the workflows, starts the client and stops it when the test ends. The example runs it over its regional wrapper:
+[`workflowtest.RunEscalationFlows`](ds:block?id=workflowtest-runescalationflows-nfcxu96e) is the suite behind this table. It runs the `OwnRun` wait (including a signal kept until the wait begins), `SignalParent` from a child to a waiting parent and the refusal outside a child, `OnSignals` handlers in send order, escalations heard while the parent joins its children, a handler error retried with its step, the `RunSignalReader` contract (take once, unknown IDs are `ErrNotFound`), `ApproveRun`, `RejectRun`, `SignalChoiceRun` and `UpdateRun` reaching only the run they name, and a handler that fails the run. A case whose capability or `RunSignalReader` the client lacks skips. Your [`workflowtest.EscalationHarness.Start`](ds:block?id=workflowtest-escalationharness-qup8s23a) applies the `Journal` plugin and then the suite's plugins with `workflow.Use`, over the driver client itself so `OnSignals` binds its reader, registers the workflows, starts the client and stops it when the test ends. The example runs it over its regional wrapper:
 
 <!-- snippet: examples/escalation-wrappers/main_test.go#suite -->
 ```go
@@ -390,15 +390,15 @@ Behind every wrapper the paid order is the second one and the first keeps waitin
 
 ## Pitfalls
 
-- **Handlers run at step boundaries, not at once.** A run parked in a wait or a sleep handles nothing until its next step begins. Block on a signal with an `OwnRun` wait; keep a snoozing step's `Poll` short when a handler must react quickly.
-- **Handlers run at least once.** A worker that dies between a handler and its take, or two steps of one run starting at the same moment, run a handler twice for one signal. Make handlers idempotent; `RunSignal.ID` identifies the signal.
-- **A retried step sends again.** `SignalParent` and `SignalRun` from a step that is retried send a second signal. Put an ID in the payload when the parent must count each one once.
-- **Every step attempt reads the run's signals.** `OnSignals` costs one read per step attempt of the workflows it serves (one query on SQL, one script on Redis). Name the workflow in `SignalHandlers.Workflow` so other workflows pay nothing.
-- **An update needs a deadline.** `UpdateRun` waits until the run settles the reply promise; a run that never reaches its wait never answers. Pass a `ctx` with a timeout, and share a durable `PromiseStore` when the caller and the workers run in different processes.
-- **`OwnRun` is one of three.** `ApprovalStep` refuses a spec that sets more or fewer than one of `Key`, `KeyFrom` and `OwnRun`; a wait (including a race's) that sets `OwnRun` with `Key` or `KeyFrom` is refused when it is registered.
-- **Your own wrapper must not hide the reader.** A struct that embeds `workflow.Client` hides `RunSignalReader` and `RunSignaller`, so `OnSignals` is refused (the example's `bare` client shows it) and `SignalRun` falls back to a plain `Signal` that cannot strip your prefix. Embed `workflow.Forward` to pass them through, and implement `RunSignaller` if your wrapper prefixes refs.
-- **Plugin names are unique per `Use` call.** Two `OnSignals` with one `Workflow`, or two of your binders with one `Name`, fail `Use` with `ErrDuplicatePlugin`.
-- **`OnFailure` and `OnTimeout` are wrapped too.** Like every step middleware, the plugin wraps them; a driver that passes them the run's `StepInfo` handles the pending signals before them, and an error there is the failure handler's error, which the driver logs.
+- **Handlers run at step boundaries, not at once** ([step middleware](ds:block?id=signalsplugin-stepmiddleware-4c6jkyxr)). A run parked in a wait or a sleep handles nothing until its next step begins. Block on a signal with an `OwnRun` wait; keep a snoozing step's `Poll` short when a handler must react quickly.
+- **Handlers run at least once.** A worker that dies between a handler and its take ([`handleRunSignals`](ds:block?id=handlerunsignals-ftq8w68n)), or two steps of one run starting at the same moment, run a handler twice for one signal. Make handlers idempotent; [`RunSignal.ID`](ds:block?id=runsignal-u22rcvj3) identifies the signal.
+- **A retried step sends again.** [`SignalParent`](ds:block?id=signalparent-bmdph8ke) and `SignalRun` from a step that is retried send a second signal. Put an ID in the payload when the parent must count each one once.
+- **Every step attempt reads the run's signals.** `OnSignals` costs one read per step attempt of the workflows it serves (one query on SQL, one script on Redis: [the middleware](ds:block?id=signalsplugin-stepmiddleware-4c6jkyxr)). Name the workflow in [`SignalHandlers.Workflow`](ds:block?id=signalhandlers-butqebnf) so other workflows pay nothing.
+- **An update needs a deadline.** [`UpdateRun`](ds:block?id=updaterun-gu9rgx9r) waits until the run settles the reply promise; a run that never reaches its wait never answers. Pass a `ctx` with a timeout, and share a durable `PromiseStore` when the caller and the workers run in different processes.
+- **`OwnRun` is one of three.** [`ApprovalStep`](ds:block?id=approvalstep-2yvb5vyr) refuses a spec that sets more or fewer than one of `Key`, `KeyFrom` and `OwnRun`; a wait (including a race's) that sets `OwnRun` with `Key` or `KeyFrom` is refused when it is registered ([`validateStep`](ds:block?id=validatestep-x6aebswc)).
+- **Your own wrapper must not hide the reader.** A struct that embeds `workflow.Client` hides `RunSignalReader` and `RunSignaller`, so `OnSignals` is refused (the example's `bare` client shows it) and [`SignalRun`](ds:block?id=signalrun-rr37h4py) falls back to a plain `Signal` that cannot strip your prefix. Embed `workflow.Forward` to pass them through ([`Forward.SignalRun`](ds:block?id=forward-signalrun-nxfvz3jr)), and implement `RunSignaller` if your wrapper prefixes refs.
+- **Plugin names are unique per `Use` call.** Two `OnSignals` with one `Workflow` ([the plugin name](ds:block?id=signalsplugin-name-zhz3tgxh)), or two of your binders with one `Name`, fail `Use` with [`ErrDuplicatePlugin`](ds:block?id=errduplicateplugin-ce74ermg).
+- **`OnFailure` and `OnTimeout` are wrapped too.** Like every step middleware, the plugin wraps them ([step middleware](ds:block?id=signalsplugin-stepmiddleware-4c6jkyxr)); a driver that passes them the run's `StepInfo` handles the pending signals before them, and an error there is the failure handler's error, which the driver logs.
 
 ## Related
 

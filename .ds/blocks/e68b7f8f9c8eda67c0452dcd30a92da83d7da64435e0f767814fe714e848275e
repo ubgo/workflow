@@ -1,0 +1,8 @@
+type Datasets struct {
+	bus   *Bus
+	store LineageStore
+	clock clock.Clock
+
+	mu       sync.RWMutex
+	triggers []DatasetTrigger
+}

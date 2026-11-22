@@ -39,6 +39,8 @@ import (
 // run, and by trigger and dataset. At is stored as Unix seconds and
 // nanoseconds, so every time.Time keeps its exact instant (returned in
 // UTC); Meta is stored as JSON.
+//
+//ds:def id=sql-lineagestore-dvvv742n owner=@khanakia stability=stable
 type LineageStore struct {
 	st    *store
 	names *strings.Replacer // {lineage} -> quoted name
@@ -50,15 +52,21 @@ var _ events.LineageStore = (*LineageStore)(nil)
 // a list of its own, applied by LineageStore.Migrate, so a database with
 // no sqlstore queue gets only the lineage table. Client.Migrate does not
 // apply it: call Migrate on the store.
+//
+//ds:def id=sql-lineagemigrationowner-sfgeqp26 owner=@khanakia stability=stable
 const LineageMigrationOwner = "ubgo/workflow/sqlstore/lineage"
 
 // tblLineage is LineageStore's table stem, resolved by the store itself
 // because the table belongs to its own migration list.
+//
+//ds:def id=sql-tbllineage-6729y5yp owner=@khanakia stability=stable
 const tblLineage = "lineage"
 
 // lineageMigrations is every LineageStore schema change, in order, under
 // the same rules as migrations: never edit a released one, append a new
 // one.
+//
+//ds:def id=sql-lineagestore-lineagemigrations-9yyjjh6e owner=@khanakia stability=stable
 func (s *LineageStore) lineageMigrations() []migrate.Migration {
 	stmts := s.st.render(lineageDefs(typesFor(s.st.engine)))
 	for i, q := range stmts {
@@ -112,6 +120,8 @@ func lineageDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Record.
+//
+//ds:def id=sql-newlineagestore-j9tgbj56 owner=@khanakia stability=stable
 func NewLineageStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*LineageStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -123,12 +133,16 @@ func NewLineageStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*LineageStore,
 // LineageStore returns the lineage store in this client's database and
 // prefix. Its table is created by the store's Migrate, not by
 // Client.Migrate.
+//
+//ds:def id=sql-client-lineagestore-6bkqfduv owner=@khanakia stability=stable
 func (c *Client) LineageStore() *LineageStore {
 	return &LineageStore{st: c.st, names: strings.NewReplacer("{"+tblLineage+"}", c.st.table(tblLineage))}
 }
 
 // Migrate creates the lineage table (its own migration list, under the
 // same ledger and lock as Client.Migrate), and nothing else.
+//
+//ds:def id=sql-lineagestore-migrate-5nmd5b3c owner=@khanakia stability=stable
 func (s *LineageStore) Migrate(ctx context.Context) error {
 	return s.st.migrate(ctx, s.lineageMigrations())
 }
@@ -136,6 +150,8 @@ func (s *LineageStore) Migrate(ctx context.Context) error {
 // MigrationScripts returns the store's migrations as SQL text, with table
 // names resolved for its prefix and schema, for teams whose DDL goes
 // through their own pipeline (see the package's MigrationScripts).
+//
+//ds:def id=sql-lineagestore-migrationscripts-8q862stq owner=@khanakia stability=stable
 func (s *LineageStore) MigrationScripts() []MigrationScript {
 	return scriptsOf(s.lineageMigrations())
 }

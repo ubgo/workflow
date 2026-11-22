@@ -1,0 +1,17 @@
+type MachineSnapshot[D any] struct {
+	// Done reports a top-level final state reached.
+	Done bool
+
+	// States are the active atomic states; Active every active state,
+	// ancestors included; both in document order.
+	States, Active []string
+
+	// Data is the instance's extended state.
+	Data D
+
+	// Seq is the microstep sequence number.
+	Seq uint64
+
+	// Log is the last handled events, oldest first.
+	Log []MachineStep
+}

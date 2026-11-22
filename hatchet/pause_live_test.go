@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -31,7 +32,8 @@ func liveAPI(t *testing.T) *hatchet.API {
 
 // TestPauseLive proves CapPauseWorkflow and CapSchedulePause on the
 // engine: a paused workflow's new run stays queued and is listed by
-// Paused, Resume lets it run, a cron trigger is paused and resumed and
+// Paused (its delayed variant paused with it but not listed), a keyed
+// delayed start stays queued past its RunAt, Resume lets both run, a cron trigger is paused and resumed and
 // listed as paused meanwhile, an unknown trigger is ErrNotFound; and, as
 // a control, a pause sent with a short TTL makes the engine cancel the
 // held run, the trap the driver's long TTL avoids.
@@ -51,16 +53,29 @@ func TestPauseLive(t *testing.T) {
 	if err != nil || !slices.Contains(paused, workflow.PauseWorkflow(wf.Name)) {
 		t.Fatalf("Paused = %v, %v", paused, err)
 	}
+	for _, p := range paused {
+		if strings.HasSuffix(p.Workflow, "__wf_delayed") {
+			t.Fatalf("Paused = %v lists a delayed variant; it is paused with its workflow, not listed", paused)
+		}
+	}
 	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: wf.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A keyed delayed start runs on the workflow's delayed variant, which
+	// the pause holds too: its gate wakes at RunAt, its step stays queued.
+	keyed, err := c.Enqueue(ctx, workflow.Job{Workflow: wf.Name, RunAt: time.Now().Add(2 * time.Second), IdempotencyKey: prefix + "-keyed"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitStatus(t, c, ref, workflow.StatusQueued)
 	holdStatus(t, c, ref, workflow.StatusQueued, 5*time.Second)
+	holdStatus(t, c, keyed, workflow.StatusQueued, time.Second)
 	if err := c.Resume(ctx, workflow.PauseWorkflow(wf.Name)); err != nil {
 		t.Fatal(err)
 	}
 	waitStatus(t, c, ref, workflow.StatusSucceeded)
+	waitStatus(t, c, keyed, workflow.StatusSucceeded)
 	if paused, _ := c.Paused(ctx); slices.Contains(paused, workflow.PauseWorkflow(wf.Name)) {
 		t.Fatalf("still paused after Resume: %v", paused)
 	}

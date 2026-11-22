@@ -13,6 +13,8 @@ import (
 )
 
 // GroupSeparator joins a group's name and a step's name ("import/fetch").
+//
+//ds:def id=groupseparator-3b7ayafp owner=@khanakia stability=stable
 const GroupSeparator = "/"
 
 // Group returns steps as one named group (WP-15): each step is renamed
@@ -28,6 +30,8 @@ const GroupSeparator = "/"
 // It returns an error wrapping ErrInvalid when name is empty or contains
 // GroupSeparator, a step name repeats, or an After inside the group names
 // no step of the group.
+//
+//ds:def id=group-3weve9ng owner=@khanakia stability=stable
 func Group(name string, after []string, steps []Step) ([]Step, error) {
 	if name == "" || strings.Contains(name, GroupSeparator) || len(steps) == 0 {
 		return nil, invalidf("group %q needs a name without %q and at least one step", name, GroupSeparator)
@@ -87,10 +91,14 @@ func Group(name string, after []string, steps []Step) ([]Step, error) {
 // LabelDepth is the nesting depth RecursionLimit writes on a job enqueued
 // from inside a step: one more than the depth of the run whose step
 // enqueued it (a run enqueued from outside any step has depth 0).
+//
+//ds:def id=labeldepth-8jqw8k4j owner=@khanakia stability=stable
 const LabelDepth = LabelPrefixInternal + "depth"
 
 // ErrDepth matches the refusal of RecursionLimit: the job would nest
 // deeper than the limit.
+//
+//ds:def id=errdepth-vpx26s3r owner=@khanakia stability=stable
 var ErrDepth = errors.New("workflow: nesting depth limit reached")
 
 // recursionPlugin is RecursionLimit.
@@ -104,10 +112,13 @@ type recursionPlugin struct{ max int }
 // queue. A job enqueued outside a step (no StepInfo on the ctx) is depth
 // 0. It is enqueue middleware, so it runs on every driver; a job enqueued
 // through a client without the plugin carries no depth.
+//
+//ds:def id=recursionlimit-3vtvbeup owner=@khanakia stability=stable
 func RecursionLimit(max int) Plugin { return recursionPlugin{max: max} }
 
 func (p recursionPlugin) Name() string { return "recursion-limit" }
 
+//ds:def id=recursionplugin-enqueuemiddleware-j2fzv4hn owner=@khanakia stability=stable
 func (p recursionPlugin) EnqueueMiddleware() []EnqueueMiddleware {
 	return []EnqueueMiddleware{func(next EnqueueFunc) EnqueueFunc {
 		return func(ctx context.Context, job Job) (RunRef, error) {
@@ -144,6 +155,8 @@ const endRunData = "ubgo.workflow/ended"
 // cancelled: an explicit end is a decision, not an abort (Cancel is the
 // abort). A step skipped this way gives its children empty input, which
 // they skip too.
+//
+//ds:def id=endrun-m4p8qurp owner=@khanakia stability=stable
 func EndRun(ctx context.Context) error { return SetRunData(ctx, endRunData, true) }
 
 // endRunsPlugin is EndRuns.
@@ -152,10 +165,13 @@ type endRunsPlugin struct{}
 // EndRuns returns the plugin that honours EndRun: step middleware that
 // skips a step of a run that has ended. Pass it to Use after Journal, so
 // the journal is on the ctx when it looks.
+//
+//ds:def id=endruns-yh863xn7 owner=@khanakia stability=stable
 func EndRuns() Plugin { return endRunsPlugin{} }
 
 func (endRunsPlugin) Name() string { return "end-runs" }
 
+//ds:def id=endrunsplugin-stepmiddleware-7fbyjspm owner=@khanakia stability=stable
 func (endRunsPlugin) StepMiddleware() []Middleware {
 	return []Middleware{func(next Handler) Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -179,9 +195,15 @@ func (endRunsPlugin) StepMiddleware() []Middleware {
 // (in its own goroutine, with the step's ctx and StepInfo) while the step
 // carries on: escalate, page someone, send a reminder. The interrupting
 // form is Step.Timeout, with WithRules to send the timeout to a branch
-// (RuleOneFailedOf(FailureTimeout)). steps limits it to those step names;
-// none means every step. The timer is the step's own: it starts per
-// attempt and stops when the attempt returns.
+// (RuleOneFailedOf(FailureTimeout)) on a driver with CapRunTimeout or on
+// the Hatchet driver (which enforces Step.Timeout in its worker), which
+// cancels the attempt with ErrStepTimeout for the tolerated step to record
+// (ClaimTimeout); elsewhere return TimeoutError from a deadline inside the
+// step. steps limits it to those step names; none means every step. The
+// timer is the step's own: it starts per attempt and stops when the
+// attempt returns.
+//
+//ds:def id=boundary-s3ak3b46 owner=@khanakia stability=stable
 func Boundary(d time.Duration, onTimer func(ctx context.Context, info StepInfo), steps ...string) Middleware {
 	return func(next Handler) Handler {
 		if d <= 0 || onTimer == nil {

@@ -1,0 +1,1 @@
+func WithMaxResponse(n int64) Option { return func(d *deliverConfig) { d.max = n } }

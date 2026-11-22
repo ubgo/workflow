@@ -21,11 +21,15 @@ import (
 // dispatcher pass, so it must answer from memory (campaigning happens
 // elsewhere) and be safe for concurrent use. LeaderElector is the SQL one;
 // a Redis lock, a Kubernetes Lease or a Consul session fits the same way.
+//
+//ds:def id=sql-elector-jdvnhn8d owner=@khanakia stability=stable
 type Elector interface {
 	IsLeader() bool
 }
 
 // tblLeaders is migration 007's leader lease table.
+//
+//ds:def id=sql-tblleaders-g7h4fa2s owner=@khanakia stability=stable
 const tblLeaders = "leaders"
 
 // leaderDefs is the leader table of migration 007.
@@ -45,9 +49,13 @@ func leaderDefs(t sqlTypes) []tableDef {
 }
 
 // defaultLeaderRole is the role WithLeaderElection campaigns for.
+//
+//ds:def id=sql-defaultleaderrole-auzsgvfw owner=@khanakia stability=stable
 const defaultLeaderRole = "scheduler"
 
 // defaultLeaderLease is how long a leader holds the role without renewing.
+//
+//ds:def id=sql-defaultleaderlease-5sevpk6w owner=@khanakia stability=stable
 const defaultLeaderLease = 15 * time.Second
 
 // LeaderElector elects one leader per role among the processes sharing a
@@ -84,11 +92,15 @@ type LeaderElector struct {
 var _ Elector = (*LeaderElector)(nil)
 
 // LeaderOption configures a LeaderElector.
+//
+//ds:def id=sql-leaderoption-yxppwdwf owner=@khanakia stability=stable
 type LeaderOption func(*LeaderElector)
 
 // LeaderLease sets how long a leader holds its role without renewing
 // (default 15 seconds). A shorter lease hands the role on sooner after a
 // crash and costs more writes. Values of zero or less are ignored.
+//
+//ds:def id=sql-leaderlease-zz5hmgje owner=@khanakia stability=stable
 func LeaderLease(d time.Duration) LeaderOption {
 	return func(e *LeaderElector) {
 		if d > 0 {
@@ -133,6 +145,8 @@ func LeaderSchema(name string) LeaderOption {
 // unique among the nodes, such as workflow.DefaultNodeID()), over the
 // leader table a Client's Migrate created in db. It reads nothing until
 // Campaign or Run.
+//
+//ds:def id=sql-newleaderelector-g52t3r59 owner=@khanakia stability=stable
 func NewLeaderElector(db *sql.DB, d sqlb.Dialect, role, node string, opts ...LeaderOption) (*LeaderElector, error) {
 	if db == nil || d == nil {
 		return nil, fmt.Errorf("%w: NewLeaderElector needs a *sql.DB and a dialect", workflow.ErrInvalid)
@@ -163,6 +177,8 @@ func (e *LeaderElector) IsLeader() bool {
 
 // Term is the fencing token of the leadership this node last won (0:
 // never won). It grows each time the role changes hands.
+//
+//ds:def id=sql-leaderelector-term-ygkkzyx2 owner=@khanakia stability=stable
 func (e *LeaderElector) Term() int64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -171,6 +187,8 @@ func (e *LeaderElector) Term() int64 {
 
 // Campaign makes one attempt to take or renew the role and reports
 // whether this node leads after it. Run calls it every third of the lease.
+//
+//ds:def id=sql-leaderelector-campaign-k7hpjvpq owner=@khanakia stability=stable
 func (e *LeaderElector) Campaign(ctx context.Context) (bool, error) {
 	from := e.clk.Now()
 	now := from.UnixNano()
@@ -220,6 +238,8 @@ func (e *LeaderElector) Resign(ctx context.Context) error {
 // Run campaigns every third of the lease until ctx ends, then resigns.
 // Errors are logged through the Client's logger when the client runs it,
 // and otherwise only change IsLeader.
+//
+//ds:def id=sql-leaderelector-run-xzt28ra6 owner=@khanakia stability=stable
 func (e *LeaderElector) Run(ctx context.Context) {
 	for {
 		if _, err := e.Campaign(ctx); err != nil && ctx.Err() == nil {
@@ -246,7 +266,11 @@ func (e *LeaderElector) Run(ctx context.Context) {
 // needs no election and survives a split brain; prefer that unless the
 // fire itself must happen on one known node. The tick row stays as the
 // second guard either way. Steps run on every client regardless. Nil is
-// ignored.
+// ignored. A WithoutScheduler client never asks e and never leads: a
+// worker-only node does not fire cron ticks or run housekeeping, whatever
+// e answers, so share one elector across the fleet safely.
+//
+//ds:def id=sql-withelector-kr5pvbzd owner=@khanakia stability=stable
 func WithElector(e Elector) Option {
 	return func(cl *Client) {
 		if e != nil {
@@ -260,6 +284,14 @@ func WithElector(e Elector) Option {
 // workflow.DefaultNodeID()), on the client's lease clock and WithLeaseSkew.
 // The client campaigns from Start and resigns when it stops. opts tune
 // the elector (LeaderLease); its tables follow the client's.
+//
+// A WithoutScheduler client never campaigns: it could not fire a tick if
+// it led, so holding the role would stop every client from firing (the
+// way Oban's peer: false keeps a node out of leadership). Its IsLeader is
+// always false, the leader among the clients that may fire runs the
+// housekeeping, and the option can stay in a config shared by every node.
+//
+//ds:def id=sql-withleaderelection-unfdnw9m owner=@khanakia stability=stable
 func WithLeaderElection(node string, opts ...LeaderOption) Option {
 	return func(cl *Client) {
 		cl.leaderNode = node
@@ -269,18 +301,38 @@ func WithLeaderElection(node string, opts ...LeaderOption) Option {
 }
 
 // IsLeader reports whether this client may fire cron ticks and run
-// housekeeping: always true without an elector.
+// housekeeping: always true without an elector. A WithoutScheduler client
+// with an elector (WithElector or WithLeaderElection) never leads and
+// never asks the elector, so a worker-only node cannot act as scheduler
+// whatever a custom elector answers.
+//
+//ds:def id=sql-client-isleader-nt5u9e5p owner=@khanakia stability=stable
 func (c *Client) IsLeader() bool {
-	if c.elector == nil {
+	switch {
+	case c.elector == nil:
 		return true
+	case c.noScheduler:
+		return false
 	}
 	return c.elector.IsLeader()
 }
+
+// neverLeader is the Elector of a WithoutScheduler client given
+// WithLeaderElection: it never campaigns, so it never leads (IsLeader
+// does not ask it either).
+type neverLeader struct{}
+
+// IsLeader is always false.
+func (neverLeader) IsLeader() bool { return false }
 
 // buildLeader makes WithLeaderElection's elector once the client's options
 // are known.
 func (c *Client) buildLeader() {
 	if !c.leaderOn {
+		return
+	}
+	if c.noScheduler {
+		c.elector = neverLeader{} // a worker-only node never stands
 		return
 	}
 	node := c.leaderNode

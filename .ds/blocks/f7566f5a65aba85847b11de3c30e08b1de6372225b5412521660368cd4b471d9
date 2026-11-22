@@ -1,0 +1,33 @@
+func (c *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	started := c.started
+	c.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	if len(wf.Cron) > 0 && c.schedRegion == "" {
+		return fmt.Errorf("%w: regional: workflow %q declares Cron, and with %d regions it needs regional.WithScheduleRegion to say which region fires it", workflow.ErrInvalid, wf.Name, len(c.names))
+	}
+	for _, name := range c.names {
+		rwf := withRegion(wf, name)
+		if name != c.schedRegion {
+			// Only the schedule region fires the declared Cron, so the
+			// other copies get none of its fields. ScheduleWhen stays on
+			// every copy: it also conditions Client.Schedule ticks, and
+			// the router may put a schedule in any region.
+			rwf.Cron, rwf.CronWindows = nil, workflow.Windows{}
+			rwf.Misfire, rwf.CronOverlap = workflow.Misfire{}, ""
+			rwf.CronSeconds, rwf.CronActive, rwf.CronKeepRuns = false, workflow.Active{}, 0
+		}
+		if err := c.regions[name].Register(rwf); err != nil {
+			return fmt.Errorf("regional: %s: %w", name, err)
+		}
+	}
+	c.mu.Lock()
+	c.wfs[wf.Name] = wf
+	c.mu.Unlock()
+	return nil
+}

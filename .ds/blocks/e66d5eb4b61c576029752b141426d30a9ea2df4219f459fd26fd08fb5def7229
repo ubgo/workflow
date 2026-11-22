@@ -1,0 +1,7 @@
+func unfinishedStatuses(caps Caps) []Status {
+	s := []Status{StatusScheduled, StatusQueued, StatusRunning, StatusWaiting}
+	if caps.Has(CapRunStates) {
+		s = append(s, StatusRetrying)
+	}
+	return s
+}

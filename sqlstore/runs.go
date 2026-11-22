@@ -119,6 +119,8 @@ func (c *Client) lookup(ctx context.Context, ref workflow.RunRef) (*runRow, erro
 // policy (empty: none); a key held by an unfinished run of the workflow
 // makes the insert fail with a unique violation. id is the RunID; empty
 // asks the ID generator for one.
+//
+//ds:def id=sql-client-insertrun-6w3uw293 owner=@khanakia stability=stable
 func (c *Client) insertRun(ctx context.Context, tx *sql.Tx, reg *registered, job workflow.Job, key, id string) (*runRow, error) {
 	if id == "" {
 		var err error
@@ -195,6 +197,8 @@ const maxIdemAttempts = 5
 // Enqueue starts a run now, or at job.RunAt. A key held by an unfinished
 // run returns that run's RunRef and starts nothing; the unique index on
 // (workflow, idem_active) makes that atomic across nodes.
+//
+//ds:def id=sql-client-enqueue-k67k79h8 owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -282,6 +286,8 @@ func idemKey(reg *registered, job workflow.Job) (string, error) {
 // Cancel stops a run or a delayed start. Finished runs are left alone.
 // Steps running on this client stop at once; on another client they stop
 // at its next lease renewal (a third of the lease).
+//
+//ds:def id=sql-client-cancel-jqfz5map owner=@khanakia stability=stable
 func (c *Client) Cancel(ctx context.Context, ref workflow.RunRef) error {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {

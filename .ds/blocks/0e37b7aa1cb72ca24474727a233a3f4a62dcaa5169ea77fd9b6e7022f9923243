@@ -1,0 +1,29 @@
+func MergeRecords(run, sched RunRecord) RunRecord {
+	out := run.Clone()
+	fillRef(&out, sched.Ref)
+	fillIdentity(&out, sched.Workflow, sched.Queue, sched.Tenant, sched.Labels, sched.Source, sched.SourceRef)
+	if out.Payload == nil {
+		out.Payload = slices.Clone(sched.Payload)
+	}
+	if out.PayloadSize == 0 {
+		out.PayloadSize = sched.PayloadSize
+	}
+	if out.Priority == 0 {
+		out.Priority = sched.Priority
+	}
+	if out.RunAt.IsZero() {
+		out.RunAt = sched.RunAt
+	}
+	out.EnqueuedAt = earliest(out.EnqueuedAt, sched.EnqueuedAt)
+	if !out.OutcomeSet && sched.OutcomeSet {
+		out.Outcome, out.OutcomeNote, out.OutcomeSet = sched.Outcome, sched.OutcomeNote, true
+	}
+	if sched.UpdatedAt.After(out.UpdatedAt) {
+		out.UpdatedAt = sched.UpdatedAt
+	}
+	for _, s := range sched.Steps {
+		out.Steps = append(out.Steps, s.Clone())
+	}
+	SortSteps(out.Steps)
+	return out
+}

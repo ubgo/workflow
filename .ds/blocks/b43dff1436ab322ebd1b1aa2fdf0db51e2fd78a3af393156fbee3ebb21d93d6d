@@ -1,0 +1,6 @@
+func (c Caps) Intersect(o Caps) Caps {
+	for i := range c.w {
+		c.w[i] &= o.w[i]
+	}
+	return c
+}

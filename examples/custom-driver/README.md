@@ -1,6 +1,6 @@
 # custom-driver
 
-`Tiny`, in `driver.go`, is a complete `workflow.Client` in under 300 lines: steps run as a DAG on one goroutine per run, with retries, timeouts, `OnFailure`, `StepInfo` and `Status`, every timer read from an injected `clock.Clock`. It declares no capability, so it refuses delayed starts, idempotency keys, cron, cancel, waits and sleeps with an `UnsupportedError` instead of ignoring them. `main_test.go` holds it to the conformance suite every shipped driver runs.
+`Tiny`, in `driver.go`, is a complete `workflow.Client` in about 300 lines: steps run as a DAG on one goroutine per run, with retries, timeouts, `OnFailure`, `StepInfo` and `Status`, every timer read from an injected `clock.Clock`. A timed-out attempt keeps the core's step-timeout handshake: its context is cancelled with [`workflow.TimeoutError`](ds:block?id=timeouterror-nqztem89), and step middleware can claim the timeout with [`workflow.ClaimTimeout`](ds:block?id=claimtimeout-62xdkgef). It declares no capability, so it refuses delayed starts, idempotency keys, cron, cancel, waits and sleeps with an `UnsupportedError` instead of ignoring them. `main_test.go` holds it to the conformance suite every shipped driver runs.
 
 ```sh
 cd examples
@@ -36,4 +36,17 @@ The lines after the refusal come from `helpers.go`: the core helpers a driver ca
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass and 188 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on). The walkthrough is [docs/extending/writing-a-driver.md](../../docs/extending/writing-a-driver.md).
+43 cases pass and 195 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on), across the 70 groups of [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p). `TestStepTimeoutHandshake` runs the `attemptcause` and `toleratedtimeout` groups again with `StepTimeoutHandshake` set on the [`workflowtest.Harness`](ds:block?id=workflowtest-harness-7uqe9srm), so their step-timeout cases run on `Tiny` too:
+
+```sh
+go test ./custom-driver -run TestStepTimeoutHandshake -v | grep -E '^(--- |    --- |ok)'
+```
+
+```text
+--- PASS: TestStepTimeoutHandshake (0.01s)
+    --- PASS: TestStepTimeoutHandshake/attemptcause (0.00s)
+    --- PASS: TestStepTimeoutHandshake/toleratedtimeout (0.01s)
+ok  	github.com/ubgo/workflow/examples/custom-driver	0.017s
+```
+
+The walkthrough is [docs/extending/writing-a-driver.md](../../docs/extending/writing-a-driver.md).

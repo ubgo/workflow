@@ -1,0 +1,3 @@
+func WithAllLabels() Option {
+	return WithLabelFilter(func(string) bool { return true })
+}

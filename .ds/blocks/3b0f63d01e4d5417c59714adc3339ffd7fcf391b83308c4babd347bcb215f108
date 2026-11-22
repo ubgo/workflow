@@ -1,0 +1,76 @@
+func TestDebounceSwapRace(t *testing.T) {
+	const swappers, keys = 12, 8
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, prefix := e.open(t)
+			stores := make([]*sqlstore.DebounceStore, 4)
+			for i := range stores {
+				s, err := sqlstore.NewDebounceStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+				if err != nil {
+					t.Fatal(err)
+				}
+				stores[i] = s
+			}
+			if err := stores[0].Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			at := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+			for k := range keys {
+				key := fmt.Sprintf("product-%d", k)
+				var wg sync.WaitGroup
+				var mu sync.Mutex
+				go1 := make(chan struct{})
+				returned := map[workflow.RunID]int{}
+				notFound := 0
+				errs := make([]error, swappers)
+				for i := range swappers {
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						<-go1
+						b := middleware.DebounceBurst{First: at, RunAt: at.Add(time.Duration(i) * time.Second),
+							Ref: workflow.RunRef{RunID: workflow.RunID(fmt.Sprintf("run-%d", i))}}
+						prev, found, err := stores[i%len(stores)].Swap(ctx, key, b)
+						mu.Lock()
+						defer mu.Unlock()
+						errs[i] = err
+						if err != nil {
+							return
+						}
+						if !found {
+							notFound++
+							return
+						}
+						returned[prev.Ref.RunID]++
+					}()
+				}
+				close(go1)
+				wg.Wait()
+				for i, err := range errs {
+					if err != nil {
+						t.Fatalf("%s: Swap %d: %v", key, i, err)
+					}
+				}
+				if notFound != 1 {
+					t.Fatalf("%s: %d Swaps found no previous burst, want exactly 1", key, notFound)
+				}
+				last, found, err := stores[0].Get(ctx, key)
+				if err != nil || !found {
+					t.Fatalf("%s: Get after the race: %v, %v", key, found, err)
+				}
+				if len(returned) != swappers-1 {
+					t.Fatalf("%s: %d distinct bursts returned as replaced, want %d", key, len(returned), swappers-1)
+				}
+				for id, n := range returned {
+					if n != 1 {
+						t.Fatalf("%s: burst %s returned %d times, want once", key, id, n)
+					}
+					if id == last.Ref.RunID {
+						t.Fatalf("%s: the stored burst %s was also returned as replaced", key, id)
+					}
+				}
+			}
+		})
+	}
+}

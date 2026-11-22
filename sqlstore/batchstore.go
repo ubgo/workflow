@@ -18,6 +18,8 @@ import (
 // run transaction follows), so the read, fn and the write are atomic per
 // batch on every engine and the once-only latches in batch.State hold
 // across processes.
+//
+//ds:def id=sql-batchstore-v9emeksp owner=@khanakia stability=stable
 type BatchStore struct{ c *Client }
 
 var (
@@ -30,6 +32,8 @@ var (
 // BatchStore returns the batch.Store kept in this client's tables. It
 // needs Migrate, nothing else: it works before Start and with no workflow
 // registered.
+//
+//ds:def id=sql-client-batchstore-m5rnk82w owner=@khanakia stability=stable
 func (c *Client) BatchStore() *BatchStore { return &BatchStore{c: c} }
 
 // Create implements batch.Store. An existing ID is an error.
@@ -69,6 +73,8 @@ func (b *BatchStore) read(ctx context.Context, x sqlb.DBTX, id batch.ID) (batch.
 
 // Update implements batch.Store: lock, read, apply fn, write, in one
 // transaction. When fn fails nothing is written.
+//
+//ds:def id=sql-batchstore-update-ghu229dr owner=@khanakia stability=stable
 func (b *BatchStore) Update(ctx context.Context, id batch.ID, fn func(*batch.State) error) (batch.State, error) {
 	var out batch.State
 	err := b.c.st.tx(ctx, func(tx *sql.Tx) error {

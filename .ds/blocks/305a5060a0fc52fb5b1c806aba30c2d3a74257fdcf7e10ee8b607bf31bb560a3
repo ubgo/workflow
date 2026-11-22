@@ -1,0 +1,1 @@
+func (c *Client) UniqueStore() *UniqueStore { return &UniqueStore{st: c.st, clk: c.clk} }

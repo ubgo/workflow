@@ -1,0 +1,5 @@
+type Delivery struct {
+	Subscription string
+	Ref          workflow.RunRef
+	Err          error
+}

@@ -1,0 +1,73 @@
+func (c *Client) drain(ctx context.Context, settle bool) (workflow.DrainReport, error) {
+	c.mu.Lock()
+	if !c.started {
+		c.mu.Unlock()
+		return workflow.DrainReport{}, workflow.ErrNotStarted
+	}
+	if c.draining {
+		done := c.drainDone
+		c.mu.Unlock()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// This call's own deadline is over, but the report belongs to
+			// the first drain, which ends within moments of its own ctx
+			// (a shared one included): give it a short while rather than
+			// return an empty report that reads as "nothing was cut".
+			select {
+			case <-done:
+			case <-time.After(drainJoinGrace):
+				return workflow.DrainReport{}, ctx.Err()
+			}
+		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.drainReport, c.drainErr
+	}
+	c.draining = true
+	c.drainDone = make(chan struct{})
+	sdk, ids, stop := c.sdk, c.workerIDs, c.stop
+	c.mu.Unlock()
+	if settle {
+		c.inflight.startRecording()
+	}
+	c.inflight.track.StartDrain()
+	for _, id := range ids {
+		if _, err := sdk.Workers().Pause(ctx, id); err != nil {
+			c.cfg.Logger.Error("hatchet driver: drain: pause worker", "worker", id, "error", err)
+		}
+	}
+	// Idle first: with the ctx already ended (a grace of zero) a select
+	// would pick either ready case at random and call a clean drain cut.
+	var ctxErr error
+	select {
+	case <-c.inflight.wait():
+	default:
+		select {
+		case <-c.inflight.wait():
+		case <-ctx.Done():
+			ctxErr = ctx.Err()
+		}
+	}
+	cut := c.inflight.track.Freeze(workflow.DrainEngineOwned)
+	if settle {
+		c.settleFinishedRuns(cut)
+	}
+	// Marked drained before the workers stop, so a caller woken by Done
+	// already gets ErrNotStarted from every call.
+	c.mu.Lock()
+	c.drained = true
+	c.mu.Unlock()
+	stop()
+	report := c.inflight.track.Seal()
+	err := workflow.DrainOutcome(report, ctxErr)
+	select {
+	case <-c.done:
+	case <-ctx.Done():
+	}
+	c.mu.Lock()
+	c.drainReport, c.drainErr = report, err
+	close(c.drainDone)
+	c.mu.Unlock()
+	return report, err
+}

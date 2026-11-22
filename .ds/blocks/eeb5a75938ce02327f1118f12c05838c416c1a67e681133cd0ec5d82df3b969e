@@ -1,0 +1,15 @@
+type Bus struct {
+	client    workflow.Client
+	signal    bool
+	allowDup  bool
+	newID     func() (string, error)
+	log       EventLog                 // WithLog; nil keeps no log
+	clk       clock.Clock              // WithClock; stamps log entries
+	versions  map[string]versionPolicy // WithUpcasters, by event name
+	correlate bool                     // WithCorrelation: stamp LabelCorrelation and LabelCausation
+	optErr    error                    // the first invalid option, returned by New
+
+	mu      sync.RWMutex
+	subs    []Subscription
+	cancels []CancelSubscription
+}

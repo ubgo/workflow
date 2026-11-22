@@ -1,0 +1,50 @@
+func TestPool_Unit(t *testing.T) {
+	store := middleware.NewMemoryUnique(nil)
+	ctx := guardStepCtx(workflow.StepInfo{Workflow: "w", Step: "render", RunID: "r1", Attempt: 1})
+	ran := 0
+	step := func(context.Context, []byte) ([]byte, error) { ran++; return nil, errors.New("render failed") }
+	pool := middleware.Pool(store, "gpu", 1, time.Minute, middleware.PoolRetry(250*time.Millisecond))
+
+	// Hold the only slot, as another worker would.
+	if ok, _ := store.Acquire(context.Background(), "pool/gpu/0", "other", time.Minute); !ok {
+		t.Fatal("setup acquire")
+	}
+	_, err := pool(step)(ctx, nil)
+	if d, ok := workflow.SnoozeDelay(err); !ok || d != 250*time.Millisecond || ran != 0 {
+		t.Fatalf("busy pool: %v (snooze %s %v), ran %d", err, d, ok, ran)
+	}
+	_, err = middleware.Pool(store, "gpu", 1, time.Minute, middleware.PoolRetryAfter())(step)(ctx, nil)
+	if d, ok := workflow.RetryAfterDelay(err, 1); !errors.Is(err, middleware.ErrPoolBusy) || !ok || d != middleware.DefaultPoolRetry {
+		t.Fatalf("busy pool with RetryAfter: %v", err)
+	}
+	if _, err := middleware.Pool(store, "gpu", 1, time.Minute, middleware.PoolSteps("other-step"))(step)(ctx, nil); ran != 1 || err == nil {
+		t.Fatalf("PoolSteps did not let an unnamed step through: ran %d", ran)
+	}
+	_ = store.Release(context.Background(), "pool/gpu/0", "other")
+
+	// A free slot runs the step and is free again after it, even on failure.
+	if _, err := pool(step)(ctx, nil); err == nil || ran != 2 {
+		t.Fatalf("free pool: %v, ran %d", err, ran)
+	}
+	if ok, _ := store.Acquire(context.Background(), "pool/gpu/0", "after", time.Minute); !ok {
+		t.Fatal("the slot was not released after the step")
+	}
+
+	for name, mw := range map[string]workflow.Middleware{
+		"no name":   middleware.Pool(store, "", 1, time.Minute),
+		"no slots":  middleware.Pool(store, "p", 0, time.Minute),
+		"no ttl":    middleware.Pool(store, "p", 1, 0),
+		"no store":  middleware.Pool(nil, "p", 1, time.Minute),
+		"cs no ttl": middleware.CriticalSection(store, "s", 0),
+	} {
+		if _, err := mw(step)(ctx, nil); !errors.Is(err, workflow.ErrInvalid) || !workflow.IsPermanent(err) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if _, err := middleware.Pool(failingUnique{}, "p", 1, time.Minute)(step)(ctx, nil); err == nil || workflow.IsPermanent(err) || ran != 2 {
+		t.Fatalf("store error: %v, ran %d", err, ran)
+	}
+	if _, err := middleware.CriticalSection(store, "s", time.Minute)(step)(context.Background(), nil); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Fatalf("critical section without StepInfo: %v", err)
+	}
+}

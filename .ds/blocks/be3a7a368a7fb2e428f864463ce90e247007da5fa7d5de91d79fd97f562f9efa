@@ -1,0 +1,1 @@
+func (v view) Rollback() error { v.c.open = false; return nil }

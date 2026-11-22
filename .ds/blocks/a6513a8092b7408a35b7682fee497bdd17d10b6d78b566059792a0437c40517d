@@ -1,0 +1,31 @@
+func (r *machineRun[D]) sendTimers() error {
+	if !r.m.timers {
+		return nil
+	}
+	now := r.m.clk.Now()
+	for _, n := range r.m.ordered {
+		seq, ok := r.rec.Entered[n.name]
+		if !r.active[n] || !ok || seq <= r.seq0 {
+			continue
+		}
+		for i, tm := range r.m.spec.States[n.spec].After {
+			call := machineCall{Event: tm.Event, Timer: &machineTimer{State: n.name, Seq: seq, Index: i}}
+			payload, err := encodeJSON("machine timer", call)
+			if err != nil {
+				return err
+			}
+			sum := sha256.Sum256([]byte(r.m.spec.Name + "\x00" + r.key + "\x00" + n.name + "\x00" + strconv.FormatUint(seq, 10) + "\x00" + strconv.Itoa(i)))
+			job := Job{
+				Workflow:       r.m.spec.Name,
+				Payload:        payload,
+				RunAt:          now.Add(tm.Delay),
+				IdempotencyKey: "machine-timer/" + hex.EncodeToString(sum[:16]),
+				Labels:         map[string]string{LabelObjectKey: r.key},
+			}
+			if _, err := r.m.spec.Client.Enqueue(AllowReservedLabels(r.ctx, LabelObjectKey), job); err != nil && !errors.Is(err, ErrDuplicate) {
+				return fmt.Errorf("workflow: machine %q key %q: timer %d of %q: %w", r.m.spec.Name, r.key, i, n.name, err)
+			}
+		}
+	}
+	return nil
+}

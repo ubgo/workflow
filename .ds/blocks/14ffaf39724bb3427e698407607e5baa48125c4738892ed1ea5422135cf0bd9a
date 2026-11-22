@@ -1,0 +1,1 @@
+var ErrPollTimeout = fmt.Errorf("%w: poll", ErrTimeout)

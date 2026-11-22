@@ -94,6 +94,7 @@ var snoozeCases = []testCase{
 	}},
 }
 
+//ds:def id=workflowtest-heartbeatcases-gas246d5 owner=@khanakia stability=stable
 var heartbeatCases = []testCase{
 	{"an attempt that stops beating fails with ErrHeartbeatTimeout", func(e *env) {
 		e.need(workflow.CapHeartbeat)
@@ -600,6 +601,7 @@ var cancelStepCases = []testCase{
 	}},
 }
 
+//ds:def id=workflowtest-progresscases-4vv5huqs owner=@khanakia stability=stable
 var progressCases = []testCase{
 	{"progress reported by a step is kept with the run", func(e *env) {
 		e.need(workflow.CapRunQuery)
@@ -689,6 +691,7 @@ var lifecycleEventCases = []testCase{
 	}},
 }
 
+//ds:def id=workflowtest-outcomecases-fqks4apg owner=@khanakia stability=stable
 var outcomeCases = []testCase{
 	{"Enqueue reports a new run and a duplicate", func(e *env) {
 		e.need(workflow.CapIdempotencyKey)
@@ -766,6 +769,7 @@ var runErrorCases = []testCase{
 	}},
 }
 
+//ds:def id=workflowtest-reservedlabelcases-m7p7wb5d owner=@khanakia stability=stable
 var reservedLabelCases = []testCase{
 	{"a plain Enqueue cannot set a reserved label", func(e *env) {
 		var c counter
@@ -786,6 +790,8 @@ var reservedLabelCases = []testCase{
 }
 
 // p5Groups are the conformance groups of the p5 contracts, in Run order.
+//
+//ds:def id=workflowtest-p5groups-svs5kb3f owner=@khanakia stability=stable
 var p5Groups = []suiteGroup{
 	{"snooze", snoozeCases},
 	{"heartbeat", heartbeatCases},

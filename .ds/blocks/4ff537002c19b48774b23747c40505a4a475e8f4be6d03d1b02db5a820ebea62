@@ -1,0 +1,11 @@
+func (r *run) readyLocked(s workflow.Step) bool {
+	if _, done := r.outputs[s.Name]; done {
+		return false
+	}
+	for _, p := range s.After {
+		if _, ok := r.outputs[p]; !ok {
+			return false
+		}
+	}
+	return true
+}

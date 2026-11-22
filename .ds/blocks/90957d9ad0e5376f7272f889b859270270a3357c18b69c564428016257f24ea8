@@ -1,0 +1,32 @@
+func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, ok := c.runs[run]
+	if !ok || r.status.IsTerminal() {
+		return nil, nil
+	}
+	type found struct {
+		seq uint64
+		sig workflow.RunSignal
+	}
+	var all []found
+	for _, name := range names {
+		for _, sg := range c.signals[eventKey{name: name, key: workflow.RunKey(run)}] {
+			if sg.seq > r.seq && !r.consumed[sg.seq] {
+				all = append(all, found{sg.seq, workflow.RunSignal{ID: strconv.FormatUint(sg.seq, 10), Name: name, Payload: sg.payload}})
+			}
+		}
+	}
+	slices.SortFunc(all, func(a, b found) int { return cmp.Compare(a.seq, b.seq) })
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+	out := make([]workflow.RunSignal, len(all))
+	for i, f := range all {
+		out[i] = f.sig
+	}
+	return out, nil
+}

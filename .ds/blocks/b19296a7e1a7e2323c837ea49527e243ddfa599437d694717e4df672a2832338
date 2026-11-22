@@ -1,0 +1,11 @@
+func (a *Admin) QueueDepths(ctx context.Context) (map[string]int64, error) {
+	rep, err := a.QueueStats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(rep.Queues))
+	for _, s := range rep.Queues {
+		out[s.Queue] = int64(s.Depth)
+	}
+	return out, nil
+}

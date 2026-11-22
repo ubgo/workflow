@@ -1,0 +1,3 @@
+func DisableCountFinal(policy workflow.RetryPolicy) AutoDisableOption {
+	return func(c *autoDisableConfig) { c.final = &policy }
+}

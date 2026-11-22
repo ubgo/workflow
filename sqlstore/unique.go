@@ -35,6 +35,8 @@ import (
 //
 // The struct type is not named in middleware: the module's core cannot
 // import sqlstore, so the interface is satisfied structurally.
+//
+//ds:def id=sql-uniquestore-u4xwy2j4 owner=@khanakia stability=stable
 type UniqueStore struct {
 	st  *store
 	clk clock.Clock
@@ -44,6 +46,8 @@ type UniqueStore struct {
 // Options, WithTablePrefix (default "wf_", same rules as New) and WithClock
 // (expiry; default clock.Real) apply; the others configure a Client and
 // are ignored. Call Migrate before the first Acquire.
+//
+//ds:def id=sql-newuniquestore-65hb2yyu owner=@khanakia stability=stable
 func NewUniqueStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*UniqueStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -54,11 +58,15 @@ func NewUniqueStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*UniqueStore, e
 
 // UniqueStore returns the lock store in this client's database, prefix and
 // scheduling clock. Client.Migrate creates its table.
+//
+//ds:def id=sql-client-uniquestore-k86jhwu9 owner=@khanakia stability=stable
 func (c *Client) UniqueStore() *UniqueStore { return &UniqueStore{st: c.st, clk: c.clk} }
 
 // Migrate creates the lock table (its own migration list, under the same
 // ledger and lock as Client.Migrate), and nothing else, so a database with
 // no sqlstore queue gets only this table.
+//
+//ds:def id=sql-uniquestore-migrate-y9u8ckrz owner=@khanakia stability=stable
 func (u *UniqueStore) Migrate(ctx context.Context) error {
 	return u.st.migrate(ctx, u.st.uniqueMigrations())
 }
@@ -85,6 +93,7 @@ func (u *UniqueStore) Acquire(ctx context.Context, key, owner string, ttl time.D
 	return ok, err
 }
 
+//ds:def id=sql-uniquestore-acquireonce-nrwb8u2g owner=@khanakia stability=stable
 func (u *UniqueStore) acquireOnce(ctx context.Context, key, owner string, ttl time.Duration) (bool, error) {
 	now := u.clk.Now()
 	h, expires := keyHash(key), now.Add(ttl).UnixNano()
@@ -119,6 +128,8 @@ func (u *UniqueStore) Release(ctx context.Context, key, owner string) error {
 // PruneExpired deletes every expired lock and returns how many. Expired
 // rows never block an Acquire, so this only bounds the table's size; a
 // running Client does it on its dispatcher's prune.
+//
+//ds:def id=sql-uniquestore-pruneexpired-3k6mfgct owner=@khanakia stability=stable
 func (u *UniqueStore) PruneExpired(ctx context.Context) (int64, error) {
 	n, err := u.st.execN(ctx, u.st.db, "DELETE FROM {unique_locks} WHERE expires <= ?", u.clk.Now().UnixNano())
 	if err != nil {

@@ -1,0 +1,1 @@
+func WithSignal() Option { return func(b *Bus) { b.signal = true } }

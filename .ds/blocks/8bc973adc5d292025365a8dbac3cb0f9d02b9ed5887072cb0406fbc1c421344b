@@ -1,0 +1,29 @@
+type RaceSpec struct {
+	// Name is the name of the join step carrying the chosen branch's
+	// output; later steps put it in After. The wait step is
+	// "<Name>.wait".
+	Name string
+
+	// After lists the steps the race waits for before it starts waiting.
+	After []string
+
+	// Event is the event name every competitor signals.
+	Event string
+
+	// Key or KeyFrom pick the run, as in WaitSpec; OwnRun races on the
+	// signals addressed to the run itself (SignalChoiceRun; needs
+	// CapWaitOwnRun).
+	Key     string
+	KeyFrom ConcurrencyKey
+	OwnRun  bool
+
+	// Timeout bounds the wait (WaitSpec.Timeout); zero waits forever. A
+	// timeout fails the run with ErrWaitTimeout. To give the race a
+	// default branch instead, have a delayed job send SignalChoice for it
+	// at the deadline: it simply loses when someone decided first.
+	Timeout time.Duration
+
+	// Branches are the paths. A branch receives the payload its signal
+	// carried.
+	Branches []Branch
+}

@@ -23,6 +23,8 @@ var errOutageStatuses = []string{"got status 502", "got status 503", "got status
 // err" and marks it workflow.Unavailable when the engine could not be
 // reached (isUnavailable), so a failover client or a caller can tell an
 // outage from a refusal without parsing this driver's messages.
+//
+//ds:def id=hatchet-engineerr-ungnu8e7 owner=@khanakia stability=stable
 func engineErr(err error, format string, args ...any) error {
 	wrapped := fmt.Errorf("hatchet driver: "+format+": %w", append(args, err)...)
 	if isUnavailable(err) {
@@ -37,6 +39,8 @@ func engineErr(err error, format string, args ...any) error {
 // 502, 503 or 504. The caller's own cancellation or deadline is never an
 // outage: the engine was not given the time to answer, and treating it as
 // one would make a failover client retry a request its caller abandoned.
+//
+//ds:def id=hatchet-isunavailable-9ayj2mhx owner=@khanakia stability=stable
 func isUnavailable(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false

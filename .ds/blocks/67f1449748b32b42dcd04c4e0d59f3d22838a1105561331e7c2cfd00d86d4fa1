@@ -1,0 +1,17 @@
+func (f *Fake) Finish(ref workflow.RunRef, st workflow.Status) error {
+	if !st.IsTerminal() {
+		return fmt.Errorf("%w: Finish needs a terminal status, got %q", workflow.ErrInvalid, st)
+	}
+	if st == workflow.StatusDiscarded && !f.caps.Has(workflow.CapRunStates) {
+		return &workflow.UnsupportedError{Field: "Finish", Missing: workflow.CapRunStates,
+			Reason: "a driver without it reports a discarded run as StatusCancelled or StatusFailed (workflow.EndStatus)"}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	r, ok := f.byRef[ref]
+	if !ok {
+		return fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	f.finishLocked(r, st)
+	return nil
+}

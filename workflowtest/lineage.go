@@ -31,6 +31,8 @@ import (
 //
 // a and b are two handles on the same backing data (two processes); pass
 // the same store twice for an in-process one. The store must start empty.
+//
+//ds:def id=workflowtest-lineagestorecontract-u8kuk8pt owner=@khanakia stability=stable
 func LineageStoreContract(t *testing.T, a, b events.LineageStore) {
 	t.Helper()
 	ctx := context.Background()
@@ -235,6 +237,8 @@ func LineageStoreContract(t *testing.T, a, b events.LineageStore) {
 // registered; it is called twice. The clients must deduplicate by
 // idempotency key across each other (CapIdempotencyKey), as two
 // processes on one database or Redis do.
+//
+//ds:def id=workflowtest-datasetssharedlineage-7mgupked owner=@khanakia stability=stable
 func DatasetsSharedLineage(t *testing.T, start func(t *testing.T, wfs ...workflow.Workflow) workflow.Client, la, lb events.LineageStore) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

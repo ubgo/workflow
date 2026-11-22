@@ -16,6 +16,8 @@ import (
 // core defines except CapRunFinished. It refuses nothing because it runs
 // nothing, but it implements no RunNotifier, and no run of it ever ends,
 // so claiming guaranteed run-finished delivery would be false.
+//
+//ds:def id=workflowtest-allcaps-mpwq2a5e owner=@khanakia stability=stable
 var allCaps = workflow.CapsOf(
 	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
 	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
@@ -37,6 +39,8 @@ var allCaps = workflow.CapsOf(
 //
 // A Recorder is safe for concurrent use. Jobs are copied on record, so a
 // caller reusing its Job or Labels map cannot change what was recorded.
+//
+//ds:def id=workflowtest-recorder-6gecgrkx owner=@khanakia stability=api
 type Recorder struct {
 	inner workflow.Client
 
@@ -62,6 +66,8 @@ type Recorder struct {
 // NewFake for a client that runs nothing, since it refuses what a real
 // driver refuses instead of claiming every capability. Wrapping a real
 // client with NewRecorder(inner) is fully supported.
+//
+//ds:def id=workflowtest-newrecorder-r3wxkycy owner=@khanakia stability=stable
 func NewRecorder(inner workflow.Client) *Recorder {
 	return &Recorder{inner: inner, Forward: workflow.Forward{Inner: inner}, refs: map[workflow.RunRef]bool{}, wfs: map[string]workflow.Workflow{}}
 }
@@ -110,6 +116,8 @@ func (r *Recorder) Start(ctx context.Context) error {
 // Enqueue enqueues through the inner client and records job when that
 // succeeds. The fake records every job and never runs it. A refused job is
 // not recorded: it was not enqueued.
+//
+//ds:def id=workflowtest-recorder-enqueue-khypubeh owner=@khanakia stability=stable
 func (r *Recorder) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if r.inner != nil {
 		ref, err := r.inner.Enqueue(ctx, job)
@@ -128,6 +136,8 @@ func (r *Recorder) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunR
 }
 
 // recordLocked stores a copy of job; r.mu must be held.
+//
+//ds:def id=workflowtest-recorder-recordlocked-qe4ah9xd owner=@khanakia stability=stable
 func (r *Recorder) recordLocked(job workflow.Job, ref workflow.RunRef) {
 	job.Payload = append([]byte(nil), job.Payload...)
 	if job.Labels != nil {
@@ -206,6 +216,8 @@ func (r *Recorder) Unschedule(ctx context.Context, id workflow.ScheduleID) error
 }
 
 // Capabilities is the inner client's; the fake claims every capability.
+//
+//ds:def id=workflowtest-recorder-capabilities-jq39gvkm owner=@khanakia stability=stable
 func (r *Recorder) Capabilities() workflow.Caps {
 	if r.inner != nil {
 		return r.inner.Capabilities()
@@ -219,6 +231,8 @@ func (r *Recorder) Capabilities() workflow.Caps {
 // always succeeds; the fake, or a Recorder over a client without
 // RunNotifier, answers with an UnsupportedError instead of silently
 // registering an observer that would never be called.
+//
+//ds:def id=workflowtest-recorder-onrunfinished-2jedux7k owner=@khanakia stability=stable
 func (r *Recorder) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	if rn, ok := r.inner.(workflow.RunNotifier); ok {
 		return rn.OnRunFinished(fn)
@@ -245,6 +259,8 @@ func (r *Recorder) jobsOf(wf string) []workflow.Job {
 }
 
 // AssertEnqueued fails t unless workflow wf was enqueued exactly n times.
+//
+//ds:def id=workflowtest-recorder-assertenqueued-6ndrcsz7 owner=@khanakia stability=stable
 func (r *Recorder) AssertEnqueued(t testing.TB, wf string, n int) {
 	t.Helper()
 	if got := len(r.jobsOf(wf)); got != n {
@@ -253,6 +269,8 @@ func (r *Recorder) AssertEnqueued(t testing.TB, wf string, n int) {
 }
 
 // AssertNotEnqueued fails t if workflow wf was enqueued at all.
+//
+//ds:def id=workflowtest-recorder-assertnotenqueued-bc27xvdn owner=@khanakia stability=stable
 func (r *Recorder) AssertNotEnqueued(t testing.TB, wf string) {
 	t.Helper()
 	if got := len(r.jobsOf(wf)); got != 0 {
@@ -262,6 +280,8 @@ func (r *Recorder) AssertNotEnqueued(t testing.TB, wf string) {
 
 // AssertEnqueuedWith fails t unless at least one recorded job of workflow
 // wf satisfies match.
+//
+//ds:def id=workflowtest-recorder-assertenqueuedwith-suuf8zhc owner=@khanakia stability=stable
 func (r *Recorder) AssertEnqueuedWith(t testing.TB, wf string, match func(workflow.Job) bool) {
 	t.Helper()
 	jobs := r.jobsOf(wf)
@@ -272,6 +292,8 @@ func (r *Recorder) AssertEnqueuedWith(t testing.TB, wf string, match func(workfl
 }
 
 // AssertNothingEnqueued fails t if any job was enqueued.
+//
+//ds:def id=workflowtest-recorder-assertnothingenqueued-nq2qf6ag owner=@khanakia stability=stable
 func (r *Recorder) AssertNothingEnqueued(t testing.TB) {
 	t.Helper()
 	if jobs := r.Jobs(); len(jobs) != 0 {
@@ -290,6 +312,8 @@ func (r *Recorder) Workflow(name string) (workflow.Workflow, bool) {
 
 // Batches returns the batches whose jobs were enqueued through the
 // Recorder (see FakeBatch), as Fake.Batches does.
+//
+//ds:def id=workflowtest-recorder-batches-3m3dkbbs owner=@khanakia stability=stable
 func (r *Recorder) Batches() []FakeBatch { return batchesOf(r.Jobs()) }
 
 // AssertBatched fails t unless a batch matching every m was enqueued.
@@ -333,6 +357,8 @@ func (r *Recorder) AssertChained(t testing.TB, wf string, steps ...string) {
 // Retry retries through the inner client's workflow.RunRetrier and
 // records ref when that succeeds; the fake, or an inner client without
 // it, refuses with an UnsupportedError.
+//
+//ds:def id=workflowtest-recorder-retry-axyjxfka owner=@khanakia stability=stable
 func (r *Recorder) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	got, err := r.Forward.Retry(ctx, ref)
 	if err == nil {
@@ -346,6 +372,8 @@ func (r *Recorder) Retry(ctx context.Context, ref workflow.RunRef) (workflow.Run
 // Delete deletes through the inner client's workflow.RunDeleter and
 // records ref when that succeeds; the fake, or an inner client without
 // it, refuses with an UnsupportedError.
+//
+//ds:def id=workflowtest-recorder-delete-h378zgef owner=@khanakia stability=stable
 func (r *Recorder) Delete(ctx context.Context, ref workflow.RunRef) error {
 	err := r.Forward.Delete(ctx, ref)
 	if err == nil {
@@ -395,6 +423,7 @@ func (r *Recorder) AssertNotPaused(t testing.TB, target workflow.PauseTarget) {
 	r.assertPaused(t, target, false)
 }
 
+//ds:def id=workflowtest-recorder-assertpaused-upbe9ctg owner=@khanakia stability=stable
 func (r *Recorder) assertPaused(t testing.TB, target workflow.PauseTarget, want bool) {
 	t.Helper()
 	ps, err := r.Paused(context.Background())
@@ -408,6 +437,8 @@ func (r *Recorder) assertPaused(t testing.TB, target workflow.PauseTarget, want 
 // AssertEnqueuedOn fails t unless a job of workflow wf matching every m
 // was enqueued to run on queue (workflow.EffectiveQueue), as
 // Fake.AssertEnqueuedOn does.
+//
+//ds:def id=workflowtest-recorder-assertenqueuedon-dstrrvqy owner=@khanakia stability=stable
 func (r *Recorder) AssertEnqueuedOn(t testing.TB, queue, wf string, m ...JobMatcher) {
 	t.Helper()
 	def, _ := r.Workflow(wf)

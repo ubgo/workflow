@@ -1,0 +1,6 @@
+func (f Forward) SignalRun(ctx context.Context, ref RunRef, ev Event) error {
+	if rs, ok := f.Inner.(RunSignaller); ok {
+		return rs.SignalRun(ctx, ref, ev)
+	}
+	return errNoRunSignaller
+}

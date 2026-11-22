@@ -1,0 +1,13 @@
+func (e *RunError) Describe() string {
+	msg := fmt.Sprintf("workflow %q run %s", e.Workflow, e.RunID)
+	if e.Step != "" {
+		msg += fmt.Sprintf(" step %q", e.Step)
+	}
+	if e.Attempt > 0 {
+		msg += fmt.Sprintf(" attempt %d", e.Attempt)
+	}
+	if e.Err != nil {
+		msg += ": " + e.Err.Error()
+	}
+	return msg
+}

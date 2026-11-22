@@ -10,6 +10,8 @@ import (
 )
 
 // StuckEvent reports a step attempt that has run longer than expected.
+//
+//ds:def id=mw-stuckevent-n66r46ex owner=@khanakia stability=stable
 type StuckEvent struct {
 	// Info is the attempt (workflow, step, run, attempt, node).
 	Info workflow.StepInfo
@@ -20,6 +22,8 @@ type StuckEvent struct {
 }
 
 // StuckConfig configures Stuck.
+//
+//ds:def id=mw-stuckconfig-87e429ef owner=@khanakia stability=stable
 type StuckConfig struct {
 	// After is how long an attempt of a step may run before it counts as
 	// stuck; zero or less means never. Nil means Default for every step.
@@ -43,6 +47,8 @@ type StuckConfig struct {
 // since it wraps the step in the process running it. A config without
 // OnStuck, or with neither After nor a positive Default, fails every
 // step with ErrInvalid rather than watching nothing.
+//
+//ds:def id=mw-stuck-e9cdc6mj owner=@khanakia stability=stable
 func Stuck(cfg StuckConfig) workflow.Middleware {
 	clk := cfg.Clock
 	if clk == nil {

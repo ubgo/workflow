@@ -1,0 +1,23 @@
+func (c *Client) evaluateKeys(ctx context.Context, tx *sql.Tx, reg *registered, r *runRow) error {
+	if r.rateKeys != unevaluatedKeys {
+		return nil
+	}
+	job, err := r.job()
+	if err != nil {
+		c.log.Error("sqlstore: run keys evaluated without labels", "run", r.id, "error", err)
+	}
+	bucket, rk, err := runKeys(reg, job)
+	if err != nil {
+		return err
+	}
+	if _, err := c.st.exec(ctx, tx, "UPDATE {runs} SET bucket = ?, rate_keys = ? WHERE id = ? AND rate_keys = ?",
+		bucket, rk, r.id, unevaluatedKeys); err != nil {
+		return err
+	}
+	if _, err := c.st.exec(ctx, tx, "UPDATE {run_ext} SET queue = ? WHERE run_id = ? AND queue = ''",
+		workflow.EffectiveQueue(reg.wf, workflow.Job{}), r.id); err != nil {
+		return err
+	}
+	r.bucket, r.rateKeys = bucket, rk
+	return nil
+}

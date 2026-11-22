@@ -1,0 +1,17 @@
+func (c *Client) onRef(ref workflow.RunRef, fn func(Side, workflow.Client, workflow.RunRef) error) error {
+	s, inner, ok := decodeRef(ref)
+	if !ok {
+		return fmt.Errorf("%w: cutover: run ref %+v names two backends", workflow.ErrNotFound, ref)
+	}
+	if s != "" {
+		return fn(s, c.backend(s), inner)
+	}
+	oerr := fn(SideOld, c.old, inner)
+	if !errors.Is(oerr, workflow.ErrNotFound) {
+		return oerr
+	}
+	if nerr := fn(SideNew, c.new, inner); !errors.Is(nerr, workflow.ErrNotFound) {
+		return nerr
+	}
+	return oerr
+}

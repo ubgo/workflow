@@ -1,0 +1,11 @@
+func batchJob(labels map[string]string) (ID, int, bool) {
+	id, idx := labels[LabelBatch], labels[LabelIndex]
+	if id == "" || idx == "" {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(idx)
+	if err != nil {
+		return "", 0, false
+	}
+	return ID(id), n, true
+}

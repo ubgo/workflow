@@ -1,0 +1,9 @@
+type MilestoneOptions struct {
+	// Poll is the snooze between looks while the run is not in the
+	// wanted state; zero means DefaultMilestonePoll. Ignored with Skip.
+	Poll time.Duration
+
+	// Skip, when true, makes the step return its input unchanged at once
+	// when the run is not in the wanted state, instead of waiting for it.
+	Skip bool
+}

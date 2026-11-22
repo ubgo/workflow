@@ -1,0 +1,7 @@
+type File struct {
+	// Name is the file name the format expects ("report.timer",
+	// "com.example.report.plist"); the directory is the app's choice.
+	Name string
+	// Data is the file's contents.
+	Data []byte
+}

@@ -1,0 +1,7 @@
+func SnoozeDelay(err error) (time.Duration, bool) {
+	var s *snoozeError
+	if errors.As(err, &s) {
+		return s.d, true
+	}
+	return 0, false
+}

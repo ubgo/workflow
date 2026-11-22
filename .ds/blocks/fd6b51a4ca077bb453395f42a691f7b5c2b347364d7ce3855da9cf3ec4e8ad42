@@ -1,0 +1,27 @@
+var forceScript = goredis.NewScript(luaPrelude + `
+local b, id, mode = ARGV[1], ARGV[2], ARGV[3]
+local key = rk(b, id)
+local st = redis.call('HGET', key, 'status')
+if not st then return 'notfound' end
+if mode == 'complete' then
+  if terminal(st) and st ~= 'failed' then return st end
+  redis.call('HSET', key, 'status', 'succeeded', 'err', '', 'fstep', '', 'forced', '')
+else
+  if terminal(st) then return st end
+  redis.call('HSET', key, 'status', 'failed', 'err', ARGV[5], 'forced', '1')
+end
+redis.call('HSET', key, 'finished', ARGV[4], 'owner', '')
+if st == 'failed' then
+  -- already ended: only the end is recorded again for observers
+  redis.call('ZADD', b .. ':ended:' .. redis.call('HGET', key, 'wf'), 0, id)
+else
+  ended(b, id, ARGV[6])
+end
+if mode == 'complete' and #ARGV > 7 then
+  create_idem(b, ARGV[7], ARGV, 8)
+  redis.call('HSET', key, 'chain', '')
+  redis.call('PUBLISH', b .. ':wake', 'e')
+end
+redis.call('PUBLISH', b .. ':wake', 'f:' .. id)
+return 'ok'
+`)

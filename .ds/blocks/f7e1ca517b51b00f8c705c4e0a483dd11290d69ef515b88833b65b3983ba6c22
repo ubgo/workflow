@@ -1,0 +1,8 @@
+type PayloadTooLargeError struct {
+	Workflow string
+	Size     int
+	Limit    int
+	// Source says whose limit it is ("driver", "middleware", or a driver
+	// name).
+	Source string
+}

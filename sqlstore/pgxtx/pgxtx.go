@@ -39,6 +39,8 @@ import (
 // Querier is what Run needs from a pgx transaction: pgx.Tx satisfies it,
 // and so do *pgx.Conn and a pgxpool connection, for an app that manages
 // its transaction with BEGIN itself.
+//
+//ds:def id=pgxtx-querier-uhw2kjfc owner=@khanakia stability=stable
 type Querier interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -50,6 +52,8 @@ var ErrUnsupported = errors.New("pgxtx: not supported on a pgx transaction view"
 
 // Run calls fn with a *sql.Tx whose statements run on tx, and returns fn's
 // error. It neither commits nor rolls back tx.
+//
+//ds:def id=pgxtx-run-e5kbumn5 owner=@khanakia stability=stable
 func Run(ctx context.Context, tx Querier, fn func(*sql.Tx) error) error {
 	if tx == nil || fn == nil {
 		return errors.New("pgxtx: Run needs a transaction and a function")
@@ -131,9 +135,14 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 }
 
 // view is the database/sql transaction handle: ending it ends nothing.
+//
+//ds:def id=pgxtx-view-nzqtvwgb owner=@khanakia stability=stable
 type view struct{ c *conn }
 
-func (v view) Commit() error   { v.c.open = false; return nil }
+//ds:def id=pgxtx-view-commit-qz87sha9 owner=@khanakia stability=stable
+func (v view) Commit() error { v.c.open = false; return nil }
+
+//ds:def id=pgxtx-view-rollback-2sxupacc owner=@khanakia stability=stable
 func (v view) Rollback() error { v.c.open = false; return nil }
 
 func values(args []driver.NamedValue) []any {

@@ -1,0 +1,3 @@
+func (rc *ReplayCtx) SleepUntil(name string, t time.Time) error {
+	return rc.sleep("sleep", name, func() time.Time { return t })
+}

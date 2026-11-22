@@ -1,0 +1,7 @@
+func NewFunc[In any](name string, fn func(ctx context.Context, in In) error, opts ...FuncOption) Func[In] {
+	f := Func[In]{name: name, fn: fn}
+	for _, o := range opts {
+		o(&f.cfg)
+	}
+	return f
+}

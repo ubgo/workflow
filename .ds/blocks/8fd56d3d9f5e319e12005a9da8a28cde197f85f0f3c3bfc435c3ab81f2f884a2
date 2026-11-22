@@ -1,0 +1,13 @@
+func New(hub *sentrygo.Hub, opts ...Option) *Reporter {
+	r := &Reporter{
+		hub:         hub,
+		labels:      map[string]bool{},
+		final:       sentrygo.LevelError,
+		attempt:     sentrygo.LevelWarning,
+		fingerprint: DefaultFingerprint,
+	}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
+}

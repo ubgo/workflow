@@ -1,0 +1,18 @@
+func (c *Client) checkKeyFree(ctx context.Context, sdk *hatchetsdk.Client, key, self string) error {
+	if key == "" || !strings.Contains(key, idemKeySep+idemKindCaller+idemKeySep) {
+		return nil
+	}
+	filter := []string{metaIdempotencyKey + ":" + key}
+	live := []rest.V1TaskStatus{rest.V1TaskStatusQUEUED, rest.V1TaskStatusRUNNING}
+	since := time.Now().Add(-c.cfg.IdempotencyMaxHold)
+	rows, err := c.listRuns(ctx, rest.V1WorkflowRunListParams{Since: since, Statuses: &live, AdditionalMetadata: &filter})
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if id := r.WorkflowRunExternalId.String(); id != self && metadataString(r.AdditionalMetadata, metaIdempotencyKey) == key {
+			return fmt.Errorf("%w: run %s holds the key", workflow.ErrDuplicate, id)
+		}
+	}
+	return nil
+}

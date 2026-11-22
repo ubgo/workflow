@@ -1,0 +1,3 @@
+func WithQueues(qs ...workflow.QueueConfig) Option {
+	return func(c *Client) { c.queues = append(c.queues, qs...) }
+}

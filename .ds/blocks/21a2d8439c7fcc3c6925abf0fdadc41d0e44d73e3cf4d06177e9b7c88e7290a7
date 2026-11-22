@@ -1,0 +1,60 @@
+func (b *Bus) Publish(ctx context.Context, m Message) (Published, error) {
+	if m.Name == "" {
+		return Published{}, fmt.Errorf("%w: events: message has no Name", workflow.ErrInvalid)
+	}
+	if err := workflow.ValidateLabels(m.Labels); err != nil {
+		return Published{}, err
+	}
+	if err := b.checkVersion(m); err != nil {
+		return Published{}, err
+	}
+	if err := b.checkChain(m); err != nil {
+		return Published{}, err
+	}
+	if m.ID == "" {
+		id, err := b.newID()
+		if err != nil {
+			return Published{}, fmt.Errorf("events: new message ID: %w", err)
+		}
+		m.ID = id
+	}
+	if b.correlate {
+		m = resolveChain(ctx, m)
+	}
+	if b.log != nil {
+		if err := b.log.Append(ctx, cloneMessage(m), b.clk.Now()); err != nil {
+			return Published{ID: m.ID}, fmt.Errorf("events: log message %q: %w", m.ID, err)
+		}
+	}
+	m, err := b.upcast(m)
+	if err != nil {
+		return Published{ID: m.ID}, err
+	}
+	b.mu.RLock()
+	subs := slices.Clone(b.subs)
+	cancels := slices.Clone(b.cancels)
+	b.mu.RUnlock()
+
+	out := Published{ID: m.ID}
+	var errs []error
+	out.Cancellations, errs = b.runCancels(ctx, cancels, m)
+	for _, s := range subs {
+		if s.Event != m.Name || (s.Filter != nil && !s.Filter(m)) {
+			continue
+		}
+		ref, err := b.deliver(ctx, s, m, "")
+		if err != nil {
+			err = fmt.Errorf("events: subscription %q: %w", s.Name, err)
+			errs = append(errs, err)
+		}
+		out.Deliveries = append(out.Deliveries, Delivery{Subscription: s.Name, Ref: ref, Err: err})
+	}
+	if b.signal {
+		if err := b.client.Signal(ctx, workflow.Event{Name: m.Name, Key: m.Key, Payload: m.Payload}); err != nil {
+			errs = append(errs, fmt.Errorf("events: signal %q: %w", m.Name, err))
+		} else {
+			out.Signalled = true
+		}
+	}
+	return out, errors.Join(errs...)
+}

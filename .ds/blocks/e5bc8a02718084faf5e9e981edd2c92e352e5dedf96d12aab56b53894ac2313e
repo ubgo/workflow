@@ -1,0 +1,11 @@
+var callerFault = []error{
+	context.Canceled,
+	context.DeadlineExceeded,
+	workflow.ErrInvalid,
+	workflow.ErrUnsupported,
+	workflow.ErrNotFound,
+	workflow.ErrNotStarted,
+	workflow.ErrAlreadyStarted,
+	workflow.ErrDuplicate,
+	workflow.ErrCancelled,
+}

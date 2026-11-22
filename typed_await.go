@@ -10,6 +10,8 @@ import (
 // workflow (DE-17): the typed counterpart of Enqueue, with JobOf's
 // encoding. edit, when set, adjusts the job (labels, key, RunAt, queue)
 // before it is sent.
+//
+//ds:def id=enqueueof-4frkbajz owner=@khanakia stability=stable
 func EnqueueOf[T any](ctx context.Context, c Client, workflow string, v T, edit func(*Job)) (RunRef, error) {
 	job, err := JobOf(workflow, v)
 	if err != nil {
@@ -26,6 +28,8 @@ func EnqueueOf[T any](ctx context.Context, c Client, workflow string, v T, edit 
 // result. A result that does not decode into T is an error naming the
 // run; a run that did not succeed returns AwaitResult's error. It needs
 // CapResult, as AwaitResult does.
+//
+//ds:def id=awaitresultof-g3ndmqb7 owner=@khanakia stability=stable
 func AwaitResultOf[T any](ctx context.Context, c Client, ref RunRef, opts AwaitOptions) (T, error) {
 	var zero T
 	raw, err := AwaitResult(ctx, c, ref, opts)

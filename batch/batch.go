@@ -8,8 +8,9 @@
 // # How a batch learns that a job ended
 //
 // Through Sources (see Source), connected by Manager.Attach. Unless
-// WithCompletionSource names them, Attach picks them by what the client can
-// do:
+// WithCompletionSource names them (replacing the defaults; an empty one
+// means none, for an app that calls Manager.RunFinished itself), Attach
+// picks them by what the client can do:
 //
 //   - a client declaring workflow.CapRunFinished (the memory driver): the
 //     run-finished hook alone (HookSource), because every run end is
@@ -135,21 +136,28 @@ import (
 // job or a Batch.Labels carrying any label under that prefix with
 // workflow.ErrInvalid, rather than overwriting it.
 const (
+	//ds:def id=batch-labelbatch-qsurvmc8 owner=@khanakia stability=stable
 	LabelBatch = "workflow.batch.id"
+	//ds:def id=batch-labelindex-jtskuw4z owner=@khanakia stability=stable
 	LabelIndex = "workflow.batch.index"
 
 	// LabelAttempt is JobState.Attempt, put only on the run of a job that
 	// Manager.RetryFailed started again (attempt 1 and up); a run without
 	// it is attempt 0. A run end whose attempt is not the job's current
 	// one is ignored.
+	//ds:def id=batch-labelattempt-ppud3ep6 owner=@khanakia stability=stable
 	LabelAttempt = "workflow.batch.attempt"
 )
 
 // idBytes is the random length of a batch ID: 128 bits, so IDs made by
 // different processes sharing one Store do not collide.
+//
+//ds:def id=batch-idbytes-xvspfaku owner=@khanakia stability=stable
 const idBytes = 16
 
 // Batch is a group of jobs to run together.
+//
+//ds:def id=batch-batch-sbryq3mb owner=@khanakia stability=stable
 type Batch struct {
 	// Name is a human-readable name, shown in Progress.
 	Name string
@@ -198,6 +206,8 @@ type Batch struct {
 
 // Progress is a snapshot of a batch; it is also the payload of every
 // callback, as JSON.
+//
+//ds:def id=batch-progress-539fkcc8 owner=@khanakia stability=stable
 type Progress struct {
 	ID            ID     `json:"id"`
 	Name          string `json:"name,omitempty"`
@@ -214,9 +224,13 @@ type Progress struct {
 }
 
 // Processed is the number of jobs that have finished, in any status.
+//
+//ds:def id=batch-progress-processed-5vb2zg4h owner=@khanakia stability=stable
 func (p Progress) Processed() int { return p.Total - p.Pending }
 
 // Percent is Processed as a whole percentage of Total.
+//
+//ds:def id=batch-progress-percent-2e5q7usv owner=@khanakia stability=stable
 func (p Progress) Percent() int {
 	if p.Total == 0 {
 		return 0
@@ -255,7 +269,8 @@ type Manager struct {
 	pollEvery     time.Duration // interval of the default PollSource
 	callbackRetry time.Duration // claim length of a callback enqueue
 	manualRetry   bool          // no retry loop; the app calls RetryCallbacks
-	sources       []Source      // nil means defaultSources
+	sources       []Source      // the Sources WithCompletionSource named; used when sourcesSet
+	sourcesSet    bool          // WithCompletionSource was given; false means defaultSources
 	newID         func() (ID, error)
 	dispatchLease time.Duration // how long a dispatch may go without writing before a resumer takes over
 	resumable     bool          // keep job specs on the one-Enqueue-per-job path too
@@ -268,11 +283,15 @@ type Option func(*Manager)
 
 // WithClock sets the clock used for the CreatedAt, CancelledAt and
 // FinishedAt times. The default is clock.Real.
+//
+//ds:def id=batch-withclock-9hfgunah owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option { return func(m *Manager) { m.clk = c } }
 
 // WithLogger sets where the Manager reports what the run-finished hook
 // cannot return to anyone: a callback that failed to enqueue, a cancel that
 // failed. The default discards, as the drivers do.
+//
+//ds:def id=batch-withlogger-nd8ayt7j owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) Option {
 	return func(m *Manager) {
 		if l != nil {
@@ -285,15 +304,26 @@ func WithLogger(l *slog.Logger) Option {
 // default (see the package doc); the default is DefaultPollInterval. It
 // does not add a poller where the defaults would not; name PollSource in
 // WithCompletionSource for that.
+//
+//ds:def id=batch-withstatuspoll-yu9gvj3a owner=@khanakia stability=stable
 func WithStatusPoll(interval time.Duration) Option {
 	return func(m *Manager) { m.pollEvery = interval }
 }
 
 // WithCompletionSource replaces the default Sources with srcs, for example
 // a native engine feed, or HookSource plus PollSource on a client whose
-// hook is guaranteed but which the app wants double-checked.
+// hook is guaranteed but which the app wants double-checked. Name every
+// Source in one call: a later WithCompletionSource replaces an earlier
+// one. With no srcs Attach connects no Source at all, for an app that
+// reports run ends itself through Manager.RunFinished; leave the option
+// out to keep the defaults.
+//
+//ds:def id=batch-withcompletionsource-fedeg25x owner=@khanakia stability=stable
 func WithCompletionSource(srcs ...Source) Option {
-	return func(m *Manager) { m.sources = append(m.sources, srcs...) }
+	return func(m *Manager) {
+		m.sources = slices.Clone(srcs)
+		m.sourcesSet = true
+	}
 }
 
 // WithIDFunc makes batch IDs with fn instead of 128 random bits as hex,
@@ -304,6 +334,8 @@ func WithCompletionSource(srcs ...Source) Option {
 // the LabelBatch label and the callbacks' idempotency keys, so keep it to
 // characters the engine accepts in a label value. A nil fn keeps the
 // default.
+//
+//ds:def id=batch-withidfunc-a9ccxauz owner=@khanakia stability=stable
 func WithIDFunc(fn func() (ID, error)) Option {
 	return func(m *Manager) {
 		if fn != nil {
@@ -314,6 +346,8 @@ func WithIDFunc(fn func() (ID, error)) Option {
 
 // New returns a Manager that enqueues on client and keeps state in store.
 // Call Attach before client.Start so run ends reach the batch.
+//
+//ds:def id=batch-new-geazwpek owner=@khanakia stability=stable
 func New(client workflow.Client, store Store, opts ...Option) *Manager {
 	m := &Manager{client: client, store: store, clk: clock.Real{}, log: slog.New(slog.DiscardHandler), pollEvery: DefaultPollInterval, callbackRetry: DefaultCallbackRetry, dispatchLease: DefaultDispatchLease, newID: newID}
 	for _, o := range opts {
@@ -333,6 +367,8 @@ func New(client workflow.Client, store Store, opts ...Option) *Manager {
 // Dispatch holds a lease on the batch (WithDispatchLease) and renews it
 // with every saved ref. If the process dies part-way, another process's
 // Manager.ResumeDispatches finishes the dispatch once the lease has ended.
+//
+//ds:def id=batch-manager-dispatch-pdbtg7ks owner=@khanakia stability=stable
 func (m *Manager) Dispatch(ctx context.Context, b Batch) (ID, error) {
 	if err := checkBatch(b); err != nil {
 		return "", err
@@ -346,6 +382,8 @@ func (m *Manager) Dispatch(ctx context.Context, b Batch) (ID, error) {
 
 // checkBatch refuses a batch without jobs and app labels under the
 // reserved prefix.
+//
+//ds:def id=batch-checkbatch-3aj6zx3v owner=@khanakia stability=stable
 func checkBatch(b Batch) error {
 	if len(b.Jobs) == 0 {
 		return fmt.Errorf("%w: batch %q has no jobs", workflow.ErrInvalid, b.Name)
@@ -364,6 +402,8 @@ func checkBatch(b Batch) error {
 // checkJobs refuses batch jobs with labels under the reserved prefix or a
 // Job.Chain: a batch tracks one run per job, so a chain's later jobs
 // would run untracked.
+//
+//ds:def id=batch-checkjobs-kjz2x7m5 owner=@khanakia stability=stable
 func checkJobs(batch, what string, jobs []workflow.Job) error {
 	for i, job := range jobs {
 		if err := refuseBatchLabels(batch, what+strconv.Itoa(i), job.Labels); err != nil {
@@ -377,6 +417,8 @@ func checkJobs(batch, what string, jobs []workflow.Job) error {
 }
 
 // dispatch is Dispatch with the ID chosen; b has passed checkBatch.
+//
+//ds:def id=batch-manager-dispatch-6uvrxrj7 owner=@khanakia stability=stable
 func (m *Manager) dispatch(ctx context.Context, b Batch, id ID) (ID, error) {
 	if id == "" {
 		return "", fmt.Errorf("%w: batch %q: the ID function returned an empty ID", workflow.ErrInvalid, b.Name)
@@ -426,6 +468,8 @@ func (m *Manager) dispatch(ctx context.Context, b Batch, id ID) (ID, error) {
 
 // labelJobs copies jobs with the batch labels added, the first at index
 // first.
+//
+//ds:def id=batch-labeljobs-k5gb85qs owner=@khanakia stability=stable
 func labelJobs(id ID, first int, jobs []workflow.Job) []workflow.Job {
 	out := make([]workflow.Job, len(jobs))
 	for k, job := range jobs {
@@ -444,6 +488,8 @@ func labelJobs(id ID, first int, jobs []workflow.Job) []workflow.Job {
 // the prefix this package owns, with an error wrapping workflow.ErrInvalid
 // that names the batch, where the label was and the key. Keys are checked
 // in sorted order, so the error is the same on every call.
+//
+//ds:def id=batch-refusebatchlabels-68cnbjj7 owner=@khanakia stability=stable
 func refuseBatchLabels(batchName, where string, labels map[string]string) error {
 	for _, k := range slices.Sorted(maps.Keys(labels)) {
 		if strings.HasPrefix(k, workflow.LabelPrefixBatch) {
@@ -457,6 +503,8 @@ func refuseBatchLabels(batchName, where string, labels map[string]string) error 
 // would make a callback look like a job of the batch; nil for none.
 // Dispatch already refuses them, so this only guards a State written by
 // an older version or by hand.
+//
+//ds:def id=batch-callbacklabels-mz7rx2nn owner=@khanakia stability=stable
 func callbackLabels(labels map[string]string) map[string]string {
 	var out map[string]string
 	for k, v := range labels {
@@ -479,6 +527,8 @@ var errLeaseLost = errors.New("dispatch lease taken over by another process")
 // at a time with the ref saved before the next one starts. That order is
 // what lets a resumer know that only the first job without a ref may have
 // started. It ends by marking the batch dispatched.
+//
+//ds:def id=batch-manager-start-srx3z8d9 owner=@khanakia stability=stable
 func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflow.Job, idxs []int) error {
 	if len(idxs) == 0 {
 		return m.finishDispatch(ctx, id, owner)
@@ -495,7 +545,12 @@ func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflo
 	for k, i := range idxs {
 		ref, enqErr := m.client.Enqueue(owned(ctx), sub[k])
 		if enqErr != nil {
-			return errors.Join(fmt.Errorf("batch %s: enqueue job %d: %w", id, i, enqErr), m.abortJobs(ctx, id, owner, idxs[k:], nil))
+			// The failed Enqueue may have landed anyway (a timeout after
+			// the engine accepted the job), so its run is cancelled by
+			// the batch label where the client can (CapCancelAll); it is
+			// best effort, since a plain Enqueue error is no sign of a
+			// started run.
+			return errors.Join(fmt.Errorf("batch %s: enqueue job %d: %w", id, i, enqErr), m.abortJobs(ctx, id, owner, idxs[k:], nil, true))
 		}
 		saved, err := m.store.Update(ctx, id, func(s *State) error {
 			if err := m.renew(s, owner); err != nil {
@@ -515,7 +570,7 @@ func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflo
 		// stop enqueuing.
 		if saved.Cancelled {
 			cerr := m.cancelRun(ctx, saved.Jobs[i])
-			return errors.Join(cerr, m.abortJobs(ctx, id, owner, idxs[k+1:], nil))
+			return errors.Join(cerr, m.abortJobs(ctx, id, owner, idxs[k+1:], nil, false))
 		}
 	}
 	return m.finishDispatch(ctx, id, owner)
@@ -523,6 +578,8 @@ func (m *Manager) start(ctx context.Context, id ID, owner string, jobs []workflo
 
 // renew runs inside Store.Update: it refuses when owner no longer holds
 // the dispatch lease and otherwise extends it.
+//
+//ds:def id=batch-manager-renew-ryzvfrnq owner=@khanakia stability=stable
 func (m *Manager) renew(s *State, owner string) error {
 	if s.Dispatched || s.DispatchOwner != owner {
 		return errLeaseLost
@@ -550,8 +607,16 @@ func (m *Manager) finishDispatch(ctx context.Context, id ID, owner string) error
 // abortJobs ends a dispatch that failed: it saves refs[k] for idxs[k]
 // where a ref is known (a group that partly started), records the other
 // jobs of idxs as cancelled, cancels the batch, marks it dispatched and
-// carries out the effects (which cancel the started jobs).
-func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef) error {
+// carries out the effects (which cancel the started jobs). A group that
+// failed with no refs at all (GroupRunner allows it) may have started
+// some of idxs without telling which, so those children are cancelled by
+// their LabelBatch label (cancelUnplaced). landed says the first job of
+// idxs may have started without a ref (a per-job Enqueue that errored);
+// it is cancelled by label too, but only where the client can
+// (CapCancelAll), since an Enqueue error is usually no start at all.
+//
+//ds:def id=batch-manager-abortjobs-h5p9xpfp owner=@khanakia stability=stable
+func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef, landed bool) error {
 	var eff effects
 	var claimed []PendingCallback
 	st, err := m.store.Update(ctx, id, func(s *State) error {
@@ -576,7 +641,48 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 	if err != nil {
 		return fmt.Errorf("batch %s: abort dispatch: %w", id, err)
 	}
-	return m.apply(ctx, st, eff, claimed)
+	err = m.apply(ctx, st, eff, claimed)
+	switch {
+	case refs == nil && len(idxs) > 0 && st.Grouped:
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	case landed && m.canCancelByLabel():
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	}
+	return err
+}
+
+// canCancelByLabel reports whether cancelUnplaced can reach the client's
+// runs: a BulkCanceller with CapCancelAll.
+func (m *Manager) canCancelByLabel() bool {
+	_, ok := m.client.(workflow.BulkCanceller)
+	return ok && m.client.Capabilities().Has(workflow.CapCancelAll)
+}
+
+// cancelUnplaced cancels every unfinished run labelled with batch id, for
+// children a failed group started without returning their refs, and for
+// a per-job Enqueue that errored but may have landed. It needs
+// a BulkCanceller with CapCancelAll; without one the children cannot be
+// found, and the UnsupportedError returned says that they run on unseen
+// by the batch. Retrying is asked for only with CapRunStates, the status
+// a driver without it does not have (a run in backoff reads queued or
+// running there).
+//
+//ds:def id=batch-manager-cancelunplaced-4t7aybp3 owner=@khanakia stability=stable
+func (m *Manager) cancelUnplaced(ctx context.Context, id ID) error {
+	caps := m.client.Capabilities()
+	bc, ok := m.client.(workflow.BulkCanceller)
+	if !ok || !m.canCancelByLabel() {
+		return &workflow.UnsupportedError{Field: "batch abort", Missing: workflow.CapCancelAll,
+			Reason: "the group failed part-way without refs, so the children it started cannot be found to cancel and run on unseen by batch " + string(id)}
+	}
+	statuses := []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting}
+	if caps.Has(workflow.CapRunStates) {
+		statuses = append(statuses, workflow.StatusRetrying)
+	}
+	if _, err := bc.CancelAll(owned(ctx), workflow.RunQuery{Labels: map[string]string{LabelBatch: string(id)}, Statuses: statuses}); err != nil {
+		return fmt.Errorf("batch %s: cancel the children a failed group started: %w", id, err)
+	}
+	return nil
 }
 
 // Attach connects the Manager's Sources (see the package doc for the
@@ -586,9 +692,11 @@ func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int
 // sources such as the poller, and the retry loop, run until ctx is
 // cancelled; pass the ctx given to client.Start. An error
 // from any Source is returned and the Manager must not be used.
+//
+//ds:def id=batch-manager-attach-xnchrce9 owner=@khanakia stability=stable
 func (m *Manager) Attach(ctx context.Context) error {
 	srcs := m.sources
-	if srcs == nil {
+	if !m.sourcesSet {
 		srcs = m.defaultSources()
 	}
 	polled := false
@@ -621,6 +729,8 @@ func (m *Manager) observe(ctx context.Context, ev workflow.RunEvent) {
 // status. A run that is not a batch job, a non-terminal status, an unknown
 // batch, or a repeat for a job already recorded is ignored and returns nil,
 // so the hook can be wired to every run.
+//
+//ds:def id=batch-manager-runfinished-cfkbj5us owner=@khanakia stability=stable
 func (m *Manager) RunFinished(ctx context.Context, labels map[string]string, status workflow.Status) error {
 	id, idx, ok := batchJob(labels)
 	if !ok {
@@ -641,6 +751,8 @@ func (m *Manager) RunFinished(ctx context.Context, labels map[string]string, sta
 // another attempt than the job's current one (a late report of a run
 // RetryFailed replaced) changes nothing. The same Update claims the
 // batch's due pending callbacks, so a job end also retries them.
+//
+//ds:def id=batch-manager-record-b8sf5qgn owner=@khanakia stability=stable
 func (m *Manager) record(ctx context.Context, id ID, idx, attempt int, status workflow.Status) error {
 	if !status.IsTerminal() {
 		return nil
@@ -673,6 +785,8 @@ func (m *Manager) record(ctx context.Context, id ID, idx, attempt int, status wo
 // (JobState.Attempt): what a Source that learned a job's end by its ref,
 // not from the run's own labels, passes to RunFinished. LabelAttempt is
 // set only for attempt 1 and up, as on the runs.
+//
+//ds:def id=batch-joblabels-48uy5r4y owner=@khanakia stability=stable
 func JobLabels(id ID, idx, attempt int) map[string]string {
 	labels := map[string]string{LabelBatch: string(id), LabelIndex: strconv.Itoa(idx)}
 	if attempt > 0 {
@@ -681,6 +795,7 @@ func JobLabels(id ID, idx, attempt int) map[string]string {
 	return labels
 }
 
+//ds:def id=batch-batchjob-znu5danh owner=@khanakia stability=stable
 func batchJob(labels map[string]string) (ID, int, bool) {
 	id, idx := labels[LabelBatch], labels[LabelIndex]
 	if id == "" || idx == "" {
@@ -697,6 +812,8 @@ func batchJob(labels map[string]string) (ID, int, bool) {
 // Finally runs once the cancelled jobs report back. Cancelling a finished
 // or already cancelled batch is a no-op; an unknown ID returns an error
 // wrapping workflow.ErrNotFound.
+//
+//ds:def id=batch-manager-cancel-7v23p4bf owner=@khanakia stability=stable
 func (m *Manager) Cancel(ctx context.Context, id ID) error {
 	var eff effects
 	var claimed []PendingCallback
@@ -714,6 +831,8 @@ func (m *Manager) Cancel(ctx context.Context, id ID) error {
 
 // Progress returns a snapshot of the batch; an unknown ID returns an error
 // wrapping workflow.ErrNotFound.
+//
+//ds:def id=batch-manager-progress-etkyu46k owner=@khanakia stability=stable
 func (m *Manager) Progress(ctx context.Context, id ID) (Progress, error) {
 	st, err := m.store.Get(ctx, id)
 	if err != nil {
@@ -748,6 +867,7 @@ func (m *Manager) cancelRun(ctx context.Context, j JobState) error {
 	return m.client.Cancel(ctx, j.Ref)
 }
 
+//ds:def id=batch-newid-jj44pfd7 owner=@khanakia stability=stable
 func newID() (ID, error) {
 	b := make([]byte, idBytes)
 	if _, err := rand.Read(b); err != nil {

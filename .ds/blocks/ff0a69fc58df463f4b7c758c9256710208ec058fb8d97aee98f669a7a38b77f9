@@ -1,0 +1,6 @@
+type FakeFork struct {
+	// From is the forked run, Ref the fork.
+	From, Ref workflow.RunRef
+	Step      string
+	Opts      workflow.ForkOptions
+}

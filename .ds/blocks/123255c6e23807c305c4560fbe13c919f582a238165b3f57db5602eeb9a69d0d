@@ -1,0 +1,1 @@
+var ErrInboxLost = errors.New("workflow: inbox claim lost (its lease expired)")

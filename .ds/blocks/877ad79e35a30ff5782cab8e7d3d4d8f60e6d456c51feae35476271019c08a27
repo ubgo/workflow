@@ -1,0 +1,14 @@
+type Progress struct {
+	ID            ID     `json:"id"`
+	Name          string `json:"name,omitempty"`
+	Total         int    `json:"total"`
+	Pending       int    `json:"pending"`
+	Succeeded     int    `json:"succeeded"`
+	Failed        int    `json:"failed"`
+	CancelledJobs int    `json:"cancelledJobs"`
+	// Discarded counts the jobs that ended StatusDiscarded; each is also
+	// counted in the bucket Batch.DiscardedAs names.
+	Discarded int  `json:"discarded,omitempty"`
+	Cancelled bool `json:"cancelled"` // the batch itself was cancelled
+	Finished  bool `json:"finished"`  // every job is terminal
+}

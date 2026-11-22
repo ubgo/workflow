@@ -1,0 +1,30 @@
+func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Outbox, error) {
+	if d == nil {
+		return nil, fmt.Errorf("%w: the outbox needs a dialect", workflow.ErrInvalid)
+	}
+	o := &Outbox{db: db, d: d, engine: sqlb.DialectName(d), prefix: defaultTablePrefix, ids: DefaultIDGenerator,
+		clk: clock.Real{}, log: slog.New(slog.DiscardHandler)}
+	switch o.engine {
+	case sqlb.DialectPostgres, sqlb.DialectSQLite, sqlb.DialectMySQL:
+	default:
+		return nil, workflow.Unsupported("dialect "+o.engine, "the outbox runs on Postgres, SQLite and MySQL")
+	}
+	for _, opt := range opts {
+		opt(o)
+	}
+	if !prefixPattern.MatchString(o.prefix) {
+		return nil, fmt.Errorf("%w: table prefix %q must match %s", workflow.ErrInvalid, o.prefix, prefixPattern)
+	}
+	if o.schema != "" {
+		if o.engine != sqlb.DialectPostgres {
+			return nil, workflow.Unsupported("WithSchema on "+o.engine, "only Postgres has schemas inside a database; on MySQL point the pool at the database")
+		}
+		if !prefixPattern.MatchString(o.schema) {
+			return nil, fmt.Errorf("%w: schema %q must match %s", workflow.ErrInvalid, o.schema, prefixPattern)
+		}
+		o.table = d.QuoteIdent(o.schema) + "." + d.QuoteIdent(o.prefix+tableStem)
+	} else {
+		o.table = d.QuoteIdent(o.prefix + tableStem)
+	}
+	return o, nil
+}

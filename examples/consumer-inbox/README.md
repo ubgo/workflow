@@ -24,4 +24,6 @@ webhook:
   runs started: 1
 ```
 
+Each delivery claims its message ID first, and what the claim finds decides what [`InboxConsumer.Once`](ds:block?id=inboxconsumer-once-mta79w6e) does: [`InboxClaimed`](ds:block?id=inboxclaimed-pr3yk9gm) runs the handler and records the ID as done when it succeeds, or releases the claim when it fails, so the next delivery runs it again (`msg-2`); [`InboxDone`](ds:block?id=inboxdone-xysa8a3u) drops a redelivery without running anything (`msg-1`); [`InboxBusy`](ds:block?id=inboxbusy-qh2qbbhu), another worker holding an unexpired claim, returns [`ErrInboxBusy`](ds:block?id=errinboxbusy-qtu9arf9) so the broker, or the webhook sender after a 503, delivers it again later.
+
 The guide is [Idempotency keys › Drop redelivered messages with an inbox](../../docs/jobs/idempotency.md#drop-redelivered-messages-with-an-inbox).

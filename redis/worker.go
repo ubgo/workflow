@@ -93,9 +93,6 @@ var errRunTimeout = errors.New("redis: run timed out")
 // errLost is the context cause of a run whose lease this client lost.
 var errLost = errors.New("redis: lease lost; another client holds the run")
 
-// errStepTimeout is the context cause of an attempt past its timeout.
-var errStepTimeout = errors.New("redis: step attempt timed out")
-
 // worker claims and executes runs until the client stops or drains.
 func (c *Client) worker() {
 	defer c.wg.Done()
@@ -159,6 +156,8 @@ func (c *Client) claim() (*held, error) {
 // jitter source), so the first of them with ready work is chosen in
 // proportion to its weight; with every weight zero all ranks are equal
 // and the old strict order (Job.Priority, then age) holds.
+//
+//ds:def id=redis-client-queueargs-nt5jgqdy owner=@khanakia stability=stable
 func (c *Client) queueArgs() []any {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -211,6 +210,7 @@ func (c *Client) draw() float64 {
 	return rand.Float64()
 }
 
+//ds:def id=redis-client-claimonce-ej3apb8y owner=@khanakia stability=stable
 func (c *Client) claimOnce() (*held, error) {
 	token := c.newID()
 	args := []any{c.base, c.clk.Now().UnixMilli(), c.leaseClk.Now().UnixMilli(),
@@ -266,6 +266,8 @@ func (c *Client) doneInflight() {
 
 // execute runs a held run's steps round by round under a renewed lease,
 // recording each attempt, until the run ends or is handed back.
+//
+//ds:def id=redis-client-execute-bc3g3kyv owner=@khanakia stability=stable
 func (c *Client) execute(h *held) {
 	defer c.doneInflight()
 	stopBeat := c.heartbeat(h)
@@ -281,11 +283,19 @@ func (c *Client) execute(h *held) {
 		c.release(h, time.Time{}, "queued")
 		return
 	}
+	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
 	if h.reclaims > c.maxReclaims {
-		c.finish(h, workflow.StatusFailed, "", fmt.Errorf("%w: its lease expired %d times in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, c.maxReclaims))
+		times := "times"
+		if h.reclaims == 1 {
+			times = "time"
+		}
+		// Through the failure path, as sqlstore does: OnFailure runs with
+		// the input of the step the dead workers were running (ErrAbandoned
+		// is no timeout, so never OnTimeout).
+		step, in := c.current(h, job)
+		c.fail(h, step, in, fmt.Errorf("%w: its lease expired %d %s in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, times, c.maxReclaims))
 		return
 	}
-	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
 	for rounds := 0; ; rounds++ {
 		if c.gone(h) {
 			return
@@ -359,6 +369,8 @@ func (c *Client) held(h *held) bool {
 // gone reports whether the run must stop here without writing: it was
 // cancelled or its lease lost (the fence refuses writes anyway), or the
 // client stopped, in which case the run is handed back.
+//
+//ds:def id=redis-client-gone-n57pc29h owner=@khanakia stability=stable
 func (c *Client) gone(h *held) bool {
 	if c.isCrashed() {
 		return true
@@ -460,6 +472,8 @@ func (c *Client) plan(h *held, job workflow.Job, now time.Time) (planned, error)
 // wait is registered with its deadline (ns on the scheduling clock, 0 for
 // none) so Signal can resume the run. It returns errLost when the run is
 // no longer held.
+//
+//ds:def id=redis-client-beginwait-mchhz4sx owner=@khanakia stability=stable
 func (c *Client) beginWait(h *held, s workflow.Step, job workflow.Job, now time.Time) (out []byte, got bool, deadline int64, err error) {
 	if v, ok := h.waitVals[s.Name]; ok {
 		return v, true, 0, nil
@@ -736,6 +750,8 @@ func (c *Client) current(h *held, job workflow.Job) (string, []byte) {
 // attempt runs one step attempt with its timeout and heartbeat deadline
 // on the scheduling clock, under parent (the round's ctx). withdrawn
 // reports that CancelStep cancelled it.
+//
+//ds:def id=redis-client-attempt-46v4982x owner=@khanakia stability=stable
 func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []byte, attempt int, readyAt time.Time, edits *workflow.ChainEdits) (out []byte, err error, withdrawn bool) {
 	ctx := workflow.WithStepInfo(parent, workflow.StepInfo{
 		Workflow: h.wf, Step: s.Name, RunID: workflow.RunID(h.id), Attempt: attempt,
@@ -772,12 +788,20 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 		lastBeat.Store(c.clk.Now().UnixNano())
 		return c.renew(h)
 	}))
+	// The attempt's own deadlines cancel it with timeout errors, so
+	// context.Cause in the handler matches workflow.ErrStepTimeout or
+	// ErrHeartbeatTimeout; the driver tells them from any other cause by
+	// identity.
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("redis: step %q attempt %d after %s", s.Name, attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("redis: step %q attempt %d sent no heartbeat for %s", s.Name, attempt, s.HeartbeatTimeout))
 	if d > 0 {
 		tm := c.clk.NewTimer(d)
 		go func() {
 			select {
 			case <-tm.C():
-				cancel(errStepTimeout)
+				cancel(errStep)
 			case <-actx.Done():
 				tm.Stop()
 			}
@@ -796,30 +820,29 @@ func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []
 				}
 				since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
 				if since >= hb {
-					cancel(errHeartbeatTimeout)
+					cancel(errHeartbeat)
 					return
 				}
 				wait = hb - since
 			}
 		}()
 	}
-	out, err = safeCall(handler, actx, in)
+	// A tolerated step (WithRules) claims the attempt's timeout to keep its
+	// record; without a claim a timed-out attempt fails with the timeout.
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err = safeCall(handler, hctx, in)
 	switch cause := context.Cause(actx); {
-	case errors.Is(cause, errStepTimeout):
-		return nil, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrStepTimeout,
-			fmt.Sprintf("redis: step %q attempt %d after %s", s.Name, attempt, d)), context.DeadlineExceeded), false
-	case errors.Is(cause, errHeartbeatTimeout):
-		return nil, fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
-			fmt.Sprintf("redis: step %q attempt %d sent no heartbeat for %s", s.Name, attempt, s.HeartbeatTimeout)), context.DeadlineExceeded), false
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		return out, err, false
+	case cause == errStep:
+		return nil, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded), false
+	case cause == errHeartbeat:
+		return nil, fmt.Errorf("%w: %w", errHeartbeat, context.DeadlineExceeded), false
 	case errors.Is(cause, workflow.ErrStepCancelled):
 		return out, err, true
 	}
 	return out, err, false
 }
-
-// errHeartbeatTimeout is the context cause of an attempt that went
-// Step.HeartbeatTimeout without a heartbeat.
-var errHeartbeatTimeout = errors.New("redis: step attempt sent no heartbeat in time")
 
 // attemptRunning counts the attempts executing now (NodeInfo.Running).
 func (c *Client) attemptRunning(d int) {
@@ -868,6 +891,8 @@ func safeCall(h workflow.Handler, ctx context.Context, in []byte) (out []byte, e
 // heartbeat renews h's lease every third of the lease until stopped. A
 // renewal that finds the run cancelled or claimed by another client
 // cancels h's context, so its steps stop.
+//
+//ds:def id=redis-client-heartbeat-e3f2cx2w owner=@khanakia stability=stable
 func (c *Client) heartbeat(h *held) (stop func()) {
 	quit := make(chan struct{})
 	finished := make(chan struct{})
@@ -953,6 +978,8 @@ func (c *Client) save(h *held, progress bool) {
 }
 
 // release hands h back: ready now (zero wake) or at wake.
+//
+//ds:def id=redis-client-release-987rkrj5 owner=@khanakia stability=stable
 func (c *Client) release(h *held, wake time.Time, status string) {
 	due := int64(0)
 	if !wake.IsZero() {
@@ -989,6 +1016,8 @@ func (c *Client) handBack(h *held, due int64, status string) {
 
 // finish ends h with st. A succeeded run hands its chain on in the same
 // script.
+//
+//ds:def id=redis-client-finish-3awqe53u owner=@khanakia stability=stable
 func (c *Client) finish(h *held, st workflow.Status, failedStep string, cause error) {
 	if c.isCrashed() {
 		return

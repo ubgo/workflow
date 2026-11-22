@@ -1,0 +1,10 @@
+func SignalParent(ctx context.Context, client Client, name string, payload []byte) error {
+	parent, ok := ParentRun(ctx)
+	if !ok {
+		return Permanent(invalidf("SignalParent: the calling step's run has no parent (call it from a child run's step)"))
+	}
+	if err := SignalRun(ctx, client, RunRef{RunID: parent}, name, payload); err != nil {
+		return fmt.Errorf("workflow: signal parent %s: %w", parent, err)
+	}
+	return nil
+}

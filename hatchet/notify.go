@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,9 +43,11 @@ import (
 const (
 	// DefaultRunFinishedPoll is how often the notifier asks the engine for
 	// run ends.
+	//ds:def id=hatchet-defaultrunfinishedpoll-47nap6m3 owner=@khanakia stability=stable
 	DefaultRunFinishedPoll = time.Second
 	// DefaultRunFinishedWindow is how old an unfinished run may be and
 	// still be watched: runs created earlier are not tracked.
+	//ds:def id=hatchet-defaultrunfinishedwindow-eees2d36 owner=@khanakia stability=stable
 	DefaultRunFinishedWindow = 24 * time.Hour
 )
 
@@ -66,6 +69,8 @@ var (
 // OnRunFinished registers fn to observe the end of every run of a
 // registered workflow, best-effort (see notify.go). It returns
 // ErrAlreadyStarted after Start.
+//
+//ds:def id=hatchet-client-onrunfinished-ymfhyxkr owner=@khanakia stability=stable
 func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,6 +142,8 @@ func sleepCtx(ctx context.Context, clk clock.Clock, d time.Duration) bool {
 // since the last round, and deliver runs created and finished between
 // rounds. Errors are logged and leave the state as it was, so the next
 // round retries.
+//
+//ds:def id=hatchet-notifier-poll-ge6vy3sb owner=@khanakia stability=stable
 func (n *notifier) poll() {
 	now := time.Now() // wall clock: compared with engine creation times
 	live, err := n.list(liveStatuses, now.Add(-n.c.cfg.RunFinishedWindow))
@@ -271,18 +278,56 @@ func (n *notifier) event(id string, st workflow.Status, md *map[string]any, errM
 }
 
 // runError rebuilds a run's error from the engine's message: ErrCancelled
-// for a cancelled run, the stored message for a failed one.
+// for a cancelled run, the stored message for a failed one. A step that
+// ran past its own timeout, or a wait step that reached its Timeout or
+// Deadline, failed with the worker's workflow.TimeoutError, whose text
+// starts with ErrStepTimeout's or ErrWaitTimeout's, so that message is
+// rebuilt as an error matching that sentinel and ErrTimeout, as on the
+// drivers that keep the error itself. The engine stores a task's error as
+// a JSON string (hatchet-lite v0.110.5: the text arrives in double
+// quotes), which is kept as it was read; the prefix is looked for inside
+// the quotes.
+//
+//ds:def id=hatchet-runerror-uu2gg4db owner=@khanakia stability=stable
 func runError(st workflow.Status, msg *string) error {
 	switch st {
 	case workflow.StatusCancelled:
 		return workflow.ErrCancelled
 	case workflow.StatusFailed:
 		if msg != nil && *msg != "" {
-			return errors.New(stripFinal(*msg))
+			text := stripFinal(*msg)
+			for _, kind := range storedTimeoutKinds {
+				if strings.HasPrefix(strings.TrimPrefix(text, `"`), kind.Error()) {
+					return storedTimeout{kind: kind, text: text}
+				}
+			}
+			return errors.New(text)
 		}
 		return errors.New("hatchet driver: run failed")
 	}
 	return nil
+}
+
+// storedTimeoutKinds are the timeouts this driver reports with
+// workflow.TimeoutError, so runError can tell them by their text: the
+// worker's Step.Timeout and a wait step's Timeout or Deadline.
+//
+//ds:def id=hatchet-storedtimeoutkinds-98vv3f3q owner=@khanakia stability=stable
+var storedTimeoutKinds = []error{workflow.ErrStepTimeout, workflow.ErrWaitTimeout}
+
+// storedTimeout is a timeout rebuilt from the engine's message: it keeps
+// the text and matches its kind (one of storedTimeoutKinds) and
+// workflow.ErrTimeout.
+type storedTimeout struct {
+	kind error
+	text string
+}
+
+func (e storedTimeout) Error() string { return e.text }
+
+// Is matches the timeout's sentinels.
+func (e storedTimeout) Is(target error) bool {
+	return target == e.kind || target == workflow.ErrTimeout
 }
 
 // withFailure completes the event of a failed run from its details d:
@@ -290,6 +335,8 @@ func runError(st workflow.Status, msg *string) error {
 // naming the run, workflow, step and attempt (DX-15), so an observer that
 // only logs the error still knows which run it was. Other events are
 // returned unchanged.
+//
+//ds:def id=hatchet-client-withfailure-b95uwes9 owner=@khanakia stability=stable
 func (c *Client) withFailure(ev workflow.RunEvent, d *rest.V1WorkflowRunDetails) workflow.RunEvent {
 	if ev.Status != workflow.StatusFailed {
 		return ev
@@ -357,6 +404,8 @@ func (n *notifier) call(ev workflow.RunEvent) {
 // cancelledBeforeFire reports a delayed start Cancel deleted before it
 // fired. No engine run exists for it, so only the process that cancelled
 // it can report it.
+//
+//ds:def id=hatchet-client-cancelledbeforefire-gjetapqk owner=@khanakia stability=stable
 func (c *Client) cancelledBeforeFire(ref workflow.RunRef, sched *rest.ScheduledWorkflows) {
 	c.mu.Lock()
 	n := c.notify

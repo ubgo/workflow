@@ -1,0 +1,7 @@
+func NewLocalCron(opts ...LocalCronOption) *LocalCron {
+	l := &LocalCron{clk: clock.Real{}, parser: cron.Parse, names: map[string]bool{}, done: make(chan struct{})}
+	for _, o := range opts {
+		o(l)
+	}
+	return l
+}

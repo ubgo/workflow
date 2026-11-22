@@ -1,0 +1,19 @@
+func (c *Client) decodeCursor(s string) (runsCursor, error) {
+	cur := runsCursor{}
+	if s == "" {
+		return cur, nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(s)
+	if err == nil {
+		err = json.Unmarshal(b, &cur)
+	}
+	for name, pos := range cur {
+		if _, ok := c.regions[name]; !ok || pos.Skip < 0 {
+			err = errors.New("bad position")
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%w: regional: Runs cursor was not made by this client", workflow.ErrInvalid)
+	}
+	return cur, nil
+}

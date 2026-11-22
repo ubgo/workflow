@@ -1,0 +1,18 @@
+func TenantCount(c workflow.Client) (CountFunc, error) {
+	rq, err := runQuerier(c, "TenantCount", workflow.CapTenant)
+	if err != nil {
+		return nil, err
+	}
+	open := []workflow.Status{workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning, workflow.StatusWaiting}
+	if c.Capabilities().Has(workflow.CapRunStates) {
+		// Without CapRunStates a run in retry backoff reads as queued, and
+		// such a driver refuses a query naming StatusRetrying.
+		open = append(open, workflow.StatusRetrying)
+	}
+	return func(ctx context.Context, job workflow.Job) (int, error) {
+		if job.Tenant == "" {
+			return 0, nil
+		}
+		return countRuns(ctx, rq, workflow.RunQuery{Tenant: job.Tenant, Statuses: open})
+	}, nil
+}

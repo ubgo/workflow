@@ -93,6 +93,8 @@ func (c *Client) withAttempt(ctx context.Context, a *attempt) context.Context {
 // calls the handler directly) and a second completion of the same attempt.
 // An error leaves tx open; the caller decides whether to roll it back.
 // Runs on every engine sqlstore supports: SQLite, Postgres and MySQL.
+//
+//ds:def id=sql-client-completetx-q8d5sbtc owner=@khanakia stability=stable
 func (c *Client) CompleteTx(ctx context.Context, tx *sql.Tx, output []byte) error {
 	if tx == nil {
 		return fmt.Errorf("%w: CompleteTx needs a transaction", workflow.ErrInvalid)

@@ -1,0 +1,1 @@
+func (c *Client) JournalStore() *JournalStore { return &JournalStore{st: c.st} }

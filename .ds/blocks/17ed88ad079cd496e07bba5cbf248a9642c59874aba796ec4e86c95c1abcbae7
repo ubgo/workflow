@@ -1,0 +1,10 @@
+func resolve(reg *Registry, path, name string) (workflow.Handler, error) {
+	if h, ok := reg.Handler(name); ok {
+		return h, nil
+	}
+	known := "none"
+	if names := reg.Names(); len(names) > 0 {
+		known = strings.Join(names, ", ")
+	}
+	return nil, fieldErr(path, "no handler is registered as %q (registered: %s)", name, known)
+}

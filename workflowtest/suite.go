@@ -34,6 +34,8 @@ import (
 // (job, step, workflow, default); DiscardOnExhaust per stopping rule and level;
 // drain reports (finished and cut steps, grace edges, repeated drains);
 // and closures, with the refusals of each on a driver that lacks it.
+//
+//ds:def id=workflowtest-run-2dxkjk9h owner=@khanakia stability=stable
 func Run(t *testing.T, h Harness) {
 	t.Helper()
 	if h.New == nil {
@@ -58,6 +60,8 @@ func Run(t *testing.T, h Harness) {
 // the first element of each group's subtest path under the suite. A
 // driver that shards the suite with Harness.Groups can check its shard
 // table against it.
+//
+//ds:def id=workflowtest-groupnames-7jhfskgz owner=@khanakia stability=stable
 func GroupNames() []string {
 	var out []string
 	for _, g := range allGroups() {
@@ -73,6 +77,8 @@ type suiteGroup struct {
 }
 
 // allGroups returns every group in Run order.
+//
+//ds:def id=workflowtest-allgroups-uk4d9m6p owner=@khanakia stability=stable
 func allGroups() []suiteGroup {
 	groups := []suiteGroup{
 		{"lifecycle", lifecycleCases},
@@ -120,7 +126,7 @@ func allGroups() []suiteGroup {
 		{"discardexhaust", discardExhaustCases},
 		{"drainreport", drainReportCases},
 	}
-	return append(append(groups, p5Groups...), p3Groups...)
+	return append(append(append(groups, p5Groups...), p3Groups...), attemptErrorGroups...)
 }
 
 // testCase is one named assertion.

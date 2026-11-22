@@ -1,0 +1,21 @@
+func bucketDefs(t sqlTypes) []tableDef {
+	return []tableDef{{stem: tblBuckets, lines: []string{
+		// key_hash is the SHA-256 of the key in hex, as in unique_locks. The
+		// primary key is what makes two first Takes of one key race to one
+		// row (ADR-0003, a structural constraint).
+		"key_hash " + t.id + " NOT NULL PRIMARY KEY",
+		// bkey is the key as given, for an operator reading the table.
+		"bkey " + t.text + " NOT NULL",
+		// level is the bucket's level at at_ns, in shortest-round-trip
+		// decimal text: no engine's float type reads back the exact value
+		// MemoryBuckets holds, and the level is only ever read inside the
+		// locked transaction.
+		"level " + t.name + " NOT NULL",
+		// at_ns is when level was set, in Unix nanoseconds of the caller's
+		// now.
+		"at_ns " + t.int + " NOT NULL",
+		// ver is bumped first by every Take and Observe, which is how they
+		// lock the row before reading it.
+		"ver " + t.int + " NOT NULL",
+	}}}
+}

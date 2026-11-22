@@ -1,0 +1,1 @@
+	ErrUnsupported = errors.New("workflow: unsupported by this driver")

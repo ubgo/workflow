@@ -1,0 +1,8 @@
+type StuckEvent struct {
+	// Info is the attempt (workflow, step, run, attempt, node).
+	Info workflow.StepInfo
+	// Started is when the attempt started, on the middleware's clock.
+	Started time.Time
+	// Running is how long it had run when reported.
+	Running time.Duration
+}

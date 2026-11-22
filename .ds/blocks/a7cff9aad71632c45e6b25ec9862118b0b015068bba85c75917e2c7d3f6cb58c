@@ -1,0 +1,64 @@
+func (c *Client) prepare(job workflow.Job) (preparedRun, error) {
+	if err := workflow.ValidateJob(job); err != nil {
+		return preparedRun{}, err
+	}
+	if err := workflow.CheckJob(caps, job); err != nil {
+		return preparedRun{}, err
+	}
+	if err := workflow.CheckPayload(job, c.PayloadLimit(), payloadLimitSource); err != nil {
+		return preparedRun{}, err
+	}
+	hw, wf, err := c.lookup(job.Workflow)
+	if err != nil {
+		return preparedRun{}, err
+	}
+	// An enqueue-only client knows only the workflows it registered; an
+	// unregistered one gets workflow.CheckJob alone (Config.EnqueueOnly).
+	if c.isRegistered(wf.Name) {
+		if err := workflow.CheckJobQueue(caps, wf, job); err != nil {
+			return preparedRun{}, err
+		}
+	}
+	key := job.IdempotencyKey
+	switch wf.Idempotency {
+	case workflow.IdempotencyRequired:
+		if key == "" {
+			return preparedRun{}, fmt.Errorf("%w: workflow %q requires Job.IdempotencyKey", workflow.ErrInvalid, wf.Name)
+		}
+	case workflow.IdempotencyOff:
+		key = ""
+	}
+	if err := checkDelayedKey(wf, c.isRegistered(wf.Name), key, job.RunAt, time.Now(), c.cfg.IdempotencyMaxHold); err != nil {
+		return preparedRun{}, err
+	}
+	priority, err := runPriority(job.Priority)
+	if err != nil {
+		return preparedRun{}, err
+	}
+	input, err := encodeInput(job.Payload)
+	if err != nil {
+		return preparedRun{}, err
+	}
+	scope := engineName(c.cfg.Namespace, wf.Name)
+	md, err := runMetadata(job.Labels, runIdempotencyKey(scope, key, wf.Idempotency, uuid.NewString))
+	if err != nil {
+		return preparedRun{}, err
+	}
+	md[metaWorkflow] = wf.Name
+	md[metaQueue] = workflow.EffectiveQueue(wf, job)
+	if job.Priority != 0 {
+		md[metaPriority] = strconv.Itoa(job.Priority)
+	}
+	if job.Tenant != "" {
+		md[metaTenant] = job.Tenant
+	}
+	md[metaEnqueuedAt] = strconv.FormatInt(enqueueTime(job).UnixMilli(), 10)
+	gated := key != "" && !job.RunAt.IsZero()
+	if gated {
+		md[metaStartAt] = strconv.FormatInt(job.RunAt.UnixMilli(), 10)
+		if hw, err = c.delayedHandle(wf.Name); err != nil {
+			return preparedRun{}, err
+		}
+	}
+	return preparedRun{hw: hw, wf: wf, input: input, md: md, priority: priority, gated: gated}, nil
+}

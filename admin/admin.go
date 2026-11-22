@@ -17,6 +17,8 @@ type Operation string
 
 // The operations. Each needs the capabilities and optional interface
 // listed in Requirements.
+//
+//ds:def id=admin-operations-nzutamev owner=@khanakia stability=stable
 const (
 	OpRuns      Operation = "runs"       // list and search runs (RunQuerier)
 	OpRun       Operation = "run"        // show one run (RunQuerier)
@@ -53,6 +55,7 @@ const (
 	OpReschedule Operation = "reschedule"
 	// OpEditRun changes a scheduled run's payload, priority or start
 	// (RunEditor).
+	//ds:def id=admin-opeditrun-rccmgvd7 owner=@khanakia stability=stable
 	OpEditRun Operation = "edit_run"
 	// OpCancelStep withdraws one step of a run (StepCanceller).
 	OpCancelStep Operation = "cancel_step"
@@ -72,11 +75,15 @@ const (
 
 // Operations lists every operation in a fixed order, the order Support
 // reports them in.
+//
+//ds:def id=admin-operations-98ugx4jk owner=@khanakia stability=stable
 var Operations = []Operation{OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues, OpRetry, OpDelete, OpCancel, OpCancelAll, OpPause, OpSchedules, OpSchedulePause, OpScheduleTrigger, OpForce, OpRetryAll, OpDeleteAll, OpNodes, OpHealth, OpReschedule, OpCancelStep, OpEditRun, OpResetRun, OpResetSucceeded, OpForkRun, OpSignalWaiting}
 
 // requirements is the capability each operation needs. OpPause needs
 // either pause capability; which one a call needs depends on its target
 // (workflow.RequiresPause).
+//
+//ds:def id=admin-requirements-tm4jgzhw owner=@khanakia stability=stable
 var requirements = map[Operation]workflow.Caps{
 	OpRuns:      workflow.CapRunQuery,
 	OpRun:       workflow.CapRunQuery,
@@ -118,10 +125,14 @@ var requirements = map[Operation]workflow.Caps{
 // Requirements returns the capabilities op needs. OpPause reports both
 // pause capabilities; a client with either one supports pausing the
 // targets that capability covers.
+//
+//ds:def id=admin-requirements-dheq6ap7 owner=@khanakia stability=stable
 func Requirements(op Operation) workflow.Caps { return requirements[op] }
 
 // DefaultMaxScan bounds how many queued runs QueueStats reads per call, so
 // a queue of a million runs costs a bounded number of RunQuerier pages.
+//
+//ds:def id=admin-defaultmaxscan-22ubb5aw owner=@khanakia stability=stable
 const DefaultMaxScan = 10_000
 
 // Option configures New.
@@ -129,10 +140,14 @@ type Option func(*Admin)
 
 // WithClock sets the clock QueueStats measures wait times with and the
 // Monitor polls on. Nil means clock.Real.
+//
+//ds:def id=admin-withclock-635ed787 owner=@khanakia stability=stable
 func WithClock(clk clock.Clock) Option { return func(a *Admin) { a.clk = clk } }
 
 // WithMaxScan bounds how many queued runs QueueStats reads per call; past
 // it the stats are marked Truncated. Zero or less keeps DefaultMaxScan.
+//
+//ds:def id=admin-withmaxscan-5bhjrurh owner=@khanakia stability=stable
 func WithMaxScan(n int) Option { return func(a *Admin) { a.maxScan = n } }
 
 // WithRunQuerier makes the read operations (runs, run, failures,
@@ -201,6 +216,8 @@ func (a *Admin) reader() (workflow.RunQuerier, workflow.Caps) {
 
 // New returns an Admin over c. It never fails: what c cannot do is
 // reported by Support and refused per call.
+//
+//ds:def id=admin-new-8jdm3hz6 owner=@khanakia stability=stable
 func New(c workflow.Client, opts ...Option) *Admin {
 	a := &Admin{c: c}
 	for _, o := range opts {
@@ -225,6 +242,8 @@ func (a *Admin) Client() workflow.Client { return a.c }
 
 // OperationSupport says whether the client supports one operation, and
 // which capabilities it lacks when it does not.
+//
+//ds:def id=admin-operationsupport-3nfp2tpg owner=@khanakia stability=stable
 type OperationSupport struct {
 	Operation Operation
 	Supported bool
@@ -242,6 +261,8 @@ type OperationSupport struct {
 // Support reports, for every operation in Operations order, whether the
 // client supports it. A UI hides what is unsupported instead of showing
 // a button that always fails.
+//
+//ds:def id=admin-admin-support-mwceu2g5 owner=@khanakia stability=stable
 func (a *Admin) Support() []OperationSupport {
 	out := make([]OperationSupport, 0, len(Operations))
 	for _, op := range Operations {
@@ -267,10 +288,14 @@ func (a *Admin) Support() []OperationSupport {
 }
 
 // Supports reports whether the client supports op.
+//
+//ds:def id=admin-admin-supports-p4t87jsu owner=@khanakia stability=stable
 func (a *Admin) Supports(op Operation) bool { return a.check(op) == nil }
 
 // check returns nil when the client declares op's capability and
 // implements its interface, else an UnsupportedError naming op.
+//
+//ds:def id=admin-admin-check-re2vjymn owner=@khanakia stability=stable
 func (a *Admin) check(op Operation) error {
 	have := a.c.Capabilities()
 	need := requirements[op]
@@ -353,6 +378,8 @@ func (a *Admin) check(op Operation) error {
 
 // Runs lists runs matching q, one page at a time, newest enqueue first.
 // Pass the returned RunPage.Next as q.Cursor for the next page.
+//
+//ds:def id=admin-admin-runs-r62vmwak owner=@khanakia stability=stable
 func (a *Admin) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	if err := a.check(OpRuns); err != nil {
 		return workflow.RunPage{}, err
@@ -367,6 +394,8 @@ func (a *Admin) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage
 // Run returns one run. An unknown ref returns workflow.ErrNotFound. With
 // WithRunQuerier, a run the querier does not hold is looked up on the
 // client when the client can list runs.
+//
+//ds:def id=admin-admin-run-8d3fnvkk owner=@khanakia stability=stable
 func (a *Admin) Run(ctx context.Context, ref workflow.RunRef) (workflow.RunInfo, error) {
 	if err := a.check(OpRun); err != nil {
 		return workflow.RunInfo{}, err
@@ -419,6 +448,8 @@ func validateAgainst(caps workflow.Caps, q workflow.RunQuery) error {
 // must be empty: the operation sets it to StatusFailed, and a caller that
 // asks for other statuses wants Runs. Discarded runs are not failures (a
 // step chose to drop them) and are listed by Discarded.
+//
+//ds:def id=admin-admin-failures-2wvdtx8z owner=@khanakia stability=stable
 func (a *Admin) Failures(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	return a.listStatus(ctx, OpFailures, workflow.StatusFailed, q)
 }
@@ -427,6 +458,8 @@ func (a *Admin) Failures(ctx context.Context, q workflow.RunQuery) (workflow.Run
 // beside Failures: the run's Error keeps the reason. q.Statuses must be
 // empty. It needs CapRunStates: on a driver without it a discarded run
 // reads failed or cancelled and shows up there instead.
+//
+//ds:def id=admin-admin-discarded-dy868kay owner=@khanakia stability=stable
 func (a *Admin) Discarded(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	return a.listStatus(ctx, OpDiscarded, workflow.StatusDiscarded, q)
 }
@@ -449,6 +482,8 @@ func (a *Admin) listStatus(ctx context.Context, op Operation, st workflow.Status
 
 // Retry re-runs a failed run from the step that failed; see
 // workflow.RunRetrier for what is kept.
+//
+//ds:def id=admin-admin-retry-wncz6x3f owner=@khanakia stability=stable
 func (a *Admin) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	if err := a.check(OpRetry); err != nil {
 		return workflow.RunRef{}, err
@@ -457,6 +492,8 @@ func (a *Admin) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef
 }
 
 // Delete forgets a finished run.
+//
+//ds:def id=admin-admin-delete-k9kzqqsc owner=@khanakia stability=stable
 func (a *Admin) Delete(ctx context.Context, ref workflow.RunRef) error {
 	if err := a.check(OpDelete); err != nil {
 		return err
@@ -465,6 +502,8 @@ func (a *Admin) Delete(ctx context.Context, ref workflow.RunRef) error {
 }
 
 // Cancel cancels one run, as Client.Cancel does.
+//
+//ds:def id=admin-admin-cancel-pntfceyg owner=@khanakia stability=stable
 func (a *Admin) Cancel(ctx context.Context, ref workflow.RunRef) error {
 	if err := a.check(OpCancel); err != nil {
 		return err
@@ -475,6 +514,8 @@ func (a *Admin) Cancel(ctx context.Context, ref workflow.RunRef) error {
 // CancelAll cancels every run matching q and returns
 // how many; see workflow.BulkCanceller for which statuses an empty
 // q.Statuses means.
+//
+//ds:def id=admin-admin-cancelall-gng47h9a owner=@khanakia stability=stable
 func (a *Admin) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	if err := a.check(OpCancelAll); err != nil {
 		return 0, err
@@ -501,6 +542,8 @@ func (a *Admin) pauser(t workflow.PauseTarget) (workflow.Pauser, error) {
 
 // Pause holds the runs t matches without cancelling them; see
 // workflow.Pauser.
+//
+//ds:def id=admin-admin-pause-css53u9n owner=@khanakia stability=stable
 func (a *Admin) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	p, err := a.pauser(t)
 	if err != nil {
@@ -511,6 +554,8 @@ func (a *Admin) Pause(ctx context.Context, t workflow.PauseTarget) error {
 
 // Resume removes the pause on t; Resume(workflow.PauseAll()) removes every
 // pause.
+//
+//ds:def id=admin-admin-resume-8xs4kutg owner=@khanakia stability=stable
 func (a *Admin) Resume(ctx context.Context, t workflow.PauseTarget) error {
 	p, err := a.pauser(t)
 	if err != nil {
@@ -520,6 +565,8 @@ func (a *Admin) Resume(ctx context.Context, t workflow.PauseTarget) error {
 }
 
 // Paused lists the active pauses.
+//
+//ds:def id=admin-admin-paused-2r6g9bym owner=@khanakia stability=stable
 func (a *Admin) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 	if err := a.check(OpPause); err != nil {
 		return nil, err
@@ -528,6 +575,8 @@ func (a *Admin) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 }
 
 // Schedules lists the live schedules with their next fire time, sorted by workflow, then name.
+//
+//ds:def id=admin-admin-schedules-3syjay2j owner=@khanakia stability=stable
 func (a *Admin) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	if err := a.check(OpSchedules); err != nil {
 		return nil, err
@@ -539,6 +588,8 @@ func (a *Admin) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) 
 // reads, with its next fire time and, on a client with
 // CapScheduleHistory, its last fire (ScheduleInfo.Last). An empty id is
 // refused with ErrInvalid and an unknown one returns ErrNotFound.
+//
+//ds:def id=admin-admin-schedule-94v4xbb6 owner=@khanakia stability=stable
 func (a *Admin) Schedule(ctx context.Context, id workflow.ScheduleID) (workflow.ScheduleInfo, error) {
 	if err := a.check(OpSchedules); err != nil {
 		return workflow.ScheduleInfo{}, err
@@ -563,6 +614,8 @@ func (a *Admin) Schedule(ctx context.Context, id workflow.ScheduleID) (workflow.
 // schedule's overlap policy still applies: with OverlapSkip and its
 // previous run unfinished it enqueues nothing and returns an error
 // matching workflow.ErrOverlap. An empty id is refused with ErrInvalid.
+//
+//ds:def id=admin-admin-triggerschedule-r23aja2h owner=@khanakia stability=stable
 func (a *Admin) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := a.check(OpScheduleTrigger); err != nil {
 		return workflow.RunRef{}, err
@@ -575,11 +628,15 @@ func (a *Admin) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (wo
 
 // MaxForceReason bounds the reason ForceFail stores on a run, so an
 // operator's text cannot grow a run row without limit.
+//
+//ds:def id=admin-maxforcereason-x2gm25rb owner=@khanakia stability=stable
 const MaxForceReason = 1024
 
 // ForceComplete ends a run as succeeded without running its remaining
 // steps; see workflow.RunForcer. A run that is not terminal, or is
 // failed, is accepted; another terminal run returns ErrWrongState.
+//
+//ds:def id=admin-admin-forcecomplete-aufpjc76 owner=@khanakia stability=stable
 func (a *Admin) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
 	if err := a.check(OpForce); err != nil {
 		return err
@@ -593,6 +650,8 @@ func (a *Admin) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
 // ForceFail ends a run that is not terminal as failed, with reason in its
 // error and no retry; see workflow.RunForcer. A reason longer than
 // MaxForceReason bytes is refused with ErrInvalid.
+//
+//ds:def id=admin-admin-forcefail-58cz7uya owner=@khanakia stability=stable
 func (a *Admin) ForceFail(ctx context.Context, ref workflow.RunRef, reason string) error {
 	if err := a.check(OpForce); err != nil {
 		return err
@@ -608,6 +667,8 @@ func (a *Admin) ForceFail(ctx context.Context, ref workflow.RunRef, reason strin
 
 // PauseSchedule stops the schedule id firing without removing it; see
 // workflow.SchedulePauser. An empty id is refused with ErrInvalid.
+//
+//ds:def id=admin-admin-pauseschedule-rvxgw64m owner=@khanakia stability=stable
 func (a *Admin) PauseSchedule(ctx context.Context, id workflow.ScheduleID) error {
 	return a.schedulePause(ctx, id, workflow.SchedulePauser.PauseSchedule)
 }
@@ -633,6 +694,8 @@ func (a *Admin) schedulePause(ctx context.Context, id workflow.ScheduleID, op fu
 // RunCount is how many runs match a query and where each page of it
 // starts, for a screen that shows "1–50 of N" and numbered pages over a
 // driver whose cursors are opaque.
+//
+//ds:def id=admin-runcount-kxfj6trk owner=@khanakia stability=stable
 type RunCount struct {
 	// Total is how many runs match, up to the max scan.
 	Total int
@@ -651,6 +714,8 @@ type RunCount struct {
 // reads at most the max scan (WithMaxScan) of runs, so a screen pays a
 // bounded cost; a driver that could count in one query is still asked
 // page by page, because RunQuerier is the only portable way to ask.
+//
+//ds:def id=admin-admin-countruns-ukw2h48m owner=@khanakia stability=stable
 func (a *Admin) CountRuns(ctx context.Context, q workflow.RunQuery) (RunCount, error) {
 	if err := a.check(OpRuns); err != nil {
 		return RunCount{}, err
@@ -682,6 +747,8 @@ func (a *Admin) CountRuns(ctx context.Context, q workflow.RunQuery) (RunCount, e
 }
 
 // QueueStat is one queue's backlog at the moment QueueStats read it.
+//
+//ds:def id=admin-queuestat-96ta3g9e owner=@khanakia stability=stable
 type QueueStat struct {
 	// Queue is the queue name.
 	Queue string
@@ -702,6 +769,8 @@ type QueueStat struct {
 
 // QueueReport is every queue with at least one queued run, sorted by
 // name.
+//
+//ds:def id=admin-queuereport-f98s4rs6 owner=@khanakia stability=stable
 type QueueReport struct {
 	Queues []QueueStat
 	// Truncated is true when more than the max scan of queued runs exist:
@@ -729,6 +798,8 @@ type QueueReport struct {
 // per queue (the state a workflow.BalanceLoop acts on); a QueueLoads
 // error fails the call, since a report that silently drops the worker
 // counts would read as "no workers".
+//
+//ds:def id=admin-admin-queuestats-vxjxr6h3 owner=@khanakia stability=stable
 func (a *Admin) QueueStats(ctx context.Context) (QueueReport, error) {
 	if err := a.check(OpQueues); err != nil {
 		return QueueReport{}, err
@@ -808,6 +879,8 @@ func (a *Admin) QueueStats(ctx context.Context) (QueueReport, error) {
 // matches otel.QueueDepthFunc, so a method value plugs straight into the
 // OpenTelemetry queue-depth gauge without either module importing the
 // other.
+//
+//ds:def id=admin-admin-queuedepths-qbb7qj6s owner=@khanakia stability=stable
 func (a *Admin) QueueDepths(ctx context.Context) (map[string]int64, error) {
 	rep, err := a.QueueStats(ctx)
 	if err != nil {

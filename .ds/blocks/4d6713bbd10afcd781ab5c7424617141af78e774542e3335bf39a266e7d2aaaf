@@ -1,0 +1,9 @@
+type MapRunsResult struct {
+	// Started, Succeeded and Failed count child runs; Failed counts every
+	// end other than success.
+	Started, Succeeded, Failed int
+
+	// FailedRefs are the first KeepFailed failed children with their
+	// index, for a report or a retry.
+	FailedRefs []MapFailure
+}

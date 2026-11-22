@@ -1,0 +1,16 @@
+func (c *Client) handoffChain(ctx context.Context, tx *sql.Tx, row *runRow, o *txOut) error {
+	chain, err := c.loadChain(ctx, tx, row.id)
+	if err != nil || len(chain) == 0 {
+		return err
+	}
+	next, _ := workflow.NextInChain(chain)
+	reg := c.reg(next.Workflow)
+	if reg == nil {
+		_, err := c.st.exec(ctx, tx, "UPDATE {run_chain} SET next_wf = ? WHERE run_id = ?", next.Workflow, row.id)
+		return err
+	}
+	if _, err := c.st.exec(ctx, tx, "DELETE FROM {run_chain} WHERE run_id = ?", row.id); err != nil {
+		return err
+	}
+	return c.insertChained(ctx, tx, reg, row.id, next, o)
+}

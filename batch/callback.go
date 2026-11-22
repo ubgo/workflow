@@ -17,26 +17,37 @@ import (
 // attempts could overlap; thirty seconds is far beyond any healthy enqueue
 // and short enough that a failed Then or Finally runs within a minute of
 // the engine recovering. Change it with WithCallbackRetry.
+//
+//ds:def id=batch-defaultcallbackretry-tqjfsrq3 owner=@khanakia stability=stable
 const DefaultCallbackRetry = 30 * time.Second
 
 // CallbackKind names one of a batch's callbacks.
+//
+//ds:def id=batch-callbackkind-5r8x6fah owner=@khanakia stability=stable
 type CallbackKind string
 
 // The callbacks, in the order they are enqueued when several are decided
 // at once. Before is decided only when the batch is created, Progress once
 // per job end reported by a run.
 const (
-	CallbackBefore   CallbackKind = "before"
+	//ds:def id=batch-callbackbefore-d986qtrv owner=@khanakia stability=stable
+	CallbackBefore CallbackKind = "before"
+	//ds:def id=batch-callbackprogress-eywrye2f owner=@khanakia stability=stable
 	CallbackProgress CallbackKind = "progress"
-	CallbackCatch    CallbackKind = "catch"
-	CallbackThen     CallbackKind = "then"
-	CallbackFinally  CallbackKind = "finally"
+	//ds:def id=batch-callbackcatch-74vwxmp8 owner=@khanakia stability=stable
+	CallbackCatch CallbackKind = "catch"
+	//ds:def id=batch-callbackthen-jyx77yuy owner=@khanakia stability=stable
+	CallbackThen CallbackKind = "then"
+	//ds:def id=batch-callbackfinally-9jyaqs46 owner=@khanakia stability=stable
+	CallbackFinally CallbackKind = "finally"
 )
 
 // PendingCallback is a callback that was decided but whose Enqueue has not
 // yet succeeded. The decision itself stays once-only (State's latches); a
 // pending entry only carries that decision until the Enqueue lands, so a
 // failed enqueue is retried instead of lost.
+//
+//ds:def id=batch-pendingcallback-pyn7sbnr owner=@khanakia stability=stable
 type PendingCallback struct {
 	Kind     CallbackKind
 	Workflow string
@@ -65,6 +76,8 @@ type PendingCallback struct {
 // WithCallbackRetry sets how long a callback enqueue is claimed before it
 // may be retried (see DefaultCallbackRetry). A value that is not positive
 // keeps the default.
+//
+//ds:def id=batch-withcallbackretry-rctr3u5p owner=@khanakia stability=stable
 func WithCallbackRetry(d time.Duration) Option {
 	return func(m *Manager) {
 		if d > 0 {
@@ -77,12 +90,16 @@ func WithCallbackRetry(d time.Duration) Option {
 // loop it adds when no Source is a poller. Use it only when the app calls
 // Manager.RetryCallbacks on its own schedule; without either, a callback
 // that fails after the batch's last job end is never retried.
+//
+//ds:def id=batch-withmanualcallbackretry-sxbps7w4 owner=@khanakia stability=stable
 func WithManualCallbackRetry() Option { return func(m *Manager) { m.manualRetry = true } }
 
 // retryLoop calls RetryCallbacks and ResumeDispatches every callbackRetry
 // on the Manager's clock until ctx is cancelled. Each tick is two
 // Store.Unfinished reads; it enqueues only callbacks whose claim has ended
 // and resumes only dispatches whose lease has ended.
+//
+//ds:def id=batch-manager-retryloop-sxmdq5tv owner=@khanakia stability=stable
 func (m *Manager) retryLoop(ctx context.Context) {
 	for {
 		t := m.clk.NewTimer(m.callbackRetry)
@@ -104,6 +121,8 @@ func (m *Manager) retryLoop(ctx context.Context) {
 // claimCallbacks runs inside Store.Update: it queues the callbacks eff
 // decided and claims every pending callback that is due, returning the
 // ones this caller must enqueue now.
+//
+//ds:def id=batch-manager-claimcallbacks-z2a8hfdx owner=@khanakia stability=stable
 func (m *Manager) claimCallbacks(s *State, eff effects, now time.Time) []PendingCallback {
 	if s.Progress != "" {
 		for _, i := range eff.progress {
@@ -138,6 +157,8 @@ func (m *Manager) claimCallbacks(s *State, eff effects, now time.Time) []Pending
 // fails, the landed callbacks stay pending and are enqueued again; the
 // idempotency key keeps that from doubling them on a driver with
 // workflow.CapIdempotencyKey.
+//
+//ds:def id=batch-manager-enqueuecallbacks-w9992uzd owner=@khanakia stability=stable
 func (m *Manager) enqueueCallbacks(ctx context.Context, st State, claimed []PendingCallback) error {
 	if len(claimed) == 0 {
 		return nil
@@ -188,6 +209,8 @@ const callbackKeyPrefix = "batch:"
 // A Progress key adds ":<job>", and a callback decided in RetryFailed
 // round n > 0 adds ":r<n>", so neither is deduplicated against another
 // callback; the keys of round 0 keep the original shape.
+//
+//ds:def id=batch-callbackkey-agsg3nsq owner=@khanakia stability=stable
 func callbackKey(id ID, cb PendingCallback) string {
 	key := callbackKeyPrefix + string(id) + ":" + string(cb.Kind)
 	if cb.Kind == CallbackProgress {
@@ -200,6 +223,8 @@ func callbackKey(id ID, cb PendingCallback) string {
 }
 
 // callback enqueues one callback with the batch's progress as payload.
+//
+//ds:def id=batch-manager-callback-9sp5vupc owner=@khanakia stability=stable
 func (m *Manager) callback(ctx context.Context, st State, cb PendingCallback) error {
 	payload, err := json.Marshal(progressOf(st))
 	if err != nil {
@@ -221,6 +246,8 @@ func (m *Manager) callback(ctx context.Context, st State, cb PendingCallback) er
 // own batch's callbacks. Without a poller, Attach starts a loop that calls
 // it (see WithManualCallbackRetry), because once a batch has finished no
 // further job end arrives to retry a failed Finally.
+//
+//ds:def id=batch-manager-retrycallbacks-vg9kzc67 owner=@khanakia stability=stable
 func (m *Manager) RetryCallbacks(ctx context.Context) error {
 	open, err := m.store.Unfinished(ctx)
 	if err != nil {

@@ -1,0 +1,19 @@
+func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	on, nn, ok := c.notifiers()
+	if !ok {
+		return workflow.Unsupported("OnRunFinished", "both cutover backends must implement workflow.RunNotifier")
+	}
+	c.mu.Lock()
+	started := c.started
+	c.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	if err := nn.OnRunFinished(sideObserver(fn, SideNew)); err != nil {
+		return fmt.Errorf("cutover: new: %w", err)
+	}
+	if err := on.OnRunFinished(sideObserver(fn, SideOld)); err != nil {
+		return fmt.Errorf("cutover: old: %w", err)
+	}
+	return nil
+}

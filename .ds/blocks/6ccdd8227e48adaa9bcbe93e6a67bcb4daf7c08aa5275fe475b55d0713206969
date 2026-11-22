@@ -1,0 +1,8 @@
+var saveScript = goredis.NewScript(luaPrelude + `
+local b, id, tok = ARGV[1], ARGV[2], ARGV[3]
+local h = redis.call('HMGET', rk(b, id), 'owner', 'status')
+if h[1] ~= tok or terminal(h[2]) then return 0 end
+redis.call('HSET', rk(b, id), 'steps', ARGV[4], 'attempts', ARGV[5], 'errs', ARGV[7], 'chain', ARGV[8])
+if ARGV[6] == '1' then redis.call('HSET', rk(b, id), 'reclaims', '0') end
+return 1
+`)

@@ -1,0 +1,4 @@
+func InEnvironment(current string, allowed ...string) func(context.Context, Tick) bool {
+	ok := slices.Contains(allowed, current)
+	return func(context.Context, Tick) bool { return ok }
+}

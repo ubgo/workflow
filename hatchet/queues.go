@@ -22,6 +22,8 @@ type workerPool struct {
 // (CapQueueLimitGlobal) and any non-zero Priority or Weight, since each queue is its own Hatchet worker with its own slots:
 // the engine cannot make one worker's runs wait for another's, and no
 // worker picks between queues, so there is no pick to weight.
+//
+//ds:def id=hatchet-checkqueues-xebdznbs owner=@khanakia stability=stable
 func checkQueues(qs []workflow.QueueConfig) error {
 	if err := workflow.ValidateQueues(qs); err != nil {
 		return fmt.Errorf("hatchet driver: Queues: %w", err)
@@ -51,6 +53,8 @@ func checkQueues(qs []workflow.QueueConfig) error {
 // workflows, named WorkerName-queue; a workflow of an unlisted queue gets
 // no worker here. The batch coordinator, when on, joins the first pool
 // (or a pool of its own when there is none), so it always has a worker.
+//
+//ds:def id=hatchet-workerpools-2t59fpep owner=@khanakia stability=stable
 func workerPools(cfg Config, order []string, specs map[string]workflow.Workflow, declared map[string]*hatchetsdk.Workflow, coordinator *hatchetsdk.Workflow) []workerPool {
 	var pools []workerPool
 	if len(cfg.Queues) == 0 {

@@ -1,0 +1,30 @@
+func (s *Saga) Abort(ctx context.Context, cause error) error {
+	if cause == nil {
+		cause = errors.New("aborted")
+	}
+	msg, aborted, err := RunData[string](ctx, sagaAbortData(s.name))
+	if err != nil {
+		return err
+	}
+	if !aborted {
+		msg = cause.Error()
+		if err := SetRunData(ctx, sagaAbortData(s.name), msg); err != nil {
+			return err
+		}
+	}
+	s.mu.Lock()
+	done := slices.Clone(s.done)
+	s.mu.Unlock()
+	for i := len(done) - 1; i >= 0; i-- {
+		a := done[i]
+		if a.undo == nil {
+			continue
+		}
+		if _, err := Memo(ctx, "saga/"+s.name+"/undo/"+a.name, func(ctx context.Context) (bool, error) {
+			return true, a.undo(ctx)
+		}); err != nil {
+			return fmt.Errorf("workflow: saga %q: compensate %q: %w", s.name, a.name, err)
+		}
+	}
+	return Permanent(fmt.Errorf("%w: saga %q: %s", ErrCompensated, s.name, msg))
+}

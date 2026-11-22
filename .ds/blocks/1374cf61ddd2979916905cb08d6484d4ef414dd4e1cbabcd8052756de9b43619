@@ -1,0 +1,7 @@
+func WithLogger(l *slog.Logger) Option {
+	return func(o *Outbox) {
+		if l != nil {
+			o.log = l
+		}
+	}
+}

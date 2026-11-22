@@ -32,6 +32,8 @@ import (
 // fewer than n ticks from from on. The schedule then needs
 // CapScheduleActive (memory, sqlstore, redis), which Client.Schedule
 // checks. PruneEndedSchedules removes it once the period is over.
+//
+//ds:def id=limitruns-qv525z3e owner=@khanakia stability=stable
 func LimitRuns(s Schedule, n int, from time.Time, parser cron.Parser) (Schedule, error) {
 	if n < 1 {
 		return s, invalidf("LimitRuns: n is %d, want at least 1", n)
@@ -51,6 +53,8 @@ func LimitRuns(s Schedule, n int, from time.Time, parser cron.Parser) (Schedule,
 
 // limitTicks sets s.Active to hold the first n ticks of sched after
 // `after` (from Active.From on when that is later).
+//
+//ds:def id=limitticks-rhkx6cmt owner=@khanakia stability=stable
 func limitTicks(s Schedule, sched cron.Schedule, n int, after time.Time) (Schedule, error) {
 	if !s.Active.From.IsZero() && s.Active.From.After(after) {
 		after = s.Active.From.Add(-time.Nanosecond)
@@ -88,6 +92,8 @@ func limitTicks(s Schedule, sched cron.Schedule, n int, after time.Time) (Schedu
 // at.Add(-time.Nanosecond), parser) and check the tick. Needs CapScheduleActive, like LimitRuns. The
 // schedule stays listed after its tick until it is unscheduled:
 // PruneEndedSchedules removes ended ones.
+//
+//ds:def id=oneshot-v3ttks9x owner=@khanakia stability=stable
 func OneShot(s Schedule, at time.Time) (Schedule, error) {
 	if at.IsZero() || at.Nanosecond() != 0 {
 		return s, invalidf("OneShot: at must be a non-zero time in whole seconds")
@@ -127,6 +133,8 @@ type pruneOptions struct{ grace time.Duration }
 // scheduler has fired its last tick before it is removed (a scheduler
 // reaches a tick a little late, and a misfire catch-up later still).
 // The default is MisfireGrace; a negative d is zero.
+//
+//ds:def id=prunegrace-xppj9335 owner=@khanakia stability=stable
 func PruneGrace(d time.Duration) PruneOption {
 	return func(o *pruneOptions) { o.grace = max(d, 0) }
 }
@@ -143,6 +151,8 @@ func PruneGrace(d time.Duration) PruneOption {
 // It needs the client to list schedules (ScheduleLister and
 // CapScheduleList: memory, sqlstore, redis, Hatchet) and refuses with
 // ErrUnsupported otherwise. now comes from the caller's clock.
+//
+//ds:def id=pruneendedschedules-9j5875xj owner=@khanakia stability=stable
 func PruneEndedSchedules(ctx context.Context, c Client, now time.Time, opts ...PruneOption) ([]ScheduleID, error) {
 	o := pruneOptions{grace: MisfireGrace}
 	for _, opt := range opts {

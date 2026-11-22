@@ -1,0 +1,8 @@
+type OutputLimits struct {
+	// PerRun is how many attempts are kept per run, the newest; older ones
+	// are deleted as new ones arrive. Default DefaultOutputPerRun.
+	PerRun int
+	// Bytes caps one attempt's text; longer text is cut on a character
+	// boundary and marked Truncated. Default DefaultOutputBytes.
+	Bytes int
+}

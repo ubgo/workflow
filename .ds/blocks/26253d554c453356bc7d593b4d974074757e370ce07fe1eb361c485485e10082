@@ -1,0 +1,5 @@
+func (c *Client) promote(ctx context.Context) error {
+	_, err := c.st.exec(ctx, c.st.db, "UPDATE {runs} SET status = ? WHERE "+c.inNames()+" AND status = ? AND run_at <= ?",
+		append(append([]any{runPending}, c.names...), runScheduled, c.nowNanos())...)
+	return err
+}

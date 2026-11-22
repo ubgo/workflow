@@ -1,0 +1,8 @@
+func (c Caps) Without(drop ...Caps) Caps {
+	for _, d := range drop {
+		for i := range c.w {
+			c.w[i] &^= d.w[i]
+		}
+	}
+	return c
+}

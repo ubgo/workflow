@@ -1,0 +1,12 @@
+func (a *Admin) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	if err := a.check(OpCancelAll); err != nil {
+		return 0, err
+	}
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return 0, err
+	}
+	if err := workflow.CheckRunQuery(a.c.Capabilities(), q); err != nil {
+		return 0, err
+	}
+	return a.c.(workflow.BulkCanceller).CancelAll(ctx, q)
+}

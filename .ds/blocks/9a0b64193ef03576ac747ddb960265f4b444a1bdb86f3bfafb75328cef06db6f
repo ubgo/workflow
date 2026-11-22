@@ -1,0 +1,3 @@
+func WithMetricLabels(keys ...string) Option {
+	return func(c *config) { c.metricLabels = append(c.metricLabels, keys...) }
+}

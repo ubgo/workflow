@@ -1,0 +1,5 @@
+func TestResetAndSignalFlows(t *testing.T) {
+	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: startPair})
+	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: startPair,
+		Promises: func(*testing.T, workflow.Client) workflow.PromiseStore { return workflow.NewMemoryPromises() }})
+}

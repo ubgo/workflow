@@ -30,6 +30,8 @@ const (
 // MigrationOwner is the ledger owner of the outbox's migrations, distinct
 // from sqlstore's, so the two keep separate histories in one ledger table.
 // Under WithSchema the recorded owner is "<MigrationOwner>@<schema>".
+//
+//ds:def id=outbox-migrationowner-kv94uax4 owner=@khanakia stability=stable
 const MigrationOwner = "ubgo/workflow/sqlstore/outbox"
 
 // Ledger naming, the same stems sqlstore uses, so an app running both over
@@ -37,10 +39,13 @@ const MigrationOwner = "ubgo/workflow/sqlstore/outbox"
 const (
 	ledgerStem = "migrations"
 	lockStem   = "migrate"
-	tableStem  = "outbox"
+	//ds:def id=outbox-tablestem-bwgtu3j8 owner=@khanakia stability=stable
+	tableStem = "outbox"
 )
 
 // defaultTablePrefix starts every table name, as in sqlstore.
+//
+//ds:def id=outbox-defaulttableprefix-rjhz5epr owner=@khanakia stability=stable
 const defaultTablePrefix = "wf_"
 
 // prefixPattern keeps table prefixes to characters every engine accepts
@@ -49,6 +54,8 @@ var prefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
 
 // ErrSchemaTooNew means the ledger records an outbox migration this code
 // does not know: a newer release migrated the database.
+//
+//ds:def id=outbox-errschematoonew-fqmc6pdh owner=@khanakia stability=stable
 var ErrSchemaTooNew = errors.New("outbox: the database schema is newer than this code")
 
 // Option configures an Outbox.
@@ -56,6 +63,8 @@ type Option func(*Outbox)
 
 // WithClock sets the time source of due times, backoff, leases and the
 // relay's poll timer. The default is clock.Real.
+//
+//ds:def id=outbox-withclock-bbxuj3eu owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option {
 	return func(o *Outbox) {
 		if c != nil {
@@ -66,6 +75,8 @@ func WithClock(c clock.Clock) Option {
 
 // WithTablePrefix sets the prefix of the outbox and ledger table names
 // (default "wf_"). It must match ^[a-z][a-z0-9_]{0,30}$.
+//
+//ds:def id=outbox-withtableprefix-r9udebxk owner=@khanakia stability=stable
 func WithTablePrefix(p string) Option { return func(o *Outbox) { o.prefix = p } }
 
 // WithSchema puts the outbox table in the named Postgres schema, as
@@ -73,6 +84,8 @@ func WithTablePrefix(p string) Option { return func(o *Outbox) { o.prefix = p } 
 // pattern; New refuses it on SQLite and MySQL. The migration ledger stays
 // in the connection's search_path, its rows owned as
 // "<MigrationOwner>@<schema>".
+//
+//ds:def id=outbox-withschema-vyhab4c4 owner=@khanakia stability=stable
 func WithSchema(name string) Option { return func(o *Outbox) { o.schema = name } }
 
 // IDGenerator returns a new entry ID. The ID is also the idempotency key the
@@ -80,14 +93,20 @@ func WithSchema(name string) Option { return func(o *Outbox) { o.schema = name }
 // writer of the table; a duplicate fails Write. An ID is 1 to 64 bytes;
 // Write refuses anything else, and fails when the generator returns an
 // error, so a broken generator writes nothing.
+//
+//ds:def id=outbox-idgenerator-4qp6wagb owner=@khanakia stability=stable
 type IDGenerator func() (string, error)
 
 // DefaultIDGenerator returns "obx_" and 16 random bytes in hex.
+//
+//ds:def id=outbox-defaultidgenerator-md5cgbac owner=@khanakia stability=stable
 func DefaultIDGenerator() (string, error) { return randomID("obx"), nil }
 
 // WithIDGenerator sets how entry IDs are made (default DefaultIDGenerator),
 // for time-sortable IDs (UUIDv7, ULID) or IDs that line up with the app's
 // own. A nil generator is ignored.
+//
+//ds:def id=outbox-withidgenerator-sa4cq8nf owner=@khanakia stability=stable
 func WithIDGenerator(g IDGenerator) Option {
 	return func(o *Outbox) {
 		if g != nil {
@@ -97,10 +116,14 @@ func WithIDGenerator(g IDGenerator) Option {
 }
 
 // maxIDLen is the width of the id column (VARCHAR(64)).
+//
+//ds:def id=outbox-maxidlen-6em72zqk owner=@khanakia stability=stable
 const maxIDLen = 64
 
 // WithLogger sets where relays report what they cannot return to a caller
 // (a failed enqueue, a dead entry). The default discards.
+//
+//ds:def id=outbox-withlogger-32st7x3h owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) Option {
 	return func(o *Outbox) {
 		if l != nil {
@@ -112,6 +135,8 @@ func WithLogger(l *slog.Logger) Option {
 // Outbox is one outbox table. Write adds entries inside the app's
 // transactions; NewRelay builds the relays that move them to a client. It
 // holds no state of its own: every entry is a row.
+//
+//ds:def id=outbox-outbox-apbjta4y owner=@khanakia stability=stable
 type Outbox struct {
 	db     *sql.DB
 	d      sqlb.Dialect
@@ -126,6 +151,8 @@ type Outbox struct {
 
 // New returns the outbox over db, whose SQL is written for d (sqlb's
 // Postgres, SQLite or MySQL dialect). It opens nothing and starts nothing.
+//
+//ds:def id=outbox-new-2c322ued owner=@khanakia stability=stable
 func New(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Outbox, error) {
 	if db == nil || d == nil {
 		return nil, fmt.Errorf("%w: outbox.New needs a *sql.DB and a dialect", workflow.ErrInvalid)
@@ -135,6 +162,8 @@ func New(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Outbox, error) {
 
 // build is New without the nil-pool check: MigrationScripts renders SQL
 // text and never touches a pool.
+//
+//ds:def id=outbox-build-vqqgq3hz owner=@khanakia stability=stable
 func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Outbox, error) {
 	if d == nil {
 		return nil, fmt.Errorf("%w: the outbox needs a dialect", workflow.ErrInvalid)
@@ -172,6 +201,8 @@ func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Outbox, error) {
 // the database the outbox lives in. Nothing about the target is checked
 // here (the outbox does not know it); a job the target refuses is retried
 // with backoff, then dead after WithMaxAttempts.
+//
+//ds:def id=outbox-outbox-write-pxkp6pag owner=@khanakia stability=stable
 func (o *Outbox) Write(ctx context.Context, tx *sql.Tx, job workflow.Job) (string, error) {
 	if tx == nil {
 		return "", fmt.Errorf("%w: outbox.Write needs a transaction", workflow.ErrInvalid)
@@ -228,6 +259,8 @@ func (o *Outbox) sql(q string) string {
 }
 
 // newID asks the generator for an entry ID and checks it fits the column.
+//
+//ds:def id=outbox-outbox-newid-bdweqjrb owner=@khanakia stability=stable
 func (o *Outbox) newID() (string, error) {
 	id, err := o.ids()
 	if err != nil {
@@ -243,6 +276,8 @@ func (o *Outbox) newID() (string, error) {
 // default entry ID and every lease token. It panics only if the operating
 // system's random source fails, which crypto/rand documents as never
 // returning an error on supported platforms.
+//
+//ds:def id=outbox-randomid-ms2ck98b owner=@khanakia stability=stable
 func randomID(prefix string) string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -264,6 +299,8 @@ func (o *Outbox) owner() string {
 // is never edited (the ledger checks its checksum); a change is a new,
 // numbered migration appended here. Each script is safe to run twice (IF
 // NOT EXISTS), because MySQL commits DDL implicitly.
+//
+//ds:def id=outbox-outbox-migrations-4ska2yrr owner=@khanakia stability=stable
 func (o *Outbox) migrations() []migrate.Migration {
 	return []migrate.Migration{{Owner: o.owner(), Name: "001_outbox", Script: o.script001()}}
 }
@@ -341,6 +378,8 @@ func (o *Outbox) ledger() (migrate.Ledger, error) {
 // database a newer release migrated (ErrSchemaTooNew) and never drops
 // anything. Write and relays never migrate: running it is the deploy's
 // decision.
+//
+//ds:def id=outbox-outbox-migrate-dkanysjn owner=@khanakia stability=stable
 func (o *Outbox) Migrate(ctx context.Context) error {
 	if err := o.checkVersion(ctx); err != nil {
 		return err
@@ -403,6 +442,8 @@ type MigrationScript struct {
 // as Migrate's is, and each statement is safe to run twice. Write and
 // relays never read the ledger, so a table applied this way works as is,
 // and a later Migrate re-runs each script (a no-op) and records it.
+//
+//ds:def id=outbox-migrationscripts-w4t9z546 owner=@khanakia stability=stable
 func MigrationScripts(d sqlb.Dialect, opts ...Option) ([]MigrationScript, error) {
 	o, err := build(nil, d, opts)
 	if err != nil {

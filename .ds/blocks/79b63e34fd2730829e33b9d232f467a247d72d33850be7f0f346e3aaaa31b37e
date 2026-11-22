@@ -1,0 +1,22 @@
+func TestAutoDisable_CountFinal(t *testing.T) {
+	store := middleware.NewMemoryDisable()
+	trips := 0
+	h := middleware.AutoDisable(store, func(workflow.StepInfo, []byte) string { return "hook" }, 2,
+		func(context.Context, string) { trips++ },
+		middleware.DisableCountFinal(workflow.RetryPolicy{Max: 2}),
+	)(func(context.Context, []byte) ([]byte, error) { return nil, errors.New("timeout") })
+	for attempt := 1; attempt <= 2; attempt++ { // retried attempts: not counted
+		_, _ = h(guardStepCtx(workflow.StepInfo{Attempt: attempt}), nil)
+	}
+	if off, _ := store.Disabled(context.Background(), "hook"); off {
+		t.Fatal("retried attempts tripped the switch")
+	}
+	_, _ = h(guardStepCtx(workflow.StepInfo{Attempt: 3}), nil) // final
+	_, _ = h(guardStepCtx(workflow.StepInfo{Attempt: 3}), nil) // final again
+	if trips != 1 {
+		t.Fatalf("trips %d, want 1 after two final failures", trips)
+	}
+	if _, err := middleware.AutoDisable(store, nil, 1, nil)(nil)(context.Background(), nil); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil key: %v", err)
+	}
+}

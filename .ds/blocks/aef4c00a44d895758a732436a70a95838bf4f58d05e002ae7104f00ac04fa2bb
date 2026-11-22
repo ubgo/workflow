@@ -1,0 +1,3 @@
+type OpProber interface {
+	Supports(op Op) bool
+}

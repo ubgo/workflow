@@ -1,0 +1,11 @@
+type JobEdit struct {
+	// Payload replaces the run's payload. The driver's payload limit
+	// applies, as at Enqueue.
+	Payload *[]byte
+
+	// Priority replaces Job.Priority.
+	Priority *int
+
+	// RunAt moves the start, as Reschedule does (a past time means now).
+	RunAt *time.Time
+}

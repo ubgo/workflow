@@ -4,7 +4,7 @@ A run's trigger source says what started it: a schedule, an operator pressing "r
 
 ## Before you start
 
-- You know [labels](labels.md): `Job.Labels` travels with a run and reaches every step and run-finished observer.
+- You know [labels](labels.md): `Job.Labels` travels with a run and reaches every step ([`StepInfo.Labels`](ds:block?id=stepinfo-kun3n4c3)) and run-finished observer ([`RunEvent.Labels`](ds:block?id=runevent-upvhdx59)).
 - The runnable program for this page is [examples/trigger-source](../../examples/trigger-source/): the in-memory driver with a fake clock, so a 02:00 cron fires at once.
 
 ## Step 1: name the source of a job
@@ -68,7 +68,7 @@ In the example the same step runs three times: from the webhook job (`webhook`, 
 
 ## Step 4: refuse a job without a source
 
-`middleware.RequireSource(allowed...)` is enqueue middleware that refuses, with an error wrapping `workflow.ErrInvalid`, a job whose source cannot be told (`SourceOf` returns `""`). With allowed sources given, the job's source must also be one of them, so a typo is refused at the enqueue site instead of creating a filter value nobody looks for:
+[`middleware.RequireSource(allowed...)`](ds:block?id=mw-requiresource-3tsntxp2) is enqueue middleware that refuses, with an error wrapping `workflow.ErrInvalid`, a job whose source cannot be told ([`SourceOf`](ds:block?id=sourceof-7mrryr2k) returns `""`). With allowed sources given, the job's source must also be one of them, so a typo is refused at the enqueue site instead of creating a filter value nobody looks for:
 
 <!-- snippet: examples/trigger-source/main.go#require -->
 ```go
@@ -76,7 +76,7 @@ In the example the same step runs three times: from the webhook job (`webhook`, 
 c := middleware.WrapClient(mem, middleware.RequireSource("api", "webhook", "admin"))
 ```
 
-A derived source counts: a job carrying a library label (a schedule fire, a spawned child, a batch member, an event) passes the bare `RequireSource()`. With an allow-list, list the derived sources you expect to reach this client too. More on where the middleware sits in [Enqueue middleware › Require a trigger source](../middleware/enqueue-middleware.md#require-a-trigger-source).
+A derived source counts: a job carrying a library label (a schedule fire, a spawned child, a batch member, an event) passes the bare [`RequireSource()`](ds:block?id=mw-requiresource-3tsntxp2). With an allow-list, list the derived sources you expect to reach this client too. More on where the middleware sits in [Enqueue middleware › Require a trigger source](../middleware/enqueue-middleware.md#require-a-trigger-source).
 
 ## Try it
 
@@ -99,11 +99,11 @@ library sources: [schedule schedule-manual child batch event external]
 
 ## Pitfalls
 
-- **A source is provenance, never an authorization input.** Anything that can enqueue can claim any source; never grant or skip a check because a run says it came from `admin`.
-- **`RequireSource` sees only the jobs it wraps.** A cron fire, a chained job and a child are enqueued by the driver, past enqueue middleware, so they are never refused by it; a chained job's source is its own labels'.
-- **A bad allow-list refuses everything.** Each allowed source must pass `ValidateSource`; if one does not, every enqueue returns that error, so the mistake shows on the first call.
-- **An explicit source hides the derived one.** A job a step spawns with `WithSource` reads as that source, not `child`; the parent link is still in `LabelParentRun`.
-- **Upper-case and spaces are refused.** `Slack` or `web hook` fails at `Enqueue`; pick `slack` or `web-hook`.
+- **A source is provenance, never an authorization input.** Anything that can enqueue can claim any source ([`CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h) lets a valid source through whoever set it); never grant or skip a check because a run says it came from `admin`.
+- **[`RequireSource`](ds:block?id=mw-requiresource-3tsntxp2) sees only the jobs it wraps.** A cron fire, a chained job and a child are enqueued by the driver, past enqueue middleware, so they are never refused by it; a chained job's source is its own labels'.
+- **A bad allow-list refuses everything.** Each allowed source must pass `ValidateSource`; if one does not, every enqueue returns that error ([`RequireSource`](ds:block?id=mw-requiresource-3tsntxp2)), so the mistake shows on the first call.
+- **An explicit source hides the derived one.** A job a step spawns with `WithSource` reads as that source, not `child` ([`SourceOf`](ds:block?id=sourceof-7mrryr2k)); the parent link is still in `LabelParentRun`.
+- **Upper-case and spaces are refused.** `Slack` or `web hook` fails at `Enqueue` ([`ValidateSource`](ds:block?id=validatesource-73nzwq5k), run by [`CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h)); pick `slack` or `web-hook`.
 
 ## Related
 

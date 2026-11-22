@@ -1,0 +1,3 @@
+type ClientBinder interface {
+	BindClient(c Client) error
+}

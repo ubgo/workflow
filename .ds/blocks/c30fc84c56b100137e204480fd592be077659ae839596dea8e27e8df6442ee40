@@ -1,0 +1,10 @@
+func NewSecretDetector(r SecretRules) SecretDetector {
+	d := stockDetector{allowKeys: map[string]bool{}, allowRules: map[string]bool{}}
+	for _, k := range r.AllowKeys {
+		d.allowKeys[foldKey(k)] = true
+	}
+	for _, n := range r.AllowRules {
+		d.allowRules[n] = true
+	}
+	return d
+}

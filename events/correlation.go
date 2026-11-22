@@ -20,11 +20,13 @@ const (
 	// LabelCorrelation names the choreography a run belongs to: every run
 	// started, directly or through a chain of events published from steps,
 	// by one first event carries the same value. Trail lists them.
+	//ds:def id=events-labelcorrelation-2f3h8pg4 owner=@khanakia stability=stable
 	LabelCorrelation = workflow.LabelPrefixInternal + "correlation"
 
 	// LabelCausation is the ID of the event that started the run which
 	// published this run's event: the edge from one hop of a
 	// choreography to the next. Absent on runs of the first event.
+	//ds:def id=events-labelcausation-sk55czmu owner=@khanakia stability=stable
 	LabelCausation = workflow.LabelPrefixInternal + "causation"
 )
 
@@ -42,10 +44,14 @@ const (
 // Correlation is the message's own ID (the one given or the one the bus
 // made), so the first event of a chain names the chain. Because the filled
 // fields are logged (WithLog), a Replay keeps each message in its chain.
+//
+//ds:def id=events-withcorrelation-tnjs2y7e owner=@khanakia stability=stable
 func WithCorrelation() Option { return func(b *Bus) { b.correlate = true } }
 
 // resolveChain fills m's empty Correlation and Causation as
 // WithCorrelation describes. m.ID is already set.
+//
+//ds:def id=events-resolvechain-eg8jtcb6 owner=@khanakia stability=stable
 func resolveChain(ctx context.Context, m Message) Message {
 	info, inStep := workflow.StepInfoFrom(ctx)
 	if m.Correlation == "" {
@@ -63,6 +69,8 @@ func resolveChain(ctx context.Context, m Message) Message {
 
 // checkChain refuses Correlation or Causation on a bus without
 // WithCorrelation, where they would be dropped without a trace.
+//
+//ds:def id=events-checkchain-vhtvgshe owner=@khanakia stability=stable
 func (b *Bus) checkChain(m Message) error {
 	if !b.correlate && (m.Correlation != "" || m.Causation != "") {
 		return fmt.Errorf("%w: events: message %q sets Correlation or Causation on a bus without WithCorrelation", workflow.ErrInvalid, m.Name)
@@ -74,6 +82,8 @@ func (b *Bus) checkChain(m Message) error {
 // the reserved keys the Enqueue must allow. A message without a
 // Correlation (logged before WithCorrelation was set, then replayed) is
 // its own chain.
+//
+//ds:def id=events-bus-chainlabels-t4yjtmj3 owner=@khanakia stability=stable
 func (b *Bus) chainLabels(labels map[string]string, m Message) []string {
 	if !b.correlate {
 		return nil
@@ -106,6 +116,8 @@ func (b *Bus) chainLabels(labels map[string]string, m Message) []string {
 // The runs carry the label only when the bus that started them had
 // WithCorrelation; the causation labels say which event led to which run,
 // so the trail is a tree, not just a list.
+//
+//ds:def id=events-trail-pyxgkv3b owner=@khanakia stability=stable
 func Trail(ctx context.Context, client workflow.Client, correlation string, q workflow.RunQuery) ([]workflow.RunInfo, error) {
 	if correlation == "" {
 		return nil, fmt.Errorf("%w: events: Trail needs a correlation", workflow.ErrInvalid)

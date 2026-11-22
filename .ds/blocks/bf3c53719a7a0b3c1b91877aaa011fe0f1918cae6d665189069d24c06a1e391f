@@ -1,0 +1,31 @@
+func (e CloudEvent) Validate() error {
+	switch {
+	case e.SpecVersion != CloudEventsSpecVersion:
+		return fmt.Errorf("%w: cloudevent: specversion %q is not %q", workflow.ErrInvalid, e.SpecVersion, CloudEventsSpecVersion)
+	case e.ID == "":
+		return fmt.Errorf("%w: cloudevent: id is required", workflow.ErrInvalid)
+	case e.Source == "":
+		return fmt.Errorf("%w: cloudevent: source is required", workflow.ErrInvalid)
+	case e.Type == "":
+		return fmt.Errorf("%w: cloudevent: type is required", workflow.ErrInvalid)
+	}
+	if _, err := url.Parse(e.Source); err != nil {
+		return fmt.Errorf("%w: cloudevent: source %q is not a URI-reference", workflow.ErrInvalid, e.Source)
+	}
+	if e.DataSchema != "" {
+		if u, err := url.Parse(e.DataSchema); err != nil || !u.IsAbs() {
+			return fmt.Errorf("%w: cloudevent: dataschema %q is not an absolute URI", workflow.ErrInvalid, e.DataSchema)
+		}
+	}
+	if e.DataContentType != "" {
+		if _, _, err := mime.ParseMediaType(e.DataContentType); err != nil {
+			return fmt.Errorf("%w: cloudevent: datacontenttype %q: %v", workflow.ErrInvalid, e.DataContentType, err)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(e.Extensions)) {
+		if !ValidExtensionName(name) {
+			return fmt.Errorf("%w: cloudevent: extension name %q is not lower-case letters and digits, or names a core attribute", workflow.ErrInvalid, name)
+		}
+	}
+	return nil
+}

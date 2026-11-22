@@ -1,0 +1,8 @@
+func (p *journalPlugin) RunFinishedObservers() []RunFinishedFunc {
+	return []RunFinishedFunc{func(ctx context.Context, ev RunEvent) {
+		if ev.Ref.RunID.IsZero() || (p.keepFailed && ev.Status == StatusFailed) {
+			return
+		}
+		_ = p.store.Forget(ctx, ev.Ref.RunID) // see the doc comment
+	}}
+}

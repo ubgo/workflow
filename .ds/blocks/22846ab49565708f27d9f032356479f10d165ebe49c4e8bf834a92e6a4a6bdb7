@@ -1,0 +1,24 @@
+type MachineCtx[D any] struct {
+	// Machine is the machine's name; Key is the instance.
+	Machine, Key string
+
+	// Event is the event being handled.
+	Event MachineEvent
+
+	// State is the state whose entry or exit action runs, or the source
+	// state of the transition whose guard or action runs.
+	State string
+
+	// Data is the instance's extended state. Actions may change it;
+	// changes are saved with the new configuration when the event's
+	// handling ends. A guard gets a shallow copy and must only read it.
+	Data *D
+
+	// Seq is the microstep sequence number (it grows by one per
+	// transition set taken, starting at 1 when the instance starts), so
+	// an action can build idempotency keys that stay the same when the
+	// event is retried after a crash.
+	Seq uint64
+
+	run *machineRun[D]
+}

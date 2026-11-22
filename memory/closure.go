@@ -14,6 +14,8 @@ import (
 // observers as any other, and Status, Cancel, Runs, Retry and Delete work
 // on its RunRef. It lives only in this process's memory, like every run
 // of this driver.
+//
+//ds:def id=memory-client-enqueueclosure-ygdye9qq owner=@khanakia stability=stable
 func (c *Client) EnqueueClosure(ctx context.Context, cl workflow.ClosureJob) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

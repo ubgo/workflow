@@ -60,6 +60,8 @@ func workerLabel(w rest.Worker, key string) string {
 // StartedAt is when the first worker registered and LastSeen its newest
 // heartbeat, both on the engine's clock. Mode is NodeFull: a worker
 // client also enqueues and schedules, and the engine fires crons itself.
+//
+//ds:def id=hatchet-client-nodes-52bhc2hy owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	sdk, err := c.ready()
 	if err != nil {
@@ -133,6 +135,8 @@ func mergeWorker(n *workflow.NodeInfo, w rest.Worker) {
 // answering (its version call, within ctx), and, for a worker client,
 // every worker it registered listed ACTIVE by the engine; an enqueue-only
 // client checks the engine alone.
+//
+//ds:def id=hatchet-client-health-zg8x2yqe owner=@khanakia stability=stable
 func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 	c.mu.Lock()
 	started, drained, recycled := c.started, c.drained, c.stopCause != nil
@@ -204,6 +208,8 @@ func (c *Client) checkWorkers(ctx context.Context, sdk *hatchetsdk.Client, ids [
 // MiB by default (SERVER_GRPC_MAX_MSG_SIZE), and the driver stores a JSON
 // object payload twice, as fields and as base64 (encodeInput), about 2.34
 // times its size; 1.5 MiB leaves room for that and the run metadata.
+//
+//ds:def id=hatchet-defaultpayloadlimit-zv2xjvqt owner=@khanakia stability=stable
 const DefaultPayloadLimit = 3 << 19
 
 // payloadLimitSource names the cap in a *workflow.PayloadTooLargeError.

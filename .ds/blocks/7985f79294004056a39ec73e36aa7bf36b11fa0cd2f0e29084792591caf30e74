@@ -1,0 +1,14 @@
+func EncodeEnqueue(c Codec) workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			sealed, err := sealJob(c)(job)
+			if err != nil {
+				return workflow.RunRef{}, err
+			}
+			if sealed.Chain, err = mapChain(job.Chain, sealJob(c)); err != nil {
+				return workflow.RunRef{}, err
+			}
+			return next(ctx, sealed)
+		}
+	}
+}

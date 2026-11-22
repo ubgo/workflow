@@ -1,0 +1,14 @@
+func (d *Deferred) Flush(ctx context.Context) ([]RunRef, error) {
+	held := d.take()
+	refs := make([]RunRef, len(held))
+	var errs []error
+	for i, h := range held {
+		ref, err := h.enqueue(ctx, h.job)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("deferred job %d for %q: %w", i, h.job.Workflow, err))
+			continue
+		}
+		refs[i] = ref
+	}
+	return refs, errors.Join(errs...)
+}

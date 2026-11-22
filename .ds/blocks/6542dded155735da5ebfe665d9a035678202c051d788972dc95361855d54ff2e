@@ -1,0 +1,3 @@
+func ByDepth(cfg BalanceConfig) Balancer {
+	return Proportional(cfg, func(l QueueLoad) float64 { return float64(l.Depth + l.Running) })
+}

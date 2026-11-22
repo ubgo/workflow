@@ -1,0 +1,7 @@
+func WithMaxReclaims(n int) Option {
+	return func(c *Client) {
+		if n >= 0 {
+			c.maxReclaims = n
+		}
+	}
+}

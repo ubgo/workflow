@@ -17,6 +17,8 @@ import (
 // process's monotonic clock, which drifts by parts per million, so a minute
 // keeps the error far below any lease or poll interval; the resync mostly
 // follows the database server's own clock adjustments.
+//
+//ds:def id=sql-defaultclockresync-8sw3ndbp owner=@khanakia stability=stable
 const defaultClockResync = time.Minute
 
 // DatabaseClock is a clock.Clock whose Now is the database server's clock:
@@ -36,6 +38,8 @@ const defaultClockResync = time.Minute
 // Postgres reads clock_timestamp(), MySQL UTC_TIMESTAMP(6) and SQLite
 // julianday('now'); a SQLite file lives on one machine, so there it only
 // makes every process on that machine agree, which they already do.
+//
+//ds:def id=sql-databaseclock-sn8mw5f7 owner=@khanakia stability=stable
 type DatabaseClock struct {
 	db     *sql.DB
 	engine string
@@ -52,6 +56,8 @@ var _ clock.Clock = (*DatabaseClock)(nil)
 
 // NewDatabaseClock returns a clock over db, whose SQL dialect is d
 // (Postgres, SQLite or MySQL). It reads nothing until Sync.
+//
+//ds:def id=sql-newdatabaseclock-7xuwrxua owner=@khanakia stability=stable
 func NewDatabaseClock(db *sql.DB, d sqlb.Dialect) (*DatabaseClock, error) {
 	if db == nil || d == nil {
 		return nil, fmt.Errorf("%w: NewDatabaseClock needs a *sql.DB and a dialect", workflow.ErrInvalid)
@@ -66,6 +72,8 @@ func NewDatabaseClock(db *sql.DB, d sqlb.Dialect) (*DatabaseClock, error) {
 // dbNowQuery is the statement that returns the server's time as Unix
 // microseconds, or "" for an engine without one. MySQL's is plain datetime
 // arithmetic on UTC values, so the session time zone cannot shift it.
+//
+//ds:def id=sql-dbnowquery-rujnqmj7 owner=@khanakia stability=stable
 func dbNowQuery(engine string) string {
 	switch engine {
 	case enginePostgres:
@@ -81,6 +89,8 @@ func dbNowQuery(engine string) string {
 // Sync reads the database's time and makes it the clock's reference. It
 // takes a connection from the pool, so never call it while holding one of
 // the pool's transactions on a pool that may have a single connection.
+//
+//ds:def id=sql-databaseclock-sync-9dsn324r owner=@khanakia stability=stable
 func (k *DatabaseClock) Sync(ctx context.Context) error {
 	t0 := k.local.Now()
 	var micros int64
@@ -138,6 +148,8 @@ func (k *DatabaseClock) Uncertainty() time.Duration {
 // clocks do not. Start reads the database's clock before anything else
 // (and fails when it cannot), then again every resync on a running client;
 // zero or less means one minute. An enqueue-only client reads it at Start.
+//
+//ds:def id=sql-withdatabaseclock-nww7yjsk owner=@khanakia stability=stable
 func WithDatabaseClock(resync time.Duration) Option {
 	return func(cl *Client) {
 		if resync <= 0 {
@@ -150,6 +162,8 @@ func WithDatabaseClock(resync time.Duration) Option {
 // DatabaseClock returns the clock WithDatabaseClock installed, or nil, so
 // an app can read its Offset or give the same clock to a UniqueStore or a
 // DebounceStore over the same database.
+//
+//ds:def id=sql-client-databaseclock-8yft96gm owner=@khanakia stability=stable
 func (c *Client) DatabaseClock() *DatabaseClock { return c.dbClock }
 
 // syncClock reads the database clock when WithDatabaseClock is on.

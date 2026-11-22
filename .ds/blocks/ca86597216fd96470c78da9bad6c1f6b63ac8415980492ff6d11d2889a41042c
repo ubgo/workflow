@@ -1,0 +1,12 @@
+type ReplayResult struct {
+	// ID is the replay ID, the one given or the one the bus made.
+	ID string
+
+	// Messages is how many distinct message IDs in the range passed
+	// Filter.
+	Messages int
+
+	// Deliveries has one entry per (message, subscription) pair that
+	// matched, in log order then subscription order.
+	Deliveries []ReplayDelivery
+}

@@ -1,0 +1,31 @@
+func ContinueAsNew(ctx context.Context, client Client, payload []byte) (RunRef, error) {
+	if client == nil {
+		return RunRef{}, Permanent(invalidf("ContinueAsNew: client is nil"))
+	}
+	if !client.Capabilities().Has(CapIdempotencyKey) {
+		return RunRef{}, Permanent(&UnsupportedError{Field: "ContinueAsNew", Missing: CapIdempotencyKey, Reason: "a retried step could start two next runs"})
+	}
+	info, ok := StepInfoFrom(ctx)
+	if !ok {
+		return RunRef{}, Permanent(invalidf("ContinueAsNew: not called from a step"))
+	}
+	labels := make(map[string]string, len(info.Labels)+1)
+	for k, v := range maps.All(info.Labels) {
+		if _, reserved := ReservedLabel(k); !reserved {
+			labels[k] = v
+		}
+	}
+	labels[LabelContinuedFrom] = info.RunID.String()
+	job := Job{
+		Workflow:       info.Workflow,
+		Payload:        payload,
+		Labels:         labels,
+		Tenant:         info.Tenant,
+		IdempotencyKey: "continue/" + info.RunID.String(),
+	}
+	ref, err := client.Enqueue(AllowReservedLabels(ctx, LabelContinuedFrom), job)
+	if err != nil {
+		return RunRef{}, fmt.Errorf("workflow: continue as new: %w", err)
+	}
+	return ref, nil
+}

@@ -1,0 +1,63 @@
+func (c *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return 0, err
+	}
+	// Label prefixes are not claimed (no CapLabelPrefix): refused, never ignored.
+	if err := workflow.CheckRunQuery(c.capabilities(), q); err != nil {
+		return 0, err
+	}
+	if err := checkRunStates(q); err != nil {
+		return 0, err
+	}
+	sdk, err := c.ready()
+	if err != nil {
+		return 0, err
+	}
+	q.Statuses = workflow.CancelStatuses(q)
+	q.Limit = workflow.MaxRunsLimit
+	var scheduled []workflow.RunRef
+	var ids []openapi_types.UUID
+	for {
+		page, err := c.Runs(ctx, q)
+		if err != nil {
+			return 0, err
+		}
+		for _, r := range page.Runs {
+			if r.Ref.RunID.IsZero() {
+				scheduled = append(scheduled, r.Ref)
+				continue
+			}
+			if id, err := uuid.Parse(r.Ref.RunID.String()); err == nil {
+				ids = append(ids, id)
+			}
+		}
+		if page.Next == "" {
+			break
+		}
+		q.Cursor = page.Next
+	}
+	n := 0
+	var late []*lateStart
+	for _, ref := range scheduled {
+		l, err := c.cancelRef(ctx, sdk, ref)
+		if err != nil {
+			return n, err
+		}
+		if l != nil {
+			late = append(late, l)
+		}
+		n++
+	}
+	// Starts deleted close to their due time are watched together; one
+	// the engine fired anyway has its run cancelled and stays counted.
+	if err := c.settleLate(ctx, sdk, late); err != nil {
+		return n, err
+	}
+	for chunk := range slices.Chunk(ids, cancelChunk) {
+		if _, err := sdk.Runs().Cancel(ctx, rest.V1CancelTaskRequest{ExternalIds: &chunk}); err != nil {
+			return n, engineErr(err, "cancel runs")
+		}
+		n += len(chunk)
+	}
+	return n, nil
+}

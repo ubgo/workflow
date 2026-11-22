@@ -1,0 +1,13 @@
+func ReleaseUniqueOnStart(store UniqueStore) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if info, ok := workflow.StepInfoFrom(ctx); ok {
+				key, owner := info.Labels[UniqueKeyLabel], info.Labels[UniqueOwnerLabel]
+				if key != "" && owner != "" {
+					_ = store.Release(context.WithoutCancel(ctx), key, owner)
+				}
+			}
+			return next(ctx, in)
+		}
+	}
+}

@@ -1,0 +1,19 @@
+func (e *LeaderElector) Run(ctx context.Context) {
+	for {
+		if _, err := e.Campaign(ctx); err != nil && ctx.Err() == nil {
+			e.log.Error("sqlstore: leader campaign", "role", e.role, "error", err)
+		}
+		t := e.clk.NewTimer(e.lease / 3)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), releaseTimeout)
+			if err := e.Resign(rctx); err != nil {
+				e.log.Error("sqlstore: resign leadership (another node takes it after the lease)", "role", e.role, "error", err)
+			}
+			cancel()
+			return
+		case <-t.C():
+		}
+	}
+}

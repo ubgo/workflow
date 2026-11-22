@@ -1,0 +1,1 @@
+func ForcedFailure(reason string) error { return &forcedError{reason: reason} }

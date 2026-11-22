@@ -1,0 +1,7 @@
+func (f *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
+	s, err := primaryAs[workflow.WorkerScaler](f, "QueueLoads", workflow.CapWorkerScale)
+	if err != nil {
+		return nil, err
+	}
+	return s.QueueLoads(ctx)
+}

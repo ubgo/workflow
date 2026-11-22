@@ -11,6 +11,8 @@ import (
 )
 
 // ChunkedOptions configures EnqueueChunked.
+//
+//ds:def id=batch-chunkedoptions-9m7wt4dg owner=@khanakia stability=stable
 type ChunkedOptions struct {
 	// ChunkOptions is the paging: Size jobs per chunk (at least 1), the
 	// Total when known (for progress) and MaxChunks, which is required
@@ -72,6 +74,8 @@ type ChunkedOptions struct {
 // It runs on every driver: the step on any driver with the Journal
 // plugin, the jobs on any c with CapIdempotencyKey (memory, sqlstore,
 // Redis, Hatchet).
+//
+//ds:def id=batch-enqueuechunked-zkg8zjpv owner=@khanakia stability=stable
 func EnqueueChunked(ctx context.Context, c workflow.Client, name string, opts ChunkedOptions, page func(ctx context.Context, offset, size int64) ([]workflow.Job, error)) (int64, error) {
 	if c == nil || page == nil || name == "" {
 		return 0, workflow.Permanent(fmt.Errorf("%w: batch: EnqueueChunked needs a client, a name and a page func", workflow.ErrInvalid))
@@ -128,6 +132,8 @@ func EnqueueChunked(ctx context.Context, c workflow.Client, name string, opts Ch
 
 // chunkKey is the default Key: a digest of the run and the fan-out's name
 // (fixed width, whatever their length) and the job's index.
+//
+//ds:def id=batch-chunkkey-djcqhrrv owner=@khanakia stability=stable
 func chunkKey(run workflow.RunID, name string) func(int64, workflow.Job) string {
 	sum := sha256.Sum256([]byte(string(run) + "\x00" + name))
 	base := "ubgo-chunk/" + hex.EncodeToString(sum[:16]) + "/"

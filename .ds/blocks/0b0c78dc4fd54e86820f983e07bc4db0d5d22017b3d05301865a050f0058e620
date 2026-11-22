@@ -1,0 +1,6 @@
+func (c *Client) need(field string, caps workflow.Caps) error {
+	if missing := c.Capabilities().Missing(caps); !missing.IsZero() {
+		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the regions cannot do it"}
+	}
+	return nil
+}

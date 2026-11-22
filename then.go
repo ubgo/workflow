@@ -12,10 +12,14 @@ import (
 // LabelThenFrom is the run that started a job through Then: the finished
 // run's RunID (or "scheduled:" plus its ScheduledID for a delayed run
 // cancelled before it started). Only Then sets it.
+//
+//ds:def id=labelthenfrom-8h5tpxrg owner=@khanakia stability=stable
 const LabelThenFrom = LabelPrefixInternal + "then-from"
 
 // ThenRule starts the next job when a run of When ends in one of On
 // (EV-08).
+//
+//ds:def id=thenrule-rcv7hzmr owner=@khanakia stability=stable
 type ThenRule struct {
 	// Name identifies the rule in the next job's idempotency key and in
 	// errors; stable across deploys. Empty means When + ">" + the next
@@ -42,6 +46,8 @@ type ThenRule struct {
 // It goes to the ThenErrors function. The next job was not started; an
 // app that must not lose it re-enqueues Job from here (Job is zero when
 // Start failed).
+//
+//ds:def id=thenerror-9gk7jpsy owner=@khanakia stability=stable
 type ThenError struct {
 	Rule string
 	// From is the finished run.
@@ -66,6 +72,8 @@ type ThenOption func(*thenPlugin)
 // caller and a next job that silently does not start is worse than a log
 // line. fn runs on the driver's observer goroutine; it should return
 // quickly.
+//
+//ds:def id=thenerrors-j2g8pm8g owner=@khanakia stability=stable
 func ThenErrors(fn func(error)) ThenOption { return func(p *thenPlugin) { p.errs = fn } }
 
 // ThenAfterRedo applies the rules to the ends of runs carrying LabelRedo
@@ -74,6 +82,8 @@ func ThenErrors(fn func(error)) ThenOption { return func(p *thenPlugin) { p.errs
 // them, because the first success already started each rule's next job
 // and a second one would run that job again. Pass it when the next job
 // must follow the corrected result, and make that job idempotent.
+//
+//ds:def id=thenafterredo-zh59sk4a owner=@khanakia stability=stable
 func ThenAfterRedo() ThenOption { return func(p *thenPlugin) { p.afterRedo = true } }
 
 // Then returns a plugin, named "then", that starts the next job when a
@@ -99,6 +109,8 @@ func ThenAfterRedo() ThenOption { return func(p *thenPlugin) { p.afterRedo = tru
 // Then refuses, with ErrInvalid, no rules, a rule without When or Start,
 // a status in On that is not terminal, and two rules with one Name. Rules
 // are tried in order; every matching rule starts its own job.
+//
+//ds:def id=then-j2sz7cnw owner=@khanakia stability=stable
 func Then(rules []ThenRule, opts ...ThenOption) (Plugin, error) {
 	if len(rules) == 0 {
 		return nil, invalidf("then: no rules")
@@ -162,6 +174,8 @@ func (p *thenPlugin) Name() string { return "then" }
 
 // EnqueueMiddleware binds this Use call's enqueue and passes every job
 // through unchanged.
+//
+//ds:def id=thenplugin-enqueuemiddleware-45pnxp9j owner=@khanakia stability=stable
 func (p *thenPlugin) EnqueueMiddleware() []EnqueueMiddleware {
 	slot := &thenSlot{}
 	p.mu.Lock()
@@ -188,6 +202,8 @@ func (p *thenPlugin) RunFinishedObservers() []RunFinishedFunc {
 }
 
 // observe starts the next job of every rule ev matches.
+//
+//ds:def id=thenplugin-observe-fkwupcpn owner=@khanakia stability=stable
 func (p *thenPlugin) observe(ctx context.Context, slot *thenSlot, ev RunEvent) {
 	if ev.Labels[LabelRedo] == "true" && !p.afterRedo {
 		return // a redo: the first success already started the next jobs

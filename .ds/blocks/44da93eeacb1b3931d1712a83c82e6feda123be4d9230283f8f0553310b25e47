@@ -1,0 +1,13 @@
+func TestConformanceOtherRegion(t *testing.T) {
+	workflowtest.Run(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
+		clk := clock.NewFake(start)
+		c, err := regional.New(map[string]workflow.Client{
+			"eu": memory.New(memory.WithClock(clk)),
+			"us": memory.New(memory.WithClock(clk)),
+		}, regional.ByLabel("region", "us"), regional.WithScheduleRegion("eu"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return workflowtest.Instance{Client: c, Clock: clk}
+	}})
+}

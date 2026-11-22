@@ -1,0 +1,32 @@
+func (o *Outbox) Write(ctx context.Context, tx *sql.Tx, job workflow.Job) (string, error) {
+	if tx == nil {
+		return "", fmt.Errorf("%w: outbox.Write needs a transaction", workflow.ErrInvalid)
+	}
+	if job.Workflow == "" {
+		return "", fmt.Errorf("%w: outbox.Write needs Job.Workflow", workflow.ErrInvalid)
+	}
+	labels, err := json.Marshal(job.Labels)
+	if err != nil {
+		return "", fmt.Errorf("outbox: encode labels: %w", err)
+	}
+	var idem any // NULL unless set
+	runAt := int64(0)
+	if job.IdempotencyKey != "" {
+		idem = job.IdempotencyKey
+	}
+	if !job.RunAt.IsZero() {
+		runAt = job.RunAt.UnixNano()
+	}
+	id, err := o.newID()
+	if err != nil {
+		return "", err
+	}
+	now := o.clk.Now().UnixNano()
+	_, err = tx.ExecContext(ctx, o.sql(`INSERT INTO {t} (id, workflow, payload, labels, idem, priority, run_at, status,
+		attempts, due, lease_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?)`),
+		id, job.Workflow, job.Payload, string(labels), idem, job.Priority, runAt, statusPending, now, now)
+	if err != nil {
+		return "", fmt.Errorf("outbox: write: %w", err)
+	}
+	return id, nil
+}

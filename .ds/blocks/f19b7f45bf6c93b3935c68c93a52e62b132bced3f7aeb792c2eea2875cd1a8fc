@@ -1,0 +1,22 @@
+func checkQueues(qs []workflow.QueueConfig) error {
+	if err := workflow.ValidateQueues(qs); err != nil {
+		return fmt.Errorf("hatchet driver: Queues: %w", err)
+	}
+	// Limit: Hatchet has slots per worker and a concurrency expression per
+	// workflow, but nothing that counts the in-flight steps of a whole
+	// queue (a set of workflows) across workers, so the driver does not
+	// declare CapQueueLimitGlobal and refuses a Limit rather than enforce
+	// only a per-worker cap under the name of a cluster one.
+	if err := workflow.CheckQueueLimits(caps, qs); err != nil {
+		return err
+	}
+	for _, q := range qs {
+		if q.Priority != 0 {
+			return workflow.Unsupported("QueueConfig.Priority", "queue "+q.Name+": each queue is its own Hatchet worker, and the engine cannot hold one worker's runs back for another's")
+		}
+		if q.Weight != 0 {
+			return workflow.Unsupported("QueueConfig.Weight", "queue "+q.Name+": each queue is its own Hatchet worker with its own slots, so no worker picks between queues and there is no pick to weight")
+		}
+	}
+	return nil
+}

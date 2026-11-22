@@ -1,0 +1,15 @@
+func finish(st *State, now time.Time, eff *effects) {
+	if st.Finished {
+		return
+	}
+	allOK := true
+	for _, j := range st.Jobs {
+		if !j.Status.IsTerminal() {
+			return
+		}
+		allOK = allOK && st.counted(j.Status) == workflow.StatusSucceeded
+	}
+	st.Finished, st.FinishedAt = true, now
+	eff.then = allOK && !st.Cancelled
+	eff.finally = true
+}

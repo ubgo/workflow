@@ -1,0 +1,19 @@
+type SoftTimeoutConfig struct {
+	// For returns how long an attempt of a step runs before its soft
+	// deadline; zero or less means none for that step. Nil means After
+	// for every step. Set it below the step's Timeout: drivers time the
+	// hard timeout on their own clock, not as a ctx deadline, so the
+	// middleware cannot read it and a soft deadline past it never fires.
+	For func(workflow.StepInfo) time.Duration
+
+	// After is the soft deadline when For is nil.
+	After time.Duration
+
+	// OnSoft, when set, is told once per attempt that passes its soft
+	// deadline, on the watching goroutine, while the attempt keeps
+	// running (to log or count it).
+	OnSoft func(ctx context.Context, info workflow.StepInfo)
+
+	// Clock times the attempt; nil means clock.Real.
+	Clock clock.Clock
+}

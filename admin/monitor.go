@@ -13,6 +13,8 @@ import (
 type AlertKind string
 
 // The alert kinds.
+//
+//ds:def id=admin-alertkinds-2sgyn6th owner=@khanakia stability=stable
 const (
 	// AlertQueueDepth: more runs wait in a queue than Threshold.MaxDepth.
 	AlertQueueDepth AlertKind = "queue_depth"
@@ -23,6 +25,8 @@ const (
 
 // Threshold is when a queue is in trouble: too deep, or its oldest run
 // waiting too long. A zero field is not checked.
+//
+//ds:def id=admin-threshold-a4u89mwj owner=@khanakia stability=stable
 type Threshold struct {
 	// Queue is the queue it applies to. Empty is the default for every
 	// queue that has no Threshold of its own.
@@ -34,6 +38,8 @@ type Threshold struct {
 }
 
 // Alert is one threshold crossing, or the end of one.
+//
+//ds:def id=admin-alert-85zvt84r owner=@khanakia stability=stable
 type Alert struct {
 	Kind  AlertKind
 	Queue string
@@ -56,11 +62,15 @@ type Alert struct {
 // Alert runs on the Monitor's goroutine, one call at a time; a slow
 // Alerter delays the next poll, and a panic is recovered and reported to
 // the error handler.
+//
+//ds:def id=admin-alerter-8m7n4k52 owner=@khanakia stability=stable
 type Alerter interface {
 	Alert(ctx context.Context, a Alert)
 }
 
 // AlerterFunc adapts a function to Alerter.
+//
+//ds:def id=admin-alerterfunc-pkcw2556 owner=@khanakia stability=api
 type AlerterFunc func(ctx context.Context, a Alert)
 
 // Alert calls f.
@@ -68,6 +78,8 @@ func (f AlerterFunc) Alert(ctx context.Context, a Alert) { f(ctx, a) }
 
 // DefaultMonitorInterval is how often a Monitor polls when WithInterval is
 // not given.
+//
+//ds:def id=admin-defaultmonitorinterval-yr7xwqgq owner=@khanakia stability=stable
 const DefaultMonitorInterval = 30 * time.Second
 
 // MonitorOption configures NewMonitor.
@@ -80,16 +92,22 @@ func WithInterval(d time.Duration) MonitorOption { return func(m *Monitor) { m.i
 // WithRepeat re-sends an alert every d while its queue stays over the
 // threshold. Zero, the default, alerts once on crossing and once on
 // resolving.
+//
+//ds:def id=admin-withrepeat-39w67s3d owner=@khanakia stability=stable
 func WithRepeat(d time.Duration) MonitorOption { return func(m *Monitor) { m.repeat = d } }
 
 // WithErrorHandler receives poll errors and recovered Alerter panics. Nil,
 // the default, drops them; Run keeps polling either way.
+//
+//ds:def id=admin-witherrorhandler-n82jg7nk owner=@khanakia stability=stable
 func WithErrorHandler(fn func(error)) MonitorOption { return func(m *Monitor) { m.onErr = fn } }
 
 // Monitor polls Admin.QueueStats on the Admin's clock and calls an Alerter
 // when a queue crosses a Threshold, and again when it is back under. It
 // keeps which alerts are open in memory only, so two Monitors on two
 // nodes each alert; run one per deployment.
+//
+//ds:def id=admin-monitor-zrzyjc6x owner=@khanakia stability=stable
 type Monitor struct {
 	a          *Admin
 	alerter    Alerter
@@ -113,6 +131,8 @@ type alertKey struct {
 // a nil Alerter, no thresholds, a negative field, a threshold that checks
 // nothing, an invalid queue name or two thresholds for one queue; and,
 // with an UnsupportedError, a client QueueStats cannot work on.
+//
+//ds:def id=admin-newmonitor-fuk5cde4 owner=@khanakia stability=stable
 func NewMonitor(a *Admin, alerter Alerter, thresholds []Threshold, opts ...MonitorOption) (*Monitor, error) {
 	if alerter == nil {
 		return nil, fmt.Errorf("%w: admin: Monitor needs an Alerter", workflow.ErrInvalid)
@@ -167,6 +187,8 @@ func (m *Monitor) threshold(queue string) (Threshold, bool) {
 
 // Check polls once and sends the alerts the poll calls for. Run calls it
 // on every tick; tests and a cron job can call it directly.
+//
+//ds:def id=admin-monitor-check-kvr49tyk owner=@khanakia stability=stable
 func (m *Monitor) Check(ctx context.Context) error {
 	rep, err := m.a.QueueStats(ctx)
 	if err != nil {
@@ -219,6 +241,8 @@ func (m *Monitor) raise(ctx context.Context, k alertKey, s QueueStat, t Threshol
 
 // send calls the Alerter, recovering a panic so one bad alert never stops
 // the Monitor.
+//
+//ds:def id=admin-monitor-send-prf3u96r owner=@khanakia stability=stable
 func (m *Monitor) send(ctx context.Context, a Alert) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -238,6 +262,8 @@ func (m *Monitor) report(err error) {
 // poll error goes to the error handler and the next poll still runs, so a
 // database blip does not stop alerting. Nothing runs before Run is
 // called.
+//
+//ds:def id=admin-monitor-run-hjka6k3x owner=@khanakia stability=stable
 func (m *Monitor) Run(ctx context.Context) error {
 	for {
 		t := m.a.clk.NewTimer(m.interval)

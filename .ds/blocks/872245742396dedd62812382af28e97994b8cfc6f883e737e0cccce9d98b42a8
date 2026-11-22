@@ -1,0 +1,5 @@
+type MemoryDebounce struct {
+	clk    clock.Clock
+	mu     sync.Mutex
+	bursts map[string]DebounceBurst
+}

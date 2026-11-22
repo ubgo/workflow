@@ -1,0 +1,10 @@
+func NewDatabaseClock(db *sql.DB, d sqlb.Dialect) (*DatabaseClock, error) {
+	if db == nil || d == nil {
+		return nil, fmt.Errorf("%w: NewDatabaseClock needs a *sql.DB and a dialect", workflow.ErrInvalid)
+	}
+	engine := sqlb.DialectName(d)
+	if dbNowQuery(engine) == "" {
+		return nil, workflow.Unsupported("dialect "+engine, "the database clock reads Postgres, SQLite and MySQL")
+	}
+	return &DatabaseClock{db: db, engine: engine, local: clock.Real{}}, nil
+}

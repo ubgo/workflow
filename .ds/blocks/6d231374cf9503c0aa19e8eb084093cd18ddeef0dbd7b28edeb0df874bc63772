@@ -1,0 +1,6 @@
+func NewMemoryCircuit(clk clock.Clock) *MemoryCircuit {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &MemoryCircuit{clk: clk, circuits: map[string]*circuit{}}
+}

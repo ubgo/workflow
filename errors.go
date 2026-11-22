@@ -11,27 +11,34 @@ var (
 	// ErrUnsupported means the driver cannot honour a field or a
 	// workflow's needs. Drivers return it wrapped in an UnsupportedError
 	// naming the field, never by silently dropping the field.
+	//ds:def id=errunsupported-wacxcsch owner=@khanakia stability=stable
 	ErrUnsupported = errors.New("workflow: unsupported by this driver")
 
 	// ErrNotFound means the workflow, run or schedule does not exist.
+	//ds:def id=errnotfound-5m2hhaq7 owner=@khanakia stability=stable
 	ErrNotFound = errors.New("workflow: not found")
 
 	// ErrNotStarted means a call that needs workers came before Start.
+	//ds:def id=errnotstarted-x6pc2d38 owner=@khanakia stability=stable
 	ErrNotStarted = errors.New("workflow: client not started")
 
 	// ErrAlreadyStarted means Start was called twice, or Register after
 	// Start.
+	//ds:def id=erralreadystarted-prauyy24 owner=@khanakia stability=stable
 	ErrAlreadyStarted = errors.New("workflow: client already started")
 
 	// ErrDuplicate means an idempotency key collided in a way the driver
 	// reports as an error rather than by returning the existing run.
+	//ds:def id=errduplicate-chfrvqsx owner=@khanakia stability=stable
 	ErrDuplicate = errors.New("workflow: duplicate idempotency key")
 
 	// ErrInvalid means a Workflow, Job or Schedule failed validation.
+	//ds:def id=errinvalid-y3xxpcy2 owner=@khanakia stability=stable
 	ErrInvalid = errors.New("workflow: invalid spec")
 
 	// ErrCancelled is the error a run's steps see when it is cancelled;
 	// it is never retried.
+	//ds:def id=errcancelled-9t9axh67 owner=@khanakia stability=stable
 	ErrCancelled = errors.New("workflow: run cancelled")
 
 	// ErrUnavailable means the backend could not be reached or did not
@@ -39,16 +46,19 @@ var (
 	// database), as opposed to refusing the request. Drivers mark such
 	// errors with Unavailable, so a caller such as a failover client can
 	// tell an outage from an app bug without parsing driver messages.
+	//ds:def id=errunavailable-982eccbn owner=@khanakia stability=stable
 	ErrUnavailable = errors.New("workflow: backend unavailable")
 
 	// ErrDiscarded is the Err of a run a step ended with Discard. A
 	// discarded run's Err matches ErrCancelled too, so code that treats
 	// cancelled runs as "not failed" keeps working.
+	//ds:def id=errdiscarded-wcgqzsc5 owner=@khanakia stability=stable
 	ErrDiscarded = errors.New("workflow: run discarded")
 
 	// ErrWrongState means the run exists but its status does not allow
 	// the call: Retry of a run that did not fail, Delete of an unfinished
 	// run.
+	//ds:def id=errwrongstate-7qhmurgh owner=@khanakia stability=stable
 	ErrWrongState = errors.New("workflow: run is in the wrong state for this call")
 )
 
@@ -64,6 +74,8 @@ func (u *unavailableError) Is(target error) bool { return target == ErrUnavailab
 
 // Unavailable marks err as "the backend could not be reached": errors.Is
 // matches both ErrUnavailable and err itself. Unavailable(nil) is nil.
+//
+//ds:def id=unavailable-wpp9cehg owner=@khanakia stability=stable
 func Unavailable(err error) error {
 	if err == nil {
 		return nil
@@ -73,10 +85,14 @@ func Unavailable(err error) error {
 
 // IsUnavailable reports whether err, or any error it wraps, is
 // ErrUnavailable or was marked by Unavailable.
+//
+//ds:def id=isunavailable-emny24e5 owner=@khanakia stability=stable
 func IsUnavailable(err error) bool { return errors.Is(err, ErrUnavailable) }
 
 // UnsupportedError names what a driver cannot do. It matches
 // ErrUnsupported under errors.Is.
+//
+//ds:def id=unsupportederror-46jkqrxt owner=@khanakia stability=stable
 type UnsupportedError struct {
 	// Field is the spec field or feature, such as "Job.RunAt" or
 	// "Schedule.Location".
@@ -91,12 +107,16 @@ type UnsupportedError struct {
 }
 
 // Unsupported returns an UnsupportedError for field.
+//
+//ds:def id=unsupported-4r9efjk8 owner=@khanakia stability=stable
 func Unsupported(field, reason string) error {
 	return &UnsupportedError{Field: field, Reason: reason}
 }
 
 // Error names the field, the missing capabilities and the reason, so the
 // message alone tells an operator what to change.
+//
+//ds:def id=unsupportederror-error-yc4b5g68 owner=@khanakia stability=stable
 func (e *UnsupportedError) Error() string {
 	msg := "workflow: " + e.Field + " unsupported by this driver"
 	if !e.Missing.IsZero() {
@@ -124,6 +144,8 @@ func (p *permanentError) Unwrap() error { return p.err }
 
 // Permanent marks err as non-retryable: the step fails now and its
 // remaining attempts are skipped. Permanent(nil) is nil.
+//
+//ds:def id=permanent-9e6vjm6s owner=@khanakia stability=stable
 func Permanent(err error) error {
 	if err == nil {
 		return nil
@@ -133,6 +155,8 @@ func Permanent(err error) error {
 
 // IsPermanent reports whether err, or any error it wraps, was marked by
 // Permanent.
+//
+//ds:def id=ispermanent-pswuapn7 owner=@khanakia stability=stable
 func IsPermanent(err error) bool {
 	var p *permanentError
 	return errors.As(err, &p)
@@ -152,6 +176,8 @@ func (d *discardError) Unwrap() error { return d.err }
 // an operator sees it. On a driver without CapDiscard it behaves as
 // Permanent: the run fails, the direction that never hides a failure.
 // Discard(nil) is nil.
+//
+//ds:def id=discard-ttxam8w8 owner=@khanakia stability=stable
 func Discard(err error) error {
 	if err == nil {
 		return nil
@@ -161,6 +187,8 @@ func Discard(err error) error {
 
 // IsDiscarded reports whether err, or any error it wraps, was marked by
 // Discard.
+//
+//ds:def id=isdiscarded-m5swj98d owner=@khanakia stability=stable
 func IsDiscarded(err error) bool {
 	var d *discardError
 	return errors.As(err, &d)
@@ -169,6 +197,8 @@ func IsDiscarded(err error) bool {
 // DiscardedError is the Err a driver records for a run a step discarded:
 // it matches ErrDiscarded, ErrCancelled and the step's own error under
 // errors.Is. step names the step; err is what the step returned.
+//
+//ds:def id=discardederror-ebygkc2v owner=@khanakia stability=stable
 func DiscardedError(step string, err error) error {
 	return fmt.Errorf("%w: %w: step %q: %w", ErrCancelled, ErrDiscarded, step, err)
 }

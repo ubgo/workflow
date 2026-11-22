@@ -1,0 +1,1 @@
+type ProgressFunc func(ctx context.Context, p Progress) error

@@ -1,0 +1,11 @@
+func (c *Client) notifiers() (map[string]workflow.RunNotifier, bool) {
+	out := make(map[string]workflow.RunNotifier, len(c.names))
+	for _, name := range c.names {
+		n, ok := c.regions[name].(workflow.RunNotifier)
+		if !ok {
+			return nil, false
+		}
+		out[name] = n
+	}
+	return out, true
+}

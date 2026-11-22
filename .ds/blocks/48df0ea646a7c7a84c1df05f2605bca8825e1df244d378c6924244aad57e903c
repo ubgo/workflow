@@ -1,0 +1,24 @@
+func (c *Client) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	targets, err := c.signalTargets(ctx, ev)
+	if err != nil {
+		return 0, err
+	}
+	ts := make(map[string]workflow.TransientSignaller, len(targets))
+	for _, name := range targets {
+		s, ok := c.regions[name].(workflow.TransientSignaller)
+		if !ok {
+			return 0, workflow.Unsupported("SignalWaiting", "region "+name+" does not implement it")
+		}
+		ts[name] = s
+	}
+	total := 0
+	errs := map[string]error{}
+	for _, name := range targets {
+		n, err := ts[name].SignalWaiting(ctx, ev)
+		total += n
+		if err != nil {
+			errs[name] = err
+		}
+	}
+	return total, joinRegions("SignalWaiting", targets, errs)
+}

@@ -1,0 +1,6 @@
+func engineName(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+	return strings.ToLower(namespace+namespaceSeparator) + name
+}

@@ -1,0 +1,6 @@
+func WithCompletionSource(srcs ...Source) Option {
+	return func(m *Manager) {
+		m.sources = slices.Clone(srcs)
+		m.sourcesSet = true
+	}
+}

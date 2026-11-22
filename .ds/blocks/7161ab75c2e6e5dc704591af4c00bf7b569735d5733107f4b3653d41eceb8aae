@@ -1,0 +1,19 @@
+func (c *Client) keepRuns(ctx context.Context, d dueSchedule) error {
+	if d.spec.keep <= 0 {
+		return nil
+	}
+	var ids []string
+	var id string
+	err := c.st.each(ctx, c.st.db, "SELECT r.id FROM {runs} r JOIN {run_labels} l ON l.run_id = r.id WHERE l.lkey = ? AND l.lval = ? AND r."+terminalIn+
+		" ORDER BY r.finished_at DESC, r.seq DESC", append([]any{workflow.LabelSchedule, d.id}, terminalArgs()...),
+		func() error { ids = append(ids, id); return nil }, &id)
+	if err != nil {
+		return fmt.Errorf("sqlstore: read a schedule's finished runs: %w", err)
+	}
+	for _, id := range ids[min(d.spec.keep, len(ids)):] {
+		if err := c.Delete(ctx, workflow.RunRef{RunID: workflow.RunID(id)}); err != nil && !isNotFoundOrState(err) {
+			return err
+		}
+	}
+	return nil
+}

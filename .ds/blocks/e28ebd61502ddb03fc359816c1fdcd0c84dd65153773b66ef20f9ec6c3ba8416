@@ -1,0 +1,6 @@
+type ArchivePage struct {
+	Runs []recorder.RunRecord
+
+	// Next is the Cursor of the following page; empty on the last one.
+	Next string
+}

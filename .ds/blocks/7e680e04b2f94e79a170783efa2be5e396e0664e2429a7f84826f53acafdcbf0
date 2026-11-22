@@ -1,0 +1,11 @@
+func BoundedDelay(d time.Duration, clk clock.Clock) BoundedOption {
+	return func(c *boundedConfig) {
+		if d <= 0 {
+			d = time.Second
+		}
+		if clk == nil {
+			clk = clock.Real{}
+		}
+		c.mode, c.delay, c.clk = boundedDelay, d, clk
+	}
+}

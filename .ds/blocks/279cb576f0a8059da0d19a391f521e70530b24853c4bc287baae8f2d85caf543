@@ -1,0 +1,11 @@
+func DeferEnqueue() EnqueueMiddleware {
+	return func(next EnqueueFunc) EnqueueFunc {
+		return func(ctx context.Context, job Job) (RunRef, error) {
+			d, ok := DeferredFrom(ctx)
+			if !ok {
+				return next(ctx, job)
+			}
+			return RunRef{}, d.Add(next, job)
+		}
+	}
+}

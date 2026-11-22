@@ -67,15 +67,19 @@ if err != nil {
 redact := recorder.PerWorkflow(map[string]recorder.Redactor{
 	"checkout": recorder.Chain(cards, receipts{}),
 }, cards)
+// onError is the error hook, a recorder.ErrorFunc: told about each
+// failed history write while the run goes on, on the goroutine that
+// made the write, so it only counts.
+var onError recorder.ErrorFunc = func(_ context.Context, op recorder.WriteOp, ref workflow.RunRef, err error) {
+	failed.add(op) // in an app: a counter by op, and a log line with ref and err
+}
 rec, err := recorder.New(db,
 	recorder.WithRedactor(redact),
 	recorder.WithMaxPayload(maxBody),        // larger bodies are kept by size only
 	recorder.WithStepBodies(true),           // the default; false keeps only the run's input and result
 	recorder.WithErrorHistory(errorHistory), // attempt errors kept per run
 	recorder.WithClock(clk),                 // the driver's clock, so records and driver agree
-	recorder.WithOnError(func(_ context.Context, op recorder.WriteOp, ref workflow.RunRef, err error) {
-		failed.add(op) // in an app: a counter by op, and a log line with ref and err
-	}),
+	recorder.WithOnError(onError),           // every failed write, by its WriteOp
 )
 if err != nil {
 	return err

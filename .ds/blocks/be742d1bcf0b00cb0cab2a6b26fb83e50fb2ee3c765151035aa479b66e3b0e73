@@ -1,0 +1,3 @@
+func labelKey(label string) workflow.ConcurrencyKey {
+	return workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[label] })
+}

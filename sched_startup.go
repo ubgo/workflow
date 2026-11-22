@@ -11,6 +11,8 @@ import (
 // LabelTriggerStartup is the LabelTrigger value of a run FireAtStartup
 // started, so it is told apart from a cron fire, a manual trigger and a
 // backfill.
+//
+//ds:def id=labeltriggerstartup-z4j5xzvs owner=@khanakia stability=stable
 const LabelTriggerStartup = "startup"
 
 // StartupOption tunes FireAtStartup.
@@ -32,6 +34,8 @@ type startupOptions struct {
 // CapRunQuery, while the driver still keeps it). It needs
 // CapIdempotencyKey; FireAtStartup refuses without it. loc is required
 // (time.Local is refused, as for PeriodKey).
+//
+//ds:def id=startuponceper-xz6qzbfc owner=@khanakia stability=stable
 func StartupOncePer(p Period, loc *time.Location) StartupOption {
 	return func(o *startupOptions) { o.once, o.period, o.loc = true, p, loc }
 }
@@ -59,6 +63,8 @@ func StartupClock(c clock.Clock) StartupOption {
 // hook is). StartupOncePer starts one per period across the fleet. It
 // validates s as Client.Schedule would and refuses (ErrInvalid) a bad
 // one. It runs on every driver; StartupOncePer needs CapIdempotencyKey.
+//
+//ds:def id=fireatstartup-a9bhyc6k owner=@khanakia stability=stable
 func FireAtStartup(ctx context.Context, c Client, s Schedule, opts ...StartupOption) (RunRef, error) {
 	o := startupOptions{clk: clock.Real{}}
 	for _, opt := range opts {

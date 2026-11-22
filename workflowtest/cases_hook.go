@@ -123,6 +123,7 @@ func boomErr(err error) string {
 	return ""
 }
 
+//ds:def id=workflowtest-cancellederr-88v9r49z owner=@khanakia stability=stable
 func cancelledErr(err error) string {
 	if !errors.Is(err, workflow.ErrCancelled) {
 		return "want it to match workflow.ErrCancelled"

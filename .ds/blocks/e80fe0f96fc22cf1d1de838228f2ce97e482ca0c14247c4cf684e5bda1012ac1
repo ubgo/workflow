@@ -1,0 +1,14 @@
+type ChunkOptions struct {
+	// Total is the number of items in all, when known; it turns progress
+	// into a percentage. Zero means unknown: Percent stays 0 until the
+	// end and Message counts items only.
+	Total int64
+
+	// Size is the number of items per chunk; at least 1.
+	Size int64
+
+	// MaxChunks bounds the loop, so a source that never runs dry cannot
+	// keep the step busy for ever. Zero means Total/Size + 1 when Total is
+	// set, and is required when it is not.
+	MaxChunks int
+}

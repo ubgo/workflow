@@ -1,0 +1,12 @@
+func (j *journalScope) claim(name string) (string, error) {
+	if name == "" {
+		return "", Permanent(invalidf("memo name is empty"))
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if _, dup := j.used[name]; dup {
+		return "", Permanent(invalidf("memo name %q is used twice in step %q; give each call its own name", name, j.step))
+	}
+	j.used[name] = struct{}{}
+	return strconv.Itoa(len(j.step)) + ":" + j.step + "/" + name, nil
+}

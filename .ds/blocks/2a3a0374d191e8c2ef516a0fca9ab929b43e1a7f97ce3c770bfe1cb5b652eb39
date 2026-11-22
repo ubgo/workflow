@@ -1,0 +1,6 @@
+func WithArchiveTable() Option {
+	return func(s *Store) error {
+		s.archiveTable = true
+		return nil
+	}
+}

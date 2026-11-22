@@ -13,12 +13,16 @@ import (
 
 // debounceNeeds is what Debounce asks of the driver: a delayed start to
 // hold the run for the window, and Cancel to drop the run it replaces.
+//
+//ds:def id=mw-debounceneeds-8ngd42s6 owner=@khanakia stability=stable
 var debounceNeeds = workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)
 
 // DebounceBurst is one key's pending run, as a DebounceStore keeps it.
 // Invariant: RunAt is the RunAt the pending run was enqueued with, and
 // First <= RunAt <= First+maxWait. A burst whose RunAt has passed is over:
 // Debounce treats it as absent, and a store may drop it at any time.
+//
+//ds:def id=mw-debounceburst-x7dgffne owner=@khanakia stability=stable
 type DebounceBurst struct {
 	// First is when the burst's first job was enqueued; maxWait counts
 	// from it.
@@ -44,6 +48,8 @@ type DebounceBurst struct {
 // not enqueued; on Swap the job's new run is cancelled and the error
 // returned, so the store and the engine never disagree about which run is
 // pending.
+//
+//ds:def id=mw-debouncestore-gp9rakek owner=@khanakia stability=stable
 type DebounceStore interface {
 	// Get returns key's burst, or found false when there is none.
 	Get(ctx context.Context, key string) (b DebounceBurst, found bool, err error)
@@ -58,6 +64,8 @@ type DebounceOption func(*debouncer)
 // WithDebounceStore keeps the bursts in s instead of a MemoryDebounce of
 // the debouncer's own, for example a store shared by every process that
 // enqueues the key. A nil s keeps the default.
+//
+//ds:def id=mw-withdebouncestore-5r4vkz95 owner=@khanakia stability=stable
 func WithDebounceStore(s DebounceStore) DebounceOption {
 	return func(d *debouncer) {
 		if s != nil {
@@ -97,6 +105,8 @@ func WithDebounceStore(s DebounceStore) DebounceOption {
 //
 //	mw, err := middleware.Debounce(c, nil, byUser, 10*time.Second, time.Minute,
 //		middleware.WithDebounceStore(myRedisDebounce))
+//
+//ds:def id=mw-debounce-5g2ska6s owner=@khanakia stability=stable
 func Debounce(c workflow.Client, clk clock.Clock, key func(workflow.Job) string, window, maxWait time.Duration, opts ...DebounceOption) (workflow.EnqueueMiddleware, error) {
 	if missing := c.Capabilities().Missing(debounceNeeds); !missing.IsZero() {
 		return nil, &workflow.UnsupportedError{Field: "Debounce", Missing: missing}
@@ -128,6 +138,7 @@ type debouncer struct {
 	mu sync.Mutex
 }
 
+//ds:def id=mw-debouncer-wrap-pesvu4h9 owner=@khanakia stability=stable
 func (d *debouncer) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 	return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 		k := d.key(job)
@@ -179,6 +190,8 @@ func (d *debouncer) wrap(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 // MemoryDebounce is a DebounceStore inside one process, the default of
 // Debounce. Bursts whose run has started are dropped on the next Swap.
 // Use NewMemoryDebounce.
+//
+//ds:def id=mw-memorydebounce-abd56ahw owner=@khanakia stability=stable
 type MemoryDebounce struct {
 	clk    clock.Clock
 	mu     sync.Mutex
@@ -187,6 +200,8 @@ type MemoryDebounce struct {
 
 // NewMemoryDebounce returns an empty store reading time from clk (nil
 // means clock.Real) to drop finished bursts.
+//
+//ds:def id=mw-newmemorydebounce-kqz9w4se owner=@khanakia stability=stable
 func NewMemoryDebounce(clk clock.Clock) *MemoryDebounce {
 	if clk == nil {
 		clk = clock.Real{}

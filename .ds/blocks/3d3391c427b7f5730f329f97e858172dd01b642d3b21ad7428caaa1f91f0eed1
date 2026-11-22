@@ -1,0 +1,32 @@
+func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return nil, err
+	}
+	now := c.clk.Now()
+	loads := make(map[string]*workflow.QueueLoad, len(c.queues))
+	for name, q := range c.queues {
+		w := q.Workers
+		if w == 0 {
+			w = c.workers
+		}
+		loads[name] = &workflow.QueueLoad{Queue: name, Workers: w, Running: c.queueExec[name]}
+	}
+	for _, t := range c.tasks {
+		l, ok := loads[t.r.queue]
+		if !ok || t.r.ctx.Err() != nil {
+			continue
+		}
+		l.Depth++
+		l.OldestWait = max(l.OldestWait, now.Sub(t.readyAt))
+	}
+	out := make([]workflow.QueueLoad, 0, len(loads))
+	for _, name := range slices.Sorted(maps.Keys(loads)) {
+		out = append(out, *loads[name])
+	}
+	return out, nil
+}

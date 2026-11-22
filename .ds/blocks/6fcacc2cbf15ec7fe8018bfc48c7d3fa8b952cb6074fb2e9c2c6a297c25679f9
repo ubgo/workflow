@@ -1,0 +1,1 @@
+func WithSchedulerOnly() Option { return func(c *Client) { c.mode = workflow.NodeScheduler } }

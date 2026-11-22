@@ -1,0 +1,27 @@
+func TestCriticalSection_Unit(t *testing.T) {
+	store := middleware.NewMemoryUnique(nil)
+	cs := middleware.CriticalSection(store, "ledger", time.Minute, "debit", "credit")
+	inside := make(chan struct{})
+	release := make(chan struct{})
+	hold := cs(func(context.Context, []byte) ([]byte, error) { close(inside); <-release; return nil, nil })
+	done := make(chan error, 1)
+	go func() {
+		_, err := hold(guardStepCtx(workflow.StepInfo{Step: "debit", RunID: "run-1", Attempt: 1}), nil)
+		done <- err
+	}()
+	<-inside
+	quick := cs(func(context.Context, []byte) ([]byte, error) { return []byte("ran"), nil })
+	if _, err := quick(guardStepCtx(workflow.StepInfo{Step: "credit", RunID: "run-1", Attempt: 1}), nil); !errors.Is(err, workflow.ErrSnoozed) {
+		t.Fatalf("same run, same section: %v, want a snooze", err)
+	}
+	if out, err := quick(guardStepCtx(workflow.StepInfo{Step: "credit", RunID: "run-2", Attempt: 1}), nil); err != nil || string(out) != "ran" {
+		t.Fatalf("other run: %q %v", out, err)
+	}
+	if out, err := quick(guardStepCtx(workflow.StepInfo{Step: "notify", RunID: "run-1", Attempt: 1}), nil); err != nil || string(out) != "ran" {
+		t.Fatalf("step outside the section: %q %v", out, err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}

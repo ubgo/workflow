@@ -1,0 +1,13 @@
+func labelJobs(id ID, first int, jobs []workflow.Job) []workflow.Job {
+	out := make([]workflow.Job, len(jobs))
+	for k, job := range jobs {
+		job.Labels = maps.Clone(job.Labels)
+		if job.Labels == nil {
+			job.Labels = map[string]string{}
+		}
+		job.Labels[LabelBatch] = string(id)
+		job.Labels[LabelIndex] = strconv.Itoa(first + k)
+		out[k] = job
+	}
+	return out
+}

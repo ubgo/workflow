@@ -22,7 +22,7 @@ Code that switches on an outcome keeps a default branch: a later version may add
 
 ## Step 2: set it from a step
 
-`workflow.SetOutcome(ctx, outcome, note)` records the run's outcome with an optional note for a person, at most [`workflow.MaxOutcomeNote`](ds:block?id=maxoutcomenote-bgqr58x4) (1 KiB). Any step of the run may call it, more than once; the last call in the run wins:
+`workflow.SetOutcome(ctx, outcome, note)` records the run's outcome with an optional note for a person, at most [`workflow.MaxOutcomeNote`](ds:block?id=maxoutcomenote-bgqr58x4) (1 KiB). Any step of the run may call it, more than once; the last call in the run wins ([`recorder.ApplyOutcome`](ds:block?id=rec-applyoutcome-vhkqwwce)):
 
 <!-- snippet: examples/step-events/main.go#step -->
 ```go
@@ -38,14 +38,14 @@ return func(ctx context.Context, _ []byte) ([]byte, error) {
 `SetOutcome` returns:
 
 - an error wrapping `workflow.ErrInvalid` for an outcome that is not one of the four, or a note over [1 KiB](ds:block?id=maxoutcomenote-bgqr58x4), checked first;
-- an `UnsupportedError` (matching `workflow.ErrUnsupported`) when nothing on the context keeps an outcome: no run recorder is applied, or the context is not a step's. The caller asked for data to be kept, so dropping it silently would be wrong, as with `ReportProgress`. A step that sets an outcome whether or not one is kept ignores the error;
-- the store's error when a recorder is applied and its write failed. Unlike the recorder's other writes, which never reach the step, this one does.
+- an `UnsupportedError` (matching `workflow.ErrUnsupported`) when nothing on the context keeps an outcome ([`SetOutcome`](ds:block?id=setoutcome-p5kkstu4)): no run recorder is applied, or the context is not a step's. The caller asked for data to be kept, so dropping it silently would be wrong, as with `ReportProgress`. A step that sets an outcome whether or not one is kept ignores the error;
+- the store's error when a recorder is applied and its write failed. Unlike the recorder's other writes, which never reach the step, this one does ([`outcomeSetter.SetOutcome`](ds:block?id=rec-outcomesetter-setoutcome-xyzz7nyk)).
 
 The example runs the step twice: on a plain memory client, where `SetOutcome` is unsupported, and on one with a recorder, where it is kept.
 
 ## Step 3: let the recorder keep it
 
-A run recorder binds an outcome setter on every step's context, so `SetOutcome` reaches its store. Apply it with `workflow.Use` and register through the client it returns:
+A run recorder binds an outcome setter on every step's context ([`Recorder.StepMiddleware`](ds:block?id=rec-recorder-stepmiddleware-tbta9pzy)), so `SetOutcome` reaches its store. Apply it with `workflow.Use` and register through the client it returns:
 
 <!-- snippet: examples/step-events/main.go#recorder -->
 ```go
@@ -65,7 +65,7 @@ if err != nil {
 }
 ```
 
-A run that set no outcome gets [`workflow.DefaultOutcome(status)`](ds:block?id=defaultoutcome-qffu2upr) when it ends: `success` for `succeeded`, `error` for `failed` and `discarded`, and none for `cancelled` or an unfinished run. `RunRecord.OutcomeSet` tells a set outcome from a default one, and `RunRecord.OutcomeNote` holds the note:
+A run that set no outcome gets [`workflow.DefaultOutcome(status)`](ds:block?id=defaultoutcome-qffu2upr) when it ends: `success` for `succeeded`, `error` for `failed` and `discarded`, and none for `cancelled` or an unfinished run. [`RunRecord.OutcomeSet`](ds:block?id=rec-applyfinish-z5xnm5zs) tells a set outcome from a default one, and `RunRecord.OutcomeNote` holds the note:
 
 <!-- snippet: examples/step-events/main.go#read -->
 ```go
@@ -103,10 +103,10 @@ The `cleanup` workflow sets nothing, so its outcome is the default for `succeede
 
 ## Pitfalls
 
-- **The outcome never changes the status.** `SetOutcome(ctx, OutcomeError, ...)` in a step that then returns nil leaves the run `succeeded`, with outcome `error`; return an error to fail the run.
-- **A set outcome survives a failure.** A step that set `partial` before a later step failed leaves the run `failed` with outcome `partial`, because a set outcome wins over the default. Set `error` in that path when it matters.
-- **Retries keep the last set value.** An attempt that set an outcome and then failed is not rolled back; the retry overrides it only by setting another.
-- **Without a recorder there is nowhere to keep it.** Drivers store no outcome, and `RunInfo` has no field for one; read it from the recorder's store.
+- **The outcome never changes the status.** [`SetOutcome(ctx, OutcomeError, ...)`](ds:block?id=rec-applyfinish-z5xnm5zs) in a step that then returns nil leaves the run `succeeded`, with outcome `error`; return an error to fail the run.
+- **A set outcome survives a failure.** A step that set `partial` before a later step failed leaves the run `failed` with outcome `partial`, because a set outcome wins over the default ([`recorder.ApplyFinish`](ds:block?id=rec-applyfinish-z5xnm5zs)). Set `error` in that path when it matters.
+- **Retries keep the last set value.** An attempt that set an outcome and then failed is not rolled back ([`recorder.ApplyOutcome`](ds:block?id=rec-applyoutcome-vhkqwwce)); the retry overrides it only by setting another.
+- **Without a recorder there is nowhere to keep it.** Drivers store no outcome ([`workflow.OutcomeSetter`](ds:block?id=outcomesetter-333q6fdk)), and [`RunInfo`](ds:block?id=runinfo-f6rpt8qe) has no field for one; read it from the recorder's store.
 
 ## Related
 

@@ -1,0 +1,1 @@
+var ErrLocalCronStarted = errors.New("workflow: local cron already started")

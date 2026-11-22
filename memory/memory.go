@@ -17,6 +17,8 @@ import (
 // caps is everything except durability (CapRunFinished holds because every
 // terminal transition goes through finishLocked, which queues the event): the driver keeps state in memory,
 // so a restart loses it, and claiming CapDurable would be a lie.
+//
+//ds:def id=memory-caps-yxkuq583 owner=@khanakia stability=stable
 var caps = workflow.CapsOf(
 	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
 	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
@@ -44,6 +46,8 @@ var caps = workflow.CapsOf(
 // defaultWorkers is the step-execution pool size when WithWorkers is not
 // given: enough for tests that run steps in parallel, small enough that a
 // local run does not swamp the machine.
+//
+//ds:def id=memory-defaultworkers-stn5cbsa owner=@khanakia stability=stable
 const defaultWorkers = 8
 
 // Option configures a Client.
@@ -51,10 +55,14 @@ type Option func(*Client)
 
 // WithClock sets the time source of every timer and schedule. The default
 // is clock.Real; tests pass clock.NewFake.
+//
+//ds:def id=memory-withclock-bkbmyc67 owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option { return func(m *Client) { m.clk = c } }
 
 // WithWorkers sets how many step attempts may execute at once. Values
 // below 1 are ignored.
+//
+//ds:def id=memory-withworkers-5t8muwcf owner=@khanakia stability=stable
 func WithWorkers(n int) Option {
 	return func(m *Client) {
 		if n >= 1 {
@@ -66,6 +74,8 @@ func WithWorkers(n int) Option {
 // WithLogger sets where the driver reports what it cannot return to a
 // caller (a cron fire that failed to enqueue, an OnFailure handler error).
 // The default discards.
+//
+//ds:def id=memory-withlogger-bvpcm6pn owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) Option {
 	return func(m *Client) {
 		if l != nil {
@@ -76,6 +86,8 @@ func WithLogger(l *slog.Logger) Option {
 
 // WithMiddleware wraps every step handler and OnFailure handler. The first
 // middleware is the outermost.
+//
+//ds:def id=memory-withmiddleware-yea2tnqr owner=@khanakia stability=stable
 func WithMiddleware(mw ...workflow.Middleware) Option {
 	return func(m *Client) { m.mw = append(m.mw, mw...) }
 }
@@ -85,6 +97,8 @@ func WithMiddleware(mw ...workflow.Middleware) Option {
 // lacks: the extended "L", "W" and "#" fields, a seconds field, hashed minutes. It is
 // opt-in and gives up "the same spec on every driver" for the expressions
 // only this parser understands; see cron.Parser. Nil is ignored.
+//
+//ds:def id=memory-withcronparser-jnqd5hex owner=@khanakia stability=stable
 func WithCronParser(p cron.Parser) Option {
 	return func(m *Client) {
 		if p != nil {
@@ -96,6 +110,8 @@ func WithCronParser(p cron.Parser) Option {
 // WithJitterSource sets where Backoff.Jitter draws its uniform values in
 // [0, 1), so a test can pin them. The default is math/rand/v2. It must be
 // safe for concurrent use. Nil is ignored.
+//
+//ds:def id=memory-withjittersource-5dryr759 owner=@khanakia stability=stable
 func WithJitterSource(rnd func() float64) Option {
 	return func(m *Client) {
 		if rnd != nil {
@@ -111,6 +127,8 @@ func WithJitterSource(rnd func() float64) Option {
 // refuses a workflow whose queue is not listed and Enqueue refuses a
 // Job.Queue that is not (both ErrInvalid). An invalid list is reported by
 // Start. Calling it again replaces the list.
+//
+//ds:def id=memory-withqueues-3cnhh98d owner=@khanakia stability=stable
 func WithQueues(qs ...workflow.QueueConfig) Option {
 	return func(m *Client) { m.queueCfg = append([]workflow.QueueConfig(nil), qs...) }
 }
@@ -132,6 +150,8 @@ type RunRetention struct {
 // on this driver would otherwise grow without bound, since Runs and Retry
 // need finished runs kept; a day covers "the job failed overnight, retry
 // it in the morning", and 10,000 bounds memory however busy the client.
+//
+//ds:def id=memory-defaultrunretention-72hekrav owner=@khanakia stability=stable
 var DefaultRunRetention = RunRetention{MaxAge: 24 * time.Hour, MaxRuns: 10_000}
 
 // WithRunRetention replaces DefaultRunRetention. RunRetention{} keeps
@@ -140,6 +160,8 @@ var DefaultRunRetention = RunRetention{MaxAge: 24 * time.Hour, MaxRuns: 10_000}
 // Finished runs past the limits are forgotten when a run ends, when one
 // is enqueued and when Runs lists them; afterwards Status returns
 // ErrNotFound for them, as after Delete.
+//
+//ds:def id=memory-withrunretention-a7b2awty owner=@khanakia stability=stable
 func WithRunRetention(r RunRetention) Option {
 	return func(m *Client) { m.retention = RunRetention{MaxAge: max(r.MaxAge, 0), MaxRuns: max(r.MaxRuns, 0)} }
 }
@@ -151,6 +173,8 @@ func WithRunRetention(r RunRetention) Option {
 // work, wait on Done. A client that never ran anything never stops this
 // way, so Start followed by Enqueue is safe. Schedules do not keep it
 // alive. A grace below zero is ignored.
+//
+//ds:def id=memory-withstopwhenidle-tqng4nhe owner=@khanakia stability=stable
 func WithStopWhenIdle(grace time.Duration) Option {
 	return func(m *Client) {
 		if grace >= 0 {
@@ -162,6 +186,8 @@ func WithStopWhenIdle(grace time.Duration) Option {
 // WithErrorHistory keeps the newest n failed attempts of each run in
 // RunInfo.Errors (workflow.CapErrorHistory). Without the option a run
 // keeps workflow.DefaultErrorHistory; n <= 0 keeps none.
+//
+//ds:def id=memory-witherrorhistory-rte3qjyb owner=@khanakia stability=stable
 func WithErrorHistory(n int) Option { return func(m *Client) { m.errHist = n } }
 
 // Client is the in-memory workflow.Client. Build it with New. All state
@@ -270,6 +296,8 @@ var (
 
 // New returns a client that has started nothing: no goroutine runs until
 // Start.
+//
+//ds:def id=memory-new-8g6tnkkg owner=@khanakia stability=stable
 func New(opts ...Option) *Client {
 	c := &Client{
 		clk:       clock.Real{},
@@ -324,6 +352,8 @@ func (c *Client) Capabilities() workflow.Caps { return caps }
 
 // Register validates wf and stores it. Cron expressions are parsed here so
 // a typo fails now, not at the first fire.
+//
+//ds:def id=memory-client-register-ngcr2sck owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -373,6 +403,8 @@ func (c *Client) Register(wf workflow.Workflow) error {
 // exprKeys refuses every expression key in wf (concurrency, rate limit,
 // per-run wait key): only Go functions can be evaluated in process, and a
 // refusal at Start beats a failure mid-run.
+//
+//ds:def id=memory-exprkeys-mrxv22pq owner=@khanakia stability=stable
 func exprKeys(wf workflow.Workflow) error {
 	reason := "the memory driver evaluates only KeyFunc keys; workflow " + wf.Name
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
@@ -394,6 +426,8 @@ func exprKeys(wf workflow.Workflow) error {
 // parseCronFor parses with cron.ParseSeconds when seconds is set
 // (Schedule.Seconds, Workflow.CronSeconds), else with the configured
 // parser.
+//
+//ds:def id=memory-client-parsecronfor-metu9zbb owner=@khanakia stability=stable
 func (c *Client) parseCronFor(expr string, seconds bool) (cron.Schedule, error) {
 	parse := c.parse
 	if seconds {
@@ -417,6 +451,8 @@ func (c *Client) wrap(h workflow.Handler) workflow.Handler {
 // keys (KeyExpr) with an UnsupportedError, then starts the workers and the
 // declared cron schedules. It does not block. Cancelling ctx shuts the client
 // down (see Stop).
+//
+//ds:def id=memory-client-start-umc68snk owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -519,6 +555,8 @@ func (c *Client) servesLocked(q string) bool {
 // Stop shuts the client down and waits until every goroutine it started
 // has exited. Unfinished runs become StatusCancelled. It is safe to call
 // more than once, and before Start (a no-op).
+//
+//ds:def id=memory-client-stop-zqtrmq8h owner=@khanakia stability=stable
 func (c *Client) Stop() {
 	c.mu.Lock()
 	cancel := c.cancel
@@ -533,6 +571,8 @@ func (c *Client) Stop() {
 
 // shutdown runs once the root context ends: it cancels every unfinished
 // run and wakes idle workers so they exit.
+//
+//ds:def id=memory-client-shutdown-kwcx9htd owner=@khanakia stability=stable
 func (c *Client) shutdown() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -561,6 +601,8 @@ func (c *Client) shutdown() {
 
 // usable reports whether calls that need workers may proceed. Callers hold
 // c.mu.
+//
+//ds:def id=memory-client-usablelocked-ky48yta5 owner=@khanakia stability=stable
 func (c *Client) usableLocked() error {
 	switch {
 	case !c.started:
@@ -580,6 +622,8 @@ func (c *Client) nextID(prefix string) string {
 
 // Enqueue starts a run now, or at job.RunAt. See the package doc for how
 // idempotency keys, concurrency and rate limits apply.
+//
+//ds:def id=memory-client-enqueue-agnmgyr7 owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -594,6 +638,8 @@ func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 
 // enqueueLocked stores job as a run. ctx carries the caller's
 // EnqueueOutcome, if any.
+//
+//ds:def id=memory-client-enqueuelocked-z3x2cytk owner=@khanakia stability=stable
 func (c *Client) enqueueLocked(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := c.usableLocked(); err != nil {
 		return workflow.RunRef{}, err
@@ -644,6 +690,8 @@ func (c *Client) enqueueLocked(ctx context.Context, job workflow.Job) (workflow.
 }
 
 // startRunLocked arms a new run's delayed start, or readies it now.
+//
+//ds:def id=memory-client-startrunlocked-5w6zs86f owner=@khanakia stability=stable
 func (c *Client) startRunLocked(r *run) workflow.RunRef {
 	now := c.clk.Now()
 	r.runAt = r.job.RunAt
@@ -796,6 +844,8 @@ func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 // pruneSignalsLocked bounds the kept signals: a signal older than the
 // oldest unfinished run can never be taken (runs only take signals sent
 // after their enqueue), so it is dropped.
+//
+//ds:def id=memory-client-prunesignalslocked-ndrrs2vd owner=@khanakia stability=stable
 func (c *Client) pruneSignalsLocked() {
 	oldest := c.seq + 1
 	for _, r := range c.runs {

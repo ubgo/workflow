@@ -1,0 +1,25 @@
+func (u uniqueWith) acquire(ctx context.Context, key, owner string) (bool, error) {
+	ok, err := u.cfg.Store.Acquire(ctx, key, owner, u.cfg.TTL)
+	if err != nil || ok || len(u.cfg.States) == 0 {
+		return ok, wrapAcquire(err)
+	}
+	holder, ref, found, err := u.holders.Holder(ctx, key)
+	if err != nil || !found {
+		return false, wrapAcquire(err)
+	}
+	st, err := u.cfg.Client.Status(ctx, ref)
+	switch {
+	case errors.Is(err, workflow.ErrNotFound):
+		st = "" // a forgotten holder holds nothing
+	case err != nil:
+		return false, fmt.Errorf("workflow/middleware: unique holder status: %w", err)
+	}
+	if slices.Contains(u.cfg.States, st) {
+		return false, nil
+	}
+	if err := u.cfg.Store.Release(ctx, key, holder); err != nil {
+		return false, fmt.Errorf("workflow/middleware: unique takeover: %w", err)
+	}
+	ok, err = u.cfg.Store.Acquire(ctx, key, owner, u.cfg.TTL)
+	return ok, wrapAcquire(err)
+}

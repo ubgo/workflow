@@ -1,0 +1,20 @@
+func (h *handler[P]) open(w http.ResponseWriter, r *http.Request, action Action) (workflow.RunRef, *workflow.RunInfo, bool) {
+	ref := pathRef(r)
+	if ref.IsZero() {
+		writeError(w, http.StatusBadRequest, CodeInvalid, "empty run ID")
+		return ref, nil, false
+	}
+	info, err := h.lookup(r.Context(), ref)
+	if err != nil {
+		h.fail(w, action, err)
+		return ref, nil, false
+	}
+	res := Resource{Run: ref, Info: info}
+	if info != nil {
+		res.Workflow = info.Workflow
+	}
+	if !h.authorize(w, r, action, res) {
+		return ref, nil, false
+	}
+	return ref, info, true
+}

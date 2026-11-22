@@ -1,0 +1,34 @@
+func FireAtStartup(ctx context.Context, c Client, s Schedule, opts ...StartupOption) (RunRef, error) {
+	o := startupOptions{clk: clock.Real{}}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if err := ValidateSchedule(s); err != nil {
+		return RunRef{}, fmt.Errorf("FireAtStartup: %w", err)
+	}
+	now := o.clk.Now()
+	name := s.Name
+	if name == "" {
+		name = s.Cron
+	}
+	labels := FiredLabelsAt(s.Labels, "", name, now)
+	delete(labels, LabelSchedule)
+	labels[LabelTrigger] = LabelTriggerStartup
+	job := Job{Workflow: s.Workflow, Payload: s.Input, Labels: labels, Tenant: s.Tenant}
+	ctx = AllowReservedLabels(ctx, LabelScheduleName, LabelTickAt, LabelTrigger, LabelRunKey)
+	if !o.once {
+		return c.Enqueue(ctx, job)
+	}
+	if !c.Capabilities().Has(CapIdempotencyKey) {
+		return RunRef{}, &UnsupportedError{Field: "StartupOncePer", Missing: CapIdempotencyKey}
+	}
+	period, err := PeriodKey(now, o.period, o.loc)
+	if err != nil {
+		return RunRef{}, fmt.Errorf("FireAtStartup: %w", err)
+	}
+	scope := fmt.Sprintf("%s\x00%s\x00%s\x00%t", s.Workflow, name, s.Location, s.Seconds)
+	key := scheduleRunKey("startup", scope, period)
+	job.IdempotencyKey = key
+	labels[LabelRunKey] = key
+	return enqueueUnlessKeyed(ctx, c, job, key)
+}

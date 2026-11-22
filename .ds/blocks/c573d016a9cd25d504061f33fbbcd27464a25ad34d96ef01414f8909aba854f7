@@ -1,0 +1,9 @@
+type RecycleError struct {
+	Reason RecycleReason
+	// Jobs is how many step attempts the client had finished.
+	Jobs int
+	// Elapsed is the time from Start to the decision.
+	Elapsed time.Duration
+	// Memory is the last memory reading (zero when MaxMemory is unset).
+	Memory uint64
+}

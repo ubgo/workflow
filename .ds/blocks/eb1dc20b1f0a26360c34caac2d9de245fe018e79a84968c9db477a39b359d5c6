@@ -1,0 +1,7 @@
+	fields = [5]field{
+		{name: "minute", min: 0, max: 59},
+		{name: "hour", min: 0, max: 23},
+		{name: "day-of-month", min: 1, max: 31},
+		{name: "month", min: 1, max: 12, names: monthNames},
+		{name: "day-of-week", min: 0, max: 7, names: dowNames},
+	}

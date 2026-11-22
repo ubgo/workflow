@@ -1,0 +1,29 @@
+func prepare(f Format, s workflow.Schedule, t Target) (job, error) {
+	if err := workflow.ValidateSchedule(s); err != nil {
+		return job{}, fmt.Errorf("schedexport: %s: %w", f, err)
+	}
+	name := t.Name
+	if name == "" {
+		name = s.Name
+	}
+	if name == "" {
+		return job{}, invalid(f, "no name: set Target.Name or Schedule.Name")
+	}
+	for _, v := range append([]string{name, t.Description}, t.argv()...) {
+		if i := strings.IndexFunc(v, isControl); i >= 0 {
+			return job{}, invalid(f, "control character %q in %q", v[i], v)
+		}
+	}
+	sched, err := workflow.ParseCron(s.Cron, s.Seconds, t.Parser)
+	if err != nil {
+		return job{}, fmt.Errorf("%w: schedexport: %s: %w", workflow.ErrInvalid, f, err)
+	}
+	if sched == nil {
+		return job{}, invalid(f, "the parser returned no schedule for %q", s.Cron)
+	}
+	desc := t.Description
+	if desc == "" {
+		desc = "Schedule " + name
+	}
+	return job{s: s, target: t, sched: sched, name: name, desc: desc}, nil
+}

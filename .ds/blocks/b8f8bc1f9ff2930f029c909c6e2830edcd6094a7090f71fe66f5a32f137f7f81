@@ -1,0 +1,40 @@
+func TestTenantScope_SystemRoutesRefused(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c, WithMetrics(NewMemoryMetrics(MemoryMetricsConfig{}))), scopedAuth(), WithTenantScope(byName))
+	for _, r := range append(slices.Clone(routes), route{"GET", "/nope", "", ""}, route{"PUT", "/runs", "{}", ""}) {
+		if tenantRouteOf(r).rule != tenantRefused && r.action != "" {
+			continue
+		}
+		rec := as(t, h, "a", r.method, r.path, r.body)
+		if rec.Code != http.StatusForbidden || errCode(t, rec) != CodeForbidden {
+			t.Errorf("a %s %s = %d %s, want 403", r.method, r.path, rec.Code, rec.Body)
+		}
+		// AllTenants is served as without a scope.
+		if r.action != "" {
+			if rec := as(t, h, "ops", r.method, r.path, r.body); rec.Code == http.StatusForbidden {
+				t.Errorf("ops %s %s = 403: %s", r.method, r.path, rec.Body)
+			}
+		}
+	}
+	if got := runIDs(t, as(t, h, "ops", "GET", "/runs", "")); len(got) != 4 {
+		t.Fatalf("ops sees %d runs, want 4", len(got))
+	}
+
+	rec := as(t, h, "a", "GET", "/capabilities", "")
+	var caps struct {
+		Operations []struct {
+			Operation Operation `json:"operation"`
+			Supported bool      `json:"supported"`
+		} `json:"operations"`
+		Metrics bool   `json:"metrics"`
+		Tenant  string `json:"tenant"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &caps); err != nil || caps.Tenant != "a" || caps.Metrics {
+		t.Fatalf("a's capabilities = %+v, %v", caps, err)
+	}
+	for _, o := range caps.Operations {
+		if refusedOps[o.Operation] == o.Supported {
+			t.Errorf("a's capabilities: %s supported = %v", o.Operation, o.Supported)
+		}
+	}
+}

@@ -1,0 +1,3 @@
+func (s *Inbox) PruneExpired(ctx context.Context, now time.Time) (int64, error) {
+	return s.st.execN(ctx, s.st.db, "DELETE FROM {inbox} WHERE until_ns <= ?", now.UnixNano())
+}

@@ -20,6 +20,8 @@ import (
 // middleware.DecodeStep relies on valid JSON being embedded unchanged (a
 // sealed value is a JSON string) and on empty or missing outputs being
 // null, so changing it means changing the codec with it.
+//
+//ds:def id=stepinput-ykz7ud5d owner=@khanakia stability=stable
 func StepInput(payload []byte, parents []string, outs map[string][]byte) []byte {
 	switch len(parents) {
 	case 0:

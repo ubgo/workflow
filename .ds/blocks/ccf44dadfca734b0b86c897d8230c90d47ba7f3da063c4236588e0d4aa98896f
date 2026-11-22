@@ -1,0 +1,1 @@
+var ErrStreamFull = errors.New("workflow: stream store is full")

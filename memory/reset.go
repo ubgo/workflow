@@ -38,6 +38,8 @@ func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step str
 // it, and the original may be forgotten first without touching it. A
 // fork's idempotency key held by an unfinished run returns that run's
 // RunRef and starts nothing, as Enqueue does.
+//
+//ds:def id=memory-client-forkrun-4g3qxuas owner=@khanakia stability=stable
 func (c *Client) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

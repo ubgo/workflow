@@ -1,0 +1,11 @@
+func historyMode(path, s string) (workflow.HistoryMode, error) {
+	switch s {
+	case "":
+		return workflow.HistoryNone, nil
+	case "shallow":
+		return workflow.HistoryShallow, nil
+	case "deep":
+		return workflow.HistoryDeep, nil
+	}
+	return 0, fieldErr(path, "%q is not \"shallow\" or \"deep\"", s)
+}

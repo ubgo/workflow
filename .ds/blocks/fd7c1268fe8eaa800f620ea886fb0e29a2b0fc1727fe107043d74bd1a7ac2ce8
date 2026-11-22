@@ -1,0 +1,76 @@
+func actionCmd(fs *flag.FlagSet, sp actionSpec) func(context.Context, *env, []string) error {
+	all := fs.Bool("all", false, "act on every run the filter flags match instead of one run")
+	dry := fs.Bool("dry-run", false, "show what would be "+sp.past+" and change nothing")
+	scheduled := fs.Bool("scheduled", false, "RUN is a ScheduledID")
+	var f filter
+	f.register(fs, sp.allStatus)
+	var max *int
+	if sp.withMax {
+		max = fs.Int("max", 0, "with --all, act on at most this many runs (0: the server's bound)")
+	}
+	return func(ctx context.Context, e *env, args []string) error {
+		if *all {
+			if len(args) > 0 {
+				return usagef("%s --all takes filter flags, not a run ID", sp.verb)
+			}
+			if err := f.check(); err != nil {
+				return err
+			}
+			b := f.body()
+			b.DryRun = *dry
+			if max != nil {
+				if *max < 0 {
+					return usagef("--max %d is negative", *max)
+				}
+				b.Max = *max
+			}
+			var res bulkJSON
+			raw, err := e.api.do(ctx, "POST", sp.bulkPath, b, &res)
+			if err != nil {
+				return err
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			return printBulk(e, sp, res)
+		}
+		if len(args) != 1 {
+			return usagef("%s takes one run ID, or --all with filter flags", sp.verb)
+		}
+		if f.set() || (max != nil && *max != 0) {
+			return usagef("filter flags and --max need --all")
+		}
+		id := args[0]
+		if *dry {
+			var r runJSON
+			raw, err := e.api.get(ctx, runPath(id, *scheduled, ""), &r)
+			if err != nil {
+				return err
+			}
+			if !sp.accepts(r.Status) {
+				return fmt.Errorf("dry run: %s would be refused: run %s is %s; %s needs %s", sp.verb, r.Ref, r.Status, sp.verb, sp.needs)
+			}
+			if e.asJSON {
+				return e.printJSON(raw)
+			}
+			fprintf(e.out, "dry run: would %s run %s (%s, %s); nothing changed\n", sp.verb, r.Ref, r.Workflow, r.Status)
+			return nil
+		}
+		var out struct {
+			Ref refJSON `json:"ref"`
+		}
+		raw, err := e.api.do(ctx, sp.method, runPath(id, *scheduled, sp.suffix), nil, &out)
+		if err != nil {
+			return err
+		}
+		if e.asJSON {
+			return e.printJSON(raw)
+		}
+		if out.Ref.RunID != "" || out.Ref.ScheduledID != "" {
+			fprintf(e.out, "%s %s as %s\n", sp.past, id, out.Ref)
+		} else {
+			fprintf(e.out, "%s %s\n", sp.past, id)
+		}
+		return nil
+	}
+}

@@ -1,0 +1,76 @@
+func TestRefusals(t *testing.T) {
+	berlin := zone(t, "Europe/Berlin")
+	base := func(mod func(*workflow.Schedule)) workflow.Schedule {
+		s := workflow.Schedule{Name: "x", Workflow: "w", Cron: "0 9 * * *", Location: berlin, Overlap: workflow.OverlapSkip}
+		mod(&s)
+		return s
+	}
+	k8s := func(s workflow.Schedule, tg schedexport.Target) error {
+		_, err := schedexport.CronJob(s, tg, schedexport.CronJobOptions{Image: "app"})
+		return err
+	}
+	systemd := func(s workflow.Schedule, tg schedexport.Target) error {
+		_, err := schedexport.SystemdTimer(s, tg)
+		return err
+	}
+	launchd := func(s workflow.Schedule, tg schedexport.Target) error {
+		_, err := schedexport.Launchd(s, tg, schedexport.LaunchdOptions{Zone: berlin})
+		return err
+	}
+	tasks := func(s workflow.Schedule, tg schedexport.Target) error {
+		_, err := schedexport.TaskScheduler(s, tg, schedexport.TaskSchedulerOptions{Zone: berlin})
+		return err
+	}
+	year := app
+	year.Parser = cron.ParseYear
+	cases := []struct {
+		name   string
+		export func(workflow.Schedule, schedexport.Target) error
+		s      workflow.Schedule
+		target schedexport.Target
+		field  string
+	}{
+		{"k8s seconds", k8s, base(func(s *workflow.Schedule) { s.Cron, s.Seconds = "30 0 9 * * *", true }), app, "second"},
+		{"k8s year", k8s, base(func(s *workflow.Schedule) { s.Cron = "0 0 9 * * * 2027" }), year, "year"},
+		{"k8s every", k8s, base(func(s *workflow.Schedule) { s.Cron = "@every 90s" }), app, "Cron"},
+		{"k8s stepped day AND", k8s, base(func(s *workflow.Schedule) { s.Cron = "0 0 */2 * MON" }), app, "day-of-month"},
+		{"k8s fire all", k8s, base(func(s *workflow.Schedule) { s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireAll, Max: 3} }), app, "Misfire"},
+		{"k8s sub-second within", k8s, base(func(s *workflow.Schedule) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: 1500 * time.Millisecond}
+		}), app, "Misfire"},
+		{"k8s active", k8s, base(func(s *workflow.Schedule) { s.Active.Until = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC) }), app, "Active"},
+		{"k8s windows", k8s, base(func(s *workflow.Schedule) { s.Windows.Between = []workflow.Window{{From: "08:00", To: "18:00"}} }), app, "Windows"},
+		{"k8s fixed zone", k8s, base(func(s *workflow.Schedule) { s.Location = time.FixedZone("X", 3600) }), app, "Location"},
+		{"systemd overlap allow", systemd, base(func(s *workflow.Schedule) { s.Overlap = "" }), app, "Overlap"},
+		{"systemd within", systemd, base(func(s *workflow.Schedule) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: time.Hour}
+		}), app, "Misfire"},
+		{"systemd every", systemd, base(func(s *workflow.Schedule) { s.Cron = "@every 1h" }), app, "Cron"},
+		{"systemd active", systemd, base(func(s *workflow.Schedule) { s.Active.From = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC) }), app, "Active"},
+		{"launchd other zone", launchd, base(func(s *workflow.Schedule) { s.Location = time.UTC }), app, "Location"},
+		{"launchd seconds", launchd, base(func(s *workflow.Schedule) { s.Cron, s.Seconds = "30 0 9 * * *", true }), app, "second"},
+		{"launchd misfire", launchd, base(func(s *workflow.Schedule) { s.Misfire = workflow.Misfire{Policy: workflow.MisfireSkip} }), app, "Misfire"},
+		{"launchd overlap allow", launchd, base(func(s *workflow.Schedule) { s.Overlap = workflow.OverlapAllow }), app, "Overlap"},
+		{"launchd day AND", launchd, base(func(s *workflow.Schedule) { s.Cron = "0 9 */2 * 1" }), app, "day-of-month"},
+		{"launchd too many", launchd, base(func(s *workflow.Schedule) { s.Cron = "*/2 */2 1-30 * *" }), app, "Cron"},
+		{"tasks day OR", tasks, base(func(s *workflow.Schedule) { s.Cron = "0 9 1 * MON" }), app, "day-of-month"},
+		{"tasks day AND", tasks, base(func(s *workflow.Schedule) { s.Cron = "0 9 */2 * MON" }), app, "day-of-month"},
+		{"tasks year gaps", tasks, base(func(s *workflow.Schedule) { s.Cron = "0 0 9 * * * 2026,2028" }), year, "year"},
+		{"tasks too many times", tasks, base(func(s *workflow.Schedule) { s.Cron, s.Seconds = "*/10 * 9 * * *", true }), app, "Cron"},
+		{"tasks other zone", tasks, base(func(s *workflow.Schedule) { s.Location = time.UTC }), app, "Location"},
+		{"tasks within", tasks, base(func(s *workflow.Schedule) {
+			s.Misfire = workflow.Misfire{Policy: workflow.MisfireFireOnce, Within: time.Hour}
+		}), app, "Misfire"},
+	}
+	for _, c := range cases {
+		err := c.export(c.s, c.target)
+		var ne *schedexport.NotExpressibleError
+		if !errors.As(err, &ne) || !errors.Is(err, schedexport.ErrNotExpressible) {
+			t.Errorf("%s: %v, want a NotExpressibleError", c.name, err)
+			continue
+		}
+		if ne.Field != c.field {
+			t.Errorf("%s: field %q, want %q (%v)", c.name, ne.Field, c.field, err)
+		}
+	}
+}

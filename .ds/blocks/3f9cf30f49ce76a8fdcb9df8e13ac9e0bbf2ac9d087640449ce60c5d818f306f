@@ -1,0 +1,32 @@
+func (c *Client) fairAssign(ctx context.Context, tx *sql.Tx, fp *fairPass, reg *registered, r *runRow) error {
+	name := reg.wf.Name
+	pass, ok := fp.pass[r.bucket]
+	if !ok {
+		err := c.st.one(ctx, tx, "SELECT pass FROM {fair_keys} WHERE workflow = ? AND fkey = ?", []any{name, r.bucket}, &pass)
+		switch {
+		case errors.Is(err, sqlb.ErrNoRows):
+			pass = 0
+		case err != nil:
+			return fmt.Errorf("sqlstore: read the pass of key %q: %w", r.bucket, err)
+		default:
+			fp.have[r.bucket] = true
+		}
+	}
+	start, next := workflow.FairTurn(pass, fp.now, workflow.FairWeight(reg.wf.Concurrency, r.bucket))
+	fp.pass[r.bucket] = next
+	if fp.have[r.bucket] {
+		if _, err := c.st.exec(ctx, tx, "UPDATE {fair_keys} SET pass = ? WHERE workflow = ? AND fkey = ?", next, name, r.bucket); err != nil {
+			return err
+		}
+	} else {
+		if _, err := c.st.exec(ctx, tx, "INSERT INTO {fair_keys} (workflow, fkey, pass) VALUES (?, ?, ?)", name, r.bucket, next); err != nil {
+			return err
+		}
+		fp.have[r.bucket] = true
+	}
+	if _, err := c.st.exec(ctx, tx, "DELETE FROM {run_fair} WHERE run_id = ?", r.id); err != nil {
+		return err
+	}
+	_, err := c.st.exec(ctx, tx, "INSERT INTO {run_fair} (run_id, workflow, fair) VALUES (?, ?, ?)", r.id, name, start)
+	return err
+}

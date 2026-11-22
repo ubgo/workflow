@@ -1,0 +1,23 @@
+func (h *handler[P]) statusJSON(ref workflow.RunRef, st workflow.Status, info *workflow.RunInfo) statusJSON {
+	out := statusJSON{Ref: toRefJSON(ref), Status: st, Done: st.IsTerminal()}
+	if info == nil {
+		return out
+	}
+	out.Ref = toRefJSON(info.Ref)
+	out.Workflow = info.Workflow
+	out.EnqueuedAt, out.StartedAt, out.FinishedAt = info.EnqueuedAt, info.StartedAt, info.FinishedAt
+	if h.cfg.Errors {
+		out.Error = info.Error
+	}
+	if p := info.Progress; p != nil {
+		out.Progress = &progressJSON{Percent: p.Percent, Message: p.Message, Step: p.Step}
+	}
+	if h.cfg.Payloads && len(info.Payload) > 0 {
+		if json.Valid(info.Payload) {
+			out.Payload = json.RawMessage(info.Payload)
+		} else {
+			out.PayloadBase64 = info.Payload
+		}
+	}
+	return out
+}

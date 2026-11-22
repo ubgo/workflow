@@ -1,0 +1,10 @@
+func (c *Client) continueChainLocked(r *run) {
+	next, ok := workflow.NextInChain(r.chain)
+	if !ok {
+		return
+	}
+	if _, err := c.enqueueLocked(context.Background(), next); err != nil {
+		c.log.Error("memory: chained job not enqueued; the chain ends here",
+			"workflow", r.reg.wf.Name, "run", r.id, "next", next.Workflow, "remaining", len(next.Chain), "error", err)
+	}
+}

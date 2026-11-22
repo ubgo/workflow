@@ -14,6 +14,8 @@ import (
 // workflow.RunEditor. It refuses an empty ref or an edit that changes
 // nothing (ErrInvalid), and a client without RunEditor
 // (UnsupportedError).
+//
+//ds:def id=admin-admin-editrun-yxk3t4zu owner=@khanakia stability=stable
 func (a *Admin) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	if err := a.check(OpEditRun); err != nil {
 		return workflow.RunRef{}, err
@@ -36,6 +38,7 @@ type editJSON struct {
 	RunAt    *time.Time      `json:"run_at,omitempty"`
 }
 
+//ds:def id=admin-handler-editrun-bzau6dfy owner=@khanakia stability=stable
 func (h *handler[P]) editRun(w http.ResponseWriter, r *http.Request) {
 	var body editJSON
 	if err := decodeBody(r, &body); err != nil {

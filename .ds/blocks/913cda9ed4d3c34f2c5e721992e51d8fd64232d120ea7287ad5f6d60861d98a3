@@ -1,0 +1,1 @@
+func (v view) Commit() error { v.c.open = false; return nil }

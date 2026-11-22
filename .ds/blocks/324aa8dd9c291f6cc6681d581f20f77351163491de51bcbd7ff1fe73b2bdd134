@@ -1,0 +1,27 @@
+func (s Schedule) MarshalJSON() ([]byte, error) {
+	out := scheduleJSON{V: ScheduleJSONVersion, Name: s.Name, Workflow: s.Workflow, Cron: s.Cron, Input: s.Input, Labels: s.Labels, Overlap: s.Overlap, Seconds: s.Seconds, KeepRuns: s.KeepRuns, Tenant: s.Tenant}
+	if !s.Active.IsZero() {
+		out.Active = &activeJSON{From: timeOrNil(s.Active.From), Until: timeOrNil(s.Active.Until)}
+	}
+	if s.Location != nil {
+		name := s.Location.String()
+		if s.Location == time.Local {
+			return nil, fmt.Errorf("%w: time.Local has no portable name; name the zone", ErrScheduleJSON)
+		}
+		if _, err := cron.LoadZone(name); err != nil {
+			return nil, fmt.Errorf("%w: location %q is not a loadable IANA zone: %w", ErrScheduleJSON, name, err)
+		}
+		out.Location = name
+	}
+	if !s.Misfire.IsZero() {
+		m := &misfireJSON{Policy: s.Misfire.Policy, Max: s.Misfire.Max}
+		if s.Misfire.Within != 0 {
+			m.Within = s.Misfire.Within.String()
+		}
+		out.Misfire = m
+	}
+	if !s.Windows.IsZero() {
+		out.Windows = &windowsJSON{Between: windowsOut(s.Windows.Between), Unless: windowsOut(s.Windows.Unless)}
+	}
+	return json.Marshal(out)
+}

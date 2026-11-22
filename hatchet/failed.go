@@ -39,6 +39,8 @@ import (
 // finalMarker prefixes the message of every failure the driver marks
 // non-retryable. It is stripped (stripFinal) wherever the driver hands a
 // run's error back, so callers see the step's own message.
+//
+//ds:def id=hatchet-finalmarker-qyzxgwfh owner=@khanakia stability=stable
 const finalMarker = "[ubgo.workflow: not retried] "
 
 // DefaultFailedSettle is how long after a failed task finished a FAILED
@@ -46,6 +48,8 @@ const finalMarker = "[ubgo.workflow: not retried] "
 // before a retry; see Config.FailedSettle. The moment seen live is tens
 // of milliseconds; the margin covers clock skew between the engine and
 // this process, since the task's finish time is the engine's.
+//
+//ds:def id=hatchet-defaultfailedsettle-9m779yka owner=@khanakia stability=stable
 const DefaultFailedSettle = 5 * time.Second
 
 // markedError is a step error the driver ends without retry, with
@@ -68,25 +72,32 @@ func stripFinal(msg string) string {
 // endStatus is the run's status from its details, and the one place a
 // FAILED read is judged (see the top of this file): a final failure is
 // StatusFailed, the moment before a retry is StatusRunning or
-// StatusQueued. Every other engine status maps as runStatus does. now is
-// wall-clock, compared with the engine's own finish times.
+// StatusQueued. Every other engine status maps as runStatus does, and a
+// live run with the start gate is refined by gateStatus (scheduled while
+// the gate holds a keyed delayed start back). now is wall-clock, compared
+// with the engine's own finish times and the stamped RunAt.
 func endStatus(d *rest.V1WorkflowRunDetails, settle time.Duration, now time.Time) (workflow.Status, error) {
 	st, err := runStatus(d.Run.Status)
-	if err != nil || st != workflow.StatusFailed || failureFinal(d, settle, now) {
+	if err != nil {
 		return st, err
+	}
+	if st != workflow.StatusFailed || failureFinal(d, settle, now) {
+		return gateStatus(d, st, now), nil
 	}
 	for _, t := range d.Tasks {
 		if t.Status == rest.V1TaskStatusRUNNING {
-			return workflow.StatusRunning, nil
+			return gateStatus(d, workflow.StatusRunning, now), nil
 		}
 	}
-	return workflow.StatusQueued, nil
+	return gateStatus(d, workflow.StatusQueued, now), nil
 }
 
 // failureFinal reports whether a run read FAILED has ended: one of its
 // failed tasks is marked final, used its registered retries, or failed
 // more than settle ago. A run FAILED with no failed task (the task
 // already re-queued) has not ended.
+//
+//ds:def id=hatchet-failurefinal-b3phakuj owner=@khanakia stability=stable
 func failureFinal(d *rest.V1WorkflowRunDetails, settle time.Duration, now time.Time) bool {
 	budgets := retryBudgets(d)
 	names := make(map[openapi_types.UUID]string, len(d.Shape))

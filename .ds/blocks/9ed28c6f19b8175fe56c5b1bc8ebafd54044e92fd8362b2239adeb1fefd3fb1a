@@ -1,0 +1,1 @@
+var ErrThrottled = errors.New("workflow: upstream rate limit reached")

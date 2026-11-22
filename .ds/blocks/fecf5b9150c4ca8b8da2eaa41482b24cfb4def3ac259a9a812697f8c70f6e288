@@ -1,0 +1,10 @@
+func duration(path, s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fieldErr(path, "%q is not a Go duration such as \"30s\" or \"1h30m\"", s)
+	}
+	return d, nil
+}

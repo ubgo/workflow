@@ -1,0 +1,7 @@
+func Emit(ctx context.Context, chunk []byte) error {
+	b, ok := ctx.Value(streamKey{}).(*streamBinding)
+	if !ok {
+		return Unsupported("Emit", "no StreamSink is bound to this ctx: add the workflow.Stream plugin (or StreamMiddleware) and call Emit from a step")
+	}
+	return b.sink.Write(ctx, b.run, b.step, b.seq.Add(1), slices.Clone(chunk))
+}

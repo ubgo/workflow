@@ -23,6 +23,8 @@ import (
 // events it took before stay taken. A run that is not StatusFailed returns
 // ErrWrongState, a step the workflow does not have ErrInvalid, an unknown
 // ref ErrNotFound.
+//
+//ds:def id=runresetter-pe26r9jr owner=@khanakia stability=stable
 type RunResetter interface {
 	ResetRun(ctx context.Context, ref RunRef, step string) (RunRef, error)
 }
@@ -31,6 +33,8 @@ type RunResetter interface {
 // whose After reaches step, directly or through other steps), in wf's step
 // order: the steps ResetRun runs again besides those that had not
 // succeeded. It returns nil when wf has no step named step.
+//
+//ds:def id=stepsfrom-4jngfaw7 owner=@khanakia stability=stable
 func StepsFrom(wf Workflow, step string) []string {
 	if !slices.ContainsFunc(wf.Steps, func(s Step) bool { return s.Name == step }) {
 		return nil

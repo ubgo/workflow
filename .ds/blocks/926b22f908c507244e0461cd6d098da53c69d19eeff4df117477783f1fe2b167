@@ -1,0 +1,17 @@
+func (c *Client) moveLast(ctx context.Context, tx *sql.Tx, d dueSchedule, fire int64, run string) error {
+	if err := c.ensureScheduleLast(ctx, tx, d.id); err != nil {
+		return err
+	}
+	q, args := "UPDATE {schedule_last} SET last_fire = ?, last_run = ? WHERE schedule_id = ?", []any{fire, run, d.id}
+	if d.overlap == workflow.OverlapSkip {
+		q, args = q+" AND last_run = ?", append(args, d.lastRun)
+	}
+	n, err := c.st.execN(ctx, tx, q, args...)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errLastMoved
+	}
+	return nil
+}

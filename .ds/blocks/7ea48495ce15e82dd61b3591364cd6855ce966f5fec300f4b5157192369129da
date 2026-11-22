@@ -1,0 +1,3 @@
+func ShutdownHook(d Drainer, grace time.Duration) func(context.Context) error {
+	return func(ctx context.Context) error { return DrainTimeout(ctx, d, grace) }
+}

@@ -1,0 +1,7 @@
+type RunError struct {
+	RunID    RunID
+	Workflow string
+	Step     string
+	Attempt  int
+	Err      error
+}

@@ -1,0 +1,10 @@
+var Actions = []Action{
+	ActionCapabilities, ActionListRuns, ActionShowRun, ActionListFailures, ActionListDiscarded,
+	ActionRetryRun, ActionCancelRun, ActionDeleteRun, ActionCancelRuns,
+	ActionPause, ActionResume, ActionListPauses, ActionListSchedules, ActionQueueStats,
+	ActionPauseSchedule, ActionResumeSchedule, ActionShowSchedule, ActionTriggerSchedule,
+	ActionForceComplete, ActionForceFail, ActionShowOutput, ActionUI,
+	ActionRetryRuns, ActionDeleteRuns, ActionMetrics,
+	ActionListNodes, ActionHealth, ActionRescheduleRun, ActionCancelStep, ActionEditRun,
+	ActionResetRun, ActionForkRun, ActionSignalWaiting,
+}

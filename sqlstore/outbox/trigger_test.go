@@ -16,6 +16,8 @@ func validSpec() TriggerSpec {
 // TestChangeTriggerRefusals proves every name that reaches the SQL is
 // checked: anything that is not a plain identifier (or, for the workflow,
 // a safe literal) is refused before any SQL is rendered.
+//
+//ds:def id=outbox-testchangetriggerrefusals-28frsyw5 owner=@khanakia stability=stable
 func TestChangeTriggerRefusals(t *testing.T) {
 	many := make([]string, maxTriggerColumns)
 	for i := range many {

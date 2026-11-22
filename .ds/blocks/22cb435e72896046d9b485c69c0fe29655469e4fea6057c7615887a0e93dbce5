@@ -1,0 +1,6 @@
+func (p *signalsPlugin) Name() string {
+	if p.h.Workflow == "" {
+		return "on-signals"
+	}
+	return "on-signals:" + p.h.Workflow
+}

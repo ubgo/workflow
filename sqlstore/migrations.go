@@ -16,23 +16,31 @@ import (
 // that keeps its own migrations in a ledger table of the same name never
 // collides with these. Under WithSchema the recorded owner is
 // "<MigrationOwner>@<schema>".
+//
+//ds:def id=sql-migrationowner-abfzxxtf owner=@khanakia stability=stable
 const MigrationOwner = "ubgo/workflow/sqlstore"
 
 // Ledger naming. Both derive from the table prefix (WithTablePrefix), so two
 // prefixes in one database keep separate ledgers and separate locks.
 const (
+	//ds:def id=sql-ledgerstem-bnbpm838 owner=@khanakia stability=stable
 	ledgerStem = "migrations" // the ledger table: <prefix>migrations
-	lockStem   = "migrate"    // the lock key; SQLite's lock table is <prefix>migrate_lock
+	//ds:def id=sql-lockstem-3wfkz59q owner=@khanakia stability=stable
+	lockStem = "migrate" // the lock key; SQLite's lock table is <prefix>migrate_lock
 )
 
 // ErrSchemaTooNew means the database records a sqlstore migration this code
 // does not know: a newer release migrated it. Running older code against it
 // could write rows the new schema does not expect, so Migrate and Start
 // refuse it. The error is a *SchemaTooNewError naming the migrations.
+//
+//ds:def id=sql-errschematoonew-ry9z2uyp owner=@khanakia stability=stable
 var ErrSchemaTooNew = errors.New("sqlstore: the database schema is newer than this code")
 
 // SchemaTooNewError names the migrations the database has that this code
 // does not. It matches ErrSchemaTooNew under errors.Is.
+//
+//ds:def id=sql-schematoonewerror-uzbczmue owner=@khanakia stability=api
 type SchemaTooNewError struct {
 	Unknown []string
 }
@@ -54,6 +62,8 @@ func (e *SchemaTooNewError) Is(target error) bool { return target == ErrSchemaTo
 // also be safe to run twice (IF NOT EXISTS forms), because MySQL commits DDL
 // implicitly: a failure part-way leaves the change without its ledger row and
 // the next Migrate runs it again.
+//
+//ds:def id=sql-store-migrations-sysbsdpd owner=@khanakia stability=stable
 func (s *store) migrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(MigrationOwner), Name: "001_initial", Script: s.script(s.ddl())},
@@ -77,10 +87,14 @@ func (s *store) migrations() []migrate.Migration {
 // list of its own, so NewUniqueStore(...).Migrate on a database with no
 // sqlstore queue creates only the lock table, while Client.Migrate applies
 // both.
+//
+//ds:def id=sql-uniquemigrationowner-69t5td7t owner=@khanakia stability=stable
 const UniqueMigrationOwner = "ubgo/workflow/sqlstore/unique"
 
 // uniqueMigrations is every UniqueStore schema change, in order, under the
 // same rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-uniquemigrations-b2uddpwt owner=@khanakia stability=stable
 func (s *store) uniqueMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(UniqueMigrationOwner), Name: "001_unique", Script: s.script(s.render(uniqueDefs(typesFor(s.engine))))},
@@ -90,6 +104,8 @@ func (s *store) uniqueMigrations() []migrate.Migration {
 
 // allMigrations is every list Client.Migrate applies: the queue's, then
 // UniqueStore's, DebounceStore's and OutputStore's.
+//
+//ds:def id=sql-store-allmigrations-c224kr7n owner=@khanakia stability=stable
 func (s *store) allMigrations() []migrate.Migration {
 	all := append(append(s.migrations(), s.uniqueMigrations()...), s.debounceMigrations()...)
 	all = append(all, s.outputMigrations()...)
@@ -116,6 +132,8 @@ func (s *store) script(stmts []string) ddl.Script {
 // SQLite). The ledger table is never schema-qualified (sqlb's ledger has no
 // schema); under WithSchema the lock key carries the schema, so migrating
 // one schema does not wait on another.
+//
+//ds:def id=sql-store-ledger-79jdgppv owner=@khanakia stability=stable
 func (s *store) ledger() (migrate.Ledger, error) {
 	key := s.prefix + lockStem
 	if s.schema != "" {
@@ -140,6 +158,8 @@ func (s *store) ledger() (migrate.Ledger, error) {
 // too, so Client.UniqueStore and Client.DebounceStore need no Migrate of
 // their own. Last it runs IndexLabels, the label index backfill of
 // migration 005, which finds nothing to do once the index is current.
+//
+//ds:def id=sql-client-migrate-vdt8uy3d owner=@khanakia stability=stable
 func (c *Client) Migrate(ctx context.Context) error {
 	if err := c.st.migrate(ctx, c.st.allMigrations()); err != nil {
 		return err
@@ -183,6 +203,8 @@ func (c *Client) checkVersion(ctx context.Context) error {
 // migration of one of them that ms lacks is unknown. sqlstore's own
 // migrations are named bare; another owner's carry its last path element
 // (unique/002_x), so the error says whose they are.
+//
+//ds:def id=sql-store-checkversion-p7cnnnvj owner=@khanakia stability=stable
 func (s *store) checkVersion(ctx context.Context, ms []migrate.Migration) error {
 	l, err := s.ledger()
 	if err != nil {
@@ -219,6 +241,8 @@ func (s *store) checkVersion(ctx context.Context, ms []migrate.Migration) error 
 // Migrate runs for it, in order, with table names resolved for the
 // options' prefix and schema. Owner and Name are what Migrate records in
 // its ledger.
+//
+//ds:def id=sql-migrationscript-ucujx4tr owner=@khanakia stability=api
 type MigrationScript struct {
 	Owner, Name string
 	Statements  []string
@@ -242,6 +266,8 @@ type MigrationScript struct {
 // on such a database: it re-runs each script (a no-op) and records it. A
 // release that adds a migration adds it here too, and Start fails on its
 // missing table until it is applied.
+//
+//ds:def id=sql-migrationscripts-3yurujx6 owner=@khanakia stability=stable
 func MigrationScripts(d sqlb.Dialect, opts ...Option) ([]MigrationScript, error) {
 	c, err := build(nil, d, opts)
 	if err != nil {

@@ -18,6 +18,8 @@ import (
 // unless WithSchedulesOnBoth, so like CapCron these are the primary's
 // alone in that case: the secondary never fires a tick to condition,
 // report, list or pause.
+//
+//ds:def id=failover-schedulecaps-kg7jvm5x owner=@khanakia stability=stable
 var scheduleCaps = workflow.CapsOf(
 	workflow.CapCron, workflow.CapScheduleWhen, workflow.CapScheduleWindow,
 	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents,
@@ -41,6 +43,8 @@ var (
 
 // need refuses a call when Capabilities lacks c, so a method never
 // half-works on one backend.
+//
+//ds:def id=failover-client-need-aases4hn owner=@khanakia stability=stable
 func (f *Client) need(field string, c workflow.Caps) error {
 	if missing := f.Capabilities().Missing(c); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the failover backends cannot do it"}
@@ -92,6 +96,8 @@ func scheduleBackends[I any](f *Client, field string, c workflow.Caps) (map[side
 // schedule IDs this client hands out, and a LabelSchedule filter in q is
 // turned back into each backend's own ID (a backend not holding that
 // schedule is not asked). Needs CapRunQuery on both.
+//
+//ds:def id=failover-client-runs-95ncxabn owner=@khanakia stability=stable
 func (f *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	pq, sq, err := both[workflow.RunQuerier](f, "Runs", workflow.CapRunQuery)
 	if err != nil {
@@ -176,6 +182,7 @@ func encodeCursor(c runsCursor) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
+//ds:def id=failover-decodecursor-bmhynd64 owner=@khanakia stability=stable
 func decodeCursor(s string) (runsCursor, error) {
 	var c runsCursor
 	if s == "" {
@@ -263,6 +270,8 @@ func newer(a, b workflow.RunInfo) bool {
 
 // Retry re-runs a failed run on the backend its ref names, and returns
 // the ref prefixed the same way. Needs CapRetryRun on both.
+//
+//ds:def id=failover-client-retry-n9n5z7v9 owner=@khanakia stability=stable
 func (f *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	if err := f.need("Retry", workflow.CapRetryRun); err != nil {
 		return workflow.RunRef{}, err
@@ -285,6 +294,8 @@ func (f *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 
 // Delete forgets a terminal run on the backend its ref names. Needs
 // CapDeleteRun on both.
+//
+//ds:def id=failover-client-delete-e2efcvzq owner=@khanakia stability=stable
 func (f *Client) Delete(ctx context.Context, ref workflow.RunRef) error {
 	if err := f.need("Delete", workflow.CapDeleteRun); err != nil {
 		return err
@@ -320,6 +331,8 @@ func (f *Client) onSide(ref workflow.RunRef, fn func(side, workflow.Client, work
 // fails, the other's cancellations stand and the error names the failing
 // one. A LabelSchedule filter is translated as in Runs. Needs
 // CapCancelAll on both.
+//
+//ds:def id=failover-client-cancelall-6rcdusm3 owner=@khanakia stability=stable
 func (f *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
 	pc, sc, err := both[workflow.BulkCanceller](f, "CancelAll", workflow.CapCancelAll)
 	if err != nil {
@@ -346,6 +359,8 @@ func (f *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error
 // names may sit on either. It is applied to the primary, then the
 // secondary; when the secondary refuses, the primary's pause stands and
 // the error says so. Needs the capability t needs on both.
+//
+//ds:def id=failover-client-pause-pu9jm64b owner=@khanakia stability=stable
 func (f *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	pp, sp, err := f.pausers(t)
 	if err != nil {
@@ -373,6 +388,8 @@ func (f *Client) pausers(t workflow.PauseTarget) (p, s workflow.Pauser, err erro
 // Paused returns the targets paused on either backend, without repeats,
 // in the order Pauser documents. A target paused on one backend only (a
 // half-applied Pause) is listed, so it can be seen and resumed.
+//
+//ds:def id=failover-client-paused-sgx6yvuy owner=@khanakia stability=stable
 func (f *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 	pp, sp, err := both[workflow.Pauser](f, "Paused", workflow.CapPauseWorkflow)
 	if err != nil {
@@ -420,6 +437,7 @@ func (f *Client) ResumeSchedule(ctx context.Context, t workflow.ScheduleTarget) 
 	})
 }
 
+//ds:def id=failover-client-onschedules-bfa8h3s3 owner=@khanakia stability=stable
 func (f *Client) onSchedules(ctx context.Context, field string, t workflow.ScheduleTarget, fn func(context.Context, workflow.SchedulePauser, workflow.ScheduleTarget) error) error {
 	backends, err := scheduleBackends[workflow.SchedulePauser](f, field, workflow.CapSchedulePause)
 	if err != nil {
@@ -457,6 +475,8 @@ func (f *Client) onSchedules(ctx context.Context, field string, t workflow.Sched
 // and pausing one ID pauses that copy only; the ScheduleID Schedule
 // returned covers both. Sorted by Workflow, then Name, primary first.
 // Needs CapScheduleList.
+//
+//ds:def id=failover-client-schedules-ewhhbm8y owner=@khanakia stability=stable
 func (f *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	backends, err := scheduleBackends[workflow.ScheduleLister](f, "Schedules", workflow.CapScheduleList)
 	if err != nil {
@@ -489,6 +509,8 @@ func (f *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error)
 // OnTick registers fn on the primary, and on the secondary under
 // WithSchedulesOnBoth, with each tick's ScheduleID and Run prefixed by its
 // backend. Needs CapTickEvents. Register before Start.
+//
+//ds:def id=failover-client-ontick-8g3bpzkz owner=@khanakia stability=stable
 func (f *Client) OnTick(fn workflow.TickObserver) error {
 	backends, err := scheduleBackends[workflow.TickNotifier](f, "OnTick", workflow.CapTickEvents)
 	if err != nil {
@@ -518,6 +540,8 @@ func sideTick(fn workflow.TickObserver, sd side) workflow.TickObserver {
 
 // Drain drains both backends at once and returns when both have stopped
 // or ctx ends; the error joins each backend's. Needs CapDrain on both.
+//
+//ds:def id=failover-client-drain-w6unh5pn owner=@khanakia stability=stable
 func (f *Client) Drain(ctx context.Context) error {
 	pd, sd, err := both[workflow.Drainer](f, "Drain", workflow.CapDrain)
 	if err != nil {
@@ -564,6 +588,8 @@ func (f *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, err
 
 // Done is closed once both backends have stopped. Without CapDrain on both
 // it returns a nil channel, which never closes, as workflow.Forward does.
+//
+//ds:def id=failover-client-done-ad5wg59n owner=@khanakia stability=stable
 func (f *Client) Done() <-chan struct{} {
 	if f.need("Done", workflow.CapDrain) != nil {
 		return nil
@@ -589,6 +615,8 @@ func (f *Client) Done() <-chan struct{} {
 // It is nil while neither stopped itself. Done still closes only once
 // both backends stopped: give both the same recycle limits, or drain the
 // other side when one recycles.
+//
+//ds:def id=failover-client-stopcause-nf8squej owner=@khanakia stability=stable
 func (f *Client) StopCause() error {
 	cause := func(c workflow.Client) error {
 		if sc, ok := c.(workflow.StopCauser); ok {

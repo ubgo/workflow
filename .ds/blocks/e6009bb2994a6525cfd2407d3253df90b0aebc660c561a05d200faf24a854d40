@@ -1,0 +1,3 @@
+type TransientSignaller interface {
+	SignalWaiting(ctx context.Context, ev Event) (int, error)
+}

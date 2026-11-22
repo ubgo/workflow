@@ -1,0 +1,16 @@
+func (r *Recorder) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if r.inner != nil {
+		ref, err := r.inner.Enqueue(ctx, job)
+		if err == nil {
+			r.mu.Lock()
+			r.recordLocked(job, ref)
+			r.mu.Unlock()
+		}
+		return ref, err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ref := workflow.RunRef{RunID: workflow.RunID("recorded-" + strconv.Itoa(len(r.jobs)+1))}
+	r.recordLocked(job, ref)
+	return ref, nil
+}

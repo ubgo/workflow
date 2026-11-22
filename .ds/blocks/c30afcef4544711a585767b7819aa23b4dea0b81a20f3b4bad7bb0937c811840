@@ -1,0 +1,49 @@
+type Definition struct {
+	// Name is Workflow.Name: the key Job.Workflow refers to.
+	Name string `json:"name"`
+
+	// Version is Workflow.Version, the version of this definition for
+	// rolling deploys. Zero is unversioned. Needs CapWorkflowVersion when
+	// set.
+	Version int `json:"version,omitempty"`
+
+	// MinVersion is Workflow.MinVersion, the oldest run version this
+	// definition still runs.
+	MinVersion int `json:"min_version,omitempty"`
+
+	// Queue is Workflow.Queue; empty means workflow.DefaultQueue.
+	Queue string `json:"queue,omitempty"`
+
+	// Timeout is Workflow.Timeout, the default per-attempt timeout of
+	// every step, as a duration string.
+	Timeout string `json:"timeout,omitempty"`
+
+	// RunTimeout is Workflow.RunTimeout, the cap on a run's whole life, as
+	// a duration string. Needs CapRunTimeout when set.
+	RunTimeout string `json:"run_timeout,omitempty"`
+
+	// Retry is Workflow.Retry, the default policy of steps without their
+	// own. Absent means no retries.
+	Retry *RetryDef `json:"retry,omitempty"`
+
+	// Concurrency is Workflow.Concurrency. Absent means no cap.
+	Concurrency *ConcurrencyDef `json:"concurrency,omitempty"`
+
+	// Steps are the workflow's steps, a DAG through After, in the order
+	// Workflow.Steps keeps them.
+	Steps []StepDef `json:"steps"`
+
+	// OnFailure names the registered handler that runs once when a run
+	// fails for good (Workflow.OnFailure). Empty means none.
+	OnFailure string `json:"on_failure,omitempty"`
+
+	// Cron is Workflow.Cron: expressions declared with the workflow. The
+	// driver's cron parser checks them at Register, not Parse, so a driver
+	// with a custom dialect reads its own syntax.
+	Cron []string `json:"cron,omitempty"`
+
+	// CronLocation is the IANA zone Cron is evaluated in
+	// (Workflow.CronLocation), loaded with cron.LoadZone. Empty means
+	// UTC; "Local" is refused. Needs CapCronZone for any zone but UTC.
+	CronLocation string `json:"cron_location,omitempty"`
+}

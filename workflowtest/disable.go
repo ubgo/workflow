@@ -23,6 +23,8 @@ import (
 // a and b are two handles on the same backing data (two processes); pass
 // the same store twice for an in-process one. The store must start empty
 // for the keys used here.
+//
+//ds:def id=workflowtest-disablestorecontract-jzvzhkee owner=@khanakia stability=stable
 func DisableStoreContract(t testing.TB, a, b middleware.DisableStore) {
 	t.Helper()
 	ctx := context.Background()

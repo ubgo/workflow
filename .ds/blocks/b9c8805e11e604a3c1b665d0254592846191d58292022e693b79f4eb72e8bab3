@@ -1,0 +1,53 @@
+func (c *Client) deleteChunk(ctx context.Context, rule pruneRule, runs []FinishedRun) (int, error) {
+	ids := make([]any, len(runs))
+	idx := map[string]int{}
+	for i, fr := range runs {
+		ids[i] = string(fr.Ref.RunID)
+		idx[string(fr.Ref.RunID)] = i
+	}
+	if c.archive != nil {
+		var runID, name string
+		var out []byte
+		err := c.st.each(ctx, c.st.db, "SELECT run_id, name, out_data FROM {steps} WHERE status = ? AND run_id IN ("+inList(len(ids))+")",
+			append([]any{stepSucceeded}, ids...), func() error {
+				fr := &runs[idx[runID]]
+				if fr.Outputs == nil {
+					fr.Outputs = map[string][]byte{}
+				}
+				fr.Outputs[name] = append([]byte(nil), out...)
+				return nil
+			}, &runID, &name, &out)
+		if err != nil {
+			return 0, fmt.Errorf("sqlstore: read step outputs to archive: %w", err)
+		}
+		if err := c.archive(ctx, runs); err != nil {
+			return 0, fmt.Errorf("sqlstore: archive hook refused a chunk of %d runs (kept): %w", len(runs), err)
+		}
+	}
+	var deleted int64
+	err := c.st.tx(ctx, func(tx *sql.Tx) error {
+		deleted = 0
+		in := "(" + inList(len(ids)) + ")"
+		cond := "id IN " + in + " AND " + rule.where + " AND " + c.guards()
+		args := append(append([]any(nil), ids...), rule.args...)
+		if c.archiveTable {
+			moved, err := c.moveToArchive(ctx, tx, cond, args)
+			if err != nil || len(moved) == 0 {
+				return err
+			}
+			// Exactly the runs copied: they are locked, so the rule still
+			// holds for each.
+			cond, args = "id IN ("+inList(len(moved))+")", moved
+		}
+		n, err := c.st.execN(ctx, tx, "DELETE FROM {runs} WHERE "+cond, args...)
+		if err != nil {
+			return err
+		}
+		deleted = n
+		return c.deleteOrphans(ctx, tx, ids)
+	})
+	if err != nil {
+		return 0, fmt.Errorf("sqlstore: delete a chunk of finished runs: %w", err)
+	}
+	return int(deleted), nil
+}

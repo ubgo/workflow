@@ -1,0 +1,17 @@
+func ChangeTrigger(d sqlb.Dialect, spec TriggerSpec, opts ...Option) (TriggerSQL, error) {
+	o, err := build(nil, d, opts)
+	if err != nil {
+		return TriggerSQL{}, err
+	}
+	if err := o.checkTrigger(&spec); err != nil {
+		return TriggerSQL{}, err
+	}
+	switch o.engine {
+	case sqlb.DialectPostgres:
+		return o.pgTrigger(spec), nil
+	case sqlb.DialectMySQL:
+		return o.perOpTrigger(spec, mysqlExprs), nil
+	default:
+		return o.perOpTrigger(spec, sqliteExprs), nil
+	}
+}

@@ -1,0 +1,49 @@
+func TestRun_Drain(t *testing.T) {
+	left := []int{3, 1, 0}
+	var mu sync.Mutex
+	f, srv := newFake(t)
+	f.answers["GET /admin/runs"] = func(r *http.Request) (int, string) {
+		mu.Lock()
+		defer mu.Unlock()
+		n := left[0]
+		if len(left) > 1 {
+			left = left[1:]
+		}
+		return 200, `{"runs":[],"total":` + strconv.Itoa(n) + `}`
+	}
+	now := time.Date(2026, 10, 14, 9, 0, 0, 0, time.UTC)
+	var slept []time.Duration
+	opts := func(out, errb *bytes.Buffer) Options {
+		return Options{Stdout: out, Stderr: errb, Getenv: func(k string) string {
+			if k == EnvURL {
+				return srv.URL + "/admin"
+			}
+			return ""
+		}, Now: func() time.Time { return now }, Sleep: func(_ context.Context, d time.Duration) error {
+			if len(slept) > 100 {
+				// A drain that never gives up would spin here forever.
+				return errors.New("test: drain did not stop")
+			}
+			slept = append(slept, d)
+			now = now.Add(d)
+			return nil
+		}}
+	}
+	var out, errb bytes.Buffer
+	code := Run(context.Background(), []string{"drain", "--queue", "emails", "--interval", "5s"}, opts(&out, &errb))
+	if code != ExitOK || len(slept) != 2 || !strings.Contains(out.String(), "drained after 10s") {
+		t.Fatalf("drain: %d %q %v", code, out.String(), slept)
+	}
+	if q := f.Calls()[0].query; !strings.Contains(q, "queue=emails") || !strings.Contains(q, "status=queued%2Crunning%2Cretrying") || !strings.Contains(q, "count=1") {
+		t.Errorf("drain query %s", q)
+	}
+	// Never empty: timeout exits 1.
+	left = []int{2}
+	slept = nil
+	out.Reset()
+	errb.Reset()
+	code = Run(context.Background(), []string{"drain", "--wait", "6s", "--interval", "2s"}, opts(&out, &errb))
+	if code != ExitError || !strings.Contains(errb.String(), "2 runs still") {
+		t.Errorf("timeout: %d %q", code, errb.String())
+	}
+}

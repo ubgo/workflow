@@ -1,0 +1,17 @@
+func typesFor(engine string) sqlTypes {
+	switch engine {
+	case enginePostgres:
+		return sqlTypes{id: "VARCHAR(64)", name: "VARCHAR(191)", short: "VARCHAR(16)", blob: "BYTEA", text: "TEXT",
+			int: "BIGINT", serial: "BIGSERIAL PRIMARY KEY"}
+	case engineMySQL:
+		// utf8mb4_bin: names and keys compare byte for byte, so the event
+		// key "Order-1" never matches "order-1" the way MySQL's default
+		// collation would.
+		return sqlTypes{id: "VARCHAR(64)", name: "VARCHAR(191)", short: "VARCHAR(16)", blob: "LONGBLOB", text: "LONGTEXT",
+			int: "BIGINT", serial: "BIGINT AUTO_INCREMENT PRIMARY KEY",
+			suffix: " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin", inlineIndex: true}
+	default: // SQLite
+		return sqlTypes{id: "TEXT", name: "TEXT", short: "TEXT", blob: "BLOB", text: "TEXT",
+			int: "INTEGER", serial: "INTEGER PRIMARY KEY AUTOINCREMENT"}
+	}
+}

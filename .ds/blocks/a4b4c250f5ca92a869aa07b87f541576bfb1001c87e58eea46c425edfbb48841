@@ -1,0 +1,6 @@
+func CheckCaps(have Caps, wf Workflow) error {
+	if missing := have.Missing(Requires(wf)); !missing.IsZero() {
+		return &UnsupportedError{Field: "Workflow", Missing: missing, Reason: "workflow " + wf.Name}
+	}
+	return nil
+}

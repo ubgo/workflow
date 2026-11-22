@@ -1,0 +1,6 @@
+func HourlyAt(minute int) Builder {
+	if minute < 0 || minute > 59 {
+		return failed("HourlyAt(%d): minute must be 0-59", minute)
+	}
+	return builderFields(strconv.Itoa(minute), wild, wild, wild, wild, false)
+}

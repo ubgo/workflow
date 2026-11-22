@@ -1,0 +1,23 @@
+type GroupSpawner interface {
+	// SpawnsGroups reports whether Dispatch should use SpawnGroup for a
+	// new batch. A client that implements the interface but has it
+	// switched off returns false, and Dispatch takes the other paths.
+	SpawnsGroups() bool
+
+	// SpawnGroup starts the coordinator run for group (the batch ID) over
+	// jobs, which all have an empty RunAt and IdempotencyKey and carry
+	// the batch labels, and returns its ref. It must be idempotent per
+	// group: a second call for the same group, as a resumed dispatch
+	// makes, returns the first coordinator rather than starting another.
+	// An error wrapping workflow.ErrUnsupported, returned before anything
+	// started (a group too large for one coordinator, say), makes Dispatch
+	// start the jobs another way.
+	SpawnGroup(ctx context.Context, group string, jobs []workflow.Job) (workflow.RunRef, error)
+
+	// CancelGroup cancels the coordinator parent and every unfinished
+	// child of group created since since (the batch's CreatedAt). It does
+	// not rely on the engine cancelling children with their parent, and
+	// works with a zero parent (a SpawnGroup call that failed but may have
+	// landed) by finding the runs by label.
+	CancelGroup(ctx context.Context, group string, parent workflow.RunRef, since time.Time) error
+}

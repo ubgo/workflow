@@ -1,0 +1,6 @@
+func (s *BucketStore) Observe(ctx context.Context, key string, spec workflow.BucketSpec, level float64, now time.Time) error {
+	_, err := s.locked(ctx, key, spec, now, func(float64, time.Time, bool) (float64, time.Duration) {
+		return min(max(level, 0), spec.Capacity), 0
+	})
+	return err
+}

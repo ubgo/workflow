@@ -1,0 +1,7 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	ref, err := c.new.Enqueue(ctx, job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	return encodeRef(SideNew, ref), nil
+}

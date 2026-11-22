@@ -22,6 +22,8 @@ import (
 // is DatasetEventID(dataset, version) and its payload a DatasetUpdate in
 // JSON, so an ordinary Subscription (with a Filter on Key) or a run
 // waiting under WithSignal for that key reacts to one dataset.
+//
+//ds:def id=events-eventdatasetupdated-7wensnha owner=@khanakia stability=stable
 const EventDatasetUpdated = "dataset.updated"
 
 // LabelDatasetTrigger is the DatasetTrigger that started a run. It is
@@ -29,9 +31,13 @@ const EventDatasetUpdated = "dataset.updated"
 // under workflow.AllowReservedLabels for this key only, so a public
 // Enqueue cannot pass a run off as a trigger's. Like every reserved label
 // it is a guard, not a sandbox.
+//
+//ds:def id=events-labeldatasettrigger-z5uqjykw owner=@khanakia stability=stable
 const LabelDatasetTrigger = workflow.LabelPrefixInternal + "dataset-trigger"
 
 // DatasetUpdate is the payload of an EventDatasetUpdated message.
+//
+//ds:def id=events-datasetupdate-2vu56pzk owner=@khanakia stability=stable
 type DatasetUpdate struct {
 	Dataset string            `json:"dataset"`
 	Version string            `json:"version"`
@@ -43,6 +49,8 @@ type DatasetUpdate struct {
 // "@" in it cannot make two versions share an ID. Because the ID is a
 // function of the version, a step that is retried and announces the
 // same version again is deduplicated by the bus.
+//
+//ds:def id=events-dataseteventid-pfnngt9c owner=@khanakia stability=stable
 func DatasetEventID(dataset, version string) string {
 	return url.QueryEscape(dataset) + "@" + url.QueryEscape(version)
 }
@@ -55,6 +63,8 @@ func DatasetEventID(dataset, version string) string {
 // A run consumes the versions it was started for, recorded in the
 // LineageStore, and a version already consumed never starts the trigger
 // again, however often it is announced.
+//
+//ds:def id=events-datasettrigger-acgw9uw2 owner=@khanakia stability=stable
 type DatasetTrigger struct {
 	// Name identifies the trigger; unique within a Datasets and stable
 	// across deploys, because its consumed versions and every run's
@@ -80,6 +90,8 @@ type DatasetTrigger struct {
 }
 
 // TriggerRun is what one trigger did with an update.
+//
+//ds:def id=events-triggerrun-3yc7fzhc owner=@khanakia stability=stable
 type TriggerRun struct {
 	// Trigger is the trigger's name.
 	Trigger string
@@ -97,6 +109,8 @@ type TriggerRun struct {
 }
 
 // UpdateResult is the outcome of Datasets.Updated.
+//
+//ds:def id=events-updateresult-35fe4gpa owner=@khanakia stability=stable
 type UpdateResult struct {
 	// Lineage is the produced record Updated wrote.
 	Lineage Lineage
@@ -120,10 +134,14 @@ type DatasetOption func(*Datasets)
 // (SQLite, Postgres, MySQL; migrated by its own Migrate) or
 // redis.LineageStore, or an implementation of their own checked with
 // workflowtest.LineageStoreContract.
+//
+//ds:def id=events-withlineage-yazww7nk owner=@khanakia stability=stable
 func WithLineage(store LineageStore) DatasetOption { return func(d *Datasets) { d.store = store } }
 
 // WithDatasetClock sets the clock that stamps lineage records; the default
 // is clock.Real. Tests pass a clock.Fake.
+//
+//ds:def id=events-withdatasetclock-vr6j2czg owner=@khanakia stability=stable
 func WithDatasetClock(c clock.Clock) DatasetOption { return func(d *Datasets) { d.clock = c } }
 
 // Datasets is data-aware scheduling on top of a Bus: code that writes a
@@ -132,6 +150,8 @@ func WithDatasetClock(c clock.Clock) DatasetOption { return func(d *Datasets) { 
 // the run and step that produced it and the runs that consumed it
 // (ET-05). It is safe for concurrent use; Trigger may be called at any
 // time.
+//
+//ds:def id=events-datasets-5pnedqtp owner=@khanakia stability=stable
 type Datasets struct {
 	bus   *Bus
 	store LineageStore
@@ -144,6 +164,8 @@ type Datasets struct {
 // NewDatasets returns a Datasets that publishes on bus and starts trigger
 // runs on the bus's client, so a client the bus accepted (with
 // CapIdempotencyKey, or AllowDuplicates) is what deduplicates them.
+//
+//ds:def id=events-newdatasets-9xyde79u owner=@khanakia stability=stable
 func NewDatasets(bus *Bus, opts ...DatasetOption) (*Datasets, error) {
 	if bus == nil {
 		return nil, fmt.Errorf("%w: events: datasets: bus is nil", workflow.ErrInvalid)
@@ -163,11 +185,15 @@ func NewDatasets(bus *Bus, opts ...DatasetOption) (*Datasets, error) {
 
 // Lineage returns the store Datasets records into, for Producers,
 // Consumers, Outputs and Inputs.
+//
+//ds:def id=events-datasets-lineage-tjknab2w owner=@khanakia stability=stable
 func (d *Datasets) Lineage() LineageStore { return d.store }
 
 // Trigger adds t. It returns an error wrapping ErrInvalid when t has no
 // Name, reuses one, watches no dataset or an empty or repeated name, or
 // has neither Workflow nor Job.
+//
+//ds:def id=events-datasets-trigger-a9cqrc2m owner=@khanakia stability=stable
 func (d *Datasets) Trigger(t DatasetTrigger) error {
 	if t.Name == "" {
 		return fmt.Errorf("%w: events: dataset trigger needs a Name", workflow.ErrInvalid)
@@ -207,6 +233,8 @@ func (d *Datasets) Trigger(t DatasetTrigger) error {
 // ErrInvalid; a failure to record the version returns at once, before
 // anything is published. Publish and trigger failures are joined, and
 // each is in the result too.
+//
+//ds:def id=events-datasets-updated-tuf5ktvy owner=@khanakia stability=stable
 func (d *Datasets) Updated(ctx context.Context, dataset, version string, meta map[string]string) (UpdateResult, error) {
 	if dataset == "" || version == "" {
 		return UpdateResult{}, fmt.Errorf("%w: events: dataset update needs a dataset and a version", workflow.ErrInvalid)
@@ -259,6 +287,8 @@ func (d *Datasets) Updated(ctx context.Context, dataset, version string, meta ma
 // dataset's latest produced version against the version t last
 // consumed), never of state held in this process, so a retry, a restart
 // or another process sharing the store decides the same way.
+//
+//ds:def id=events-datasets-due-dfvb6fqg owner=@khanakia stability=stable
 func (d *Datasets) due(ctx context.Context, t DatasetTrigger, dataset string) (map[string]string, bool, error) {
 	watch := []string{dataset}
 	if t.All {
@@ -289,6 +319,8 @@ func (d *Datasets) due(ctx context.Context, t DatasetTrigger, dataset string) (m
 // idempotency key is a function of the trigger and the versions, so two
 // processes deciding the same fire, or a retry after the enqueue
 // succeeded but the record failed, find the one unfinished run.
+//
+//ds:def id=events-datasets-start-cf4nhsuf owner=@khanakia stability=stable
 func (d *Datasets) start(ctx context.Context, t DatasetTrigger, versions map[string]string) (workflow.RunRef, error) {
 	var job workflow.Job
 	if t.Job != nil {
@@ -334,6 +366,8 @@ func (d *Datasets) start(ctx context.Context, t DatasetTrigger, versions map[str
 
 // triggerKey is "dataset/<trigger>/<hash>", where hash covers every
 // dataset and version the run consumes, in sorted order.
+//
+//ds:def id=events-triggerkey-jwjjtq7x owner=@khanakia stability=stable
 func triggerKey(trigger string, versions map[string]string) string {
 	var b strings.Builder
 	for _, ds := range slices.Sorted(maps.Keys(versions)) {

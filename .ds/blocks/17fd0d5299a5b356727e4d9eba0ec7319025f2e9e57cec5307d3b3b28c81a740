@@ -1,0 +1,3 @@
+func InlineMiddleware(mw ...Middleware) InlineOption {
+	return func(c *inlineConfig) { c.mw = append(c.mw, mw...) }
+}

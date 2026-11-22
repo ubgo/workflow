@@ -9,12 +9,15 @@ import (
 
 // OverlapPolicy says what a schedule does with a tick that falls due
 // while the run its previous fire started is still unfinished.
+//
+//ds:def id=overlappolicy-av6v8c2m owner=@khanakia stability=stable
 type OverlapPolicy string
 
 // The overlap policies.
 const (
 	// OverlapAllow fires every tick whatever the previous run is doing.
 	// It is the default (the zero value means it too).
+	//ds:def id=overlapallow-52hxwez2 owner=@khanakia stability=stable
 	OverlapAllow OverlapPolicy = "allow"
 
 	// OverlapSkip skips a tick while the schedule's previous run is not
@@ -24,16 +27,21 @@ const (
 	// across a restart on a durable driver. A previous run the driver no
 	// longer knows (deleted, pruned) does not block. It needs
 	// CapOverlapSkip.
+	//ds:def id=overlapskip-s9mmau5k owner=@khanakia stability=stable
 	OverlapSkip OverlapPolicy = "skip"
 )
 
 // TickReasonOverlap is the reason of a TickSkipped that OverlapSkip held
 // back because the schedule's previous run was unfinished.
+//
+//ds:def id=tickreasonoverlap-bcwdyjdh owner=@khanakia stability=stable
 const TickReasonOverlap = "overlap"
 
 // ErrOverlap is returned by ScheduleTriggerer.TriggerSchedule when the
 // schedule's OverlapPolicy is OverlapSkip and its previous run is still
 // unfinished: a manual trigger obeys the same rule as a tick.
+//
+//ds:def id=erroverlap-e97x6vmy owner=@khanakia stability=stable
 var ErrOverlap = errors.New("workflow: the schedule's previous run is unfinished")
 
 // validOverlap reports whether p is a known policy (the zero value
@@ -43,6 +51,8 @@ func validOverlap(p OverlapPolicy) bool {
 }
 
 // overlapCaps is the capability p needs.
+//
+//ds:def id=overlapcaps-h6q4c29r owner=@khanakia stability=stable
 func overlapCaps(p OverlapPolicy) Caps {
 	if p == OverlapSkip {
 		return CapOverlapSkip
@@ -55,6 +65,8 @@ func overlapCaps(p OverlapPolicy) Caps {
 // driver no longer knows its previous run; that never blocks. Every
 // driver decides overlap with this one function, so the rule cannot
 // drift between backends.
+//
+//ds:def id=overlappolicy-blocks-qp4pcepq owner=@khanakia stability=stable
 func (p OverlapPolicy) Blocks(prev Status) bool {
 	return p == OverlapSkip && prev != "" && !prev.IsTerminal()
 }
@@ -73,6 +85,8 @@ func (p OverlapPolicy) Blocks(prev Status) bool {
 // overlap check sees it, and drivers with CapTickEvents report it as a
 // TickFired with Tick.Manual set. The schedule's next cron fire is
 // unchanged. An unknown or unscheduled ID returns ErrNotFound.
+//
+//ds:def id=scheduletriggerer-x97svbrz owner=@khanakia stability=stable
 type ScheduleTriggerer interface {
 	TriggerSchedule(ctx context.Context, id ScheduleID) (RunRef, error)
 }
@@ -80,13 +94,19 @@ type ScheduleTriggerer interface {
 // LabelTrigger marks a run a ScheduleTriggerer started by hand, with the
 // value LabelTriggerManual, so run listings and observers can tell it
 // from a cron fire.
+//
+//ds:def id=labeltrigger-5wqkhz8p owner=@khanakia stability=stable
 const LabelTrigger = LabelPrefixInternal + "trigger"
 
 // LabelTriggerManual is the value of LabelTrigger.
+//
+//ds:def id=labeltriggermanual-s4x2wsh3 owner=@khanakia stability=stable
 const LabelTriggerManual = "manual"
 
 // TriggeredLabels is FiredLabels plus LabelTrigger, the labels of a run
 // TriggerSchedule starts. Drivers build a triggered job's labels with it.
+//
+//ds:def id=triggeredlabels-xgkux53f owner=@khanakia stability=stable
 func TriggeredLabels(labels map[string]string, id ScheduleID, name string) map[string]string {
 	out := FiredLabels(labels, id, name)
 	out[LabelTrigger] = LabelTriggerManual
@@ -96,6 +116,8 @@ func TriggeredLabels(labels map[string]string, id ScheduleID, name string) map[s
 // TriggeredLabelsAt is TriggeredLabels plus LabelTickAt set to at, the
 // trigger time. Drivers with CapTickTime build a triggered job's labels
 // with it.
+//
+//ds:def id=triggeredlabelsat-6b93e4q3 owner=@khanakia stability=stable
 func TriggeredLabelsAt(labels map[string]string, id ScheduleID, name string, at time.Time) map[string]string {
 	out := FiredLabelsAt(labels, id, name, at)
 	out[LabelTrigger] = LabelTriggerManual
@@ -106,6 +128,8 @@ func TriggeredLabelsAt(labels map[string]string, id ScheduleID, name string, at 
 // tick or manual trigger alike. Drivers with CapScheduleHistory store it
 // with the schedule (durably on a durable driver) and report it in
 // ScheduleInfo.
+//
+//ds:def id=schedulelast-f2asrf8b owner=@khanakia stability=stable
 type ScheduleLast struct {
 	// Fire is when the schedule last enqueued a run: the tick's time for
 	// a cron fire, the driver's clock for a trigger. Zero when it never

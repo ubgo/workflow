@@ -1,0 +1,78 @@
+func (o *Outbox) checkTrigger(spec *TriggerSpec) error {
+	invalid := func(format string, args ...any) error {
+		return fmt.Errorf("%w: outbox.ChangeTrigger: "+format, append([]any{workflow.ErrInvalid}, args...)...)
+	}
+	ident := func(what, v string) error {
+		if !identPattern.MatchString(v) {
+			return invalid("%s %q is not a plain identifier ([A-Za-z_][A-Za-z0-9_]*, at most 63 characters)", what, v)
+		}
+		return nil
+	}
+	if err := ident("Table", spec.Table); err != nil {
+		return err
+	}
+	if spec.TableSchema != "" {
+		if o.engine != sqlb.DialectPostgres {
+			return workflow.Unsupported("TriggerSpec.TableSchema on "+o.engine, "only Postgres has schemas inside a database; a trigger lives beside its table")
+		}
+		if err := ident("TableSchema", spec.TableSchema); err != nil {
+			return err
+		}
+	}
+	if !workflowLiteral.MatchString(spec.Workflow) {
+		return invalid("Workflow %q must match %s to be written as a SQL literal", spec.Workflow, workflowLiteral)
+	}
+	if len(spec.Ops) == 0 {
+		return invalid("no operation: set Ops to OnInsert, OnUpdate and/or OnDelete")
+	}
+	seenOp := map[ChangeOp]bool{}
+	for _, op := range spec.Ops {
+		if op != OnInsert && op != OnUpdate && op != OnDelete {
+			return invalid("unknown operation %q", op)
+		}
+		if seenOp[op] {
+			return invalid("operation %s given twice", op)
+		}
+		seenOp[op] = true
+	}
+	n := len(spec.Columns)
+	if spec.OpField != "" {
+		n++
+	}
+	if len(spec.Columns) == 0 || n > maxTriggerColumns {
+		return invalid("%d payload fields; give 1 to %d (Columns plus OpField)", n, maxTriggerColumns)
+	}
+	seenCol := map[string]bool{}
+	for _, col := range spec.Columns {
+		if err := ident("column", col); err != nil {
+			return err
+		}
+		if seenCol[col] {
+			return invalid("column %q given twice", col)
+		}
+		seenCol[col] = true
+	}
+	if spec.OpField != "" {
+		if err := ident("OpField", spec.OpField); err != nil {
+			return err
+		}
+		if seenCol[spec.OpField] {
+			return invalid("OpField %q is also a column", spec.OpField)
+		}
+	}
+	if spec.KeyColumn != "" {
+		if err := ident("KeyColumn", spec.KeyColumn); err != nil {
+			return err
+		}
+	}
+	if spec.Name == "" {
+		spec.Name = o.prefix + spec.Table + "_outbox"
+	}
+	if err := ident("Name", spec.Name); err != nil {
+		return err
+	}
+	if len(spec.Name)+len(OnInsert.suffix()) > maxTriggerName { // the longest suffix: "_ins", "_upd" and "_del" are 4, "_fn" 3
+		return invalid("trigger name %q is too long for its suffix; set a Name of at most %d characters", spec.Name, maxTriggerName-len(OnInsert.suffix()))
+	}
+	return nil
+}

@@ -17,6 +17,8 @@ import (
 // OpResetRun. It refuses an empty ref or step (ErrInvalid) and a client
 // without the interface (UnsupportedError); a run in another state
 // returns ErrWrongState.
+//
+//ds:def id=admin-admin-resetrun-exh5rehg owner=@khanakia stability=stable
 func (a *Admin) ResetRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	op := OpResetRun
 	if opts.Succeeded {
@@ -43,6 +45,8 @@ func (a *Admin) ResetRun(ctx context.Context, ref workflow.RunRef, step string, 
 // ref or step and reserved labels in opts (ErrInvalid), and a client
 // without RunForker (UnsupportedError); a run that has not finished
 // returns ErrWrongState.
+//
+//ds:def id=admin-admin-forkrun-zxc24dj7 owner=@khanakia stability=stable
 func (a *Admin) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
 	if err := a.check(OpForkRun); err != nil {
 		return workflow.RunRef{}, err
@@ -60,6 +64,8 @@ func (a *Admin) ForkRun(ctx context.Context, ref workflow.RunRef, step string, o
 // returns how many it resumed (WC-23); see workflow.TransientSignaller.
 // Zero is not an error. It refuses an event without a name (ErrInvalid)
 // and a client without TransientSignaller (UnsupportedError).
+//
+//ds:def id=admin-admin-signalwaiting-nu8n857v owner=@khanakia stability=stable
 func (a *Admin) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
 	if err := a.check(OpSignalWaiting); err != nil {
 		return 0, err

@@ -40,6 +40,8 @@ func TestConformance(t *testing.T) {
 // TestConformanceOtherRegion runs the suite with every job routed to the
 // region the declared crons do not fire in, so a run of a region other
 // than the schedule region is reached through every call the suite makes.
+//
+//ds:def id=regional-testconformanceotherregion-vr5mgb4n owner=@khanakia stability=stable
 func TestConformanceOtherRegion(t *testing.T) {
 	workflowtest.Run(t, workflowtest.Harness{New: func(t *testing.T) workflowtest.Instance {
 		clk := clock.NewFake(start)

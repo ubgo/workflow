@@ -67,11 +67,14 @@ type InboxState int
 const (
 	// InboxClaimed means the caller now holds the message: process it,
 	// then Complete or Release with the token.
+	//ds:def id=inboxclaimed-pr3yk9gm owner=@khanakia stability=stable
 	InboxClaimed InboxState = iota + 1
 	// InboxDone means the message was processed already: drop it.
+	//ds:def id=inboxdone-xysa8a3u owner=@khanakia stability=stable
 	InboxDone
 	// InboxBusy means another worker holds an unexpired claim: try again
 	// after its lease (a broker nack, a 503 to a webhook sender).
+	//ds:def id=inboxbusy-qh2qbbhu owner=@khanakia stability=stable
 	InboxBusy
 )
 
@@ -91,11 +94,15 @@ func (s InboxState) String() string {
 
 // ErrInboxBusy is returned by InboxConsumer.Once when another worker
 // holds the message. It is not Permanent: the message comes back later.
+//
+//ds:def id=errinboxbusy-qtu9arf9 owner=@khanakia stability=stable
 var ErrInboxBusy = errors.New("workflow: message is being processed by another worker")
 
 // ErrInboxLost is returned by Inbox.Complete when the claim's token no
 // longer holds the entry: the lease expired and another worker took the
 // message over (both ran the work), or the entry was released.
+//
+//ds:def id=errinboxlost-crwssvfu owner=@khanakia stability=stable
 var ErrInboxLost = errors.New("workflow: inbox claim lost (its lease expired)")
 
 // Inbox records which messages each consumer processed (MQ-15, TX-07).
@@ -107,6 +114,8 @@ var ErrInboxLost = errors.New("workflow: inbox claim lost (its lease expired)")
 // A store must be safe for concurrent use and decide Claim atomically for
 // every client sharing it: of two workers claiming one key at once,
 // exactly one gets InboxClaimed.
+//
+//ds:def id=inbox-kq8jz7jg owner=@khanakia stability=stable
 type Inbox interface {
 	// Claim takes key for the caller until now+lease and returns
 	// InboxClaimed with a fresh token, unless the key was processed and
@@ -128,10 +137,12 @@ type Inbox interface {
 const (
 	// DefaultInboxLease is how long a claim holds a message: longer than
 	// the work takes, or another worker runs it too.
+	//ds:def id=defaultinboxlease-s3zfehbn owner=@khanakia stability=stable
 	DefaultInboxLease = 5 * time.Minute
 	// DefaultInboxKeep is how long a processed ID is remembered: longer
 	// than any redelivery (SQS keeps a message up to 14 days, Pub/Sub up
 	// to 31 with retention on). Seven days covers most senders.
+	//ds:def id=defaultinboxkeep-kzbwa4qr owner=@khanakia stability=stable
 	DefaultInboxKeep = 7 * 24 * time.Hour
 )
 
@@ -159,6 +170,8 @@ func (c InboxConsumer) now() time.Time {
 // error is returned as is after the claim is released, so the next
 // delivery runs fn again; after fn succeeds a failed Complete is returned
 // too (the work is done, but a redelivery may run it again).
+//
+//ds:def id=inboxconsumer-once-mta79w6e owner=@khanakia stability=stable
 func (c InboxConsumer) Once(ctx context.Context, id string, fn func(ctx context.Context) error) (bool, error) {
 	if c.Inbox == nil {
 		return false, invalidf("inbox consumer %q has no Inbox", c.Consumer)
@@ -202,6 +215,8 @@ func (c InboxConsumer) Once(ctx context.Context, id string, fn func(ctx context.
 // MemoryInbox is an in-process Inbox: entries live in this process and
 // are lost when it exits, so it drops duplicates that reach one process.
 // Prune removes entries whose time has passed. The zero value is ready.
+//
+//ds:def id=memoryinbox-c3zuf7tj owner=@khanakia stability=stable
 type MemoryInbox struct {
 	mu      sync.Mutex
 	entries map[string]memoryInboxEntry

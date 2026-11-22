@@ -7,6 +7,8 @@ import (
 
 // JobEdit is a change to a run that has not started (AD-04). A nil field
 // is left as it is.
+//
+//ds:def id=jobedit-aut4bg45 owner=@khanakia stability=stable
 type JobEdit struct {
 	// Payload replaces the run's payload. The driver's payload limit
 	// applies, as at Enqueue.
@@ -36,11 +38,15 @@ func (e JobEdit) IsZero() bool { return e.Payload == nil && e.Priority == nil &&
 // implement it; it answers for itself, as RunRescheduler does, so it has
 // no capability: a client without it returns an UnsupportedError from the
 // Forward wrapper.
+//
+//ds:def id=runeditor-ss73q99q owner=@khanakia stability=api
 type RunEditor interface {
 	EditRun(ctx context.Context, ref RunRef, edit JobEdit) (RunRef, error)
 }
 
 // CheckJobEdit refuses an empty edit; drivers call it first.
+//
+//ds:def id=checkjobedit-xnynunz4 owner=@khanakia stability=stable
 func CheckJobEdit(e JobEdit) error {
 	if e.IsZero() {
 		return invalidf("job edit changes nothing")

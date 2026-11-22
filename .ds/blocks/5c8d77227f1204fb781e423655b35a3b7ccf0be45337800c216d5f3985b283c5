@@ -1,0 +1,5 @@
+type MemoryUnique struct {
+	clk  clock.Clock
+	mu   sync.Mutex
+	held map[string]uniqueLock
+}

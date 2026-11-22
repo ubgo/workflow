@@ -1,0 +1,7 @@
+func SchedulesOn(s Side) Option {
+	return func(c *Client) {
+		if s.valid() {
+			c.sched = s
+		}
+	}
+}

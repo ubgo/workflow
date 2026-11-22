@@ -1,0 +1,22 @@
+func (rc *ReplayCtx) next(kind, name string) (replayEntry, bool, error) {
+	if rc.suspend != nil {
+		return replayEntry{}, false, rc.suspend
+	}
+	if rc.fault != nil {
+		return replayEntry{}, false, rc.fault
+	}
+	if name == "" {
+		return replayEntry{}, false, rc.fail(Permanent(invalidf("replay: %s needs a name", kind)))
+	}
+	e, ok, err := rc.load(rc.pos)
+	if err != nil {
+		return e, false, rc.fail(err)
+	}
+	if ok && (e.Kind != kind || e.Name != name) {
+		return e, false, rc.fail(Permanent(&NondeterminismError{Position: rc.pos, Recorded: e.Kind + " " + e.Name, Got: kind + " " + name}))
+	}
+	if ok {
+		rc.pos++ // a recorded call is consumed here; a new one by record
+	}
+	return e, ok, nil
+}

@@ -1,0 +1,23 @@
+func (c *Client) checkIdleLocked() {
+	if !c.stopWhenIdle || !c.started || c.stopped || c.live > 0 {
+		return
+	}
+	epoch := c.idleEpoch
+	t := c.clk.NewTimer(c.idleGrace)
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		select {
+		case <-t.C():
+		case <-c.ctx.Done():
+			t.Stop()
+			return
+		}
+		c.mu.Lock()
+		idle := c.idleEpoch == epoch && c.live == 0 && !c.stopped
+		c.mu.Unlock()
+		if idle {
+			go func() { _ = c.Drain(context.Background()) }() // not in wg: Drain waits for wg
+		}
+	}()
+}

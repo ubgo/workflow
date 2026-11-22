@@ -1,0 +1,12 @@
+func (f *Fake) AssertObjectCalled(t testing.TB, object, key, method string) {
+	t.Helper()
+	calls := f.ObjectCalls(object)
+	var all []string
+	for _, c := range calls {
+		if c.Key == key && c.Method == method {
+			return
+		}
+		all = append(all, c.Key+"."+c.Method)
+	}
+	t.Errorf("object %q: %s was not called for key %q; calls: [%s]", object, method, key, strings.Join(all, ", "))
+}

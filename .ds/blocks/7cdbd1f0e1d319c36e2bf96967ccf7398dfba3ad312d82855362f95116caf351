@@ -1,0 +1,8 @@
+func ParentRun(ctx context.Context) (RunID, bool) {
+	info, ok := StepInfoFrom(ctx)
+	if !ok {
+		return "", false
+	}
+	id := info.Labels[LabelParentRun]
+	return RunID(id), id != ""
+}

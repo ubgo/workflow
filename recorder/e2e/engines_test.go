@@ -90,7 +90,7 @@ func sharedOpener(t *testing.T, open func() (*sql.DB, error), quote string) func
 }
 
 // recorderTables are the sqlrecorder table names after the prefix.
-var recorderTables = []string{"events", "steps", "labels", "runs", "schema"}
+var recorderTables = []string{"events", "steps", "labels", "runs", "schema", "archive"}
 
 // sqlstoreTables are the sqlstore driver's table names after the prefix,
 // for the driver cases that put both in one database.

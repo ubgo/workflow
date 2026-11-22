@@ -1,0 +1,23 @@
+func (c *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	// The Hatchet-specific check first, so the error names the exact
+	// field; the capability check then catches anything it does not name.
+	if err := checkSupported(wf); err != nil {
+		return err
+	}
+	if err := workflow.CheckCaps(caps, wf); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	if _, ok := c.specs[wf.Name]; !ok {
+		c.order = append(c.order, wf.Name)
+	}
+	c.specs[wf.Name] = wf
+	return nil
+}

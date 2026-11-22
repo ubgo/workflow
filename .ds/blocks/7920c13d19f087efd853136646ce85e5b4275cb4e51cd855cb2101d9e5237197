@@ -1,0 +1,1 @@
+var ErrSchemaTooNew = errors.New("outbox: the database schema is newer than this code")

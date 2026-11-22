@@ -1,0 +1,18 @@
+func storedCause(msg, step string) error {
+	rest := msg
+	if step != "" {
+		wrap := fmt.Sprintf("redis: step %q failed after ", step)
+		const attempts = " attempt(s): "
+		if after, ok := strings.CutPrefix(rest, wrap); ok {
+			if i := strings.Index(after, attempts); i >= 0 {
+				rest = after[i+len(attempts):]
+			}
+		}
+	}
+	for _, k := range storedSentinels {
+		if strings.HasPrefix(rest, k.Error()) {
+			return storedSentinel{msg: msg, kind: k, timeout: k != ErrAbandoned}
+		}
+	}
+	return storedError(msg)
+}

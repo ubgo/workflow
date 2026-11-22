@@ -1,0 +1,33 @@
+func (m *Manager) poll(ctx context.Context) {
+	open, err := m.store.Unfinished(ctx)
+	if err != nil {
+		m.log.ErrorContext(ctx, "batch: poll: list unfinished batches", "error", err)
+		return
+	}
+	for _, st := range open {
+		for i, j := range st.Jobs {
+			if j.Ref.IsZero() || j.Status.IsTerminal() {
+				continue
+			}
+			status, err := m.client.Status(ctx, j.Ref)
+			if err != nil {
+				m.log.ErrorContext(ctx, "batch: poll: run status", "batch", string(st.ID), "job", i, "error", err)
+				continue
+			}
+			if err := m.record(ctx, st.ID, i, j.Attempt, status); err != nil {
+				m.log.ErrorContext(ctx, "batch: poll: record job end", "batch", string(st.ID), "job", i, "error", err)
+			}
+		}
+		// A batch whose jobs all ended may still hold a callback that
+		// failed to enqueue; the claim inside retryBatch re-checks it, so
+		// a callback a record above just claimed is not tried twice.
+		if hasDue(st, m.clk.Now()) {
+			if err := m.retryBatch(ctx, st.ID); err != nil {
+				m.log.ErrorContext(ctx, "batch: poll: retry callbacks", "batch", string(st.ID), "error", err)
+			}
+		}
+	}
+	if err := m.ResumeDispatches(ctx); err != nil {
+		m.log.ErrorContext(ctx, "batch: poll: resume dispatches", "error", err)
+	}
+}

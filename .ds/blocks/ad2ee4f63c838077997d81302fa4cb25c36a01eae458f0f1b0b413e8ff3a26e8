@@ -1,0 +1,31 @@
+func (cc *ClaimCheck) Step() workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			ctx = withMappedChain(ctx, cc.prepare(ctx))
+			token := runClaimToken(ctx)
+			if token == "" {
+				return next(ctx, in)
+			}
+			resolved, err := cc.resolve(ctx, token, in)
+			if err != nil {
+				if errors.Is(err, ErrBlobNotFound) {
+					return nil, workflow.Permanent(err)
+				}
+				return nil, err
+			}
+			out, err := next(ctx, resolved)
+			if err != nil || len(out) <= cc.threshold {
+				return out, err
+			}
+			seg, err := cc.key()
+			if err != nil {
+				return nil, err
+			}
+			ref, err := cc.claim(ctx, token+claimKeySep+claimOutputKeyPart+claimKeySep+seg, out)
+			if err != nil {
+				return nil, fmt.Errorf("workflow/middleware: claim check output: %w", err)
+			}
+			return ref, nil
+		}
+	}
+}

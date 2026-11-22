@@ -12,6 +12,8 @@ import (
 // ErrCalendar is wrapped by every error Calendar returns, so a caller can
 // tell a bad structured spec from a parse error of a hand-written
 // expression.
+//
+//ds:def id=cron-errcalendar-5cmwqcwg owner=@khanakia stability=stable
 var ErrCalendar = errors.New("cron: invalid calendar")
 
 // Calendar is a structured calendar spec: the fire times as lists of field
@@ -27,6 +29,8 @@ var ErrCalendar = errors.New("cron: invalid calendar")
 // expression cannot say (cron ORs two restricted day fields), so setting
 // both is refused rather than compiled into an expression that fires on
 // every 13th and every Friday.
+//
+//ds:def id=cron-calendar-73bqgzpu owner=@khanakia stability=stable
 type Calendar struct {
 	// Minute lists minutes 0-59; empty means minute 0.
 	Minute []int
@@ -43,6 +47,8 @@ type Calendar struct {
 // Expr returns the five-field expression of c, with consecutive values
 // written as ranges ("1-5") and lists in ascending order. Every error
 // wraps ErrCalendar and names the field.
+//
+//ds:def id=cron-calendar-expr-kejgc3n2 owner=@khanakia stability=stable
 func (c Calendar) Expr() (string, error) {
 	if len(c.DayOfMonth) > 0 && len(c.DayOfWeek) > 0 {
 		return "", fmt.Errorf("%w: DayOfMonth and DayOfWeek both set: cron would fire on either, not on both; use one and check the other in the job", ErrCalendar)
@@ -76,6 +82,8 @@ func (c Calendar) Expr() (string, error) {
 }
 
 // Schedule compiles c and parses the result with Parse.
+//
+//ds:def id=cron-calendar-schedule-tqrh9q6n owner=@khanakia stability=stable
 func (c Calendar) Schedule() (Schedule, error) {
 	expr, err := c.Expr()
 	if err != nil {
@@ -86,6 +94,8 @@ func (c Calendar) Schedule() (Schedule, error) {
 
 // listExpr writes a field's values as a cron list: "*" for none, runs of
 // consecutive values as "a-b", duplicates dropped.
+//
+//ds:def id=cron-listexpr-ws26ghwc owner=@khanakia stability=stable
 func listExpr(vals []int, lo, hi int) (string, error) {
 	if len(vals) == 0 {
 		return wild, nil

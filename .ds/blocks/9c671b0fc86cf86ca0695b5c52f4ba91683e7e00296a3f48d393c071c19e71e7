@@ -1,0 +1,27 @@
+func (c *Client) callTimed(ctx context.Context, h workflow.Handler, in []byte, step string, attempt int, d time.Duration) ([]byte, error) {
+	if d <= 0 {
+		return h(ctx, in)
+	}
+	actx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("hatchet: step %q attempt %d after %s", step, attempt, d))
+	tm := c.cfg.Clock.NewTimer(d)
+	go func() {
+		select {
+		case <-tm.C():
+			cancel(errStep)
+		case <-actx.Done():
+			tm.Stop()
+		}
+	}()
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err := h(hctx, in)
+	if context.Cause(actx) == errStep {
+		if claimed() {
+			return out, err
+		}
+		return nil, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded)
+	}
+	return out, err
+}

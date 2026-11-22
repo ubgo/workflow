@@ -1,0 +1,3 @@
+func WithNotifier(n Notifier) Option {
+	return func(cl *Client) { cl.notifier = n }
+}

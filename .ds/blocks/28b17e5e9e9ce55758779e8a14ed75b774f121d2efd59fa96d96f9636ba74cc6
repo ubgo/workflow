@@ -1,0 +1,13 @@
+func FromMessage(m Message, source string) CloudEvent {
+	e := CloudEvent{ID: m.ID, Source: source, SpecVersion: CloudEventsSpecVersion, Type: m.Name, Subject: m.Key, Data: m.Payload}
+	for k, v := range m.Labels {
+		if !ValidExtensionName(k) {
+			continue
+		}
+		if e.Extensions == nil {
+			e.Extensions = map[string]string{}
+		}
+		e.Extensions[k] = v
+	}
+	return e
+}

@@ -1,0 +1,7 @@
+func NewDisableStore(rdb goredis.UniversalClient, prefix string) (*DisableStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &DisableStore{rdb: rdb, base: base}, nil
+}

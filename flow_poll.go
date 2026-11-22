@@ -12,9 +12,13 @@ import (
 
 // ErrPollTimeout matches the error Poll ends with when its condition did
 // not hold before PollSpec.Timeout; it also matches ErrTimeout.
+//
+//ds:def id=errpolltimeout-2mzgb5sv owner=@khanakia stability=stable
 var ErrPollTimeout = fmt.Errorf("%w: poll", ErrTimeout)
 
 // PollSpec says how often Poll looks and for how long.
+//
+//ds:def id=pollspec-rbwpje2v owner=@khanakia stability=stable
 type PollSpec struct {
 	// Every is the wait after the first look that found nothing; zero
 	// means one second.
@@ -79,6 +83,8 @@ func (s PollSpec) Wait(n int) time.Duration {
 // Use it for a sensor (wait until a file or partition exists), for an
 // external job started by an earlier step (poll its status), or for any
 // "until" condition.
+//
+//ds:def id=poll-48rh3xt3 owner=@khanakia stability=stable
 func Poll[T any](ctx context.Context, name string, spec PollSpec, check func(ctx context.Context) (T, bool, error)) (T, error) {
 	var zero T
 	j, err := journalFrom(ctx)
@@ -146,6 +152,8 @@ func Poll[T any](ctx context.Context, name string, spec PollSpec, check func(ctx
 // MaxSnooze takes several snoozes; each comes back, finds t still ahead
 // and snoozes again. Code above the call runs on every return, so keep
 // the call at the top of the step or put earlier work in Memo.
+//
+//ds:def id=sleepuntil-6vncwvvy owner=@khanakia stability=stable
 func SleepUntil(clk clock.Clock, t time.Time) error {
 	if clk == nil {
 		clk = clock.Real{}

@@ -1,0 +1,39 @@
+func TestTenantScope_OneRun(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
+
+	if rec := as(t, h, "a", "GET", "/runs/"+string(ts.aWait.RunID), ""); rec.Code != http.StatusOK {
+		t.Fatalf("a reads its own run: %d %s", rec.Code, rec.Body)
+	}
+	missing := as(t, h, "a", "GET", "/runs/nope", "")
+	other := string(ts.bWait.RunID)
+	for _, r := range []route{
+		{"GET", "/runs/" + other, "", ActionShowRun},
+		{"POST", "/runs/" + other + "/cancel", "", ActionCancelRun},
+		{"POST", "/runs/" + string(ts.bFail.RunID) + "/retry", "", ActionRetryRun},
+		{"DELETE", "/runs/" + string(ts.bFail.RunID), "", ActionDeleteRun},
+		{"POST", "/runs/" + other + "/complete", "", ActionForceComplete},
+		{"POST", "/runs/" + other + "/fail", `{"reason":"x"}`, ActionForceFail},
+		{"GET", "/runs/" + other + "/output", "", ActionShowOutput},
+		{"POST", "/runs/" + other + "/reschedule", `{"at":"2030-01-01T00:00:00Z"}`, ActionRescheduleRun},
+		{"POST", "/runs/" + other + "/steps/w/cancel", "", ActionCancelStep},
+		{"POST", "/runs/" + other + "/edit", `{"priority":1}`, ActionEditRun},
+		{"POST", "/runs/" + string(ts.bFail.RunID) + "/reset", `{"step":"b"}`, ActionResetRun},
+		{"POST", "/runs/" + string(ts.bFail.RunID) + "/fork", `{"step":"b"}`, ActionForkRun},
+	} {
+		rec := as(t, h, "a", r.method, r.path, r.body)
+		if rec.Code != http.StatusNotFound || errCode(t, rec) != CodeNotFound {
+			t.Errorf("a %s %s = %d %s, want 404", r.method, r.path, rec.Code, rec.Body)
+		}
+		// The answer reads like a run that does not exist.
+		if want := strings.Replace(missing.Body.String(), "nope", strings.Split(r.path, "/")[2], 1); rec.Body.String() != want {
+			t.Errorf("a %s %s body %s, want %s", r.method, r.path, rec.Body, want)
+		}
+	}
+	if st, _ := ts.c.Status(t.Context(), ts.bWait); st != workflow.StatusWaiting {
+		t.Fatalf("b's run is %s after a's refused calls", st)
+	}
+	if rec := as(t, h, "a", "POST", "/runs/"+string(ts.aWait.RunID)+"/cancel", ""); rec.Code != http.StatusOK {
+		t.Fatalf("a cancels its own run: %d %s", rec.Code, rec.Body)
+	}
+}

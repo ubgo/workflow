@@ -1,0 +1,25 @@
+func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.usable(); err != nil {
+		return nil, err
+	}
+	if len(names) == 0 || run.IsZero() {
+		return nil, nil
+	}
+	args := []any{c.base, string(run), limit}
+	for _, n := range names {
+		args = append(args, sigKey(n, workflow.RunKey(run)), n)
+	}
+	res, err := pendingSignalsScript.Run(ctx, c.rdb, c.keys(), args...).Slice()
+	if err != nil {
+		return nil, fmt.Errorf("redis: pending signals: %w", classify(err))
+	}
+	out := make([]workflow.RunSignal, 0, len(res)/3)
+	for i := 0; i+2 < len(res); i += 3 {
+		name := str(res[i+1])
+		out = append(out, workflow.RunSignal{ID: str(res[i]) + "/" + name, Name: name, Payload: []byte(str(res[i+2]))})
+	}
+	return out, nil
+}

@@ -220,6 +220,8 @@ func TestClassifierDecides(t *testing.T) {
 // TestRoutingByRef puts one run on each backend. Both memory drivers number
 // their runs the same way, so the driver IDs collide; only the prefix tells
 // Status and Cancel which run is meant.
+//
+//ds:def id=failover-testroutingbyref-n3hkq2r5 owner=@khanakia stability=stable
 func TestRoutingByRef(t *testing.T) {
 	fx := newFixture(t)
 	fx.up(waitWF)
@@ -248,6 +250,7 @@ func TestRoutingByRef(t *testing.T) {
 	fx.waitStatus(onP, workflow.StatusCancelled)
 }
 
+//ds:def id=failover-testunprefixedreffallsbacktosecondary-ahw7vjee owner=@khanakia stability=stable
 func TestUnprefixedRefFallsBackToSecondary(t *testing.T) {
 	fx := newFixture(t)
 	fx.up(waitWF)
@@ -480,6 +483,7 @@ func TestCoolOffSkipsThePrimary(t *testing.T) {
 	}
 }
 
+//ds:def id=failover-testlifecycle-94pbdjes owner=@khanakia stability=stable
 func TestLifecycle(t *testing.T) {
 	fx := newFixture(t)
 	if _, err := fx.c.Enqueue(fx.ctx, workflow.Job{Workflow: "wait", IdempotencyKey: "k"}); !errors.Is(err, workflow.ErrNotStarted) {

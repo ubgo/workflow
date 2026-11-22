@@ -3,7 +3,10 @@
 // a Config, an enqueue-only client for web nodes, the overlap policy the
 // engine cannot honour, and, against a real engine, a schedule run now,
 // its last fire read from the engine's run list, a job enqueued from the
-// web node, and a delayed start cancelled with ErrCancelTooLate handled.
+// web node, a delayed start with an idempotency key (held by the engine
+// from the Enqueue through the delayed variant's start gate), and a
+// delayed start cancelled with ErrCancelTooLate handled. The reserved
+// names of the delayed variants are refused offline.
 //
 // The offline part needs no engine and always runs. The live part runs
 // only when HATCHET_CLIENT_TOKEN is set (the SDK also reads
@@ -134,6 +137,20 @@ func offline(ctx context.Context, w io.Writer) error {
 	}}})
 	// snippet:end
 	fmt.Fprintf(w, "export registered with a %s step timeout: %v\n", uploadTimeout, err == nil)
+
+	// snippet:delayed-names
+	reserved := []struct {
+		why string
+		wf  workflow.Workflow
+	}{
+		{"a name ending in __wf_delayed", workflow.Workflow{Name: "invoice__wf_delayed", Steps: []workflow.Step{{Name: "send", Run: noop}}}},
+		{"a step named wf__start", workflow.Workflow{Name: "invoice", Steps: []workflow.Step{{Name: "wf__start", Run: noop}}}},
+	}
+	for _, r := range reserved {
+		err := c.Register(r.wf) // the driver's delayed variants and their start gate use these names
+		fmt.Fprintf(w, "%s: ErrInvalid = %v\n", r.why, errors.Is(err, workflow.ErrInvalid))
+	}
+	// snippet:end
 	return nil
 }
 
@@ -209,6 +226,10 @@ func live(ctx context.Context, w io.Writer) error {
 	}
 	fmt.Fprintln(w, "enqueued from the web node:", workflow.StatusSucceeded)
 
+	if err := keyedDelayedStart(ctx, w, c, report); err != nil {
+		return err
+	}
+
 	delayed, err := c.Enqueue(ctx, workflow.Job{Workflow: report, RunAt: time.Now().Add(delayedBy)})
 	if err != nil {
 		return err
@@ -227,4 +248,43 @@ func live(ctx context.Context, w io.Writer) error {
 	}
 	// snippet:end
 	return nil
+}
+
+// keyedDelayedStart enqueues a delayed start with an idempotency key on a
+// started client: the engine holds the key from the Enqueue, a second
+// Enqueue with it returns the same run, the waiting run cannot be
+// rescheduled, a RunAt past Config.IdempotencyMaxHold is refused, and a
+// Cancel frees the key before the step runs.
+func keyedDelayedStart(ctx context.Context, w io.Writer, c *hatchet.Client, report string) error {
+	// snippet:delayed-key
+	// A key with RunAt: the run starts at once on the workflow's delayed
+	// variant, whose start gate sleeps until RunAt, so the engine holds
+	// the key from now on.
+	job := workflow.Job{Workflow: report, RunAt: time.Now().Add(delayedBy), IdempotencyKey: "invoice-42"}
+	keyed, err := c.Enqueue(ctx, job)
+	if err != nil {
+		return err
+	}
+	again, err := c.Enqueue(ctx, job) // the key is held: the same run comes back
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(w, "keyed delayed start has a RunID:", !keyed.RunID.IsZero(), "same run for the key:", again == keyed)
+	if err := waitFor(ctx, c, keyed, workflow.StatusScheduled); err != nil {
+		return err
+	}
+	_, err = c.Reschedule(ctx, keyed, time.Now().Add(2*delayedBy)) // its gate is a durable sleep
+	fmt.Fprintln(w, "Reschedule of a keyed start: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+
+	far := job
+	far.IdempotencyKey = "invoice-43"
+	far.RunAt = time.Now().Add(hatchet.DefaultIdempotencyMaxHold + delayedBy) // the key would lapse first
+	_, err = c.Enqueue(ctx, far)
+	fmt.Fprintln(w, "RunAt past IdempotencyMaxHold: ErrUnsupported =", errors.Is(err, workflow.ErrUnsupported))
+
+	if err := c.Cancel(ctx, keyed); err != nil { // frees the key; the step never runs
+		return err
+	}
+	// snippet:end
+	return waitFor(ctx, c, keyed, workflow.StatusCancelled)
 }

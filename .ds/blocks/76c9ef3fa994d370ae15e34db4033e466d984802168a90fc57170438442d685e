@@ -1,0 +1,18 @@
+func DefaultClassifier(err error) bool {
+	if err == nil || workflow.IsPermanent(err) {
+		return false
+	}
+	// A driver's own timeout talking to its engine matches
+	// context.DeadlineExceeded, which callerFault lists; marked
+	// unavailable it is an outage. The caller's own ctx is checked
+	// before any Classifier runs.
+	if workflow.IsUnavailable(err) {
+		return true
+	}
+	for _, target := range callerFault {
+		if errors.Is(err, target) {
+			return false
+		}
+	}
+	return true
+}

@@ -1,0 +1,29 @@
+func OneShot(s Schedule, at time.Time) (Schedule, error) {
+	if at.IsZero() || at.Nanosecond() != 0 {
+		return s, invalidf("OneShot: at must be a non-zero time in whole seconds")
+	}
+	if s.Location == nil || s.Location == time.Local {
+		return s, invalidf("OneShot: schedule for %q needs a Location (not nil or time.Local)", s.Workflow)
+	}
+	if s.Cron == "" {
+		local := at.In(s.Location)
+		if local.Second() != 0 {
+			s.Cron = fmt.Sprintf("%d %d %d %d %d *", local.Second(), local.Minute(), local.Hour(), local.Day(), int(local.Month()))
+			s.Seconds = true
+		} else {
+			s.Cron = fmt.Sprintf("%d %d %d %d *", local.Minute(), local.Hour(), local.Day(), int(local.Month()))
+		}
+	}
+	if err := ValidateSchedule(s); err != nil {
+		return s, err
+	}
+	sched, err := ParseCron(s.Cron, s.Seconds, nil)
+	if err != nil {
+		return s, fmt.Errorf("%w: OneShot: %w", ErrInvalid, err)
+	}
+	if got := sched.Next(at.Add(-time.Nanosecond), s.Location); !got.Equal(at) {
+		return s, invalidf("OneShot: %q has no tick at %s (the next is %s)", s.Cron, at.Format(time.RFC3339), got.Format(time.RFC3339))
+	}
+	s.Active = Active{} // the one tick is the whole period
+	return limitTicks(s, sched, 1, at.Add(-time.Nanosecond))
+}

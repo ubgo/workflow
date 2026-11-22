@@ -1,0 +1,38 @@
+func (s *DebounceStore) Swap(ctx context.Context, key string, b middleware.DebounceBurst) (middleware.DebounceBurst, bool, error) {
+	var prev burstRow
+	var found bool
+	var err error
+	for range s.st.txAttempts {
+		found = false
+		err = s.st.tx(ctx, func(tx *sql.Tx) error {
+			h := keyHash(key)
+			n, err := s.st.execN(ctx, tx, "UPDATE {debounce} SET ver = ver + 1 WHERE key_hash = ?", h)
+			if err != nil {
+				return err
+			}
+			args := []any{b.First.UnixNano(), b.RunAt.UnixNano(), string(b.Ref.RunID), string(b.Ref.ScheduledID)}
+			if n == 0 {
+				_, err := s.st.exec(ctx, tx, "INSERT INTO {debounce} (key_hash, dkey, first_at, run_at, run_id, scheduled_id, ver) VALUES (?, ?, ?, ?, ?, ?, 0)",
+					append([]any{h, key}, args...)...)
+				return err
+			}
+			if err := s.st.one(ctx, tx, "SELECT "+debounceCols+" FROM {debounce} WHERE key_hash = ?", []any{h}, prev.targets()...); err != nil {
+				return fmt.Errorf("sqlstore: read debounce key: %w", err)
+			}
+			found = true
+			_, err = s.st.exec(ctx, tx, "UPDATE {debounce} SET first_at = ?, run_at = ?, run_id = ?, scheduled_id = ? WHERE key_hash = ?",
+				append(args, h)...)
+			return err
+		})
+		if !s.st.isUnique(err) || ctx.Err() != nil {
+			break
+		}
+	}
+	if err != nil {
+		return middleware.DebounceBurst{}, false, err
+	}
+	if !found {
+		return middleware.DebounceBurst{}, false, nil
+	}
+	return prev.burst(), true, nil
+}

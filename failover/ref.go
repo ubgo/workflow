@@ -21,7 +21,9 @@ const (
 // follows unchanged, so stripping the prefix gives back exactly the ref the
 // driver handed out.
 const (
-	primaryPrefix   = "primary:"
+	//ds:def id=failover-primaryprefix-9n5byqpk owner=@khanakia stability=stable
+	primaryPrefix = "primary:"
+	//ds:def id=failover-secondaryprefix-qdx3xcxt owner=@khanakia stability=stable
 	secondaryPrefix = "secondary:"
 )
 
@@ -52,6 +54,8 @@ func splitID(id string) (side, string) {
 }
 
 // encodeRef prefixes every set ID of a driver's ref with s.
+//
+//ds:def id=failover-encoderef-25vkwvhw owner=@khanakia stability=stable
 func encodeRef(s side, ref workflow.RunRef) workflow.RunRef {
 	if !ref.RunID.IsZero() {
 		ref.RunID = workflow.RunID(s.prefix() + string(ref.RunID))
@@ -88,8 +92,10 @@ func encodeScheduleID(s side, id workflow.ScheduleID) workflow.ScheduleID {
 	return workflow.ScheduleID(s.prefix() + string(id))
 }
 
+//ds:def id=failover-bothprefix-xez3gtmc owner=@khanakia stability=stable
 const bothPrefix = "both:"
 
+//ds:def id=failover-encodebothscheduleid-gvpwf4ak owner=@khanakia stability=stable
 func encodeBothScheduleID(p, s workflow.ScheduleID) workflow.ScheduleID {
 	return workflow.ScheduleID(bothPrefix + strconv.Itoa(len(p)) + ":" + string(p) + string(s))
 }
@@ -131,6 +137,8 @@ func cutLen(s string) (int, string, bool) {
 // to PauseSchedule, TriggerSchedule or a run query. labels is copied,
 // never changed in place: the driver owns its map. Labels without the
 // key come back as they are.
+//
+//ds:def id=failover-sidelabels-y4ng37gx owner=@khanakia stability=stable
 func sideLabels(labels map[string]string, s side) map[string]string {
 	id, ok := labels[workflow.LabelSchedule]
 	if !ok || id == "" {
@@ -145,6 +153,8 @@ func sideLabels(labels map[string]string, s side) map[string]string {
 // the ID this client handed out, which is turned back into s's own ID.
 // It reports false when the filter names a schedule s does not hold, so
 // s is not asked and matches nothing.
+//
+//ds:def id=failover-sidequery-dxj4p6nq owner=@khanakia stability=stable
 func sideQuery(q workflow.RunQuery, s side) (workflow.RunQuery, bool) {
 	id, ok := q.Labels[workflow.LabelSchedule]
 	if !ok {

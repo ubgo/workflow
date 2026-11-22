@@ -1,0 +1,3 @@
+func ForkRedo(st Status, labels map[string]string) bool {
+	return st == StatusSucceeded || labels[LabelRedo] == "true"
+}

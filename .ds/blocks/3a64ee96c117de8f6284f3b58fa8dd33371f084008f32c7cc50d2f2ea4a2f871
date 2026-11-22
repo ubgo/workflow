@@ -1,0 +1,38 @@
+type CancelSubscription struct {
+	// Name identifies the subscription; unique within the bus across
+	// subscriptions and cancel subscriptions, and stable across deploys
+	// (it is part of the divert run's idempotency key).
+	Name string
+
+	// Event is the message Name it matches.
+	Event string
+
+	// Filter, when set, must return true for the message to cancel.
+	Filter func(Message) bool
+
+	// Label is the run label to match ("order"). Required.
+	Label string
+
+	// Key returns the label value to cancel from the message. Nil means
+	// m.Key. A message for which it returns "" cancels nothing and its
+	// Cancellation holds an ErrInvalid: an empty value would match every
+	// run carrying the label empty.
+	Key func(Message) string
+
+	// Workflow, when set, narrows the cancel to runs of that workflow.
+	Workflow string
+
+	// Statuses are the statuses cancelled; nil means
+	// UnfinishedStatuses. A terminal status is refused.
+	Statuses []workflow.Status
+
+	// Divert, when set, is the workflow started after the cancel, with
+	// the message's payload. Ignored when DivertJob is set.
+	Divert string
+
+	// DivertJob, when set, builds the divert job from the message (a
+	// different payload, a queue, RunAt). Reserved label keys in it are
+	// refused (ErrInvalid); the bus adds its labels and, when the job has
+	// none, its idempotency key.
+	DivertJob func(Message) (workflow.Job, error)
+}

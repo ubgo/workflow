@@ -1,0 +1,16 @@
+type LineageQuery struct {
+	// Kind is produced or consumed; empty matches both.
+	Kind LineageKind
+
+	// Dataset is the dataset name; empty matches any.
+	Dataset string
+
+	// Run is the run; empty matches any.
+	Run workflow.RunID
+
+	// Trigger is the consuming trigger; empty matches any.
+	Trigger string
+
+	// Limit is the most records to return; zero means all.
+	Limit int
+}

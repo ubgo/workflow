@@ -1,0 +1,10 @@
+func ReportProgress(ctx context.Context, p Progress) error {
+	if err := ValidateProgress(p); err != nil {
+		return err
+	}
+	r, ok := ctx.Value(progressKey{}).(ProgressReporter)
+	if !ok {
+		return Unsupported("ReportProgress", "the driver keeps no progress, or ctx is not a step's")
+	}
+	return r.ReportProgress(ctx, p)
+}

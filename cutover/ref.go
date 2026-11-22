@@ -8,6 +8,8 @@ import (
 )
 
 // Side names one of the two backends of a cutover.
+//
+//ds:def id=cutover-side-a33cayts owner=@khanakia stability=stable
 type Side string
 
 // The two backends.
@@ -46,6 +48,8 @@ func splitID(id string) (Side, string) {
 }
 
 // encodeRef prefixes every set ID of a driver's ref with s.
+//
+//ds:def id=cutover-encoderef-4er3m4bu owner=@khanakia stability=stable
 func encodeRef(s Side, ref workflow.RunRef) workflow.RunRef {
 	if !ref.RunID.IsZero() {
 		ref.RunID = workflow.RunID(s.prefix() + string(ref.RunID))

@@ -1,0 +1,26 @@
+func (j job) systemdUnits(calendars []string) ([]File, error) {
+	m, err := classify(FormatSystemd, j.s.Misfire)
+	if err != nil {
+		return nil, err
+	}
+	switch m {
+	case misfireDeadline:
+		return nil, refuse(FormatSystemd, "Misfire", "Within %s: Persistent= catches up any missed tick, however old", j.s.Misfire.Within)
+	}
+	desc := strings.ReplaceAll(j.desc, "%", "%%")
+	var timer strings.Builder
+	timer.WriteString("[Unit]\nDescription=" + desc + "\n\n[Timer]\n")
+	for _, c := range calendars {
+		timer.WriteString("OnCalendar=" + c + "\n")
+	}
+	timer.WriteString("AccuracySec=1s\n")
+	timer.WriteString("Persistent=" + strconv.FormatBool(m == misfireCatchUp) + "\n")
+	timer.WriteString("Unit=" + j.name + ".service\n\n[Install]\nWantedBy=timers.target\n")
+
+	args := j.argvQuoted()
+	service := "[Unit]\nDescription=" + desc + "\n\n[Service]\nType=oneshot\nExecStart=" + args + "\n"
+	return []File{
+		{Name: j.name + ".timer", Data: []byte(timer.String())},
+		{Name: j.name + ".service", Data: []byte(service)},
+	}, nil
+}

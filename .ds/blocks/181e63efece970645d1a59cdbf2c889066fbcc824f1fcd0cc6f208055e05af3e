@@ -1,0 +1,53 @@
+func (a Attributes) Encode(job Job) (map[string]string, error) {
+	p := a.prefix()
+	out := map[string]string{}
+	set := func(k, v string) {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	set(p+attrWorkflow, job.Workflow)
+	set(p+attrTenant, job.Tenant)
+	set(p+attrQueue, job.Queue)
+	set(p+attrIdempotency, job.IdempotencyKey)
+	if job.Priority != 0 {
+		out[p+attrPriority] = strconv.Itoa(job.Priority)
+	}
+	if !job.RunAt.IsZero() {
+		out[p+attrRunAt] = job.RunAt.UTC().Format(time.RFC3339Nano)
+	}
+	trace := a.trace()
+	labels := map[string]string{}
+	for k, v := range job.Labels {
+		if name, ok := trace[k]; ok {
+			out[name] = v
+			continue
+		}
+		labels[k] = v
+	}
+	if len(labels) > 0 {
+		perLabel := !a.PackLabels && !a.Limits.CaseInsensitive &&
+			(a.Limits.MaxCount == 0 || len(out)+len(labels) <= a.Limits.MaxCount)
+		for k := range labels {
+			if !perLabel {
+				break
+			}
+			perLabel = a.checkKey(p+attrLabel+k) == nil
+		}
+		if perLabel {
+			for k, v := range labels {
+				out[p+attrLabel+k] = v
+			}
+		} else {
+			b, err := json.Marshal(labels)
+			if err != nil {
+				return nil, invalidf("attributes: labels: %v", err)
+			}
+			out[p+attrLabels] = string(b)
+		}
+	}
+	if err := a.check(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}

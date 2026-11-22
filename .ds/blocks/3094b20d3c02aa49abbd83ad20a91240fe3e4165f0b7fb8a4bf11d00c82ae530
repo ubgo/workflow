@@ -1,0 +1,7 @@
+func engineTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration) time.Duration {
+	d := userTimeout(s, wf)
+	if d <= 0 {
+		return fallback
+	}
+	return wholeSeconds(d) + engineTimeoutMargin
+}

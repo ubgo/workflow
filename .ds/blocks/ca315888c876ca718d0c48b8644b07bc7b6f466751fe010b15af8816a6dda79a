@@ -1,0 +1,44 @@
+func SoftTimeout(cfg SoftTimeoutConfig) workflow.Middleware {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if cfg.For == nil && cfg.After <= 0 {
+				return nil, workflow.Permanent(fmt.Errorf("%w: SoftTimeout needs For or a positive After", workflow.ErrInvalid))
+			}
+			wait := cfg.After
+			if cfg.For != nil {
+				info, _ := workflow.StepInfoFrom(ctx)
+				wait = cfg.For(info)
+			}
+			if wait <= 0 {
+				return next(ctx, in)
+			}
+			soft := make(chan struct{})
+			ctx = context.WithValue(ctx, softKey{}, (<-chan struct{})(soft))
+			tm := clk.NewTimer(wait)
+			done := make(chan struct{})
+			watched := make(chan struct{})
+			go func() {
+				defer close(watched)
+				select {
+				case <-tm.C():
+					close(soft)
+					if cfg.OnSoft != nil {
+						info, _ := workflow.StepInfoFrom(ctx)
+						cfg.OnSoft(context.WithoutCancel(ctx), info)
+					}
+				case <-done:
+					tm.Stop()
+				}
+			}()
+			defer func() {
+				close(done)
+				<-watched
+			}()
+			return next(ctx, in)
+		}
+	}
+}

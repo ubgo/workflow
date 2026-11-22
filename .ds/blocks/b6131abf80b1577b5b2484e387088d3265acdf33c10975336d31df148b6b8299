@@ -1,0 +1,1 @@
+func WithMaxScan(n int) Option { return func(a *Admin) { a.maxScan = n } }

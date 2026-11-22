@@ -1,0 +1,23 @@
+func archiveDefs(t sqlTypes) []tableDef {
+	return []tableDef{{stem: tblRunsArchive, lines: []string{
+		// One row per run, moved once from runs.
+		"id " + t.id + " NOT NULL PRIMARY KEY",
+		"scheduled_id " + t.id,
+		"workflow " + t.name + " NOT NULL",
+		// status is the run's terminal state as runs stored it.
+		"status " + t.short + " NOT NULL",
+		"labels " + t.text + " NOT NULL",
+		"payload " + t.blob,
+		"err " + t.text,
+		"created_at " + t.int + " NOT NULL",
+		"finished_at " + t.int + " NOT NULL",
+		// archived_at is when Prune moved it, on the scheduling clock.
+		"archived_at " + t.int + " NOT NULL",
+	}, indexes: []index{{"wf", "workflow, finished_at"}}}, {stem: tblStepsArchive, lines: []string{
+		// The output of each step of an archived run that succeeded.
+		"run_id " + t.id + " NOT NULL",
+		"name " + t.name + " NOT NULL",
+		"out_data " + t.blob,
+		"PRIMARY KEY (run_id, name)",
+	}}}
+}

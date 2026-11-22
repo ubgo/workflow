@@ -1,0 +1,9 @@
+func (a *Admin) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := a.check(OpScheduleTrigger); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.ValidateScheduleTarget(workflow.ScheduleTarget{ID: id}); err != nil {
+		return workflow.RunRef{}, err
+	}
+	return a.c.(workflow.ScheduleTriggerer).TriggerSchedule(ctx, id)
+}

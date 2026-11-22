@@ -1,0 +1,6 @@
+func NewMemoryAlertLimiter(clk clock.Clock, l AlertLimits) *MemoryAlertLimiter {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &MemoryAlertLimiter{clk: clk, lim: l, keys: map[string]*alertKeyState{}}
+}

@@ -1,0 +1,8 @@
+func (e CloudEvent) WriteHTTPStructured(h http.Header) ([]byte, error) {
+	body, err := e.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	h.Set("Content-Type", ContentTypeCloudEventsJSON+"; charset=utf-8")
+	return body, nil
+}

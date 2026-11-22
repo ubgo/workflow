@@ -1,0 +1,7 @@
+func AwaitPolls(n int) AwaitOption {
+	return func(c *awaitConfig) {
+		if n > 0 {
+			c.polls = n
+		}
+	}
+}

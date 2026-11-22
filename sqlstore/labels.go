@@ -16,6 +16,8 @@ import (
 // columns. A longer key or value is indexed by its first labelIndexWidth
 // characters, so the index narrows a label filter to candidates and
 // RunQuery.Match then compares the whole stored labels exactly.
+//
+//ds:def id=sql-labelindexwidth-xdtnr3dj owner=@khanakia stability=stable
 const labelIndexWidth = 191
 
 // labelsLockName is the locks row whose n is the label backfill's
@@ -23,6 +25,8 @@ const labelIndexWidth = 191
 // release writes index themselves at enqueue; the watermark is for runs
 // written before migration 005, or by an older client still running
 // during a rolling deploy.
+//
+//ds:def id=sql-labelslockname-8rh9sh5m owner=@khanakia stability=stable
 const labelsLockName = "labels:indexed"
 
 // labelBackfillChunk is how many runs one backfill transaction indexes, so
@@ -97,6 +101,8 @@ func (c *Client) insertLabels(ctx context.Context, tx *sql.Tx, id string, labels
 // ASCII), never less, and Match drops the extras. The key equality still
 // seeks the index. A prefix cut to labelIndexWidth stays a prefix of the
 // cut value, so long prefixes narrow correctly too.
+//
+//ds:def id=sql-labelfilter-p5k8cs74 owner=@khanakia stability=stable
 func labelFilter(labels, prefixes map[string]string) (string, []any) {
 	var where string
 	var args []any
@@ -123,6 +129,8 @@ const likeEscape = "!"
 
 // likePrefix is the LIKE pattern that matches every value starting with p:
 // p with %, _ and the escape character escaped, then %.
+//
+//ds:def id=sql-likeprefix-h6zscdhy owner=@khanakia stability=stable
 func likePrefix(p string) string {
 	var b strings.Builder
 	for _, r := range p {
@@ -147,6 +155,8 @@ func likePrefix(p string) string {
 // first takes the watermark row's lock, re-reads the watermark, rewrites
 // the rows of the runs past it and moves it on, so a second caller waits
 // and then finds the work done.
+//
+//ds:def id=sql-client-indexlabels-ccg4tdkz owner=@khanakia stability=stable
 func (c *Client) IndexLabels(ctx context.Context) (int, error) {
 	if err := c.ensureLock(ctx, labelsLockName); err != nil {
 		return 0, fmt.Errorf("sqlstore: index labels: %w", err)

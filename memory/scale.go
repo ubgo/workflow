@@ -15,6 +15,8 @@ import (
 // A queue whose Workers is zero (no per-queue cap) reports the pool size
 // (WithWorkers), the most it can run at once. Without WithQueues there
 // are no queues to balance and the list is empty.
+//
+//ds:def id=memory-client-queueloads-zd7ys928 owner=@khanakia stability=stable
 func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -53,6 +55,8 @@ func (c *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 // above the pool size cannot run more than the pool at once, so give the
 // pool at least the balancer's budget. Lowering it lets running attempts
 // finish; raising it wakes idle workers at once.
+//
+//ds:def id=memory-client-setworkers-bgaqmm3w owner=@khanakia stability=stable
 func (c *Client) SetWorkers(ctx context.Context, queue string, n int) error {
 	if err := ctx.Err(); err != nil {
 		return err

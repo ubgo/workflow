@@ -1,0 +1,17 @@
+func (endRunsPlugin) StepMiddleware() []Middleware {
+	return []Middleware{func(next Handler) Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if _, err := journalFrom(ctx); err != nil {
+				return next(ctx, in)
+			}
+			ended, _, err := RunData[bool](ctx, endRunData)
+			if err != nil {
+				return nil, err
+			}
+			if ended {
+				return nil, nil
+			}
+			return next(ctx, in)
+		}
+	}}
+}

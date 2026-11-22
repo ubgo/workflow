@@ -1,0 +1,15 @@
+func (c *Client) lookup(name string) (*hatchetsdk.Workflow, workflow.Workflow, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cfg.EnqueueOnly {
+		return c.enqueueOnlyLookup(name)
+	}
+	if !c.started || c.drained {
+		return nil, workflow.Workflow{}, workflow.ErrNotStarted
+	}
+	hw, ok := c.workflows[name]
+	if !ok {
+		return nil, workflow.Workflow{}, fmt.Errorf("%w: workflow %q", workflow.ErrNotFound, name)
+	}
+	return hw, c.specs[name], nil
+}

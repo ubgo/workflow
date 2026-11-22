@@ -1,0 +1,11 @@
+func BoundedWait(poll time.Duration, clk clock.Clock) BoundedOption {
+	return func(c *boundedConfig) {
+		if poll <= 0 {
+			poll = time.Second
+		}
+		if clk == nil {
+			clk = clock.Real{}
+		}
+		c.mode, c.poll, c.clk = boundedWait, poll, clk
+	}
+}

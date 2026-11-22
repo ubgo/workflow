@@ -1,0 +1,13 @@
+func (f *Fake) setLocked(t time.Time) {
+	f.now = t
+	sort.SliceStable(f.timers, func(i, j int) bool { return f.timers[i].at.Before(f.timers[j].at) })
+	kept := f.timers[:0]
+	for _, tm := range f.timers {
+		if tm.at.After(t) {
+			kept = append(kept, tm)
+			continue
+		}
+		tm.c <- tm.at
+	}
+	f.timers = kept
+}

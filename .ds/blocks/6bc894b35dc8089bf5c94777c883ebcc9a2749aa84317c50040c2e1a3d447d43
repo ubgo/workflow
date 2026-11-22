@@ -1,0 +1,8 @@
+func RunMachineFlows(t *testing.T, h MachineHarness) {
+	t.Run("lifecycle", func(t *testing.T) { machineLifecycle(t, h) })
+	t.Run("statechart", func(t *testing.T) { machineStatechart(t, h) })
+	t.Run("history", func(t *testing.T) { machineHistory(t, h) })
+	t.Run("timers", func(t *testing.T) { machineTimers(t, h) })
+	t.Run("serial", func(t *testing.T) { machineSerial(t, h) })
+	t.Run("reject", func(t *testing.T) { machineReject(t, h) })
+}

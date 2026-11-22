@@ -1,0 +1,21 @@
+func (a *Admin) DeleteAll(ctx context.Context, q workflow.RunQuery, opts BulkOptions) (BulkResult, error) {
+	if err := a.check(OpDeleteAll); err != nil {
+		return BulkResult{}, err
+	}
+	if q.Workflow == "" && q.Queue == "" && len(q.Statuses) == 0 && len(q.Labels) == 0 && len(q.LabelPrefixes) == 0 && q.From.IsZero() && q.To.IsZero() {
+		return BulkResult{}, fmt.Errorf("%w: admin: delete_all needs a filter; to forget every finished run, list the statuses", workflow.ErrInvalid)
+	}
+	for _, s := range q.Statuses {
+		if !s.IsTerminal() {
+			return BulkResult{}, fmt.Errorf("%w: admin: delete_all: status %q is not terminal; only finished runs can be deleted", workflow.ErrInvalid, s)
+		}
+	}
+	if len(q.Statuses) == 0 {
+		q.Statuses = []workflow.Status{workflow.StatusSucceeded, workflow.StatusFailed, workflow.StatusCancelled}
+		if a.c.Capabilities().Has(workflow.CapRunStates) {
+			q.Statuses = append(q.Statuses, workflow.StatusDiscarded)
+		}
+	}
+	del := a.c.(workflow.RunDeleter)
+	return a.bulk(ctx, q, opts, del.Delete)
+}

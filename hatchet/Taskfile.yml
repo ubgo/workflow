@@ -2,31 +2,37 @@ version: '3'
 
 # The Hatchet driver module. Unit tests need no server; the live suite runs
 # the shared workflowtest conformance cases against a throwaway hatchet-lite
-# engine started from the root compose.yml (test:live), or against the Mac
-# shared stack's engine (test:live:shared, which never starts or stops a
-# container and reads HATCHET_CLIENT_TOKEN from that stack's .env).
+# engine started from the root compose.yml (test:live), or against the
+# local shared stack's engine (test:live:shared, which never starts or stops
+# a container and reads HATCHET_CLIENT_TOKEN from that stack's .env, whose
+# path comes from the STACK_ENV environment variable; it stops with a
+# message when STACK_ENV is unset or not a file).
 
 set: [pipefail]
 
 vars:
-  STACK_ENV: /Volumes/D/www/projects/khanakia/docker_setup_mac/.env
+  # LOCK prefixes the heavy commands: `testlock` (the machine-wide lock the
+  # maintainers use so two suites never run at once on one machine) when it
+  # is on PATH, otherwise empty, so the command runs directly.
+  LOCK:
+    sh: 'command -v testlock >/dev/null 2>&1 && echo testlock || true'
   # The root compose.yml (hatchet profile: hatchet-lite plus its own Postgres,
   # ports 38888 REST and 37077 gRPC on 127.0.0.1). Explicit -f because a
   # module directory is not the repo root.
   COMPOSE: ../compose.yml
   # The tenant hatchet-lite seeds on first start; fixed by the image.
   TENANT_ID: 707d0855-80ab-4e1f-a156-f1c4546cbf52
-  LIVE_RUN: "TestConformance|TestRunFinishedLive|TestBatchLive|TestBatchGroupLive|TestBatchCrashLive|TestBatchDispatchCrashLive|TestBatchCoordinatorLive|TestBatchCoordinatorCrashLive|TestQueuesLive|TestRunQueryLive|TestRetryLive|TestSchedulesLive|TestDrainLive|TestPauseLive|TestPauseHoldLive|TestRetrySettleLive|TestRecycleLive|TestTriggerScheduleLive|TestScheduleHistoryTickLive|TestEnqueueOnlyLive|TestRateLimitScopeLive|TestScheduleTimeoutLive|TestTenantNodeLive|TestResultLive|TestRescheduleLive|TestCronSecondsTickLive|TestHealthPayloadOutcomeLive|TestKeyFIFOLive|TestChoiceLive|TestEventBusLive|TestReservedLabelsLive|TestOwnRunWaitLive|TestLateCancelLive"
+  LIVE_RUN: "TestConformance|TestRunFinishedLive|TestBatchLive|TestBatchGroupLive|TestBatchCrashLive|TestBatchDispatchCrashLive|TestBatchCoordinatorLive|TestBatchCoordinatorCrashLive|TestQueuesLive|TestRunQueryLive|TestRetryLive|TestSchedulesLive|TestDrainLive|TestPauseLive|TestPauseHoldLive|TestRetrySettleLive|TestRecycleLive|TestTriggerScheduleLive|TestScheduleHistoryTickLive|TestEnqueueOnlyLive|TestRateLimitScopeLive|TestScheduleTimeoutLive|TestTenantNodeLive|TestResultLive|TestRescheduleLive|TestCronSecondsTickLive|TestHealthPayloadOutcomeLive|TestKeyFIFOLive|TestChoiceLive|TestEventBusLive|TestReservedLabelsLive|TestOwnRunWaitLive|TestLateCancelLive|TestChildFlowsLive|TestStepTimeoutLive|TestDelayedKeyLive|TestWaitTimeoutLive|TestLongWaitLive"
 
 tasks:
   test:
     desc: Unit tests (no Hatchet needed; the live suite skips without a token)
     cmds:
-      - testlock go test ./...
+      - '{{.LOCK}} go test ./...'
 
   test:live:
     desc: Conformance suite plus the run-finished, batch, group-run, coordinator, crash and parity (queues, run query, retry, schedules, drain, pause), retry-settle, recycle, schedule trigger and history, enqueue-only and batch-5 (tenant, nodes, results, reschedule, seconds crons and tick time, health, payload cap, key FIFO) tests against a throwaway hatchet-lite engine (add WFTEST_REAL_CRON=1 for the cron cases, ~2 min more; WFTEST_PAUSE_TTL=1 for the six-minute pause hold) (the root compose.yml hatchet profile, removed after the run pass or fail; test:live:shared uses the Mac stack's engine instead)
-    cmds: ['testlock task test:live:run']
+    cmds: ['{{.LOCK}} task test:live:run']
 
   # Called through testlock by the public task above; no desc keeps it off
   # task --list. The defer is registered BEFORE the profile starts, so a
@@ -55,9 +61,13 @@ tasks:
     cmds: ['docker compose -f {{.COMPOSE}} --profile hatchet down -v --remove-orphans']
 
   test:live:shared:
-    desc: The same live suite against the Mac shared stack's hatchet-lite (REST :7003, gRPC :7004), token read from that stack's .env; never starts or stops a container
+    desc: The same live suite against the local shared stack's hatchet-lite (REST :7003, gRPC :7004), token read from the .env file STACK_ENV names (required, no default); never starts or stops a container
     cmds:
-      - testlock sh -c 'set -a; . {{.STACK_ENV}}; set +a; HATCHET_CLIENT_HOST_PORT=localhost:7004 HATCHET_CLIENT_TLS_STRATEGY=none HATCHET_CLIENT_LOG_LEVEL=error go test -run "{{.LIVE_RUN}}" -v -timeout 30m .'
+      - |
+        : "${STACK_ENV:?STACK_ENV is not set: point it at the shared stack .env that holds HATCHET_CLIENT_TOKEN}"
+        [ -f "$STACK_ENV" ] || { echo "test:live:shared: STACK_ENV=$STACK_ENV is not a file" >&2; exit 1; }
+        {{.LOCK}} sh -c 'set -a; . "$STACK_ENV"; set +a; HATCHET_CLIENT_HOST_PORT=localhost:7004 HATCHET_CLIENT_TLS_STRATEGY=none HATCHET_CLIENT_LOG_LEVEL=error go test -run "{{.LIVE_RUN}}" -v -timeout 30m .'
+
 
   check:
     desc: gofmt, vet and unit tests

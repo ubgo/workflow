@@ -1,0 +1,3 @@
+func WithStepSpanName(fn func(workflow.StepInfo) string) Option {
+	return func(c *config) { c.stepName = fn }
+}

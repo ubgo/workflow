@@ -1,0 +1,43 @@
+func NewMonitor(a *Admin, alerter Alerter, thresholds []Threshold, opts ...MonitorOption) (*Monitor, error) {
+	if alerter == nil {
+		return nil, fmt.Errorf("%w: admin: Monitor needs an Alerter", workflow.ErrInvalid)
+	}
+	if len(thresholds) == 0 {
+		return nil, fmt.Errorf("%w: admin: Monitor needs at least one Threshold", workflow.ErrInvalid)
+	}
+	if err := a.check(OpQueues); err != nil {
+		return nil, err
+	}
+	m := &Monitor{a: a, alerter: alerter, byQueue: map[string]Threshold{}, open: map[alertKey]time.Time{}}
+	for i, t := range thresholds {
+		if t.MaxDepth < 0 || t.MaxWait < 0 {
+			return nil, fmt.Errorf("%w: admin: thresholds[%d] is negative", workflow.ErrInvalid, i)
+		}
+		if t.MaxDepth == 0 && t.MaxWait == 0 {
+			return nil, fmt.Errorf("%w: admin: thresholds[%d] sets neither MaxDepth nor MaxWait", workflow.ErrInvalid, i)
+		}
+		if t.Queue == "" {
+			if m.hasDefault {
+				return nil, fmt.Errorf("%w: admin: two default thresholds", workflow.ErrInvalid)
+			}
+			m.def, m.hasDefault = t, true
+			continue
+		}
+		if err := workflow.ValidateQueueName(t.Queue); err != nil {
+			return nil, fmt.Errorf("admin: thresholds[%d]: %w", i, err)
+		}
+		if _, dup := m.byQueue[t.Queue]; dup {
+			return nil, fmt.Errorf("%w: admin: two thresholds for queue %q", workflow.ErrInvalid, t.Queue)
+		}
+		m.byQueue[t.Queue] = t
+	}
+	for _, o := range opts {
+		if o != nil {
+			o(m)
+		}
+	}
+	if m.interval <= 0 {
+		m.interval = DefaultMonitorInterval
+	}
+	return m, nil
+}

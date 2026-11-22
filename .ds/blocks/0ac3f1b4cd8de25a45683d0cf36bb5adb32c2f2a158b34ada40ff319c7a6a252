@@ -1,0 +1,11 @@
+func (s *AggregateStore) MigrationScripts() []MigrationScript {
+	var out []MigrationScript
+	for _, m := range s.aggregateMigrations() {
+		ms := MigrationScript{Owner: m.Owner, Name: m.Name}
+		for _, st := range m.Script {
+			ms.Statements = append(ms.Statements, st.SQL)
+		}
+		out = append(out, ms)
+	}
+	return out
+}

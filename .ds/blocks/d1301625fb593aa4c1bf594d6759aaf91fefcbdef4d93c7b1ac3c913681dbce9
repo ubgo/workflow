@@ -1,0 +1,1 @@
+func RecursionLimit(max int) Plugin { return recursionPlugin{max: max} }

@@ -1,0 +1,11 @@
+func ClaimTimeout(ctx context.Context) bool {
+	if attemptTimeout(ctx) == nil {
+		return false
+	}
+	claimed, ok := ctx.Value(timeoutClaimKey{}).(*atomic.Bool)
+	if !ok {
+		return false
+	}
+	claimed.Store(true)
+	return true
+}

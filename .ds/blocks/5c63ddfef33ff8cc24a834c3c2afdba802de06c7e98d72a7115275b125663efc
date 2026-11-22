@@ -1,0 +1,15 @@
+func (m *Manager) RunFinished(ctx context.Context, labels map[string]string, status workflow.Status) error {
+	id, idx, ok := batchJob(labels)
+	if !ok {
+		return nil
+	}
+	attempt := 0
+	if a, ok := labels[LabelAttempt]; ok {
+		n, err := strconv.Atoi(a)
+		if err != nil {
+			return nil // not a label this package wrote
+		}
+		attempt = n
+	}
+	return m.record(ctx, id, idx, attempt, status)
+}

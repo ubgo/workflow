@@ -1,0 +1,3 @@
+type RunResetterWith interface {
+	ResetRunWith(ctx context.Context, ref RunRef, step string, opts ResetOptions) (RunRef, error)
+}

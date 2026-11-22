@@ -1,0 +1,1 @@
+const queueOf = "COALESCE((SELECT rq.queue FROM {run_ext} rq WHERE rq.run_id = st.run_id), '" + workflow.DefaultQueue + "')"

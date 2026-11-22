@@ -1,0 +1,32 @@
+func splitDOW(text string) (string, []dowItem, *ParseError) {
+	f := fields[4]
+	var plain []string
+	var special []dowItem
+	for _, item := range strings.Split(text, ",") {
+		up := strings.ToUpper(item)
+		switch {
+		case strings.Contains(up, "#"):
+			d, n, _ := strings.Cut(up, "#")
+			day, err := parseWeekday(d)
+			if err != nil {
+				return "", nil, &ParseError{Field: f.name, Value: item, Reason: err.Error()}
+			}
+			nth, aerr := strconv.Atoi(n)
+			if aerr != nil || nth < 1 || nth > 5 {
+				return "", nil, &ParseError{Field: f.name, Value: item, Reason: "d#n needs n from 1 to 5"}
+			}
+			special = append(special, dowItem{day: day, nth: nth})
+		case up == "L":
+			return "", nil, &ParseError{Field: f.name, Value: item, Reason: "a bare L is ambiguous here; write dL (\"FRIL\", \"5L\") for the last such weekday of the month"}
+		case strings.HasSuffix(up, "L"):
+			day, err := parseWeekday(up[:len(up)-1])
+			if err != nil {
+				return "", nil, &ParseError{Field: f.name, Value: item, Reason: err.Error()}
+			}
+			special = append(special, dowItem{day: day})
+		default:
+			plain = append(plain, item)
+		}
+	}
+	return strings.Join(plain, ","), special, nil
+}

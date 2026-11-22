@@ -11,6 +11,8 @@ import (
 
 // ErrEndpointDisabled matches the error AutoDisable discards an attempt
 // with while its key is disabled.
+//
+//ds:def id=mw-errendpointdisabled-tqdkpv29 owner=@khanakia stability=stable
 var ErrEndpointDisabled = errors.New("workflow/middleware: endpoint disabled")
 
 // DisableStore keeps AutoDisable's state per key: a count of consecutive
@@ -21,6 +23,8 @@ var ErrEndpointDisabled = errors.New("workflow/middleware: endpoint disabled")
 // Fail must be atomic (count and maybe disable in one step), so exactly
 // one caller sees the crossing and onDisable runs once, fleet-wide.
 // workflowtest.DisableStoreContract checks an implementation.
+//
+//ds:def id=mw-disablestore-wncfhzr6 owner=@khanakia stability=stable
 type DisableStore interface {
 	// Disabled reports whether key is disabled.
 	Disabled(ctx context.Context, key string) (bool, error)
@@ -48,6 +52,8 @@ type autoDisableConfig struct {
 // early is counted on its next delivery's final attempt instead. Without
 // it, every failed attempt counts, which suits endpoint health: each
 // attempt is a delivery the endpoint failed.
+//
+//ds:def id=mw-disablecountfinal-gu7bh9q5 owner=@khanakia stability=stable
 func DisableCountFinal(policy workflow.RetryPolicy) AutoDisableOption {
 	return func(c *autoDisableConfig) { c.final = &policy }
 }
@@ -74,6 +80,8 @@ func DisableCountFinal(policy workflow.RetryPolicy) AutoDisableOption {
 // workflow with Concurrency{Key: endpoint, MaxRuns: 1, FIFO: true}
 // delivers one message per endpoint at a time, in order (FIFO needs
 // CapKeyFIFO), so a slow endpoint holds back only its own queue.
+//
+//ds:def id=mw-autodisable-g3k5myjv owner=@khanakia stability=stable
 func AutoDisable(store DisableStore, key func(workflow.StepInfo, []byte) string, after int, onDisable func(ctx context.Context, key string), opts ...AutoDisableOption) workflow.Middleware {
 	var cfg autoDisableConfig
 	for _, o := range opts {
@@ -117,6 +125,8 @@ func AutoDisable(store DisableStore, key func(workflow.StepInfo, []byte) string,
 // single worker; workers in several processes each count apart with
 // their own, so give them a shared store instead (see DisableStore). Use
 // NewMemoryDisable.
+//
+//ds:def id=mw-memorydisable-sq2urfuu owner=@khanakia stability=stable
 type MemoryDisable struct {
 	mu   sync.Mutex
 	keys map[string]disableState

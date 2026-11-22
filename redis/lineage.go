@@ -35,6 +35,8 @@ import (
 // {prefix}:lineage:ids, so a second Record of the same fact, from any
 // process, is ignored and the first one's Meta and At stay. Records carry
 // no expiry: lineage is history.
+//
+//ds:def id=redis-lineagestore-bzauvu45 owner=@khanakia stability=stable
 type LineageStore struct {
 	rdb  goredis.UniversalClient
 	base string
@@ -43,6 +45,8 @@ type LineageStore struct {
 var _ events.LineageStore = (*LineageStore)(nil)
 
 // NewLineageStore returns a LineageStore over rdb under prefix.
+//
+//ds:def id=redis-newlineagestore-2gc6pxjc owner=@khanakia stability=stable
 func NewLineageStore(rdb goredis.UniversalClient, prefix string) (*LineageStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {

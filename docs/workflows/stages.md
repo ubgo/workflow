@@ -4,15 +4,15 @@ Most workflows are a few groups of steps: fetch two feeds in parallel, merge the
 
 ## Before you start
 
-- `Stages` and `When` need nothing beyond the core package.
-- `Milestone` reads [run data](memoisation.md), so the client needs the Journal plugin; it waits by snoozing, which needs `workflow.CapSnooze` (memory, SQL and Redis declare it; Hatchet does not).
-- `middleware.SoftTimeout` is step middleware and works on every driver.
+- [`Stages`](ds:block?id=stages-55szbv67) and [`When`](ds:block?id=when-z8ecm2uw) need nothing beyond the core package.
+- [`Milestone`](ds:block?id=milestone-cbnd2tzd) reads [run data](memoisation.md), so the client needs the Journal plugin; it waits by snoozing, which needs [`workflow.CapSnooze`](ds:block?id=capsnooze-pffu58xc) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-p5caps-wggh6esn) and [Redis](ds:block?id=redis-caps-bfgdst9t) declare it; [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) does not).
+- [`middleware.SoftTimeout`](ds:block?id=mw-softtimeout-637qt26k) is step middleware and works on every driver.
 - Steps and `After` are explained on [workflows and steps](steps.md); branching between several paths is [branching](branching.md).
 - The example is [`examples/flow-stages`](../../examples/flow-stages). Run it with `go run ./flow-stages` from `examples/`.
 
 ## Run steps in stages
 
-`workflow.Stages(stages...)` takes a list of stages, each a list of steps. Every step of a stage runs in parallel, and a stage starts once every step of the stage before it has ended: `Stages` adds every step name of the previous stage to each step's `After`, keeping the `After` entries the step already had. Append the result to `Workflow.Steps`.
+[`workflow.Stages(stages...)`](ds:block?id=stages-55szbv67) takes a list of stages, each a list of steps. Every step of a stage runs in parallel, and a stage starts once every step of the stage before it has ended: `Stages` adds every step name of the previous stage to each step's `After`, keeping the `After` entries the step already had. Append the result to `Workflow.Steps`.
 
 <!-- snippet: examples/flow-stages/main.go#stages -->
 ```go
@@ -26,11 +26,11 @@ if err != nil {
 }
 ```
 
-A step of a later stage receives its input the way any step does ([`StepInput`](steps.md)): the output of the single step before it, or a JSON object keyed by step name when the stage before has several steps. `Stages` refuses an empty stage or a step without a name with an error wrapping `workflow.ErrInvalid`; `Register` validates the rest.
+A step of a later stage receives its input the way any step does ([`StepInput`](steps.md)): the output of the single step before it, or a JSON object keyed by step name when the stage before has several steps. `Stages` refuses an empty stage or a step without a name with an error wrapping `workflow.ErrInvalid`; `Register` validates the rest ([`Validate`](ds:block?id=validate-mnthpzkp)).
 
 ## Run a step only on a condition
 
-`workflow.When(cond, handler)` returns a step body that calls `handler` only when `cond` reports true for the step's input. Otherwise it returns the input unchanged, so the steps after it still run and receive what the skipped step received, as data flowing past a node that had nothing to do:
+[`workflow.When(cond, handler)`](ds:block?id=when-z8ecm2uw) returns a step body that calls `handler` only when `cond` reports true for the step's input. Otherwise it returns the input unchanged, so the steps after it still run and receive what the skipped step received, as data flowing past a node that had nothing to do:
 
 <!-- snippet: examples/flow-stages/main.go#when -->
 ```go
@@ -48,11 +48,11 @@ images := workflow.Workflow{Name: "images", Steps: []workflow.Step{
 }}
 ```
 
-`cond` runs on every attempt, so it must decide from the input and the ctx alone, never from the wall clock, or a retry could decide differently. An error from `cond` is the step's error and the retry policy applies. Use `When` to skip one step; use [`Choice`](branching.md) to pick one of several paths; use `middleware.Skip` to drop a step's output instead of passing its input on.
+`cond` runs on every attempt, so it must decide from the input and the ctx alone, never from the wall clock, or a retry could decide differently. An error from `cond` is the step's error and the retry policy applies. Use `When` to skip one step; use [`Choice`](branching.md) to pick one of several paths; use [`middleware.Skip`](ds:block?id=mw-skip-2qh78qjd) to drop a step's output instead of passing its input on.
 
 ## Enable a step only in a given state
 
-A milestone is a step that may run only while the run is in a given state. `workflow.Milestone(name, want, handler, opts)` reads the run data `name` (written by another step with `workflow.SetRunData`) and calls `handler` only while it equals `want`. Until then the step snoozes for `MilestoneOptions.Poll` (five seconds by default) and looks again, without spending an attempt:
+A milestone is a step that may run only while the run is in a given state. [`workflow.Milestone(name, want, handler, opts)`](ds:block?id=milestone-cbnd2tzd) reads the run data `name` (written by another step with [`workflow.SetRunData`](ds:block?id=setrundata-2gsvewmu)) and calls `handler` only while it equals `want`. Until then the step snoozes for [`MilestoneOptions.Poll`](ds:block?id=milestoneoptions-kdc97jnc) ([five seconds](ds:block?id=defaultmilestonepoll-h74abmjj) by default) and looks again, without spending an attempt:
 
 <!-- snippet: examples/flow-stages/main.go#milestone -->
 ```go
@@ -71,15 +71,15 @@ With `MilestoneOptions{Skip: true}` the step passes its input on at once instead
 
 ## Run tasks one at a time in any order
 
-A set of tasks that must each run once and never two at once, in whatever order (interleaved routing), is `workflow.MapEach` with `workflow.MapConcurrency(1)`: each item runs once, one after the other, and a retry runs only the items that did not succeed (see [memoisation](memoisation.md)). For tasks that are runs of their own, give them one `Concurrency` key with `MaxRuns: 1`.
+A set of tasks that must each run once and never two at once, in whatever order (interleaved routing), is [`workflow.MapEach`](ds:block?id=mapeach-ej8wxp2x) with [`workflow.MapConcurrency(1)`](ds:block?id=mapconcurrency-96x8ckps): each item runs once, one after the other, and a retry runs only the items that did not succeed (see [memoisation](memoisation.md)). For tasks that are runs of their own, give them one `Concurrency` key with `MaxRuns: 1`.
 
 ## Local work inside a step
 
-Engines that dispatch every activity to a worker offer a "local activity": short work run in the orchestrating process with its result recorded. In this library every step body already runs in the worker's process, and `workflow.Memo` records the result of a piece of it in the run's journal, so a retried step skips it. `Memo` is the local activity; see [memoisation](memoisation.md).
+Engines that dispatch every activity to a worker offer a "local activity": short work run in the orchestrating process with its result recorded. In this library every step body already runs in the worker's process, and [`workflow.Memo`](ds:block?id=memo-wg47wmpf) records the result of a piece of it in the run's journal, so a retried step skips it. `Memo` is the local activity; see [memoisation](memoisation.md).
 
 ## Warn a long step before its timeout
 
-`middleware.SoftTimeout(cfg)` gives each step attempt a soft deadline before its hard one. When it passes, the channel `middleware.SoftDone(ctx)` returns is closed and `cfg.OnSoft`, when set, is told; the attempt itself keeps running. A handler that watches it can save its progress (`Memo`, `SetRunData`) and return before the hard timeout throws its partial work away:
+[`middleware.SoftTimeout(cfg)`](ds:block?id=mw-softtimeout-637qt26k) gives each step attempt a soft deadline before its hard one. When it passes, the channel [`middleware.SoftDone(ctx)`](ds:block?id=mw-softdone-2jx34jfy) returns is closed and `cfg.OnSoft`, when set, is told; the attempt itself keeps running. A handler that watches it can save its progress (`Memo`, `SetRunData`) and return before the hard timeout throws its partial work away:
 
 <!-- snippet: examples/flow-stages/main.go#soft -->
 ```go
@@ -105,7 +105,7 @@ export := workflow.Workflow{Name: "export", Steps: []workflow.Step{{
 }}}
 ```
 
-`After` is the soft deadline for every step; `For` returns one per step (zero means none for that step). `middleware.SoftExpired(ctx)` reports the same thing for a handler that checks between units of work. Outside `SoftTimeout`, `SoftDone` returns nil, which blocks for ever in a `select`, so a handler can watch it unconditionally. `middleware.Stuck` reports long attempts to an outside callback; `SoftTimeout` tells the attempt itself.
+[`After`](ds:block?id=mw-softtimeoutconfig-dyuryky7) is the soft deadline for every step; `For` returns one per step (zero means none for that step). [`middleware.SoftExpired(ctx)`](ds:block?id=mw-softexpired-aew5dkmh) reports the same thing for a handler that checks between units of work. Outside `SoftTimeout`, `SoftDone` returns nil, which blocks for ever in a `select`, so a handler can watch it unconditionally. [`middleware.Stuck`](ds:block?id=mw-stuck-e9cdc6mj) reports long attempts to an outside callback; `SoftTimeout` tells the attempt itself.
 
 ## Try it
 
@@ -133,10 +133,10 @@ soft timeout:
 
 ## Pitfalls
 
-- `When` passes on the step's input, not its parents' outputs one by one: a step with several parents passes on the JSON object keyed by their names, so its children see a different shape than if it had run. Give a conditional step one parent when its output shape matters.
-- A `Milestone` waits by snoozing. On a driver without `workflow.CapSnooze` every look spends an attempt, so the step can fail before the state arrives; use `Skip` or a generous retry policy there.
-- Drivers time `Step.Timeout` on their own clock, not as a ctx deadline, so `SoftTimeout` cannot read the hard timeout. Set `After` or `For` below the step's `Timeout`, or the soft deadline never comes first.
-- `Stages` only sets `After`. A failed step in one stage stops the later stages the way any failed parent does.
+- [`When`](ds:block?id=when-z8ecm2uw) passes on the step's input, not its parents' outputs one by one: a step with several parents passes on the JSON object keyed by their names, so its children see a different shape than if it had run. Give a conditional step one parent when its output shape matters.
+- A [`Milestone`](ds:block?id=milestone-cbnd2tzd) waits by snoozing. On a driver without `workflow.CapSnooze` every look spends an attempt, so the step can fail before the state arrives; use `Skip` or a generous retry policy there.
+- Drivers time `Step.Timeout` on their own clock, not as a ctx deadline ([the memory driver's attempt](ds:block?id=memory-client-exec-g88wsrmp)), so `SoftTimeout` cannot read the hard timeout ([`SoftTimeoutConfig`](ds:block?id=mw-softtimeoutconfig-dyuryky7)). Set `After` or `For` below the step's `Timeout`, or the soft deadline never comes first.
+- [`Stages`](ds:block?id=stages-55szbv67) only sets `After`. A failed step in one stage stops the later stages the way any failed parent does.
 
 ## Related
 

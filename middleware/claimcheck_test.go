@@ -158,6 +158,8 @@ func TestClaimCheck_MemoryDriverEndToEnd(t *testing.T) {
 
 // TestClaimCheck_Threshold pins the edge: exactly threshold bytes stay
 // inline and untouched (and nothing is stored), one more is claimed.
+//
+//ds:def id=mw-testclaimcheck-threshold-c7zsq6u6 owner=@khanakia stability=stable
 func TestClaimCheck_Threshold(t *testing.T) {
 	store := middleware.NewMemoryBlobStore()
 	cc := newClaimCheck(t, store)
@@ -199,6 +201,8 @@ func TestClaimCheck_Threshold(t *testing.T) {
 // reference is fetched only when its key is under the run's own token:
 // another run's key, a bare prefix, and a step outside a stamped run all
 // pass through untouched, even though the store holds the named blob.
+//
+//ds:def id=mw-testclaimcheck-lookalikenotresolved-heg3pqw8 owner=@khanakia stability=stable
 func TestClaimCheck_LookalikeNotResolved(t *testing.T) {
 	store := middleware.NewMemoryBlobStore()
 	ctx := context.Background()
@@ -300,6 +304,8 @@ func TestClaimCheck_RetriedStepSeesPayload(t *testing.T) {
 // deleted before the end, everything under the run's token after it, and
 // another run's blobs are left alone. A store without DeletePrefix loses
 // only the payload.
+//
+//ds:def id=mw-testclaimcheck-cleanuponfinish-4as3jn9h owner=@khanakia stability=stable
 func TestClaimCheck_CleanupOnFinish(t *testing.T) {
 	ctx := context.Background()
 	t.Run("prefix deleter", func(t *testing.T) {
@@ -367,6 +373,8 @@ func (p plainStore) Len() int                                          { return 
 
 // TestClaimCheck_MissingBlobIsPermanent: a blob that is gone does not come
 // back on retry.
+//
+//ds:def id=mw-testclaimcheck-missingblobispermanent-vxjgsrbt owner=@khanakia stability=stable
 func TestClaimCheck_MissingBlobIsPermanent(t *testing.T) {
 	cc := newClaimCheck(t, middleware.NewMemoryBlobStore())
 	step := cc.Step()(echo)
@@ -380,6 +388,8 @@ func TestClaimCheck_MissingBlobIsPermanent(t *testing.T) {
 // under the internal prefix, is refused with ErrInvalid and nothing reaches
 // the driver; a fresh token is stamped otherwise, without mutating the
 // caller's map.
+//
+//ds:def id=mw-testclaimcheck-ownsitslabel-s27c8a6w owner=@khanakia stability=stable
 func TestClaimCheck_OwnsItsLabel(t *testing.T) {
 	cc := newClaimCheck(t, middleware.NewMemoryBlobStore())
 	var seen []workflow.Job
@@ -425,6 +435,8 @@ func TestInternalLabels_ChainOrder(t *testing.T) {
 }
 
 // TestClaimCheck_Config refuses a bad store, threshold or key source.
+//
+//ds:def id=mw-testclaimcheck-config-qxhardrn owner=@khanakia stability=stable
 func TestClaimCheck_Config(t *testing.T) {
 	if _, err := middleware.NewClaimCheck(nil, 1); !errors.Is(err, workflow.ErrInvalid) {
 		t.Fatalf("nil store: %v", err)
@@ -448,6 +460,8 @@ func TestClaimCheck_Config(t *testing.T) {
 // TestClaimCheck_WithCodec stacks the claim check outside a codec on the
 // memory driver: the store holds only sealed bytes and the step still sees
 // the plain payload.
+//
+//ds:def id=mw-testclaimcheck-withcodec-q8m9pkha owner=@khanakia stability=stable
 func TestClaimCheck_WithCodec(t *testing.T) {
 	store := &recordingStore{MemoryBlobStore: middleware.NewMemoryBlobStore()}
 	cc := newClaimCheck(t, store)

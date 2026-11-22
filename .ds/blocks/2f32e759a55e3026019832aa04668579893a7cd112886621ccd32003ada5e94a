@@ -1,0 +1,9 @@
+func ForgetMachine(ctx context.Context, store JournalStore, machine, key string) error {
+	if store == nil || machine == "" || key == "" {
+		return invalidf("ForgetMachine needs a store, a machine and a key")
+	}
+	if err := store.Forget(ctx, objectRun(machine, key)); err != nil {
+		return fmt.Errorf("workflow: machine %q key %q: forget: %w", machine, key, err)
+	}
+	return nil
+}

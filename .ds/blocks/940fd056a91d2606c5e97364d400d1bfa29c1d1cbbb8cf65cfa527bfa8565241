@@ -1,0 +1,12 @@
+func SoftExpired(ctx context.Context) bool {
+	ch := SoftDone(ctx)
+	if ch == nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}

@@ -1,0 +1,23 @@
+type ScheduleHooks struct {
+	// Workflow is the schedule's workflow; required.
+	Workflow string
+
+	// Name is the Schedule.Name (for a declared cron, its expression);
+	// empty matches every schedule of Workflow.
+	Name string
+
+	// Fired is called when a tick enqueued a run, or failed to (t.Err).
+	Fired func(ctx context.Context, t Tick)
+
+	// Skipped is called when a tick was skipped or misfired.
+	Skipped func(ctx context.Context, t Tick)
+
+	// OnSuccess is called when a run the schedule fired succeeded.
+	OnSuccess func(ctx context.Context, ev RunEvent)
+
+	// OnFailure is called when a run the schedule fired failed.
+	OnFailure func(ctx context.Context, ev RunEvent)
+
+	// After is called when a run the schedule fired ended, in any status.
+	After func(ctx context.Context, ev RunEvent)
+}

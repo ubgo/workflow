@@ -1,0 +1,3 @@
+func WrapClient(c workflow.Client, mws ...workflow.EnqueueMiddleware) workflow.Client {
+	return &wrappedClient{Client: c, Forward: workflow.Forward{Inner: c}, enqueue: ChainEnqueue(mws...)(c.Enqueue)}
+}

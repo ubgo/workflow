@@ -1,0 +1,25 @@
+func (s StepDef) build(path string, reg *Registry) (workflow.Step, error) {
+	step := workflow.Step{Name: s.Name, After: slices.Clone(s.After)}
+	step.Timeout, _ = duration(at(path, "timeout"), s.Timeout)
+	step.Sleep, _ = duration(at(path, "sleep"), s.Sleep)
+	if s.Retry != nil {
+		p, _ := s.Retry.policy(at(path, "retry"))
+		step.Retry = &p
+	}
+	if s.Handler != "" {
+		h, err := resolve(reg, at(path, "handler"), s.Handler)
+		if err != nil {
+			return step, err
+		}
+		step.Run = h
+	}
+	if w := s.Wait; w != nil {
+		spec := &workflow.WaitSpec{Event: w.Event, Key: w.Key}
+		spec.Timeout, _ = duration(at(path, "wait.timeout"), w.Timeout)
+		if w.KeyLabel != "" {
+			spec.KeyFrom = labelKey(w.KeyLabel)
+		}
+		step.Wait = spec
+	}
+	return step, nil
+}

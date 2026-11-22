@@ -1,0 +1,15 @@
+func (h *handler[P]) health(w http.ResponseWriter, r *http.Request) {
+	if !h.authorize(w, r, ActionHealth, Resource{}) {
+		return
+	}
+	rep := h.a.Health(r.Context())
+	out := struct {
+		Live   bool              `json:"live"`
+		Ready  bool              `json:"ready"`
+		Checks []healthCheckJSON `json:"checks"`
+	}{Live: rep.Live, Ready: rep.Ready, Checks: make([]healthCheckJSON, 0, len(rep.Checks))}
+	for _, c := range rep.Checks {
+		out.Checks = append(out.Checks, healthCheckJSON(c))
+	}
+	writeJSON(w, http.StatusOK, out)
+}

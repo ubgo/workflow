@@ -1,0 +1,1 @@
+const DefaultAwaitPoll = 5 * time.Second

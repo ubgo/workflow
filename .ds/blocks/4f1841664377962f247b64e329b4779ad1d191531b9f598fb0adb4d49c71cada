@@ -1,0 +1,13 @@
+func ThrottleErrors(cfg ThrottleConfig) (workflow.Middleware, error) {
+	if cfg.MaxErrors < 1 || cfg.Window <= 0 || cfg.Cooldown <= 0 {
+		return nil, fmt.Errorf("%w: ThrottleErrors needs MaxErrors >= 1 and a positive Window and Cooldown", workflow.ErrInvalid)
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = clock.Real{}
+	}
+	if cfg.Store == nil {
+		cfg.Store = NewMemoryCircuit(cfg.Clock)
+	}
+	b := &breaker{cfg: cfg, policy: CircuitPolicy{MaxErrors: cfg.MaxErrors, Window: cfg.Window, Cooldown: cfg.Cooldown}}
+	return b.wrap, nil
+}

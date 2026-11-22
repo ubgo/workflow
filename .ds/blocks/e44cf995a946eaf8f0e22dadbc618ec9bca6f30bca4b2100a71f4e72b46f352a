@@ -1,0 +1,20 @@
+type HMAC struct {
+	// Header holds the signature. Required.
+	Header string
+
+	// Secrets are the keys; at least one.
+	Secrets [][]byte
+
+	// Prefix is written before the digest ("sha256="). Optional.
+	Prefix string
+
+	// Encoding of the digest. Empty means EncodingHex.
+	Encoding Encoding
+
+	// Hash builds the hash. Nil means SHA-256.
+	Hash func() hash.Hash
+
+	// IDHeader, when set, is the header carrying the delivery ID
+	// ("X-GitHub-Delivery"), which Verify returns.
+	IDHeader string
+}

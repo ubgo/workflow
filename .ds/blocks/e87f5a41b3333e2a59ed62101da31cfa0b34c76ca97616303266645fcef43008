@@ -1,0 +1,8 @@
+func EnqueueClosure(ctx context.Context, client Client, c ClosureJob) (RunRef, error) {
+	ce, ok := client.(ClosureEnqueuer)
+	if !ok || !client.Capabilities().Has(CapClosure) {
+		return RunRef{}, &UnsupportedError{Field: "EnqueueClosure", Missing: CapClosure,
+			Reason: "closures run only on an in-process driver; register a workflow instead"}
+	}
+	return ce.EnqueueClosure(ctx, c)
+}

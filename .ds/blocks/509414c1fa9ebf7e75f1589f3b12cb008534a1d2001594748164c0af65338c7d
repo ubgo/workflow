@@ -1,0 +1,41 @@
+type Step struct {
+	// Name is unique within the workflow; After refers to it.
+	Name string
+
+	// After names the parent steps that must succeed before this one
+	// starts. Empty means the step starts with the run.
+	After []string
+
+	// Run is the code the step executes.
+	Run Handler
+
+	// Wait suspends the run until a matching Event or the deadline.
+	// Needs CapWaitForEvent.
+	Wait *WaitSpec
+
+	// Sleep suspends the run for this long. Needs CapDurableSleep.
+	Sleep time.Duration
+
+	// Retry overrides the workflow default. Nil means the workflow's;
+	// RetriesNone() means never retry. See EffectiveRetries.
+	Retry *RetryPolicy
+
+	// Timeout caps one attempt. Zero means the workflow default.
+	Timeout time.Duration
+
+	// HeartbeatTimeout fails an attempt that goes this long without
+	// calling Heartbeat (counted from the attempt's start, then from each
+	// Heartbeat), with an error matching ErrHeartbeatTimeout and
+	// ErrTimeout; the step's retry policy then applies. It catches a
+	// handler that hangs well before a long Timeout would. Zero means
+	// none. Run steps only. Needs CapHeartbeat.
+	HeartbeatTimeout time.Duration
+
+	// Slots is how many of the client's worker slots one attempt of the
+	// step holds while it runs (FC-11): a step that needs four times the
+	// memory or CPU of an ordinary one sets 4, so a pool of eight runs it
+	// beside at most four others. Zero and one mean one slot. Above one it
+	// needs CapSlotCost, and a client refuses a workflow whose step needs
+	// more slots than its whole pool. Run steps only.
+	Slots int
+}

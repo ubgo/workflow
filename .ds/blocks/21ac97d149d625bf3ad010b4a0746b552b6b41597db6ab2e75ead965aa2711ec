@@ -1,0 +1,22 @@
+func CheckJob(have Caps, job Job) error {
+	missing := have.Missing(RequiresJob(job))
+	if missing.IsZero() {
+		return nil
+	}
+	field := "Job"
+	switch {
+	case missing.HasAny(CapDelayedStart):
+		field = "Job.RunAt"
+	case missing.HasAny(CapIdempotencyKey):
+		field = "Job.IdempotencyKey"
+	case missing.HasAny(CapQueue):
+		field = "Job.Queue"
+	case missing.HasAny(CapTenant):
+		field = "Job.Tenant"
+	case missing.HasAny(CapChain):
+		field = "Job.Chain"
+	case missing.HasAny(CapsOf(CapJobRetry, CapRetryJitter, CapRetryUntil, CapRetryMaxErrors, CapDiscardExhausted)):
+		field = "Job.Retry"
+	}
+	return &UnsupportedError{Field: field, Missing: missing, Reason: "job for workflow " + job.Workflow}
+}

@@ -1,0 +1,46 @@
+func TestTransitionTableShape(t *testing.T) {
+	for _, s := range allStatuses {
+		out := s.TransitionsFrom()
+		switch {
+		case s == StatusFailed:
+			if len(out) != 1 || out[0].To != StatusQueued || out[0].Needs != CapRetryRun {
+				t.Errorf("failed must only re-open to queued under CapRetryRun, got %+v", out)
+			}
+		case s.IsTerminal():
+			if len(out) != 0 {
+				t.Errorf("terminal %s has outgoing moves %+v", s, out)
+			}
+		default:
+			if len(out) == 0 {
+				t.Errorf("%s is a dead end", s)
+			}
+		}
+	}
+	// The two ways into discarded are separately gated, and a run reaches
+	// a terminal status from every non-terminal one.
+	var plain, exhaust bool
+	for _, tr := range StatusRunning.TransitionsFrom() {
+		if tr.To == StatusDiscarded && tr.Needs.Has(CapsOf(CapDiscard, CapRunStates)) {
+			plain = true
+		}
+		if tr.To == StatusDiscarded && tr.Needs.Has(CapsOf(CapDiscardExhausted, CapRunStates)) {
+			exhaust = true
+		}
+	}
+	if !plain || !exhaust {
+		t.Errorf("running -> discarded gates: Discard %v, DiscardOnExhaust %v", plain, exhaust)
+	}
+	for _, from := range []Status{StatusScheduled, StatusQueued, StatusRunning, StatusWaiting, StatusRetrying} {
+		for _, to := range []Status{StatusCancelled, StatusFailed, StatusSucceeded} {
+			if !from.CanTransitionTo(to) {
+				t.Errorf("%s -> %s missing", from, to)
+			}
+		}
+	}
+	if StatusRetrying.CanTransitionTo(StatusScheduled) || StatusQueued.CanTransitionTo(StatusScheduled) {
+		t.Error("nothing returns to scheduled")
+	}
+	if StatusRetrying.CanTransitionTo(StatusDiscarded) {
+		t.Error("a run in backoff is discarded only after its next attempt fails (via running)")
+	}
+}

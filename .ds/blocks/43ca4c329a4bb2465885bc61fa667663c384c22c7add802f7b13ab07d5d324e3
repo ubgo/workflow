@@ -1,0 +1,1 @@
+func (s State) Open() bool { return !s.Finished || len(s.Pending) > 0 }

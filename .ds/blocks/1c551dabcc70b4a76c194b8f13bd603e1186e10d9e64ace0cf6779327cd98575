@@ -1,0 +1,1 @@
+	InboxClaimed InboxState = iota + 1

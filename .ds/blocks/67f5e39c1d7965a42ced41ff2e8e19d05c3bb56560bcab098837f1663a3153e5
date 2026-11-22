@@ -1,0 +1,35 @@
+func DeferHTTP(next http.Handler, opts DeferOptions) http.Handler {
+	succeeded := opts.Succeeded
+	if succeeded == nil {
+		succeeded = DeferSucceeded
+	}
+	onError := opts.OnError
+	if onError == nil {
+		logger := opts.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		onError = func(r *http.Request, err error) {
+			logger.ErrorContext(r.Context(), "workflow: deferred enqueue failed", "method", r.Method, "path", r.URL.Path, "error", err)
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		d := NewDeferred()
+		sw := &statusWriter{ResponseWriter: w}
+		completed := false
+		defer func() {
+			if !completed { // next panicked (or called runtime.Goexit)
+				d.Discard()
+			}
+		}()
+		next.ServeHTTP(sw, r.WithContext(WithDeferred(r.Context(), d)))
+		completed = true
+		if !succeeded(sw.Status()) {
+			d.Discard()
+			return
+		}
+		if _, err := d.Flush(context.WithoutCancel(r.Context())); err != nil {
+			onError(r, err)
+		}
+	})
+}

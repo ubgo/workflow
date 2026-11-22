@@ -1,0 +1,1 @@
+var ErrBlobNotFound = errors.New("workflow/middleware: blob not found")

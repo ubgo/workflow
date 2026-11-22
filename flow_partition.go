@@ -20,9 +20,11 @@ import (
 // they are a guard, not a sandbox (see AllowReservedLabels).
 const (
 	// LabelPartitionSet is the partition set's name (PartitionSet.Name).
+	//ds:def id=labelpartitionset-umkwv73t owner=@khanakia stability=stable
 	LabelPartitionSet = LabelPrefixInternal + "partition-set"
 
 	// LabelPartitionKey is the run's partition key (a day, a tenant).
+	//ds:def id=labelpartitionkey-ysc6y8xw owner=@khanakia stability=stable
 	LabelPartitionKey = LabelPrefixInternal + "partition-key"
 )
 
@@ -32,6 +34,8 @@ const (
 // runs together, so it must be stable across deploys and unique among
 // the sets on one client: it is part of every run's idempotency key and
 // the label PartitionStatus filters on.
+//
+//ds:def id=partitionset-7944khcx owner=@khanakia stability=stable
 type PartitionSet struct {
 	// Name identifies the set ("orders-backfill-2026-11", "nightly-sync").
 	Name string
@@ -55,6 +59,8 @@ type PartitionSet struct {
 
 // PartitionRun is the latest run of one partition, as PartitionStatus
 // reports it.
+//
+//ds:def id=partitionrun-czz4h728 owner=@khanakia stability=stable
 type PartitionRun struct {
 	// Key is the partition key.
 	Key string
@@ -70,6 +76,8 @@ type PartitionRun struct {
 // partitions share a key. Enqueueing a set again therefore never starts a
 // partition whose run is still unfinished, while a partition whose run
 // has ended (failed, or succeeded and asked for again) starts afresh.
+//
+//ds:def id=partitionkey-84t3xsxm owner=@khanakia stability=stable
 func PartitionKey(workflow, set, key string) string {
 	return "partition/" + url.PathEscape(workflow) + "/" + url.PathEscape(set) + "/" + url.PathEscape(key)
 }
@@ -88,6 +96,8 @@ func PartitionKey(workflow, set, key string) string {
 // a set with neither Workflow nor Job are refused with ErrInvalid before
 // anything is enqueued. A client without CapIdempotencyKey is refused
 // with an UnsupportedError unless set.AllowDuplicates is true.
+//
+//ds:def id=enqueuepartitions-h5gbqfcb owner=@khanakia stability=stable
 func EnqueuePartitions(ctx context.Context, client Client, set PartitionSet, keys []string) ([]RunRef, error) {
 	if err := checkPartitionSet(client, set); err != nil {
 		return nil, err
@@ -117,6 +127,8 @@ func EnqueuePartitions(ctx context.Context, client Client, set PartitionSet, key
 }
 
 // checkPartitionSet refuses a set or client EnqueuePartitions cannot use.
+//
+//ds:def id=checkpartitionset-psguru6z owner=@khanakia stability=stable
 func checkPartitionSet(client Client, set PartitionSet) error {
 	switch {
 	case client == nil:
@@ -135,6 +147,8 @@ func checkPartitionSet(client Client, set PartitionSet) error {
 
 // enqueuePartition builds the job for one key and enqueues it under the
 // ctx that allows the partition labels.
+//
+//ds:def id=enqueuepartition-z9fhqc5s owner=@khanakia stability=stable
 func enqueuePartition(ctx context.Context, client Client, set PartitionSet, key string) (RunRef, error) {
 	var job Job
 	if set.Job != nil {
@@ -175,6 +189,8 @@ func enqueuePartition(ctx context.Context, client Client, set PartitionSet, key 
 // whose runs a driver's retention already removed is missing from the
 // result, as is one never enqueued: compare the keys with the ones you
 // expect to find the gaps.
+//
+//ds:def id=partitionstatus-6rn6e7q5 owner=@khanakia stability=stable
 func PartitionStatus(ctx context.Context, client Client, set string) ([]PartitionRun, error) {
 	if client == nil {
 		return nil, invalidf("partition status %q: client is nil", set)
@@ -228,6 +244,8 @@ func PartitionStatus(ctx context.Context, client Client, set string) ([]Partitio
 // driver with CapRetryRun, call RunRetrier.Retry with the RunRef that
 // PartitionStatus reports instead. It needs what PartitionStatus and
 // EnqueuePartitions need.
+//
+//ds:def id=retryfailedpartitions-wumd58gv owner=@khanakia stability=stable
 func RetryFailedPartitions(ctx context.Context, client Client, set PartitionSet) ([]string, []RunRef, error) {
 	if err := checkPartitionSet(client, set); err != nil {
 		return nil, nil, err
@@ -254,6 +272,8 @@ func RetryFailedPartitions(ctx context.Context, client Client, set PartitionSet)
 // when ctx is not a step's or its run was not started by
 // EnqueuePartitions. A step whose set builds its own payload (Job) reads
 // its key here.
+//
+//ds:def id=partitionof-zxdukbq3 owner=@khanakia stability=stable
 func PartitionOf(ctx context.Context) (set, key string, ok bool) {
 	info, found := StepInfoFrom(ctx)
 	if !found {

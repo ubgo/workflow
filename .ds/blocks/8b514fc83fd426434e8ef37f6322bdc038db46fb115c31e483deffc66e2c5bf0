@@ -1,0 +1,10 @@
+func EnqueueOf[T any](ctx context.Context, c Client, workflow string, v T, edit func(*Job)) (RunRef, error) {
+	job, err := JobOf(workflow, v)
+	if err != nil {
+		return RunRef{}, err
+	}
+	if edit != nil {
+		edit(&job)
+	}
+	return c.Enqueue(ctx, job)
+}

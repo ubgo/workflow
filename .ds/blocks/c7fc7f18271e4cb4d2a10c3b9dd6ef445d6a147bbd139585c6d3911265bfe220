@@ -1,0 +1,36 @@
+func (c *Client) settleFinishedRuns(cut workflow.DrainReport) {
+	cutIDs := make(map[workflow.RunID]struct{}, len(cut.Cut))
+	for _, x := range cut.Cut {
+		cutIDs[x.RunID] = struct{}{}
+	}
+	var pending []workflow.RunID
+	for _, id := range c.inflight.returnedRuns() {
+		if _, isCut := cutIDs[id]; !isCut {
+			pending = append(pending, id)
+		}
+	}
+	// Detached from the drain's ctx: it may have ended already (that is how
+	// a deadline cuts), and these are short reads, bounded by drainRunSettle.
+	ctx, cancel := context.WithTimeout(context.Background(), drainRunSettle)
+	defer cancel()
+	for len(pending) > 0 {
+		rest := pending[:0]
+		for _, id := range pending {
+			st, err := c.Status(ctx, workflow.RunRef{RunID: id})
+			if err == nil && st.IsTerminal() {
+				c.inflight.track.RunFinished(id)
+				continue
+			}
+			rest = append(rest, id)
+		}
+		pending = rest
+		if len(pending) == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(drainRunPoll):
+		}
+	}
+}

@@ -1,0 +1,7 @@
+func NewDebounceStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*DebounceStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.DebounceStore(), nil
+}

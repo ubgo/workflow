@@ -1,0 +1,10 @@
+func callbackKey(id ID, cb PendingCallback) string {
+	key := callbackKeyPrefix + string(id) + ":" + string(cb.Kind)
+	if cb.Kind == CallbackProgress {
+		key += ":" + strconv.Itoa(cb.Job)
+	}
+	if cb.Round > 0 {
+		key += ":r" + strconv.Itoa(cb.Round)
+	}
+	return key
+}

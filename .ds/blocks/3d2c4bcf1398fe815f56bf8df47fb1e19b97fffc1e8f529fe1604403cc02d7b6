@@ -1,0 +1,4 @@
+type HealthReport struct {
+	Live, Ready bool
+	Checks      []HealthCheck
+}

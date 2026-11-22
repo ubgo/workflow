@@ -1,0 +1,12 @@
+func (b Builder) withDow(call, dow string) Builder {
+	switch {
+	case b.err != nil:
+		return b
+	case b.every != "":
+		return b.fail("%s: an @every interval ignores the calendar; use a five-field frequency", call)
+	case b.dom != wild:
+		return b.fail("%s: the frequency also fixes the day of the month, and cron would fire when either day matches", call)
+	}
+	b.dow = dow
+	return b
+}

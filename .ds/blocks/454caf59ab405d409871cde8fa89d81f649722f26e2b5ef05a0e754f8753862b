@@ -1,0 +1,41 @@
+func TestHandler_LabelPrefix(t *testing.T) {
+	f := seeded()
+	f.runs[0].Labels = map[string]string{"tenant": "acme"}
+	f.runs[1].Labels = map[string]string{"tenant": "abc"}
+	h := NewHandler(New(f), bearerAuth())
+	rec := do(t, h, "GET", "/runs?label=tenant=ac*&count=1", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"run_id":"r3"`) || strings.Contains(rec.Body.String(), `"r2"`) || !strings.Contains(rec.Body.String(), `"total":1`) {
+		t.Errorf("prefix ac* = %d %s", rec.Code, rec.Body)
+	}
+	rec = do(t, h, "GET", "/runs?label=tenant=*", "")
+	if !strings.Contains(rec.Body.String(), `"r3"`) || !strings.Contains(rec.Body.String(), `"r2"`) || strings.Contains(rec.Body.String(), `"r1"`) {
+		t.Errorf("key present = %s", rec.Body)
+	}
+	if q := f.queries[0]; q.LabelPrefixes["tenant"] != "ac" || len(q.Labels) != 0 {
+		t.Errorf("query = %+v", q)
+	}
+	if rec := do(t, h, "POST", "/runs/cancel", `{"label_prefixes":{"tenant":"ac"}}`); rec.Code != 200 {
+		t.Errorf("cancel by prefix = %d %s", rec.Code, rec.Body)
+	}
+
+	n := seeded()
+	n.caps = allCaps.Without(workflow.CapLabelPrefix)
+	hn := NewHandler(New(n), bearerAuth())
+	for _, r := range []route{
+		{"GET", "/runs?label=tenant=ac*", "", ""},
+		{"GET", "/failures?label=tenant=ac*", "", ""},
+		{"GET", "/runs?label=tenant=ac*&count=1", "", ""},
+		{"POST", "/runs/cancel", `{"label_prefixes":{"tenant":"ac"}}`, ""},
+	} {
+		if rec := do(t, hn, r.method, r.path, r.body); rec.Code != http.StatusNotImplemented || !strings.Contains(rec.Body.String(), "LabelPrefix") {
+			t.Errorf("without CapLabelPrefix %s %s = %d %s", r.method, r.path, rec.Code, rec.Body)
+		}
+	}
+	if c := n.Calls(); len(c) != 0 {
+		t.Errorf("driver reached without CapLabelPrefix: %v", c)
+	}
+	// An exact label still works there.
+	if rec := do(t, hn, "GET", "/runs?label=tenant=a", ""); rec.Code != 200 {
+		t.Errorf("exact label = %d", rec.Code)
+	}
+}

@@ -1,0 +1,28 @@
+func (c *Client) markRedo(ctx context.Context, tx *sql.Tx, row *runRow) error {
+	var n int64
+	if err := c.st.one(ctx, tx, "SELECT COUNT(*) FROM {run_chain} WHERE run_id = ?", []any{row.id}, &n); err != nil {
+		return err
+	}
+	if n > 0 {
+		return fmt.Errorf("%w: run %s succeeded but its chain is not handed on yet (no client registers the next workflow); reset it once the chain has moved on", workflow.ErrWrongState, row.id)
+	}
+	labels, err := row.labelMap()
+	if err != nil {
+		return err
+	}
+	if labels[workflow.LabelRedo] == "true" {
+		return nil
+	}
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[workflow.LabelRedo] = "true"
+	b, err := json.Marshal(labels)
+	if err != nil {
+		return fmt.Errorf("sqlstore: encode labels: %w", err)
+	}
+	if _, err := c.st.exec(ctx, tx, "UPDATE {runs} SET labels = ? WHERE id = ?", string(b), row.id); err != nil {
+		return err
+	}
+	return c.insertLabels(ctx, tx, row.id, map[string]string{workflow.LabelRedo: "true"})
+}

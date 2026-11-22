@@ -1,0 +1,9 @@
+type DeadQuery struct {
+	// Workflow keeps only entries for this workflow; empty keeps all.
+	Workflow string
+	// After continues a listing after the entry with this ID (the last ID
+	// of the previous page); empty starts at the oldest.
+	After string
+	// Limit is the page size: zero means 100; it is capped at 1000.
+	Limit int
+}

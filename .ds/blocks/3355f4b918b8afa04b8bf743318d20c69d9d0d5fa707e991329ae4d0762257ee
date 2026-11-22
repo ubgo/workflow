@@ -1,0 +1,1 @@
+	ErrWaitTimeout = errors.New("workflow: wait expired")

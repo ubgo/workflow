@@ -1,0 +1,1 @@
+type ReplayFunc func(rc *ReplayCtx, in []byte) ([]byte, error)

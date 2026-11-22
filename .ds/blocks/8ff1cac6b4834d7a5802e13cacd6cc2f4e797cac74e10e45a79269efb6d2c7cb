@@ -1,0 +1,8 @@
+type FakeReset struct {
+	Ref  workflow.RunRef
+	Step string
+
+	// Succeeded is ResetOptions.Succeeded of a ResetRunWith call that
+	// reset a succeeded run.
+	Succeeded bool
+}

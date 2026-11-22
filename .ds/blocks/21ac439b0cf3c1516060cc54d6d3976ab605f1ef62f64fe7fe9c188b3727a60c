@@ -1,0 +1,3 @@
+func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
+	return c.drain(ctx, true)
+}

@@ -16,6 +16,8 @@ import (
 // SignalHarness builds what the signal-flow cases run on: Start as for
 // FlowHarness, and Promises, the PromiseStore the run's side and the
 // caller share (the driver's durable one where it has one).
+//
+//ds:def id=workflowtest-signalharness-59st97g3 owner=@khanakia stability=stable
 type SignalHarness struct {
 	Start    func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
 	Promises func(t *testing.T, c workflow.Client) workflow.PromiseStore
@@ -26,6 +28,8 @@ type SignalHarness struct {
 // Update answered by UpdateHandler, a promise resolved from outside the
 // run, ContinueAsNew and CancelSteps. A driver without a capability a
 // case needs skips that case.
+//
+//ds:def id=workflowtest-runsignalflows-x6z59d2p owner=@khanakia stability=stable
 func RunSignalFlows(t *testing.T, h SignalHarness) {
 	waiter := func(name string) workflow.Workflow {
 		return workflow.Workflow{Name: name, Steps: []workflow.Step{
@@ -306,6 +310,8 @@ func RunSignalFlows(t *testing.T, h SignalHarness) {
 // RunPromiseStore is the PromiseStore contract: Settle stores once and
 // every later or concurrent Settle reads the first value, Get and Delete
 // behave, and an id is independent of every other.
+//
+//ds:def id=workflowtest-runpromisestore-tgdywy8m owner=@khanakia stability=stable
 func RunPromiseStore(t *testing.T, s workflow.PromiseStore) {
 	ctx := context.Background()
 	if _, ok, err := s.Get(ctx, "p-missing"); err != nil || ok {

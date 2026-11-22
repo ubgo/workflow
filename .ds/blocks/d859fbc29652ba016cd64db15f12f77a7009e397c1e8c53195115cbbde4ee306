@@ -1,0 +1,39 @@
+func Backfill(ctx context.Context, c Client, spec BackfillSpec, opts ...BackfillOption) ([]RunRef, error) {
+	var o backfillOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	t, err := spec.target()
+	if err != nil {
+		return nil, err
+	}
+	keyed := c.Capabilities().Has(CapIdempotencyKey)
+	if !keyed && !o.allowDuplicates {
+		return nil, &UnsupportedError{Field: "Backfill", Missing: CapIdempotencyKey, Reason: "without idempotency keys a repeated backfill would start ticks twice; pass BackfillAllowDuplicates to accept that"}
+	}
+	ticks, err := planTicks(spec, t)
+	if err != nil {
+		return nil, err
+	}
+	ctx = AllowReservedLabels(ctx, LabelSchedule, LabelScheduleName, LabelTickAt, LabelTrigger, LabelRunKey)
+	refs := make([]RunRef, 0, len(ticks))
+	for _, at := range ticks {
+		key := scheduleRunKey("backfill", t.scope, at.UTC().Format(time.RFC3339Nano))
+		labels := FiredLabelsAt(t.labels, spec.ScheduleID, t.name, at)
+		if spec.ScheduleID.IsZero() {
+			delete(labels, LabelSchedule)
+		}
+		labels[LabelTrigger] = LabelTriggerBackfill
+		labels[LabelRunKey] = key
+		job := Job{Workflow: t.workflow, Payload: t.input, Labels: labels, Tenant: t.tenant}
+		if keyed {
+			job.IdempotencyKey = key
+		}
+		ref, err := enqueueUnlessKeyed(ctx, c, job, key)
+		if err != nil {
+			return refs, fmt.Errorf("backfill for %q: tick %s: %w", t.workflow, at.Format(time.RFC3339), err)
+		}
+		refs = append(refs, ref)
+	}
+	return refs, nil
+}

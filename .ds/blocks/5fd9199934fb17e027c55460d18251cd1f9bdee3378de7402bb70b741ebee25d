@@ -1,0 +1,35 @@
+func (c *Client) prune(ctx context.Context) error {
+	var floor, top sql.NullInt64
+	if err := c.st.one(ctx, c.st.db, "SELECT MIN(sig_floor) FROM {runs} WHERE status IN (?, ?, ?, ?)",
+		[]any{runScheduled, runPending, runActive, runFailing}, &floor); err != nil {
+		return err
+	}
+	if !floor.Valid {
+		// No unfinished run: a later run's floor is at least the current
+		// top, so every signal up to it is unreachable.
+		if err := c.st.one(ctx, c.st.db, "SELECT MAX(id) FROM {signals}", nil, &top); err != nil {
+			return err
+		}
+		floor = top
+	}
+	if floor.Valid {
+		if _, err := c.st.exec(ctx, c.st.db, "DELETE FROM {signals} WHERE id <= ?", floor.Int64); err != nil {
+			return err
+		}
+	}
+	if _, err := c.st.exec(ctx, c.st.db, "DELETE FROM {consumed} WHERE run_id IN (SELECT id FROM {runs} WHERE "+terminalIn+")",
+		terminalArgs()...); err != nil {
+		return err
+	}
+	if _, err := c.st.exec(ctx, c.st.db, "DELETE FROM {ticks} WHERE fire_at < ?", c.nowNanos()-int64(c.tickRetention)); err != nil {
+		return err
+	}
+	if _, err := c.UniqueStore().PruneExpired(ctx); err != nil {
+		return err
+	}
+	if _, err := c.Inbox().PruneExpired(ctx, c.clk.Now()); err != nil {
+		return err
+	}
+	_, err := c.DebounceStore().PruneExpired(ctx)
+	return err
+}

@@ -1,0 +1,44 @@
+type Tick struct {
+	// ScheduleID is the schedule. For a declared Workflow.Cron entry it
+	// is the driver's stable id for that declaration, the same one
+	// ScheduleLister reports.
+	ScheduleID ScheduleID
+
+	// Name is the Schedule.Name; for a declared cron, the expression.
+	Name string
+
+	// Workflow is the workflow the schedule runs.
+	Workflow string
+
+	// Declared is true for a Workflow.Cron entry.
+	Declared bool
+
+	// At is the tick's time; for TickMisfired, the newest dropped tick.
+	At time.Time
+
+	// Location is the zone the schedule is evaluated in.
+	Location *time.Location
+
+	// Outcome is what happened.
+	Outcome TickOutcome
+
+	// Reason is set for TickSkipped: TickReasonWhen, TickReasonWindow or
+	// TickReasonPaused.
+	Reason string
+
+	// Missed is how many ticks a TickMisfired dropped.
+	Missed int
+
+	// Run is the run a TickFired enqueued.
+	Run RunRef
+
+	// Err is why a TickFired could not enqueue.
+	Err error
+
+	// Labels are the schedule's labels. Observers must not modify them.
+	Labels map[string]string
+
+	// Manual is true for a TickFired that ScheduleTriggerer started by
+	// hand; At is then the driver's clock at the trigger.
+	Manual bool
+}

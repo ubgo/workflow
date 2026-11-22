@@ -1,0 +1,14 @@
+func (c *Client) OnLifecycle(fn workflow.LifecycleFunc) error {
+	if fn == nil {
+		return fmt.Errorf("%w: OnLifecycle needs a function", workflow.ErrInvalid)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	c.lc.mu.Lock()
+	defer c.lc.mu.Unlock()
+	c.lc.observers = append(c.lc.observers, fn)
+	return nil
+}

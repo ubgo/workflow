@@ -1,0 +1,52 @@
+func (c *Client) enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	run, err := c.prepare(job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	hw, wf, input, md, priority := run.hw, run.wf, run.input, run.md, run.priority
+
+	if !job.RunAt.IsZero() && !run.gated {
+		// A time-ordered (v7) token records when the run was scheduled,
+		// which bounds the search for the run it fires after Reschedule
+		// moved it earlier (findRunByToken).
+		token := newScheduleToken()
+		md[metaScheduleToken] = token
+		trigger := features.CreateScheduledRunTrigger{
+			// UTC on purpose: the engine stores triggerAt in a column
+			// without a zone, so a local-zone time fires hours off
+			// (seen on hatchet-lite v0.110.5 with an IST client).
+			TriggerAt:          job.RunAt.UTC(),
+			Input:              input,
+			AdditionalMetadata: labelsAny(md),
+		}
+		if priority != nil {
+			p := features.RunPriority(*priority)
+			trigger.Priority = &p
+		}
+		sdk, err := c.ready()
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		sched, err := sdk.Schedules().Create(ctx, wf.Name, trigger)
+		if err != nil {
+			return workflow.RunRef{}, engineErr(err, "schedule run")
+		}
+		if sched == nil {
+			return workflow.RunRef{}, errors.New("hatchet driver: schedule run: engine returned no scheduled run")
+		}
+		sid := scheduledRef{token: token, runAt: job.RunAt}
+		workflow.MarkInserted(ctx)
+		return workflow.RunRef{ScheduledID: sid.id()}, nil
+	}
+
+	ref, err := hw.RunNoWait(ctx, input, run.runOptions()...)
+	if collision, ok := hatchetsdk.IsIdempotencyCollisionError(err); ok {
+		workflow.MarkDuplicate(ctx)
+		return workflow.RunRef{RunID: workflow.RunID(collision.ExistingRunExternalId)}, nil
+	}
+	if err != nil {
+		return workflow.RunRef{}, engineErr(err, "run")
+	}
+	workflow.MarkInserted(ctx)
+	return workflow.RunRef{RunID: workflow.RunID(ref.RunId)}, nil
+}

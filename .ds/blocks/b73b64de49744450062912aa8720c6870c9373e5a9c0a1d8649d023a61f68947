@@ -1,0 +1,6 @@
+func (s BucketSpec) validate() error {
+	if !(s.Capacity > 0) || !(s.LeakPerSecond > 0) || math.IsInf(s.Capacity, 0) || math.IsInf(s.LeakPerSecond, 0) {
+		return invalidf("bucket needs a positive, finite Capacity and LeakPerSecond (got %v, %v)", s.Capacity, s.LeakPerSecond)
+	}
+	return nil
+}

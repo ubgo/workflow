@@ -24,6 +24,8 @@ var (
 // does not store the graph, so the client must have the run's workflow
 // registered to know which steps are downstream; otherwise it returns an
 // error wrapping ErrInvalid.
+//
+//ds:def id=sql-client-resetrun-prngumah owner=@khanakia stability=stable
 func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
 	return c.ResetRunWith(ctx, ref, step, workflow.ResetOptions{})
 }
@@ -34,6 +36,8 @@ func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string)
 // is not handed on again. A succeeded run whose chain still waits for a
 // client that registers the next workflow (a pending handoff) returns
 // ErrWrongState, since its next success would hand that chain on twice.
+//
+//ds:def id=sql-client-resetrunwith-hrw54cxc owner=@khanakia stability=stable
 func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	if step == "" {
 		return workflow.RunRef{}, fmt.Errorf("%w: ResetRun needs a step", workflow.ErrInvalid)
@@ -55,6 +59,8 @@ func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step str
 
 // markRedo stamps workflow.LabelRedo on succeeded run row in tx, once,
 // after checking that no chain handoff is pending.
+//
+//ds:def id=sql-client-markredo-yt3wcuhc owner=@khanakia stability=stable
 func (c *Client) markRedo(ctx context.Context, tx *sql.Tx, row *runRow) error {
 	var n int64
 	if err := c.st.one(ctx, tx, "SELECT COUNT(*) FROM {run_chain} WHERE run_id = ?", []any{row.id}, &n); err != nil {
@@ -94,6 +100,8 @@ func (c *Client) markRedo(ctx context.Context, tx *sql.Tx, row *runRow) error {
 // version's steps); otherwise it returns an error wrapping ErrInvalid. A
 // fork key held by an unfinished run returns that run's RunRef and starts
 // nothing, as Enqueue does.
+//
+//ds:def id=sql-client-forkrun-dax2n4ug owner=@khanakia stability=stable
 func (c *Client) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

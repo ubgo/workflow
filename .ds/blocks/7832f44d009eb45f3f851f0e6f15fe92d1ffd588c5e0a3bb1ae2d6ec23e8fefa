@@ -1,0 +1,13 @@
+func (pc *pluginClient) Register(wf Workflow) error {
+	if len(pc.steps) > 0 {
+		steps := make([]Step, len(wf.Steps))
+		copy(steps, wf.Steps)
+		for i := range steps {
+			steps[i].Run = pc.wrap(steps[i].Run)
+		}
+		wf.Steps = steps
+		wf.OnFailure = pc.wrap(wf.OnFailure)
+		wf.OnTimeout = pc.wrap(wf.OnTimeout)
+	}
+	return pc.Client.Register(wf)
+}

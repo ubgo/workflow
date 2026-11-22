@@ -1,0 +1,10 @@
+func (c *Client) forgetNode() {
+	if c.crashed.Load() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), releaseTimeout)
+	defer cancel()
+	if _, err := c.st.exec(ctx, c.st.db, "DELETE FROM {nodes} WHERE id = ?", c.nodeID); err != nil {
+		c.log.Error("sqlstore: remove this node from the registry (it ages out in an hour)", "node", c.nodeID, "error", err)
+	}
+}

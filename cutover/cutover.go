@@ -13,12 +13,14 @@ import (
 var (
 	// sharedCaps reach runs, which may sit on either backend: both must
 	// have them.
+	//ds:def id=cutover-sharedcaps-848dhjab owner=@khanakia stability=stable
 	sharedCaps = workflow.CapsOf(workflow.CapCancel, workflow.CapRunQuery, workflow.CapRetryRun, workflow.CapDeleteRun,
 		workflow.CapCancelAll, workflow.CapRunStates, workflow.CapErrorHistory, workflow.CapLabelPrefix,
 		workflow.CapDueQuery, workflow.CapResult, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
 		workflow.CapDrain, workflow.CapRunFinished, workflow.CapNodeIdentity)
 
 	// scheduleCaps are the schedule backend's alone.
+	//ds:def id=cutover-schedulecaps-u6qn43gw owner=@khanakia stability=stable
 	scheduleCaps = workflow.CapsOf(workflow.CapCron, workflow.CapCronZone, workflow.CapCronSeconds, workflow.CapScheduleWhen,
 		workflow.CapScheduleWindow, workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapOverlapSkip,
 		workflow.CapScheduleHistory, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
@@ -26,6 +28,7 @@ var (
 
 	// unroutedCaps belong to interfaces this client does not implement,
 	// so it never claims them.
+	//ds:def id=cutover-unroutedcaps-a996f4gq owner=@khanakia stability=stable
 	unroutedCaps = workflow.CapsOf(workflow.CapScheduleTrigger, workflow.CapTickEvents, workflow.CapWorkerScale,
 		workflow.CapClosure, workflow.CapForceRun, workflow.CapDrainReport)
 )
@@ -37,6 +40,8 @@ type Option func(*Client)
 // Client.Schedule. The default is New. Old keeps them firing on the old
 // backend until the app moves them (then build the client again with the
 // default and call MoveSchedules). Any other value is ignored.
+//
+//ds:def id=cutover-scheduleson-ya9de99v owner=@khanakia stability=stable
 func SchedulesOn(s Side) Option {
 	return func(c *Client) {
 		if s.valid() {
@@ -69,6 +74,8 @@ var (
 // New returns a client that sends new work to newClient and keeps
 // oldClient running what it holds. Both must be unstarted clients owned
 // by this one: it registers and starts them.
+//
+//ds:def id=cutover-new-wkttdfys owner=@khanakia stability=stable
 func New(oldClient, newClient workflow.Client, opts ...Option) *Client {
 	c := &Client{old: oldClient, new: newClient, sched: SideNew, wfs: map[string]workflow.Workflow{}, newOnly: map[string]bool{}}
 	for _, o := range opts {
@@ -88,6 +95,8 @@ func (c *Client) backend(s Side) workflow.Client {
 // backends'), the schedule family (the schedule backend's) and the
 // capabilities of interfaces this client does not route (never claimed). See the
 // package doc for the lists.
+//
+//ds:def id=cutover-client-capabilities-sq86kg5y owner=@khanakia stability=stable
 func (c *Client) Capabilities() workflow.Caps {
 	o, n := c.old.Capabilities(), c.new.Capabilities()
 	caps := n.Without(sharedCaps, scheduleCaps).
@@ -113,6 +122,8 @@ func (c *Client) New() workflow.Client { return c.new }
 // on the new backend only; when the old backend holds schedules and the
 // workflow declares a cron, that is an UnsupportedError instead, since its
 // ticks would never fire.
+//
+//ds:def id=cutover-client-register-dxfjnaqq owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -151,6 +162,8 @@ func (c *Client) Register(wf workflow.Workflow) error {
 
 // NewOnly reports whether Register kept the named workflow off the old
 // backend because the old backend cannot run it.
+//
+//ds:def id=cutover-client-newonly-hp38vd62 owner=@khanakia stability=stable
 func (c *Client) NewOnly(workflowName string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -224,6 +237,8 @@ func (c *Client) Start(ctx context.Context) error {
 
 // Enqueue sends job to the new backend and returns its RunRef prefixed
 // "new:". Nothing ever goes to the old backend.
+//
+//ds:def id=cutover-client-enqueue-mdktyder owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	ref, err := c.new.Enqueue(ctx, job)
 	if err != nil {
@@ -275,6 +290,8 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 // and then, when the old one answers ErrNotFound, on the new one; if
 // neither knows it the old one's error is returned. A ref whose two IDs
 // name different backends was not made by this client: ErrNotFound.
+//
+//ds:def id=cutover-client-onref-c9jkt4up owner=@khanakia stability=stable
 func (c *Client) onRef(ref workflow.RunRef, fn func(Side, workflow.Client, workflow.RunRef) error) error {
 	s, inner, ok := decodeRef(ref)
 	if !ok {
@@ -296,12 +313,16 @@ func (c *Client) onRef(ref workflow.RunRef, fn func(Side, workflow.Client, workf
 // Signal delivers ev to both backends, since a waiting run may sit on
 // either. When one fails, the other has already taken the event; the
 // error names the failing backend.
+//
+//ds:def id=cutover-client-signal-4xrqzvqc owner=@khanakia stability=stable
 func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 	return joinSides("Signal", c.old.Signal(ctx, ev), c.new.Signal(ctx, ev))
 }
 
 // Schedule registers s on the schedule backend (SideNew unless SchedulesOn)
 // and returns its ID with that backend's prefix.
+//
+//ds:def id=cutover-client-schedule-3ktbbxq5 owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	id, err := c.backend(c.sched).Schedule(ctx, s)
 	if err != nil {
@@ -314,6 +335,8 @@ func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.Sc
 // unprefixed ID (stored before the cutover) is removed from the old
 // backend, and from the new one when the old one answers ErrNotFound. An
 // empty id is a no-op.
+//
+//ds:def id=cutover-client-unschedule-n84rqfj5 owner=@khanakia stability=stable
 func (c *Client) Unschedule(ctx context.Context, id workflow.ScheduleID) error {
 	if id.IsZero() {
 		return nil
@@ -343,6 +366,8 @@ func (c *Client) notifiers() (o, n workflow.RunNotifier, ok bool) {
 // a fired run's LabelSchedule) prefixed by the backend it came from. Both
 // must implement workflow.RunNotifier, or it returns an UnsupportedError,
 // since runs on the other backend would end unseen. Register before Start.
+//
+//ds:def id=cutover-client-onrunfinished-tvwmvejt owner=@khanakia stability=stable
 func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	on, nn, ok := c.notifiers()
 	if !ok {
@@ -373,6 +398,8 @@ func sideObserver(fn workflow.RunFinishedFunc, s Side) workflow.RunFinishedFunc 
 
 // need refuses a call when Capabilities lacks caps, so a method never
 // half-works on one backend.
+//
+//ds:def id=cutover-client-need-zy5t2vf3 owner=@khanakia stability=stable
 func (c *Client) need(field string, caps workflow.Caps) error {
 	if missing := c.Capabilities().Missing(caps); !missing.IsZero() {
 		return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: "one of the cutover backends cannot do it"}

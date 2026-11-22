@@ -1,0 +1,29 @@
+type Retention struct {
+	// Succeeded, Failed and Cancelled are how long a run that ended with
+	// that status is kept after it finished. Zero keeps it forever. A
+	// discarded run is kept as long as a cancelled one (Cancelled), as it
+	// was when discards were stored as cancelled.
+	Succeeded, Failed, Cancelled time.Duration
+
+	// KeepLast caps how many finished runs (succeeded, failed,
+	// cancelled and discarded together) each workflow keeps: past the newest KeepLast by
+	// finish time, older runs are deleted even when their status's
+	// duration above would keep them. Both rules apply: a run goes when either says so. The guards
+	// below still hold, so a run they keep stays and still counts toward
+	// the N. Zero (the default) sets no count limit.
+	KeepLast int
+
+	// PerWorkflow replaces the durations and KeepLast above for the named
+	// workflows, whole: a workflow listed here uses only its own entry.
+	PerWorkflow map[string]Retention
+
+	// Undelivered also deletes runs whose end was never delivered to an
+	// OnRunFinished observer. Without it, a cluster where no client
+	// registers an observer deletes nothing at all: Prune reports those runs
+	// in PruneResult.HeldUndelivered and the background prune logs a
+	// warning naming both fixes. Leave it false when any client of the cluster
+	// registers an observer, or an end it has not seen yet is lost; set it
+	// when none does, or no run would ever be deleted (an end nobody
+	// observes is never marked delivered).
+	Undelivered bool
+}

@@ -1,0 +1,13 @@
+func (c *Client) Drain(ctx context.Context) error {
+	od, nd, err := both[workflow.Drainer](c, "Drain", workflow.CapDrain)
+	if err != nil {
+		return err
+	}
+	var wg sync.WaitGroup
+	var oerr, nerr error
+	wg.Add(2)
+	go func() { defer wg.Done(); oerr = od.Drain(ctx) }()
+	go func() { defer wg.Done(); nerr = nd.Drain(ctx) }()
+	wg.Wait()
+	return joinSides("Drain", oerr, nerr)
+}

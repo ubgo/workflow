@@ -1,0 +1,37 @@
+type MemoryStreamOptions struct {
+	// MaxChunk is the largest chunk Write accepts (DefaultStreamMaxChunk,
+	// 64 KiB); a larger one is refused with ErrInvalid.
+	MaxChunk int
+
+	// MaxRunBytes and MaxRunChunks bound what one run keeps
+	// (DefaultStreamMaxRunBytes, 1 MiB; DefaultStreamMaxRunChunks, 4096).
+	// Past either, the oldest chunks are dropped: a live reader keeps
+	// up, and a late one sees a gap in Pos.
+	MaxRunBytes  int
+	MaxRunChunks int
+
+	// MaxRuns bounds how many runs are held at once
+	// (DefaultStreamMaxRuns). When full, the closed run closed longest
+	// ago is dropped for a new one; with no closed run, the new run's
+	// first chunk is refused with ErrStreamFull.
+	MaxRuns int
+
+	// TTL drops a run no chunk was written to for this long, closed or
+	// not (DefaultStreamTTL, one hour), so a run whose Close never came
+	// (a crash, no StreamCloseOnFinish) does not stay forever.
+	TTL time.Duration
+
+	// Retain is how long a closed run's chunks stay readable after
+	// Close (DefaultStreamRetain, one minute), so a reader that connects
+	// just after the run ended still gets its output.
+	Retain time.Duration
+
+	// Buffer is each subscriber's channel size (DefaultStreamBuffer).
+	// A subscriber that falls this far behind has its channel closed and
+	// resynchronises with Read.
+	Buffer int
+
+	// Clock is read for TTL, Retain and StreamChunk.At; nil means
+	// clock.Real.
+	Clock clock.Clock
+}

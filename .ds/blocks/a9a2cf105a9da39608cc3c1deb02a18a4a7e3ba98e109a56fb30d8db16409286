@@ -1,0 +1,7 @@
+func IsUnhandledEvent(err error) bool {
+	if errors.Is(err, ErrUnhandledEvent) {
+		return true
+	}
+	var failed *RunFailedError
+	return errors.As(err, &failed) && strings.Contains(failed.Err, ErrUnhandledEvent.Error())
+}

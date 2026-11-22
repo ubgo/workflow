@@ -1,0 +1,31 @@
+func (c *Client) Status(ctx context.Context, ref workflow.RunRef) (workflow.Status, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return "", err
+	}
+	runID, state, err := c.resolve(ctx, sdk, ref)
+	if err != nil {
+		return "", err
+	}
+	switch state {
+	case statePending:
+		return workflow.StatusScheduled, nil
+	case stateGone:
+		return workflow.StatusCancelled, nil
+	}
+	d, err := runDetailsLagged(ctx, sdk, runID, c.cfg.VisibilityLag)
+	if isNotFound(err) {
+		return "", fmt.Errorf("%w: run %q", workflow.ErrNotFound, runID)
+	}
+	if err != nil {
+		return "", engineErr(err, "run status")
+	}
+	st, err := c.endStatus(d)
+	if err != nil || st.IsTerminal() || st == workflow.StatusScheduled {
+		return st, err
+	}
+	if c.suspended(d) {
+		return workflow.StatusWaiting, nil
+	}
+	return st, nil
+}

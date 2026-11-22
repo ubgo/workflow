@@ -1,0 +1,37 @@
+func (f *Fake) force(ctx context.Context, ref workflow.RunRef, rec FakeForce) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	field := "ForceFail"
+	if rec.Complete {
+		field = "ForceComplete"
+	}
+	if !f.caps.Has(workflow.CapForceRun) {
+		return &workflow.UnsupportedError{Field: field, Missing: workflow.CapForceRun}
+	}
+	f.mu.Lock()
+	r, ok := f.byRef[ref]
+	if !ok {
+		f.mu.Unlock()
+		if fr, ok := f.inner.(workflow.RunForcer); ok {
+			if rec.Complete {
+				return fr.ForceComplete(ctx, ref)
+			}
+			return fr.ForceFail(ctx, ref, rec.Reason)
+		}
+		return fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	defer f.mu.Unlock()
+	switch {
+	case rec.Complete && r.status == workflow.StatusFailed:
+		r.status = workflow.StatusSucceeded
+	case rec.Complete && workflow.CanForceComplete(r.status):
+		f.finishLocked(r, workflow.StatusSucceeded)
+	case !rec.Complete && workflow.CanForceFail(r.status):
+		f.finishLocked(r, workflow.StatusFailed)
+	default:
+		return fmt.Errorf("%w: run %+v is %s", workflow.ErrWrongState, ref, r.status)
+	}
+	f.forced = append(f.forced, rec)
+	return nil
+}

@@ -1,0 +1,10 @@
+func DescribeSeconds(expr string) (string, error) {
+	trimmed := strings.TrimSpace(expr)
+	if _, err := ParseSeconds(expr); err != nil {
+		return "", err
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		return describeMacro(trimmed)
+	}
+	return describeFields(strings.Fields(trimmed), true), nil
+}

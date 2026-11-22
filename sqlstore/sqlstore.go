@@ -22,6 +22,8 @@ import (
 // nothing. Retry delays are computed in Go (workflow.RetryPolicy.NextDelay),
 // so jitter and RetryAfter cost nothing; cron zones and misfire policies
 // are stored with each schedule.
+//
+//ds:def id=sql-caps-yu37ef2j owner=@khanakia stability=stable
 var caps = workflow.CapsOf(
 	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
 	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
@@ -37,6 +39,8 @@ var caps = workflow.CapsOf(
 // them the same way: queues and pauses are rows the claim statement reads,
 // per-run retry policies and attempt counts are rows the record step
 // reads, schedule windows and pauses are rows the firing node reads.
+//
+//ds:def id=sql-paritycaps-e5y5vqhk owner=@khanakia stability=stable
 var parityCaps = workflow.CapsOf(
 	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
 	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard, workflow.CapDiscardExhausted,
@@ -55,6 +59,8 @@ var parityCaps = workflow.CapsOf(
 // are not among them: a Go function cannot be stored, so a closure could
 // not survive the restart this driver exists for, and
 // workflow.EnqueueClosure refuses this client.
+//
+//ds:def id=sql-batch2caps-9rm4b4ck owner=@khanakia stability=stable
 var batch2Caps = workflow.CapsOf(workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, p4Caps)
 
 // p4Caps are overlap skip, trigger now and last-fire bookkeeping (one
@@ -63,6 +69,8 @@ var batch2Caps = workflow.CapsOf(workflow.CapRunStates, workflow.CapChain, workf
 // history (attempt_errors), shutdown requeue (a step cut short by a clean
 // stop is handed back with its attempt refunded: attempt.release) and
 // force-complete and force-fail.
+//
+//ds:def id=sql-p4caps-ns9ehh5e owner=@khanakia stability=stable
 var p4Caps = workflow.CapsOf(
 	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
 	workflow.CapEnqueueOnly, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapForceRun, p5Caps,
@@ -72,6 +80,8 @@ var p4Caps = workflow.CapsOf(
 // result written when the run succeeds and the nodes that claimed its
 // attempts; due times are the runs table's run_at, kept after the start;
 // every client reports itself in the nodes table.
+//
+//ds:def id=sql-p5caps-wggh6esn owner=@khanakia stability=stable
 var p5Caps = workflow.CapsOf(
 	workflow.CapTenant, workflow.CapResult, workflow.CapDueQuery, workflow.CapNodeIdentity, workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
@@ -115,13 +125,16 @@ const (
 // Defaults, each overridable by an option.
 const (
 	// defaultWorkers is how many step attempts one client executes at once.
+	//ds:def id=sql-defaultworkers-2jwwrt75 owner=@khanakia stability=stable
 	defaultWorkers = 8
 	// defaultPoll is how often a client looks for work other nodes made
 	// due. Work this client makes due itself wakes it at once.
+	//ds:def id=sql-defaultpoll-nn9t9vqu owner=@khanakia stability=stable
 	defaultPoll = time.Second
 	// defaultLease is how long a claimed step is held without a renewal.
 	// A worker renews at a third of it, so a live worker never loses a
 	// step and a dead one's step is reclaimed within one lease.
+	//ds:def id=sql-defaultlease-qygq5sbe owner=@khanakia stability=stable
 	defaultLease = 30 * time.Second
 	// defaultMaxReclaims is how often one attempt of a step may be taken
 	// over after its worker died (its lease expired) before the attempt
@@ -129,17 +142,22 @@ const (
 	// step (a deploy, an OOM elsewhere), so a few takeovers are normal;
 	// a step that kills every worker it lands on would otherwise loop
 	// through the cluster forever. Five tolerates a rolling restart.
+	//ds:def id=sql-defaultmaxreclaims-p88haut9 owner=@khanakia stability=stable
 	defaultMaxReclaims = 5
 	// defaultTablePrefix starts every table name.
+	//ds:def id=sql-defaulttableprefix-2cbmbc9h owner=@khanakia stability=stable
 	defaultTablePrefix = "wf_"
 	// claimBatch is the default of WithFetchBatch, and caps the cron ticks
 	// one schedule reports or counts per pass, so one pass stays short
 	// however much work is due.
+	//ds:def id=sql-claimbatch-3ambkhnj owner=@khanakia stability=stable
 	claimBatch = 100
 )
 
 // prefixPattern keeps table prefixes to characters every engine accepts
 // unquoted, so a prefix can never change the meaning of a statement.
+//
+//ds:def id=sql-prefixpattern-yghnagrg owner=@khanakia stability=stable
 var prefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,30}$`)
 
 // Option configures a Client.
@@ -148,6 +166,8 @@ type Option func(*Client)
 // WithClock sets the time source of every due time: delayed starts, sleeps,
 // wait deadlines, retry backoff, step timeouts, rate-limit windows and cron
 // fires. The default is clock.Real; tests pass clock.NewFake.
+//
+//ds:def id=sql-withclock-43e3rabg owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option {
 	return func(cl *Client) {
 		if c != nil {
@@ -160,6 +180,8 @@ func WithClock(c clock.Clock) Option {
 // from WithClock because a lease is about a worker being alive, which is
 // wall time: a test that moves a fake scheduling clock by an hour must not
 // make every running step look abandoned. The default is clock.Real.
+//
+//ds:def id=sql-withleaseclock-a4ytvmv4 owner=@khanakia stability=stable
 func WithLeaseClock(c clock.Clock) Option {
 	return func(cl *Client) {
 		if c != nil {
@@ -171,6 +193,8 @@ func WithLeaseClock(c clock.Clock) Option {
 // WithLease sets how long a claimed step stays claimed without renewal;
 // a dead worker's step is run again by another client after at most this
 // long. Values of zero or less are ignored.
+//
+//ds:def id=sql-withlease-gtcuhgcm owner=@khanakia stability=stable
 func WithLease(d time.Duration) Option {
 	return func(cl *Client) {
 		if d > 0 {
@@ -189,6 +213,8 @@ func WithLease(d time.Duration) Option {
 // so the margin is the gap between it stopping and another node starting.
 // The same margin applies to the OnFailure, run-end delivery and prune
 // leases. The default is zero; negative values are ignored.
+//
+//ds:def id=sql-withleaseskew-32k7fs4q owner=@khanakia stability=stable
 func WithLeaseSkew(d time.Duration) Option {
 	return func(cl *Client) {
 		if d >= 0 {
@@ -201,6 +227,8 @@ func WithLeaseSkew(d time.Duration) Option {
 // after its worker died before it fails with ErrAbandoned (then the retry
 // policy applies, and without retries left the run fails). Zero fails the
 // attempt at its first takeover. Negative values are ignored.
+//
+//ds:def id=sql-withmaxreclaims-mq8n5ud9 owner=@khanakia stability=stable
 func WithMaxReclaims(n int) Option {
 	return func(cl *Client) {
 		if n >= 0 {
@@ -212,6 +240,8 @@ func WithMaxReclaims(n int) Option {
 // WithPollInterval sets how often the client looks for work that another
 // node made due (a step another client queued, a signal for a run this
 // client did not start). Values of zero or less are ignored.
+//
+//ds:def id=sql-withpollinterval-4mg6xgyu owner=@khanakia stability=stable
 func WithPollInterval(d time.Duration) Option {
 	return func(cl *Client) {
 		if d > 0 {
@@ -222,6 +252,8 @@ func WithPollInterval(d time.Duration) Option {
 
 // WithWorkers sets how many step attempts may execute at once. Values
 // below 1 are ignored.
+//
+//ds:def id=sql-withworkers-fe9c8n69 owner=@khanakia stability=stable
 func WithWorkers(n int) Option {
 	return func(cl *Client) {
 		if n >= 1 {
@@ -238,6 +270,8 @@ func WithWorkers(n int) Option {
 // per query by design: a claim leases its step, so claiming steps no idle
 // worker can start would hold them from every other node. Values below 1
 // are ignored.
+//
+//ds:def id=sql-withfetchbatch-pgg8y6vu owner=@khanakia stability=stable
 func WithFetchBatch(n int) Option {
 	return func(cl *Client) {
 		if n >= 1 {
@@ -249,6 +283,8 @@ func WithFetchBatch(n int) Option {
 // WithLogger sets where the driver reports what it cannot return to a
 // caller (a failed poll, an OnFailure error, a cron fire that could not
 // enqueue). The default discards.
+//
+//ds:def id=sql-withlogger-f5zjhse4 owner=@khanakia stability=stable
 func WithLogger(l *slog.Logger) Option {
 	return func(cl *Client) {
 		if l != nil {
@@ -259,6 +295,8 @@ func WithLogger(l *slog.Logger) Option {
 
 // WithMiddleware wraps every step handler and OnFailure handler. The first
 // middleware is the outermost.
+//
+//ds:def id=sql-withmiddleware-hkqu69ab owner=@khanakia stability=stable
 func WithMiddleware(mw ...workflow.Middleware) Option {
 	return func(cl *Client) { cl.mw = append(cl.mw, mw...) }
 }
@@ -266,6 +304,8 @@ func WithMiddleware(mw ...workflow.Middleware) Option {
 // WithTablePrefix sets the prefix of every table name (default "wf_"), so
 // two independent queues can share one database. It must match
 // ^[a-z][a-z0-9_]{0,30}$; New refuses anything else.
+//
+//ds:def id=sql-withtableprefix-27tumk8t owner=@khanakia stability=stable
 func WithTablePrefix(p string) Option { return func(cl *Client) { cl.prefix = p } }
 
 // WithSchema puts every table in the named Postgres schema ("jobs" makes
@@ -281,6 +321,8 @@ func WithTablePrefix(p string) Option { return func(cl *Client) { cl.prefix = p 
 // always; its rows for this store are owned as "<owner>@<schema>", so
 // several schemas share one ledger table and keep separate histories.
 // MigrationScripts with the same options gives the schema-qualified DDL.
+//
+//ds:def id=sql-withschema-es3gsbyz owner=@khanakia stability=stable
 func WithSchema(name string) Option { return func(cl *Client) { cl.schema = name } }
 
 // WithCronParser replaces the cron parser behind Workflow.Cron and
@@ -290,6 +332,8 @@ func WithSchema(name string) Option { return func(cl *Client) { cl.schema = name
 // database must use the same parser. It is opt-in and gives up "the same
 // spec on every driver" for the expressions only this parser understands;
 // see cron.Parser. Nil is ignored.
+//
+//ds:def id=sql-withcronparser-dqejw86q owner=@khanakia stability=stable
 func WithCronParser(p cron.Parser) Option {
 	return func(cl *Client) {
 		if p != nil {
@@ -301,6 +345,8 @@ func WithCronParser(p cron.Parser) Option {
 // WithJitterSource sets where Backoff.Jitter draws its uniform values in
 // [0, 1), so a test can pin them. The default is math/rand/v2. It must be
 // safe for concurrent use. Nil is ignored.
+//
+//ds:def id=sql-withjittersource-bcd4dpzh owner=@khanakia stability=stable
 func WithJitterSource(rnd func() float64) Option {
 	return func(cl *Client) {
 		if rnd != nil {
@@ -315,6 +361,8 @@ func WithJitterSource(rnd func() float64) Option {
 // driver, proxy or wrapper whose errors read differently needs its own, or
 // a lost idempotency race comes back as an error and a deadlock is not
 // retried. A nil classifier is ignored.
+//
+//ds:def id=sql-witherrorclassifier-jjq8my6v owner=@khanakia stability=stable
 func WithErrorClassifier(f ErrorClassifier) Option {
 	return func(cl *Client) {
 		if f != nil {
@@ -326,6 +374,8 @@ func WithErrorClassifier(f ErrorClassifier) Option {
 // WithIDGenerator sets how run, step, delayed-start and unnamed schedule
 // IDs are made (see IDGenerator). The default is DefaultIDGenerator,
 // "<kind>_<32 hex>". A nil generator is ignored.
+//
+//ds:def id=sql-withidgenerator-jnvdknyn owner=@khanakia stability=stable
 func WithIDGenerator(g IDGenerator) Option {
 	return func(cl *Client) {
 		if g != nil {
@@ -338,6 +388,8 @@ func WithIDGenerator(g IDGenerator) Option {
 // race is tried before its error reaches the caller (default 5). Raise it
 // for a SQLite file many processes write; one turns retrying off. Values
 // below 1 are ignored.
+//
+//ds:def id=sql-withtxattempts-4aey9mx7 owner=@khanakia stability=stable
 func WithTxAttempts(n int) Option {
 	return func(cl *Client) {
 		if n >= 1 {
@@ -351,6 +403,8 @@ func WithTxAttempts(n int) Option {
 // which only matters while a node may still see that tick due, so keep it
 // well above the longest pause a node can have between reading a schedule
 // and firing it. Values of zero or less are ignored.
+//
+//ds:def id=sql-withtickretention-t9qcn2w7 owner=@khanakia stability=stable
 func WithTickRetention(d time.Duration) Option {
 	return func(cl *Client) {
 		if d > 0 {
@@ -365,6 +419,8 @@ func WithTickRetention(d time.Duration) Option {
 // locks pile up faster than that; raise it to spend fewer queries on a
 // quiet database. Values below 1 are ignored. Retention of finished runs
 // has its own cadence (WithPruneInterval).
+//
+//ds:def id=sql-withhousekeepingevery-q4fj6uq9 owner=@khanakia stability=stable
 func WithHousekeepingEvery(passes int) Option {
 	return func(cl *Client) {
 		if passes >= 1 {
@@ -382,6 +438,8 @@ func WithHousekeepingEvery(passes int) Option {
 // one, then Job.Priority, then arrival. Without it the client serves every
 // queue from its one pool. New refuses an invalid list
 // (workflow.ValidateQueues).
+//
+//ds:def id=sql-withqueues-jk2r8vnt owner=@khanakia stability=stable
 func WithQueues(qs ...workflow.QueueConfig) Option {
 	return func(cl *Client) { cl.queues = append(cl.queues, qs...) }
 }
@@ -391,6 +449,8 @@ func WithQueues(qs ...workflow.QueueConfig) Option {
 // it serves, for grace on the scheduling clock: a worker that stops when
 // its queues are empty. Schedules do not keep it alive. Done
 // closes when it has stopped. A grace of zero or less is ignored.
+//
+//ds:def id=sql-withstopwhenidle-azx5aahg owner=@khanakia stability=stable
 func WithStopWhenIdle(grace time.Duration) Option {
 	return func(cl *Client) {
 		if grace > 0 {
@@ -571,6 +631,8 @@ var (
 // New returns a client over db, whose SQL is written for d (sqlb's
 // Postgres, SQLite or MySQL dialect). It opens nothing and starts nothing:
 // db is the app's pool, used from Migrate and Start on.
+//
+//ds:def id=sql-new-89qpbdvm owner=@khanakia stability=stable
 func New(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Client, error) {
 	if db == nil || d == nil {
 		return nil, fmt.Errorf("%w: sqlstore.New needs a *sql.DB and a dialect", workflow.ErrInvalid)
@@ -580,6 +642,8 @@ func New(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Client, error) {
 
 // build is New without the nil-pool check: MigrationScripts renders SQL
 // text from the options and never touches a pool, so it passes none.
+//
+//ds:def id=sql-build-8nb2xeb9 owner=@khanakia stability=stable
 func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Client, error) {
 	if d == nil {
 		return nil, fmt.Errorf("%w: sqlstore needs a dialect", workflow.ErrInvalid)
@@ -655,6 +719,8 @@ func build(db *sql.DB, d sqlb.Dialect, opts []Option) (*Client, error) {
 // DB returns the pool the client was built with: the one escape hatch, for
 // reading the tables directly (a dashboard, a report) or running Migrate
 // inside a wider schema step.
+//
+//ds:def id=sql-client-db-3rs7y8ey owner=@khanakia stability=stable
 func (c *Client) DB() *sql.DB { return c.st.db }
 
 // registered is a workflow with its handlers wrapped and its graph indexed
@@ -678,6 +744,8 @@ func (c *Client) Capabilities() workflow.Caps { return caps }
 
 // Register validates wf and stores it. Cron expressions are parsed here so
 // a typo fails now, not at the first fire.
+//
+//ds:def id=sql-client-register-buvwt9ee owner=@khanakia stability=stable
 func (c *Client) Register(wf workflow.Workflow) error {
 	if err := workflow.Validate(wf); err != nil {
 		return err
@@ -772,6 +840,8 @@ func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 
 // exprKeys refuses every expression key in wf: SQL has no engine
 // expression language to evaluate, so keys are Go functions only.
+//
+//ds:def id=sql-exprkeys-wxvw57q3 owner=@khanakia stability=stable
 func exprKeys(wf workflow.Workflow) error {
 	reason := "the sql driver evaluates only KeyFunc keys; workflow " + wf.Name
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
@@ -796,6 +866,8 @@ func exprKeys(wf workflow.Workflow) error {
 // Cancelling ctx stops the client; runs stay in the database for the next
 // client, and steps this client was executing are released so another
 // client runs them at once.
+//
+//ds:def id=sql-client-start-ab8ayzsy owner=@khanakia stability=stable
 func (c *Client) Start(ctx context.Context) error {
 	if c.enqueueOnly {
 		return c.syncClock(ctx) // nothing runs here (WithEnqueueOnly)
@@ -938,6 +1010,8 @@ func lockName(workflowName string) string { return "admit:" + workflowName }
 // Stop shuts the client down and waits until every goroutine it started
 // has exited. Runs are left as they are in the database. It is safe to
 // call more than once, and before Start (a no-op).
+//
+//ds:def id=sql-client-stop-p9pcyebp owner=@khanakia stability=stable
 func (c *Client) Stop() {
 	if c.enqueueOnly {
 		c.shutdown()
@@ -986,6 +1060,8 @@ func (c *Client) shutdown() {
 }
 
 // usable reports whether calls that need workers may proceed.
+//
+//ds:def id=sql-client-usable-pj2kayv2 owner=@khanakia stability=stable
 func (c *Client) usable() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

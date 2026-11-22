@@ -1,0 +1,7 @@
+func randomID(prefix string) string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	return prefix + "_" + hex.EncodeToString(b[:])
+}

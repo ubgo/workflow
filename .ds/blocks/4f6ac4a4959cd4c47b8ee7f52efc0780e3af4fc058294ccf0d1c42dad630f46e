@@ -1,0 +1,7 @@
+func (h *webhook) deliver(ctx context.Context, id string, body []byte, labels map[string]string) error {
+	if h.cfg.Inbox == nil {
+		return h.enqueue(ctx, id, body, labels)
+	}
+	_, err := h.cfg.Inbox.Once(ctx, id, func(ctx context.Context) error { return h.enqueue(ctx, id, body, labels) })
+	return err
+}

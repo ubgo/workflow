@@ -1,0 +1,3 @@
+func logError(ctx context.Context, op WriteOp, ref workflow.RunRef, err error) {
+	slog.Default().WarnContext(ctx, "recorder: write failed", slog.String("op", string(op)), slog.String("run", KeyOf(ref)), slog.Any("error", err))
+}

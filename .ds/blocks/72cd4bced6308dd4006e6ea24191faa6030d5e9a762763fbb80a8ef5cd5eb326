@@ -1,0 +1,6 @@
+func effectiveMisfire(m workflow.Misfire) workflow.Misfire {
+	if m.IsZero() {
+		return workflow.Misfire{Policy: workflow.MisfireFireOnce}
+	}
+	return m
+}

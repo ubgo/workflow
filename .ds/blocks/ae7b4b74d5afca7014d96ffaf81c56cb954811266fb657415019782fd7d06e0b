@@ -1,0 +1,1 @@
+	ErrAlreadyStarted = errors.New("workflow: client already started")

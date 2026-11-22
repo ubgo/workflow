@@ -1,0 +1,8 @@
+func (cc *codecClient) Signal(ctx context.Context, ev workflow.Event) error {
+	sealed, err := seal(cc.codec, ev.Payload)
+	if err != nil {
+		return fmt.Errorf("workflow/middleware: encode event payload: %w", err)
+	}
+	ev.Payload = sealed
+	return cc.Client.Signal(ctx, ev)
+}

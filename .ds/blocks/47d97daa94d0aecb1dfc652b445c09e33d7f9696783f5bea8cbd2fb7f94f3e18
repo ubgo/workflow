@@ -1,0 +1,4 @@
+type StateTimer struct {
+	Delay time.Duration
+	Event string
+}

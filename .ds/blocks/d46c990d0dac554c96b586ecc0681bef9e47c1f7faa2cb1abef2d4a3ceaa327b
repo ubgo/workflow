@@ -1,0 +1,13 @@
+	SQSAttributes = AttributeLimits{Name: "SQS", MaxCount: 10, MaxKeyBytes: 256, ValidKey: func(k string) error {
+		if err := keyChars("_-.")(k); err != nil {
+			return err
+		}
+		lk := strings.ToLower(k)
+		switch {
+		case strings.HasPrefix(k, ".") || strings.HasSuffix(k, ".") || strings.Contains(k, ".."):
+			return fmt.Errorf("key %q starts or ends with '.' or holds \"..\"", k)
+		case strings.HasPrefix(lk, "aws.") || strings.HasPrefix(lk, "amazon."):
+			return fmt.Errorf("key %q uses a prefix AWS reserves", k)
+		}
+		return nil
+	}}

@@ -1,0 +1,1 @@
+type TenantScope[P any] func(r *http.Request, who P) (tenant string, err error)

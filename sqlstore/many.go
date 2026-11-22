@@ -17,6 +17,8 @@ import (
 // already in the table, or an earlier job of this call) gets that run's
 // RunRef and starts nothing, as Enqueue does. Enqueue middleware of a
 // wrapping client does not run, since the call bypasses the wrapper.
+//
+//ds:def id=sql-client-enqueuemany-w7j399jb owner=@khanakia stability=stable
 func (c *Client) EnqueueMany(ctx context.Context, jobs []workflow.Job) ([]workflow.RunRef, error) {
 	if len(jobs) == 0 {
 		return nil, nil

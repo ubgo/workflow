@@ -1,0 +1,44 @@
+func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.usable(); err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	row, err := c.loadRun(ctx, c.st.db, "id", string(run))
+	if errors.Is(err, workflow.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: pending signals: %w", err)
+	}
+	if !openRun(row.status) {
+		return nil, nil
+	}
+	q := `SELECT id, name, payload FROM {signals} WHERE ev_key = ? AND name IN (?` + strings.Repeat(", ?", len(names)-1) + `)
+		AND id > ? AND id NOT IN (SELECT signal_id FROM {consumed} WHERE run_id = ?) ORDER BY id`
+	args := []any{workflow.RunKey(run)}
+	for _, n := range names {
+		args = append(args, n)
+	}
+	args = append(args, row.sigFloor, row.id)
+	if limit > 0 {
+		q += " LIMIT " + strconv.Itoa(limit)
+	}
+	var out []workflow.RunSignal
+	var id int64
+	var sig workflow.RunSignal
+	err = c.st.each(ctx, c.st.db, q, args, func() error {
+		sig.ID = strconv.FormatInt(id, 10)
+		out = append(out, sig)
+		sig = workflow.RunSignal{}
+		return nil
+	}, &id, &sig.Name, &sig.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: pending signals: %w", err)
+	}
+	return out, nil
+}

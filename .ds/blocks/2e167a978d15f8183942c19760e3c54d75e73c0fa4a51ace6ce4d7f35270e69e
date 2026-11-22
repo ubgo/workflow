@@ -1,0 +1,14 @@
+type ScheduleLast struct {
+	// Fire is when the schedule last enqueued a run: the tick's time for
+	// a cron fire, the driver's clock for a trigger. Zero when it never
+	// fired.
+	Fire time.Time
+
+	// Run is the run that fire enqueued. Zero when it never fired.
+	Run RunRef
+
+	// Status is that run's status when the schedule was listed; empty
+	// when it never fired or the driver no longer knows the run (deleted,
+	// pruned). It is the "last outcome" once the run is terminal.
+	Status Status
+}

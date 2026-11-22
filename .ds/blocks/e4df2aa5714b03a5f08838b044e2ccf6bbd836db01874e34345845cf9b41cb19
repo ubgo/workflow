@@ -1,0 +1,16 @@
+func (r *Reporter) tags(f workflow.Failure) map[string]string {
+	tags := map[string]string{
+		TagWorkflow: f.Workflow,
+		TagStatus:   string(f.Status),
+		TagFinal:    strconv.FormatBool(f.Final),
+	}
+	if f.Step != "" {
+		tags[TagStep] = f.Step
+	}
+	for k, v := range f.Labels {
+		if r.allLabels || r.labels[k] {
+			tags[TagLabelPrefix+k] = v
+		}
+	}
+	return tags
+}

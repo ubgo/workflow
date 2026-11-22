@@ -1,0 +1,24 @@
+func TestRun_AuthHeadersAndTokenNeverPrinted(t *testing.T) {
+	f, srv := newFake(t)
+	env := map[string]string{EnvToken: "s3cret-token", EnvHeader: "X-Tenant: acme"}
+	code, out, errOut := runCLI(t, srv, env, "--header", "Cookie: s=ok", "caps")
+	if code != ExitOK {
+		t.Fatalf("exit %d %s", code, errOut)
+	}
+	h := f.Calls()[0].header
+	if h.Get("Authorization") != "Bearer s3cret-token" || h.Get("X-Tenant") != "acme" || h.Get("Cookie") != "s=ok" {
+		t.Errorf("headers = %v", h)
+	}
+	_, help, _ := runCLI(t, srv, env, "help", "caps")
+	_, _, failErr := runCLI(t, srv, env, "inspect", "missing")
+	for _, s := range []string{out, errOut, help, failErr} {
+		if strings.Contains(s, "s3cret") {
+			t.Errorf("token printed: %q", s)
+		}
+	}
+	// A later --token wins over the environment and the top level.
+	runCLI(t, srv, env, "--token", "a", "caps", "--token", "b")
+	if got := f.Calls()[len(f.Calls())-1].header.Get("Authorization"); got != "Bearer b" {
+		t.Errorf("Authorization = %q, want Bearer b", got)
+	}
+}

@@ -1,0 +1,6 @@
+func checkScheduleMisfire(m workflow.Misfire) error {
+	if !m.IsZero() {
+		return unsupported("Schedule.Misfire", caps.Missing(workflow.RequiresSchedule(workflow.Schedule{Misfire: m, Location: time.UTC})), misfireReason)
+	}
+	return nil
+}

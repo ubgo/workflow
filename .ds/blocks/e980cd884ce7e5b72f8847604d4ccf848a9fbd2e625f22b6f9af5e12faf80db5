@@ -1,0 +1,9 @@
+func (r *Recorder) Delete(ctx context.Context, ref workflow.RunRef) error {
+	err := r.Forward.Delete(ctx, ref)
+	if err == nil {
+		r.mu.Lock()
+		r.deletes = append(r.deletes, ref)
+		r.mu.Unlock()
+	}
+	return err
+}

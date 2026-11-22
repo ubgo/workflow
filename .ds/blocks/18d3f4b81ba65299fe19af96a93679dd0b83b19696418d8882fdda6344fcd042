@@ -1,0 +1,20 @@
+func buildHeaders(g global, getenv func(string) string) (http.Header, error) {
+	h := http.Header{}
+	if g.token != "" {
+		h.Set("Authorization", "Bearer "+g.token)
+	}
+	raw := []string(g.headers)
+	if v := getenv(EnvHeader); v != "" {
+		raw = append([]string{v}, raw...)
+	}
+	for _, line := range raw {
+		k, v, ok := strings.Cut(line, ":")
+		k = strings.TrimSpace(k)
+		if !ok || k == "" || strings.ContainsAny(k, " \t") {
+			// The value may be a secret: name the problem, not the value.
+			return nil, usagef("--header wants 'Name: value' (got a value without a header name)")
+		}
+		h.Add(k, strings.TrimSpace(v))
+	}
+	return h, nil
+}

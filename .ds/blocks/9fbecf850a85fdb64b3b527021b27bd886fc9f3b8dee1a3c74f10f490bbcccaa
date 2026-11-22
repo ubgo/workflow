@@ -1,0 +1,12 @@
+type UnsupportedError struct {
+	// Field is the spec field or feature, such as "Job.RunAt" or
+	// "Schedule.Location".
+	Field string
+
+	// Missing is the capabilities that would be needed, when the refusal
+	// comes from a capability check; zero otherwise.
+	Missing Caps
+
+	// Reason is an optional detail, such as the workflow name.
+	Reason string
+}

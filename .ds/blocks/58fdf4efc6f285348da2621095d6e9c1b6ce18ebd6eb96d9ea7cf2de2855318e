@@ -1,0 +1,4 @@
+type BlobPrefixDeleter interface {
+	// DeletePrefix removes every blob whose key starts with prefix.
+	DeletePrefix(ctx context.Context, prefix string) error
+}

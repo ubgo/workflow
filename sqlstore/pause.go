@@ -36,6 +36,8 @@ func pauseRow(t workflow.PauseTarget) (kind, name string) {
 // on every client of this database, no step attempt of a held run starts.
 // The pause is a row, so it survives restarts; Pause on a paused target is
 // a no-op. It works before Start too.
+//
+//ds:def id=sql-client-pause-jgngycbf owner=@khanakia stability=stable
 func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	if err := workflow.CheckPause(caps, t); err != nil {
 		return err
@@ -52,6 +54,8 @@ func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 // Pauser pause. Resuming a target that is not paused is a no-op. Held runs
 // are claimed at once on this client and within the poll interval on the
 // others.
+//
+//ds:def id=sql-client-resume-q4jewu5k owner=@khanakia stability=stable
 func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
 	if err := workflow.CheckPause(caps, t); err != nil {
 		return err
@@ -236,6 +240,8 @@ func (c *Client) schedulesPaused(ctx context.Context) (bool, error) {
 // due while it was paused (reportPaused), before the pause is cleared, so
 // a resume that lands before a dispatcher pass saw those ticks cannot fire
 // them. A schedule still held by another pause (All) is left to it.
+//
+//ds:def id=sql-client-skippausedticks-yqj9zkhn owner=@khanakia stability=stable
 func (c *Client) skipPausedTicks(ctx context.Context, t workflow.ScheduleTarget) error {
 	allPaused, err := c.schedulesPaused(ctx)
 	if err != nil {

@@ -1,0 +1,15 @@
+func answerError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, workflow.ErrInvalid):
+		http.Error(w, "the job is invalid", http.StatusBadRequest)
+	case workflow.IsPermanent(err), workflow.IsDiscarded(err):
+		http.Error(w, "the job failed for good", http.StatusUnprocessableEntity)
+	default:
+		if d, ok := workflow.RetryAfterDelay(err, 0); ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int((d+time.Second-1)/time.Second)))
+			http.Error(w, "retry later", http.StatusServiceUnavailable)
+			return
+		}
+		http.Error(w, "the job failed", http.StatusInternalServerError)
+	}
+}

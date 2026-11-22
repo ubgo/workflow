@@ -1,0 +1,1 @@
+const archivedDeleteTimeout = 30 * time.Second

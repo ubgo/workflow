@@ -19,12 +19,16 @@ import (
 // own and passes it to Build or Load, so two clients in one process (or
 // two tests) never share names by accident. It is safe for concurrent
 // use, so a reload may Build while another goroutine registers.
+//
+//ds:def id=dsl-registry-aqvqrzp8 owner=@khanakia stability=stable
 type Registry struct {
 	mu       sync.RWMutex
 	handlers map[string]workflow.Handler
 }
 
 // NewRegistry returns an empty Registry.
+//
+//ds:def id=dsl-newregistry-ub3nydx9 owner=@khanakia stability=stable
 func NewRegistry() *Registry { return &Registry{} }
 
 // Register adds h under name. An empty name, a nil handler and a name
@@ -32,6 +36,8 @@ func NewRegistry() *Registry { return &Registry{} }
 // workflow.ErrInvalid: a second registration under one name is almost
 // always two features colliding, and replacing the first would change
 // what running definitions do without a word.
+//
+//ds:def id=dsl-registry-register-nqy89s2y owner=@khanakia stability=stable
 func (r *Registry) Register(name string, h workflow.Handler) error {
 	if name == "" {
 		return fieldErr("", "a handler name is empty")

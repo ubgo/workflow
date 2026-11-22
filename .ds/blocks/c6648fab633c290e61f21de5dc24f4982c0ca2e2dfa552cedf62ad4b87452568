@@ -1,0 +1,34 @@
+var progressCases = []testCase{
+	{"progress reported by a step is kept with the run", func(e *env) {
+		e.need(workflow.CapRunQuery)
+		g := newGate(e.t)
+		reported := make(chan error, 1)
+		wf := oneStep(e.name("w"), func(ctx context.Context, in []byte) ([]byte, error) {
+			reported <- workflow.ReportProgress(ctx, workflow.Progress{Percent: 50, Message: "half"})
+			return in, g.wait(ctx)
+		})
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		var err error
+		select {
+		case err = <-reported:
+		case <-time.After(e.tm.wait):
+			e.t.Fatal("the step never reported")
+		}
+		e.skipUnsupported(err, "ReportProgress")
+		if err != nil {
+			e.t.Fatalf("ReportProgress: %v", err)
+		}
+		e.eventually("RunInfo.Progress", 0, func() bool {
+			p := e.runInfo(ref).Progress
+			return p != nil && p.Percent == 50 && p.Message == "half" && p.Step == "only"
+		})
+		g.open()
+		e.waitStatus(ref, workflow.StatusSucceeded, e.tm.unit)
+	}},
+	{"ReportProgress refuses a percent outside 0..100", func(e *env) {
+		if err := workflow.ReportProgress(context.Background(), workflow.Progress{Percent: 101}); !errors.Is(err, workflow.ErrInvalid) {
+			e.t.Fatalf("ReportProgress(101) = %v, want ErrInvalid", err)
+		}
+	}},
+}

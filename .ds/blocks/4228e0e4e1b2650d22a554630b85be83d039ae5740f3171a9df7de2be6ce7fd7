@@ -1,0 +1,10 @@
+func (i *Instrumentation) metricLabelAttrs(labels map[string]string) []attribute.KeyValue {
+	if len(i.metricLabels) == 0 {
+		return nil
+	}
+	out := make([]attribute.KeyValue, 0, len(i.metricLabels)+3)
+	for _, k := range i.metricLabels {
+		out = append(out, attribute.String(LabelAttributePrefix+k, labels[k]))
+	}
+	return out
+}

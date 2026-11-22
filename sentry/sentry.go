@@ -14,12 +14,18 @@ import (
 // Tag and context names set on every event. They are fixed so a Sentry
 // search or alert rule written against them keeps working.
 const (
-	TagWorkflow    = "workflow.name"
-	TagStep        = "workflow.step"
-	TagStatus      = "workflow.status"
-	TagFinal       = "workflow.final"
+	//ds:def id=sentry-tagworkflow-sxv2ff9p owner=@khanakia stability=stable
+	TagWorkflow = "workflow.name"
+	//ds:def id=sentry-tagstep-bsdenfw4 owner=@khanakia stability=stable
+	TagStep = "workflow.step"
+	//ds:def id=sentry-tagstatus-majrmsnw owner=@khanakia stability=stable
+	TagStatus = "workflow.status"
+	//ds:def id=sentry-tagfinal-xntkmsmg owner=@khanakia stability=stable
+	TagFinal = "workflow.final"
+	//ds:def id=sentry-taglabelprefix-em7jawbk owner=@khanakia stability=stable
 	TagLabelPrefix = "workflow.label."
-	ContextName    = "workflow"
+	//ds:def id=sentry-contextname-fwf9qqdv owner=@khanakia stability=stable
+	ContextName = "workflow"
 )
 
 // Reporter is a workflow.Reporter that sends each Failure to Sentry as
@@ -42,6 +48,8 @@ type Option func(*Reporter)
 // WithLabels forwards the job labels with these keys as tags
 // (workflow.label.<key>). Labels are not sent unless chosen, because they
 // can carry tenant or user ids.
+//
+//ds:def id=sentry-withlabels-t93eqyns owner=@khanakia stability=stable
 func WithLabels(keys ...string) Option {
 	return func(r *Reporter) {
 		for _, k := range keys {
@@ -52,16 +60,22 @@ func WithLabels(keys ...string) Option {
 
 // WithAllLabels forwards every job label as a tag. Prefer WithLabels: a
 // label added later is then sent without anyone deciding it.
+//
+//ds:def id=sentry-withalllabels-ntk3edrp owner=@khanakia stability=stable
 func WithAllLabels() Option { return func(r *Reporter) { r.allLabels = true } }
 
 // WithLevels sets the event level of a final failure and of an attempt
 // failure (LevelError and LevelWarning by default).
+//
+//ds:def id=sentry-withlevels-mjf3p27u owner=@khanakia stability=stable
 func WithLevels(final, attempt sentrygo.Level) Option {
 	return func(r *Reporter) { r.final, r.attempt = final, attempt }
 }
 
 // WithFingerprint replaces the grouping of events into Sentry issues.
 // The default is DefaultFingerprint.
+//
+//ds:def id=sentry-withfingerprint-n94r6s46 owner=@khanakia stability=stable
 func WithFingerprint(fn func(workflow.Failure) []string) Option {
 	return func(r *Reporter) {
 		if fn != nil {
@@ -73,12 +87,16 @@ func WithFingerprint(fn func(workflow.Failure) []string) Option {
 // WithEvent runs fn on every event just before it is sent, with the
 // Failure it came from; fn returns the event to send, or nil to drop it.
 // It is the one escape hatch for anything the options do not cover.
+//
+//ds:def id=sentry-withevent-6w8j75fx owner=@khanakia stability=stable
 func WithEvent(fn func(*sentrygo.Event, workflow.Failure) *sentrygo.Event) Option {
 	return func(r *Reporter) { r.event = fn }
 }
 
 // New returns a Reporter that sends through hub; a nil hub means the hub
 // in each Report's ctx, or sentry.CurrentHub when the ctx has none.
+//
+//ds:def id=sentry-new-4kj4dgh8 owner=@khanakia stability=stable
 func New(hub *sentrygo.Hub, opts ...Option) *Reporter {
 	r := &Reporter{
 		hub:         hub,
@@ -96,6 +114,8 @@ func New(hub *sentrygo.Hub, opts ...Option) *Reporter {
 // DefaultFingerprint groups events by workflow, step and the type of the
 // innermost error, so a recurring failure is one issue whatever the run
 // or the error text (which often holds ids).
+//
+//ds:def id=sentry-defaultfingerprint-n9fduktt owner=@khanakia stability=stable
 func DefaultFingerprint(f workflow.Failure) []string {
 	return []string{"ubgo-workflow", f.Workflow, f.Step, errorType(f.Err)}
 }
@@ -115,6 +135,8 @@ func errorType(err error) string {
 }
 
 // Report sends f to Sentry as one event.
+//
+//ds:def id=sentry-reporter-report-dzsr5wty owner=@khanakia stability=stable
 func (r *Reporter) Report(ctx context.Context, f workflow.Failure) {
 	hub := r.hub
 	if hub == nil {
@@ -157,6 +179,8 @@ func (r *Reporter) level(f workflow.Failure) sentrygo.Level {
 }
 
 // tags are the fixed tags plus the labels the options let through.
+//
+//ds:def id=sentry-reporter-tags-48vcsk9n owner=@khanakia stability=stable
 func (r *Reporter) tags(f workflow.Failure) map[string]string {
 	tags := map[string]string{
 		TagWorkflow: f.Workflow,
@@ -176,6 +200,8 @@ func (r *Reporter) tags(f workflow.Failure) map[string]string {
 
 // workflowContext is the per-run detail, kept out of tags because run IDs
 // would make every tag value unique.
+//
+//ds:def id=sentry-workflowcontext-dka65jqg owner=@khanakia stability=stable
 func workflowContext(f workflow.Failure) sentrygo.Context {
 	c := sentrygo.Context{"run_id": string(f.Ref.RunID)}
 	if !f.Ref.ScheduledID.IsZero() {

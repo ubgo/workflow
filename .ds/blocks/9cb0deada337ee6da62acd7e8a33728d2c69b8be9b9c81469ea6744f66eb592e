@@ -1,0 +1,3 @@
+type SlotHarness struct {
+	Start func(t *testing.T, workers int, wfs ...workflow.Workflow) (workflow.Client, error)
+}

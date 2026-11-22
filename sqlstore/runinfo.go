@@ -17,14 +17,20 @@ import (
 // read (tenant, result, progress, the nodes that ran it), the node of each
 // recorded attempt error, and the node registry.
 const (
-	tblRunInfo      = "run_info"
-	tblAttemptNode  = "attempt_err_node"
-	tblNodes        = "nodes"
+	//ds:def id=sql-tblruninfo-4kabrcgv owner=@khanakia stability=stable
+	tblRunInfo = "run_info"
+	//ds:def id=sql-tblattemptnode-ztx847jj owner=@khanakia stability=stable
+	tblAttemptNode = "attempt_err_node"
+	//ds:def id=sql-tblnodes-atd9gguc owner=@khanakia stability=stable
+	tblNodes = "nodes"
+	//ds:def id=sql-defaultnodesttl-b9p86gq7 owner=@khanakia stability=stable
 	defaultNodesTTL = time.Hour // how long a silent node stays listed
 )
 
 // runInfoDefs is the tables of migration 008. New tables, not columns, for
 // the reason adminDefs gives.
+//
+//ds:def id=sql-runinfodefs-mje58wrf owner=@khanakia stability=stable
 func runInfoDefs(t sqlTypes) []tableDef {
 	return []tableDef{{stem: tblRunInfo, lines: []string{
 		// One row per run, written with it (backfilled by 008 for older
@@ -154,6 +160,8 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 }
 
 // reportProgress is the workflow.ProgressReporter a step of run a sees.
+//
+//ds:def id=sql-client-progressreporter-3e6yptcc owner=@khanakia stability=stable
 func (c *Client) progressReporter(a *attempt) workflow.ProgressFunc {
 	return func(ctx context.Context, p workflow.Progress) error {
 		p.Step = a.name

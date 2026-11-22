@@ -1,0 +1,14 @@
+func FailOn(match func(error) bool) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		if match == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			out, err := next(ctx, in)
+			if err != nil && !workflow.IsPermanent(err) && match(err) {
+				return out, workflow.Permanent(err)
+			}
+			return out, err
+		}
+	}
+}

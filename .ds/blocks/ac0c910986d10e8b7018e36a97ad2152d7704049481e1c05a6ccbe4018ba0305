@@ -1,0 +1,6 @@
+func (j job) noWindows(f Format) error {
+	if !j.s.Windows.IsZero() {
+		return refuse(f, "Windows", "it has no time-of-day windows; drop them or check the time in the command")
+	}
+	return nil
+}

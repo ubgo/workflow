@@ -1,0 +1,97 @@
+func (c *Client) Start(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	// Register has refused every workflow the driver cannot honour.
+	if err := checkConfig(c.cfg); err != nil {
+		return err
+	}
+	if c.cfg.EnqueueOnly {
+		c.startEnqueueOnly(ctx)
+		return nil
+	}
+	if c.sdk == nil {
+		sdk, err := newSDK(c.cfg.ClientOptions)
+		if err != nil {
+			return err
+		}
+		c.sdk = sdk
+	}
+	if err := c.checkEngine(ctx); err != nil {
+		return err
+	}
+	// Each workflow's delayed variant joins the same worker as the
+	// workflow itself (same queue), so poolOrder and poolSpecs list it
+	// right after it.
+	poolOrder := make([]string, 0, 2*len(c.order))
+	poolSpecs := make(map[string]workflow.Workflow, 2*len(c.order))
+	declared := make(map[string]*hatchetsdk.Workflow, 2*len(c.order))
+	for _, name := range c.order {
+		hw, err := c.declare(c.specs[name])
+		if err != nil {
+			return err
+		}
+		c.workflows[name] = hw
+		poolOrder, poolSpecs[name], declared[name] = append(poolOrder, name), c.specs[name], hw
+		if hasStartGate(c.specs[name]) {
+			dw, err := c.declareDelayed(c.specs[name])
+			if err != nil {
+				return err
+			}
+			c.delayed[name] = dw
+			dn := delayedName(name)
+			poolOrder, poolSpecs[dn], declared[dn] = append(poolOrder, dn), c.specs[name], dw
+		}
+	}
+	if c.cfg.BatchCoordinator {
+		hw, err := c.declareCoordinator()
+		if err != nil {
+			return err
+		}
+		c.coordinator = hw
+	}
+	pools := workerPools(c.cfg, poolOrder, poolSpecs, declared, c.coordinator)
+	runCtx, cancel := context.WithCancel(ctx)
+	c.runCtx = runCtx
+	// The watch is set before any worker starts, so every handler sees it.
+	if c.cfg.Recycle.Enabled() {
+		c.watch = workflow.NewRecycleWatch(c.cfg.Recycle, c.cfg.Clock.Now())
+	}
+	var stops []func() error
+	stopAll := func() {
+		for _, stop := range stops {
+			if err := stop(); err != nil {
+				c.cfg.Logger.Error("hatchet driver: stop worker", "error", err)
+			}
+		}
+	}
+	for _, p := range pools {
+		stop, id, err := c.startWorker(ctx, p)
+		if err != nil {
+			cancel()
+			stopAll()
+			return err
+		}
+		stops = append(stops, stop)
+		c.workerIDs = append(c.workerIDs, id)
+	}
+	c.stop = cancel
+	go func() {
+		<-runCtx.Done()
+		// Marked before the workers stop, so a caller woken by Done
+		// already gets ErrNotStarted from every call.
+		c.mu.Lock()
+		c.drained = true
+		c.mu.Unlock()
+		stopAll()
+		close(c.done)
+	}()
+	c.started = true
+	c.startNotifier(ctx)
+	if c.watch != nil {
+		go c.watchRecycle(runCtx, c.watch)
+	}
+	return nil
+}

@@ -8,7 +8,7 @@ Cross-cutting behaviour (logging, tracing, metrics, recovery, timeouts, codecs, 
 
 ## Write step middleware
 
-A `workflow.Middleware` is `func(next workflow.Handler) workflow.Handler`. It runs around every attempt of every step (and around `OnFailure`), so it can read or change the input, time the call, change the error or the output. What it knows about the attempt comes from `workflow.StepInfoFrom(ctx)`, which every driver sets before the middleware chain runs: the workflow, step, run ID, attempt number (1 for the first) and the run's labels.
+A [`workflow.Middleware`](ds:block?id=middleware-bsp4zm4w) is `func(next workflow.Handler) workflow.Handler`. It runs around every attempt of every step (and around `OnFailure`), so it can read or change the input, time the call, change the error or the output. What it knows about the attempt comes from [`workflow.StepInfoFrom(ctx)`](ds:block?id=stepinfofrom-rr9mwh2c), which every driver sets with [`WithStepInfo`](ds:block?id=withstepinfo-t26f3eu3) before the middleware chain runs: the workflow, step, run ID, attempt number (1 for the first) and the run's labels.
 
 <!-- snippet: examples/custom-plugin/plugin.go#step -->
 ```go
@@ -37,7 +37,7 @@ func logAttempts(log *lineLog) workflow.Middleware {
 }
 ```
 
-An enqueue middleware has the same shape one level up: `func(next workflow.EnqueueFunc) workflow.EnqueueFunc`, around every `Enqueue`. Return an error wrapping `workflow.ErrInvalid` to refuse a job; `StepInfoFrom` reports false there, since an enqueue is not a step.
+An enqueue middleware has the same shape one level up: [`workflow.EnqueueMiddleware`](ds:block?id=enqueuemiddleware-eg4vqams) is `func(next workflow.EnqueueFunc) workflow.EnqueueFunc`, around every `Enqueue`. Return an error wrapping `workflow.ErrInvalid` to refuse a job; [`StepInfoFrom`](ds:block?id=stepinfofrom-rr9mwh2c) reports false there, since an enqueue is not a step.
 
 <!-- snippet: examples/custom-plugin/plugin.go#enqueue -->
 ```go
@@ -70,11 +70,11 @@ Three ways to install them, all equivalent in effect:
 
 | Where | Step middleware | Enqueue middleware |
 |---|---|---|
-| On the driver | `memory.WithMiddleware`, `sqlstore.WithMiddleware`, `hatchet.Config.Middleware` | — |
-| Around any client | — | `middleware.WrapClient(c, mws...)`, or `middleware.ChainEnqueue` to compose |
-| As a plugin | `StepMiddlewareProvider` | `EnqueueMiddlewareProvider` |
+| On the driver | [`memory.WithMiddleware`](ds:block?id=memory-withmiddleware-yea2tnqr), [`sqlstore.WithMiddleware`](ds:block?id=sql-withmiddleware-hkqu69ab), [`hatchet.Config.Middleware`](ds:block?id=hatchet-config-wdky3m9f) | — |
+| Around any client | — | [`middleware.WrapClient(c, mws...)`](ds:block?id=mw-wrapclient-nqppp3fu), or [`middleware.ChainEnqueue`](ds:block?id=mw-chainenqueue-bebyqvsx) to compose |
+| As a plugin | [`StepMiddlewareProvider`](ds:block?id=stepmiddlewareprovider-s6nzes9g) | [`EnqueueMiddlewareProvider`](ds:block?id=enqueuemiddlewareprovider-6akzkpv4) |
 
-`middleware.Chain(mws...)` composes step middleware into one; in every list, the first entry is the outermost.
+[`middleware.Chain(mws...)`](ds:block?id=mw-chain-xz7pjtss) composes step middleware into one; in every list, the first entry is the outermost.
 
 ## Try it
 
@@ -94,12 +94,12 @@ The first line is `requireLabel`, the second `logAttempts`.
 
 ## Pitfalls
 
-- Return the error you were given, or wrap it with `%w`. Replacing it with a new error loses `workflow.Permanent` and `workflow.RetryAfter` marks, and the step is retried when it should not be (or the other way round). To stop retries on purpose, return `workflow.Permanent(err)`; the library's `middleware.FailOn` does that for errors you match.
+- Return the error you were given, or wrap it with `%w`. Replacing it with a new error loses [`workflow.Permanent`](ds:block?id=permanent-9e6vjm6s) and [`workflow.RetryAfter`](ds:block?id=retryafter-xck6cdyv) marks, and the step is retried when it should not be (or the other way round). To stop retries on purpose, return `workflow.Permanent(err)`; the library's [`middleware.FailOn`](ds:block?id=mw-failon-pnqdj4g7) does that for errors you match.
 - Middleware runs once per attempt, not once per run. Count runs in a run-finished observer, attempts here.
 - Respect `ctx`: a step whose run was cancelled or timed out sees its context end. Middleware that waits (a rate limiter, a lock) must give up when it does.
-- Do not log `in` or `out`: payloads may hold personal data, and the library's own `Logging` never logs them.
+- Do not log `in` or `out`: payloads may hold personal data, and the library's own [`Logging`](ds:block?id=mw-logging-zanq5b67) never logs them.
 - On a durable driver the same attempt may run again on another worker after a crash, so a side effect in middleware (a counter in another store) may happen twice.
-- Enqueue middleware wraps `Client.Enqueue` only. It does not see `sqlstore.Client.EnqueueTx`, nor the runs a driver starts on its own for a cron tick, since neither goes through the wrapped `Enqueue`.
+- Enqueue middleware wraps `Client.Enqueue` only. It does not see [`sqlstore.Client.EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq), nor the runs a driver starts on its own for a cron tick, since neither goes through the wrapped `Enqueue`.
 
 ## Related
 

@@ -1,0 +1,6 @@
+type MemoryOutputs struct {
+	lim   MemoryOutputLimits
+	mu    sync.Mutex
+	runs  map[workflow.RunID][]AttemptOutput
+	order []workflow.RunID // arrival order of each run's first output, for eviction
+}

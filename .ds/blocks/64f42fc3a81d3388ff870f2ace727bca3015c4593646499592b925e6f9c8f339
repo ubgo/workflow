@@ -1,0 +1,1 @@
+var fakeOps = []workflow.Op{workflow.OpResetRun, workflow.OpResetSucceeded, workflow.OpForkRun, workflow.OpSignalWaiting}

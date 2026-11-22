@@ -1,0 +1,53 @@
+const (
+	OpRuns      Operation = "runs"       // list and search runs (RunQuerier)
+	OpRun       Operation = "run"        // show one run (RunQuerier)
+	OpFailures  Operation = "failures"   // list failed runs (RunQuerier)
+	OpDiscarded Operation = "discarded"  // list discarded runs (RunQuerier, CapRunStates)
+	OpQueues    Operation = "queues"     // queue depth and oldest wait (RunQuerier)
+	OpRetry     Operation = "retry"      // retry a failed run from its failed step (RunRetrier)
+	OpDelete    Operation = "delete"     // forget a finished run (RunDeleter)
+	OpCancel    Operation = "cancel"     // cancel one run (Client.Cancel)
+	OpCancelAll Operation = "cancel_all" // cancel every run matching a filter (BulkCanceller)
+	OpPause     Operation = "pause"      // pause, resume and list pauses (Pauser)
+	OpSchedules Operation = "schedules"  // list schedules with their next fire time (ScheduleLister)
+	// OpSchedulePause pauses and resumes one schedule (SchedulePauser).
+	OpSchedulePause Operation = "schedule_pause"
+	// OpScheduleTrigger runs one schedule now, outside its cron
+	// (ScheduleTriggerer).
+	OpScheduleTrigger Operation = "schedule_trigger"
+	// OpForce ends a run from outside: force-complete or force-fail
+	// (RunForcer).
+	OpForce Operation = "force"
+	// OpRetryAll retries every failed run a filter matches (RunQuerier
+	// and RunRetrier).
+	OpRetryAll Operation = "retry_all"
+	// OpDeleteAll forgets every finished run a filter matches (RunQuerier
+	// and RunDeleter).
+	OpDeleteAll Operation = "delete_all"
+	// OpNodes lists the nodes that are online (NodeLister).
+	OpNodes Operation = "nodes"
+	// OpHealth reads the client's health report (workflow.CheckHealth);
+	// every client supports it, one without HealthChecker saying it
+	// cannot tell.
+	OpHealth Operation = "health"
+	// OpReschedule moves a delayed run to a new time (RunRescheduler).
+	OpReschedule Operation = "reschedule"
+	// OpEditRun changes a scheduled run's payload, priority or start
+	// (RunEditor).
+	//ds:def id=admin-opeditrun-rccmgvd7 owner=@khanakia stability=stable
+	OpEditRun Operation = "edit_run"
+	// OpCancelStep withdraws one step of a run (StepCanceller).
+	OpCancelStep Operation = "cancel_step"
+	// OpResetRun re-runs a failed run in place from a chosen step
+	// (RunResetter).
+	OpResetRun Operation = "reset_run"
+	// OpResetSucceeded also resets a run that succeeded
+	// (RunResetterWith, ResetOptions.Succeeded).
+	OpResetSucceeded Operation = "reset_succeeded"
+	// OpForkRun starts a new run from a finished one at a chosen step
+	// (RunForker).
+	OpForkRun Operation = "fork_run"
+	// OpSignalWaiting delivers an event only to the runs waiting for it
+	// now (TransientSignaller).
+	OpSignalWaiting Operation = "signal_waiting"
+)

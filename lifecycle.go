@@ -9,30 +9,40 @@ import (
 //
 // Code that switches on it must keep a default branch: a later version
 // may add kinds.
+//
+//ds:def id=lifecyclekind-fnvwsyy7 owner=@khanakia stability=stable
 type LifecycleKind string
 
 // The lifecycle kinds.
 const (
 	// LifecycleInserted: Enqueue accepted a new run (not a duplicate
 	// returned for an idempotency key).
+	//ds:def id=lifecycleinserted-74ak7wrv owner=@khanakia stability=stable
 	LifecycleInserted LifecycleKind = "inserted"
 	// LifecycleStarted: a step attempt started (Step and Attempt set).
+	//ds:def id=lifecyclestarted-yz56258m owner=@khanakia stability=stable
 	LifecycleStarted LifecycleKind = "started"
 	// LifecycleRetrying: a step attempt failed and the step will run
 	// again after its backoff (Err set, Attempt is the failed one).
+	//ds:def id=lifecycleretrying-y3jsmjmh owner=@khanakia stability=stable
 	LifecycleRetrying LifecycleKind = "retrying"
 	// LifecycleSnoozed: a step snoozed (Snooze) and runs again later.
+	//ds:def id=lifecyclesnoozed-k96yqmmm owner=@khanakia stability=stable
 	LifecycleSnoozed LifecycleKind = "snoozed"
 	// LifecycleProgress: a step reported progress (Progress set).
+	//ds:def id=lifecycleprogress-yvqxcvp5 owner=@khanakia stability=stable
 	LifecycleProgress LifecycleKind = "progress"
 	// LifecycleFinished: the run reached a terminal status (Status set;
 	// Err for a failure). The same moment RunNotifier reports.
+	//ds:def id=lifecyclefinished-3p3kttag owner=@khanakia stability=stable
 	LifecycleFinished LifecycleKind = "finished"
 )
 
 // LifecycleEvent is one moment in a run's life, for a live view (a
 // dashboard, a progress bar, an audit trail) that wants more than the
 // end RunNotifier reports.
+//
+//ds:def id=lifecycleevent-369x8exj owner=@khanakia stability=stable
 type LifecycleEvent struct {
 	Kind     LifecycleKind
 	Ref      RunRef
@@ -86,6 +96,8 @@ type LifecycleFunc func(ctx context.Context, ev LifecycleEvent)
 //     panic in it is recovered and never changes a run.
 //   - For one run, the events of one process arrive in the order they
 //     happened.
+//
+//ds:def id=lifecyclenotifier-3vtxxku9 owner=@khanakia stability=stable
 type LifecycleNotifier interface {
 	OnLifecycle(fn LifecycleFunc) error
 }

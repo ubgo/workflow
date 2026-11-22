@@ -1,0 +1,7 @@
+func (f Func[In]) Enqueue(ctx context.Context, client Client, in In) (RunRef, error) {
+	job, err := f.Job(in)
+	if err != nil {
+		return RunRef{}, err
+	}
+	return client.Enqueue(ctx, job)
+}

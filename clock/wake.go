@@ -7,6 +7,8 @@ import (
 
 // DefaultWakeCheck is the check interval WakeChecked uses for an interval
 // of zero or less.
+//
+//ds:def id=clock-defaultwakecheck-ytntg994 owner=@khanakia stability=stable
 const DefaultWakeCheck = 30 * time.Second
 
 // WakeChecked returns a Clock whose timers fire by the wall clock, not by
@@ -22,6 +24,8 @@ const DefaultWakeCheck = 30 * time.Second
 // It costs one wake per every per pending timer, so pick every to match
 // how late a fire may be after a resume (DefaultWakeCheck for a desktop
 // app). It wraps any Clock; Now is the inner clock's.
+//
+//ds:def id=clock-wakechecked-pdvq4r34 owner=@khanakia stability=stable
 func WakeChecked(inner Clock, every time.Duration) Clock {
 	if every <= 0 {
 		every = DefaultWakeCheck
@@ -36,6 +40,7 @@ type wakeClock struct {
 
 func (w wakeClock) Now() time.Time { return w.inner.Now() }
 
+//ds:def id=clock-wakeclock-newtimer-dbkyykbb owner=@khanakia stability=stable
 func (w wakeClock) NewTimer(d time.Duration) Timer {
 	// Round(0) drops the monotonic reading, so Sub compares wall clocks:
 	// the point of this clock is that wall time includes a suspend.
@@ -68,6 +73,7 @@ func (t *wakeTimer) Stop() bool {
 	return true
 }
 
+//ds:def id=clock-waketimer-run-j9hnqx62 owner=@khanakia stability=stable
 func (t *wakeTimer) run(w wakeClock, deadline time.Time) {
 	for {
 		left := deadline.Sub(w.inner.Now().Round(0))

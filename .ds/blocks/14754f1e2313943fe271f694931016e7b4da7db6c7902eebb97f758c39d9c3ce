@@ -1,0 +1,7 @@
+func WithHousekeepingEvery(passes int) Option {
+	return func(cl *Client) {
+		if passes >= 1 {
+			cl.housekeepEvery = passes
+		}
+	}
+}

@@ -1,0 +1,3 @@
+func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	return c.retryFrom(ctx, ref, "", workflow.ResetOptions{})
+}

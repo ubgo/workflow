@@ -14,6 +14,8 @@ import (
 // zero) means now. Any other status returns ErrWrongState, an unknown ref
 // ErrNotFound. A client without it returns an UnsupportedError from the
 // Forward wrapper; the fallback is Cancel plus Enqueue.
+//
+//ds:def id=runrescheduler-rmgramx6 owner=@khanakia stability=stable
 type RunRescheduler interface {
 	Reschedule(ctx context.Context, ref RunRef, at time.Time) (RunRef, error)
 }
@@ -21,6 +23,8 @@ type RunRescheduler interface {
 // ErrStepCancelled is the cause of a step attempt's ctx when an operator
 // cancelled that step (StepCanceller), and matches the step's error when
 // it ends because of it.
+//
+//ds:def id=errstepcancelled-bxbppyku owner=@khanakia stability=stable
 var ErrStepCancelled = errors.New("workflow: step cancelled")
 
 // StepCanceller withdraws one step of a run, leaving the rest of the run
@@ -41,6 +45,8 @@ var ErrStepCancelled = errors.New("workflow: step cancelled")
 //
 // A step that has not started, or has ended, returns ErrWrongState; an
 // unknown run or step ErrNotFound. Cancelling the whole run is Cancel.
+//
+//ds:def id=stepcanceller-gp5urxfn owner=@khanakia stability=stable
 type StepCanceller interface {
 	CancelStep(ctx context.Context, ref RunRef, step string) error
 }

@@ -1,0 +1,5 @@
+type JournalStore struct {
+	rdb  goredis.UniversalClient
+	base string
+	ttl  time.Duration
+}

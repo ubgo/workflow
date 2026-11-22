@@ -1,0 +1,1 @@
+var defaultBackoff = workflow.Backoff{Initial: time.Second, Factor: 2, Max: 5 * time.Minute}

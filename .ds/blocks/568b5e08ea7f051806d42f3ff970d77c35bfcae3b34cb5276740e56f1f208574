@@ -1,0 +1,4 @@
+type MemoryDisable struct {
+	mu   sync.Mutex
+	keys map[string]disableState
+}

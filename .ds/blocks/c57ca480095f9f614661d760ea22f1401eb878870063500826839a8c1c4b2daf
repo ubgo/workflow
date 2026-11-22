@@ -1,0 +1,6 @@
+func forwardKey(info workflow.StepInfo) string {
+	if at, ok := workflow.TickTime(info.Labels); ok {
+		return "hybrid/" + info.Labels[workflow.LabelSchedule] + "/" + at.Format(time.RFC3339Nano)
+	}
+	return "hybrid/" + info.RunID.String()
+}

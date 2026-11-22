@@ -1,0 +1,9 @@
+type SecretFinding struct {
+	// Where locates it: "payload" plus a JSON path ("payload.user.password"),
+	// "label <key>", or "chain[2].payload...".
+	Where string
+
+	// Rule names the rule that matched ("key", "pem-private-key",
+	// "aws-access-key", ...), so a false positive can be allowed by name.
+	Rule string
+}

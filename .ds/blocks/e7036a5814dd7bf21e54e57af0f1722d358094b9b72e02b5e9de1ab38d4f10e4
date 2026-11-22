@@ -1,0 +1,11 @@
+func decodeBody(r *http.Request, v any) error {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("body: %w", err)
+	}
+	if dec.More() {
+		return errors.New("body: more than one JSON value")
+	}
+	return nil
+}

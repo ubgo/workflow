@@ -1,0 +1,6 @@
+type RunFailedError struct {
+	Ref    RunRef
+	Status Status
+	// Err is RunInfo.Error when the client could say why; empty otherwise.
+	Err string
+}

@@ -42,6 +42,8 @@ func (s *sharedDebounce) Swap(ctx context.Context, key string, b middleware.Debo
 // TestDebounce_SharedStoreAcrossProcesses: two debouncers (two processes)
 // sharing one store debounce a key together: the second process cancels
 // the first process's run. With the default store each keeps its own.
+//
+//ds:def id=mw-testdebounce-sharedstoreacrossprocesses-7wkwjqux owner=@khanakia stability=stable
 func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
 	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
@@ -80,6 +82,8 @@ func TestDebounce_SharedStoreAcrossProcesses(t *testing.T) {
 // TestDebounce_StoreErrorFailsClosed: a Get error enqueues nothing; a Swap
 // error cancels the new run and reports the error, so it never fires
 // beside the pending one.
+//
+//ds:def id=mw-testdebounce-storeerrorfailsclosed-9zxznnyv owner=@khanakia stability=stable
 func TestDebounce_StoreErrorFailsClosed(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
 	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}
@@ -267,6 +271,8 @@ func (r racedStore) Swap(context.Context, string, middleware.DebounceBurst) (mid
 // TestDebounce_SwapDecidesWhatIsCancelled: the run Swap returns is the one
 // cancelled, even when Get saw none, so a race between two processes
 // never leaves both runs pending.
+//
+//ds:def id=mw-testdebounce-swapdecideswhatiscancelled-pfkp9ket owner=@khanakia stability=stable
 func TestDebounce_SwapDecidesWhatIsCancelled(t *testing.T) {
 	clk := clock.NewFake(time.Unix(1000, 0))
 	stub := &stubClient{caps: workflow.CapsOf(workflow.CapDelayedStart, workflow.CapCancel)}

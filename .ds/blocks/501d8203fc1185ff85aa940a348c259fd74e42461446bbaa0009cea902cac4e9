@@ -1,0 +1,17 @@
+func PickWeighted(weights []int, r float64) int {
+	if len(weights) == 0 {
+		return -1
+	}
+	total := 0
+	for _, w := range weights {
+		total += max(w, 1)
+	}
+	target := int(r * float64(total))
+	for i, w := range weights {
+		target -= max(w, 1)
+		if target < 0 {
+			return i
+		}
+	}
+	return len(weights) - 1
+}

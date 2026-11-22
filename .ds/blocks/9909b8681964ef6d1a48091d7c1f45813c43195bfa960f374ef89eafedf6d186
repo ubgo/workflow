@@ -1,0 +1,9 @@
+func (a *Admin) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
+	if err := a.check(OpCancelStep); err != nil {
+		return err
+	}
+	if ref.IsZero() || step == "" {
+		return fmt.Errorf("%w: admin: cancel step needs a run and a step name", workflow.ErrInvalid)
+	}
+	return a.c.(workflow.StepCanceller).CancelStep(ctx, ref, step)
+}

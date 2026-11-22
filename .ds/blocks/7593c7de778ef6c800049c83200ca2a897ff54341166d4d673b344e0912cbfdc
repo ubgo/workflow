@@ -1,0 +1,38 @@
+func (m *Monitor) Check(ctx context.Context) error {
+	rep, err := m.a.QueueStats(ctx)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[alertKey]bool{}
+	stats := map[string]QueueStat{}
+	for _, s := range rep.Queues {
+		stats[s.Queue] = s
+		t, ok := m.threshold(s.Queue)
+		if !ok {
+			continue
+		}
+		if t.MaxDepth > 0 && s.Depth > t.MaxDepth {
+			seen[alertKey{AlertQueueDepth, s.Queue}] = true
+			m.raise(ctx, alertKey{AlertQueueDepth, s.Queue}, s, t, rep)
+		}
+		if t.MaxWait > 0 && s.OldestWait > t.MaxWait {
+			seen[alertKey{AlertQueueWait, s.Queue}] = true
+			m.raise(ctx, alertKey{AlertQueueWait, s.Queue}, s, t, rep)
+		}
+	}
+	// An open alert not seen this poll is resolved, including for a queue
+	// that emptied and so is absent from the report.
+	for k := range m.open {
+		if seen[k] {
+			continue
+		}
+		delete(m.open, k)
+		s := stats[k.queue]
+		s.Queue = k.queue
+		t, _ := m.threshold(k.queue)
+		m.send(ctx, Alert{Kind: k.kind, Queue: k.queue, Depth: s.Depth, Wait: s.OldestWait, Threshold: t, Resolved: true, Truncated: rep.Truncated, At: rep.At})
+	}
+	return nil
+}

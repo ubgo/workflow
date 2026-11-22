@@ -1,0 +1,84 @@
+func (c *Client) execute(a *attempt) {
+	defer c.endAttempt()
+	// Tracked from the first instant, so a drain whose deadline ends now
+	// still lists this attempt as cut off.
+	defer c.drainTrack.Begin(workflow.DrainCut{RunID: workflow.RunID(a.runID), Workflow: a.workflow, Step: a.name, Attempt: int(a.attempts)})()
+	actx, cancel := context.WithCancelCause(c.ctx)
+	defer cancel(nil)
+	a.cancel = cancel
+	c.addLocal(a)
+	done := make(chan struct{})
+	c.wg.Add(1)
+	// The heartbeat starts before anything else touches the database: on a
+	// busy database the writes and reads below can wait on its lock for
+	// longer than the lease, and an unrenewed lease would hand the step to
+	// another live worker while this one is about to run it.
+	go c.heartbeat(a, done)
+
+	// The lease is renewed until the outcome is written, not only while the
+	// handler runs: a record waiting on a busy database must not let the
+	// lease expire and hand the finished step to another client.
+	defer close(done)
+
+	if a.attempts == 1 {
+		// The run's first attempt, as far as this step knows: record the
+		// run's start once (RunInfo.StartedAt). A miss only leaves the time
+		// unset, so the error is logged, not returned.
+		if _, err := c.st.exec(c.ctx, c.st.db, "UPDATE {run_ext} SET started_at = ? WHERE run_id = ? AND started_at = 0", a.started, a.runID); err != nil {
+			c.log.Error("sqlstore: record a run's start time", "run", a.runID, "error", err)
+		}
+	}
+	reg := c.reg(a.workflow)
+	var labels map[string]string
+	var raw string
+	if err := c.st.one(c.ctx, c.st.db, "SELECT labels FROM {runs} WHERE id = ?", []any{a.runID}, &raw); err == nil {
+		r := runRow{id: a.runID, labels: raw}
+		var lerr error
+		if labels, lerr = r.labelMap(); lerr != nil {
+			c.log.Error("sqlstore: step runs without labels", "run", a.runID, "error", lerr)
+		}
+	}
+
+	step := reg.steps[a.name]
+	c.emit(c.ctx, workflow.LifecycleEvent{Kind: workflow.LifecycleStarted, Ref: workflow.RunRef{RunID: workflow.RunID(a.runID)}, Workflow: a.workflow,
+		Queue: a.queue, Tenant: a.tenant, Step: a.name, Attempt: int(a.attempts), Status: workflow.StatusRunning, Labels: labels})
+	var out []byte
+	var herr error
+	if a.reclaims > int64(c.maxReclaims) {
+		// A poison step (one that kills its worker every time) would
+		// otherwise be passed from worker to worker forever.
+		herr = fmt.Errorf("sqlstore: step %q abandoned by %s (its lease expired %s, over WithMaxReclaims %d): %w",
+			a.name, plural(a.reclaims, "worker", "workers"), plural(a.reclaims, "time", "times"), c.maxReclaims, ErrAbandoned)
+	} else {
+		slots := workflow.StepSlots(step)
+		// Hold the attempt's worker slots (Step.Slots) while it runs. The
+		// lease is renewed meanwhile; a stop, a lost lease or a cancelled
+		// step ends the wait like it ends a running handler.
+		if herr = c.slots.Acquire(actx, slots); herr == nil {
+			out, herr = c.call(actx, reg, step, a, labels)
+			c.slots.Release(slots)
+		}
+	}
+	c.removeLocal(a)
+	c.countRunning(a.queue, -1)
+
+	if c.ctx.Err() != nil {
+		if !c.crashed.Load() {
+			c.release(a)
+		}
+		return
+	}
+	if errors.Is(context.Cause(actx), ErrLeaseLost) {
+		// Another client may hold the step now; writing an outcome could
+		// overwrite its. The step is retaken once its lease expires. A
+		// CompleteTx that committed before the lease was lost still gets
+		// its after-commit work.
+		c.recordCompleted(a)
+		return
+	}
+	if errors.Is(context.Cause(actx), workflow.ErrStepCancelled) {
+		herr = cancelledOutcome(herr)
+	}
+	c.record(a, reg, step, out, herr)
+	c.recycleAfterAttempt()
+}

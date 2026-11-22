@@ -1,0 +1,35 @@
+func (c *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	started := c.started
+	c.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	copies := map[Side]workflow.Workflow{SideOld: withSide(wf, SideOld), SideNew: withSide(wf, SideNew)}
+	other := copies[c.sched.other()]
+	other.Cron, other.CronWindows, other.ScheduleWhen = nil, workflow.Windows{}, nil
+	other.Misfire, other.CronOverlap = workflow.Misfire{}, ""
+	other.CronSeconds, other.CronActive, other.CronKeepRuns = false, workflow.Active{}, 0
+	copies[c.sched.other()] = other
+
+	newOnly := workflow.CheckCaps(c.old.Capabilities(), copies[SideOld]) != nil
+	if newOnly && c.sched == SideOld && len(wf.Cron) > 0 {
+		return fmt.Errorf("cutover: workflow %q: the old backend holds schedules and cannot run it: %w", wf.Name, workflow.CheckCaps(c.old.Capabilities(), copies[SideOld]))
+	}
+	if err := c.new.Register(copies[SideNew]); err != nil {
+		return fmt.Errorf("cutover: new: %w", err)
+	}
+	if !newOnly {
+		if err := c.old.Register(copies[SideOld]); err != nil {
+			return fmt.Errorf("cutover: old: %w", err)
+		}
+	}
+	c.mu.Lock()
+	c.wfs[wf.Name] = wf
+	c.newOnly[wf.Name] = newOnly
+	c.mu.Unlock()
+	return nil
+}

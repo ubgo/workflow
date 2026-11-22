@@ -1,0 +1,26 @@
+func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if err := c.usable(); err != nil {
+		return false, err
+	}
+	seq, name, ok := strings.Cut(id, "/")
+	if _, err := strconv.ParseUint(seq, 10, 64); !ok || err != nil || name == "" {
+		return false, fmt.Errorf("%w: signal %q", workflow.ErrNotFound, id)
+	}
+	res, err := takeSignalScript.Run(ctx, c.rdb, c.keys(), c.base, string(run), seq, sigKey(name, workflow.RunKey(run))).Text()
+	if err != nil {
+		if errors.Is(err, goredis.Nil) {
+			return false, fmt.Errorf("%w: signal %q for run %s", workflow.ErrNotFound, id, run)
+		}
+		return false, fmt.Errorf("redis: take signal: %w", classify(err))
+	}
+	switch res {
+	case "took":
+		return true, nil
+	case "had":
+		return false, nil
+	}
+	return false, fmt.Errorf("%w: signal %q for run %s", workflow.ErrNotFound, id, run)
+}

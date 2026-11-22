@@ -1,0 +1,19 @@
+func (o *Outbox) NewRelay(target workflow.Client, opts ...RelayOption) (*Relay, error) {
+	if target == nil {
+		return nil, fmt.Errorf("%w: NewRelay needs a target client", workflow.ErrInvalid)
+	}
+	r := &Relay{o: o, target: target, poll: defaultPoll, batch: defaultBatch, lease: defaultLease,
+		timeout: defaultEnqueueTimeout, backoff: defaultBackoff, wake: make(chan struct{})}
+	for _, opt := range opts {
+		opt(r)
+	}
+	if r.lease <= r.timeout {
+		return nil, fmt.Errorf("%w: the relay lease (%s) must exceed the enqueue timeout (%s)", workflow.ErrInvalid, r.lease, r.timeout)
+	}
+	r.entryKey = target.Capabilities().Has(workflow.CapIdempotencyKey)
+	if !r.entryKey && !r.allowDuplicates {
+		return nil, workflow.Unsupported("an outbox relay to a target without CapIdempotencyKey",
+			"the relay dedups redeliveries by idempotency key; pass outbox.AllowDuplicates() to accept that an entry may run twice")
+	}
+	return r, nil
+}

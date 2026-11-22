@@ -1,15 +1,15 @@
 # Migrations
 
-The SQL driver's schema is a list of numbered migrations. You apply them in one of two ways: `Client.Migrate`, which records each one in a ledger table under the engine's migration lock, or `sqlstore.MigrationScripts`, which hands the same SQL to your own tool (goose, Atlas, Flyway, Liquibase, a DBA review). Either way, nothing is applied behind your back: `Start` never migrates.
+The SQL driver's schema is a list of numbered migrations. You apply them in one of two ways: [`Client.Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d), which records each one in a ledger table under the engine's migration lock, or [`sqlstore.MigrationScripts`](ds:block?id=sql-migrationscripts-3yurujx6), which hands the same SQL to your own tool (goose, Atlas, Flyway, Liquibase, a DBA review). Either way, nothing is applied behind your back: `Start` never migrates ([`Start`](ds:block?id=sql-client-start-ab8ayzsy)).
 
 ## Before you start
 
 - A [SQL driver](../drivers/sqlstore.md) client, or a [UniqueStore or DebounceStore](#each-stores-migration-list) on its own.
-- For `WithSchema`, a Postgres schema that already exists: `Migrate` does not create it.
+- For [`WithSchema`](ds:block?id=sql-withschema-es3gsbyz), a Postgres schema that already exists: `Migrate` does not create it.
 
 ## Run the migrations
 
-Call `Migrate` at deploy time, before `Start`. It is safe to run from every process at once: the ledger applies each migration once, serialised by the engine's own lock (an advisory lock on Postgres, a named lock on MySQL, a lock table on SQLite). A second call is a no-op.
+Call `Migrate` at deploy time, before `Start`. It is safe to run from every process at once: the ledger applies each migration once, serialised by the engine's own lock (an advisory lock on Postgres, a named lock on MySQL, a lock table on SQLite: [`ledger`](ds:block?id=sql-store-ledger-79jdgppv)). A second call is a no-op ([`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d)).
 
 <!-- snippet: examples/migrations-export/main.go#migrate -->
 ```go
@@ -27,7 +27,7 @@ if err := c.Migrate(ctx); err != nil { // a second call is a no-op
 }
 ```
 
-The ledger is a table named `<prefix>migrations` (`wf_migrations` by default), one row per applied migration, keyed by owner and name. After `Migrate` on an empty database it holds:
+The ledger is a table named `<prefix>migrations` (`wf_migrations` by default: [`ledger`](ds:block?id=sql-store-ledger-79jdgppv), [`defaultTablePrefix`](ds:block?id=sql-defaulttableprefix-2cbmbc9h)), one row per applied migration, keyed by owner and name. After `Migrate` on an empty database it holds:
 
 ```text
 ubgo/workflow/sqlstore 001_initial
@@ -41,13 +41,13 @@ ubgo/workflow/sqlstore/output 001_output
 ubgo/workflow/sqlstore/unique 001_unique
 ```
 
-`sqlstore.MigrationOwner` (`ubgo/workflow/sqlstore`) owns the queue's own list, so an app that keeps its own migrations in a ledger table of the same name never collides with these. A released migration is never edited: the ledger stores a checksum, and an edited script is refused on every database that applied it. A schema change is a new migration appended to the list. There are no down migrations.
+[`sqlstore.MigrationOwner`](ds:block?id=sql-migrationowner-abfzxxtf) (`ubgo/workflow/sqlstore`) owns the queue's own list, so an app that keeps its own migrations in a ledger table of the same name never collides with these. A released migration is never edited: the ledger stores a checksum, and an edited script is refused on every database that applied it ([`migrations`](ds:block?id=sql-store-migrations-sysbsdpd)). A schema change is a new migration appended to the list. There are no down migrations.
 
 The deploy order for a release that adds a migration (as `002_schedule_misfire` did for the misfire table, `003_queues_admin` for queues, retry overrides, pauses and schedule windows, `004_run_states_chain` for job chains and the discarded status, `005_run_labels` for the label index, `006_schedule_history` for schedule overlap, last fire and per-attempt errors, `001_debounce` for the debounce table, and `001_output` for captured output):
 
 1. Run `Migrate` with the new code (a release step, an init container, or the first process to start).
-2. Then start the new workers. `Start` checks that every table it needs is readable and fails with "table ... is not readable (run Migrate, or apply MigrationScripts, first)" otherwise.
-3. Workers of the old release that are already running are not checked again: the version check happens only in `Migrate` and `Start`. One that restarts after step 1 is refused, as the next section explains, so finish the rollout rather than restarting old workers.
+2. Then start the new workers. `Start` checks that every table it needs is readable and fails with "table ... is not readable (run Migrate, or apply MigrationScripts, first)" otherwise ([`checkSchema`](ds:block?id=sql-client-checkschema-5y2gj6z7)).
+3. Workers of the old release that are already running are not checked again: the version check ([`checkVersion`](ds:block?id=sql-store-checkversion-p7cnnnvj)) happens only in `Migrate` and `Start`. One that restarts after step 1 is refused, as the next section explains, so finish the rollout rather than restarting old workers.
 
 ## Each store's migration list
 
@@ -55,20 +55,20 @@ The stores that apps use without the queue have their own lists, under their own
 
 | Store | Owner constant | Migrations | Applied by |
 |---|---|---|---|
-| The queue | `sqlstore.MigrationOwner` | `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version`, `011_fair_turns` | `Client.Migrate` |
-| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
-| `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
-| `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
-| `JournalStore` (memoised results; `PromiseStore` shares its table) | `sqlstore.JournalMigrationOwner` | `001_journal` | `Client.Migrate` or `JournalStore.Migrate` |
-| `BucketStore` (upstream limits) | `sqlstore.BucketMigrationOwner` | `001_buckets` | `Client.Migrate` or `BucketStore.Migrate` |
-| `DataStore` (run, folder and global data) | `sqlstore.DataMigrationOwner` | `001_data` | `Client.Migrate` or `DataStore.Migrate` |
-| `Inbox` (consumer inbox) | `sqlstore.InboxMigrationOwner` | `001_inbox` | `Client.Migrate` or `Inbox.Migrate` |
-| The transactional outbox | `outbox.MigrationOwner` (`ubgo/workflow/sqlstore/outbox`) | `001_outbox` | `Outbox.Migrate` only |
-| `AggregateStore` (aggregated jobs) | `sqlstore.AggregateMigrationOwner` | `001_aggregate` | `AggregateStore.Migrate` only |
-| `DisableStore` (endpoint switches for `AutoDisable`) | `sqlstore.DisableMigrationOwner` | `001_disable` | `DisableStore.Migrate` only |
-| `LineageStore` (dataset lineage) | `sqlstore.LineageMigrationOwner` | `001_lineage` | `LineageStore.Migrate` only |
+| The queue | `sqlstore.MigrationOwner` | [`migrations`](ds:block?id=sql-store-migrations-sysbsdpd): `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version`, `011_fair_turns` | `Client.Migrate` |
+| `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | [`uniqueMigrations`](ds:block?id=sql-store-uniquemigrations-b2uddpwt): `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
+| `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | [`debounceMigrations`](ds:block?id=sql-store-debouncemigrations-gfww36g2): `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
+| `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | [`outputMigrations`](ds:block?id=sql-store-outputmigrations-v26pg56t): `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
+| `JournalStore` (memoised results; `PromiseStore` shares its table: [`PromiseStore.Migrate`](ds:block?id=sql-promisestore-migrate-vbtntpgy)) | `sqlstore.JournalMigrationOwner` | [`journalMigrations`](ds:block?id=sql-store-journalmigrations-qu36ngwz): `001_journal` | `Client.Migrate` or `JournalStore.Migrate` |
+| `BucketStore` (upstream limits) | `sqlstore.BucketMigrationOwner` | [`bucketMigrations`](ds:block?id=sql-store-bucketmigrations-tva2x5qu): `001_buckets` | `Client.Migrate` or `BucketStore.Migrate` |
+| `DataStore` (run, folder and global data) | `sqlstore.DataMigrationOwner` | [`dataMigrations`](ds:block?id=sql-store-datamigrations-hmesyyuv): `001_data` | `Client.Migrate` or `DataStore.Migrate` |
+| `Inbox` (consumer inbox) | `sqlstore.InboxMigrationOwner` | [`inboxMigrations`](ds:block?id=sql-store-inboxmigrations-gb5pjrwy): `001_inbox` | `Client.Migrate` or `Inbox.Migrate` |
+| The transactional outbox | `outbox.MigrationOwner` (`ubgo/workflow/sqlstore/outbox`) | [`migrations`](ds:block?id=outbox-outbox-migrations-4ska2yrr): `001_outbox` | `Outbox.Migrate` only |
+| `AggregateStore` (aggregated jobs) | `sqlstore.AggregateMigrationOwner` | [`aggregateMigrations`](ds:block?id=sql-aggregatestore-aggregatemigrations-qep75jy2): `001_aggregate` | `AggregateStore.Migrate` only |
+| `DisableStore` (endpoint switches for `AutoDisable`) | `sqlstore.DisableMigrationOwner` | [`disableMigrations`](ds:block?id=sql-disablestore-disablemigrations-qejfpcxy): `001_disable` | `DisableStore.Migrate` only |
+| `LineageStore` (dataset lineage) | `sqlstore.LineageMigrationOwner` | [`lineageMigrations`](ds:block?id=sql-lineagestore-lineagemigrations-9yyjjh6e): `001_lineage` | `LineageStore.Migrate` only |
 
-`Client.Migrate` applies the first eight, a set fixed at v0.2.0. The others migrate only through their own `Migrate` (or their `MigrationScripts`), and so will every store added later: upgrading the library never makes `Client.Migrate` create tables your app did not ask for. An app that uses one of them calls its `Migrate` next to `Client.Migrate`; each takes the same ledger lock, so both are safe from every process at start-up. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
+`Client.Migrate` applies the first eight ([`allMigrations`](ds:block?id=sql-store-allmigrations-c224kr7n)), a set fixed at v0.2.0. The others migrate only through their own `Migrate` (or their `MigrationScripts`), and so will every store added later: upgrading the library never makes `Client.Migrate` create tables your app did not ask for. An app that uses one of them calls its `Migrate` next to `Client.Migrate`; each takes the same ledger lock, so both are safe from every process at start-up. A store built on its own migrates only its own table, which is how an app running on Hatchet gets durable unique jobs from its database:
 
 <!-- snippet: examples/migrations-export/main.go#unique -->
 ```go
@@ -83,7 +83,7 @@ if err := locks.Migrate(ctx); err != nil { // its own list: only the lock table
 
 The ledger then holds the unique store's rows only.
 
-Every ledger row is keyed by its owner and name, so a tool of your own (or a check in your deploy pipeline) can tell the lists apart with the owner constants. `MigrationScripts` returns the lists `Client.Migrate` applies, each script carrying its `Owner`; the outbox has its own `outbox.MigrationScripts`:
+Every ledger row is keyed by its owner and name, so a tool of your own (or a check in your deploy pipeline) can tell the lists apart with the owner constants. [`MigrationScripts`](ds:block?id=sql-migrationscripts-3yurujx6) returns the lists `Client.Migrate` applies, each script carrying its `Owner`; the outbox has its own [`outbox.MigrationScripts`](ds:block?id=outbox-migrationscripts-w4t9z546):
 
 <!-- snippet: examples/migrations-export/main.go#owners -->
 ```go
@@ -113,11 +113,13 @@ migrations per owner:
   ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
   ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate
   ubgo/workflow/sqlstore/outbox: 1 in Outbox.Migrate
-``` The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
+```
+
+The outbox's list is separate from `Client.Migrate`; call `Outbox.Migrate` ([Outbox](../reliability/outbox.md#write-jobs-inside-your-transaction)), and likewise `AggregateStore.Migrate` ([Aggregate jobs](../reliability/aggregate.md#aggregate-jobs-into-one-run-per-window)).
 
 ## Rolling back the code
 
-A database that a newer release migrated is refused, not overwritten: older code could write rows the new schema does not expect. `Migrate` and `Start` both return an error matching `sqlstore.ErrSchemaTooNew`; it is a `*sqlstore.SchemaTooNewError` whose `Unknown` names the migrations this code does not know. Nothing is changed.
+A database that a newer release migrated is refused, not overwritten: older code could write rows the new schema does not expect. `Migrate` and `Start` both return an error matching [`sqlstore.ErrSchemaTooNew`](ds:block?id=sql-errschematoonew-ry9z2uyp); it is a [`sqlstore.SchemaTooNewError`](ds:block?id=sql-schematoonewerror-uzbczmue) pointer whose `Unknown` names the migrations this code does not know. Nothing is changed.
 
 <!-- snippet: examples/migrations-export/main.go#too-new -->
 ```go
@@ -129,11 +131,11 @@ if tooNew, ok := errors.AsType[*sqlstore.SchemaTooNewError](err); ok {
 }
 ```
 
-The check is per owner: a store's migration only counts against code that knows that store's owner. Another store's migration is named with its owner's last path element, such as `unique/002_x`. So a rollback is a roll forward: fix the newer release and deploy it again.
+The check is per owner: a store's migration only counts against code that knows that store's owner. Another store's migration is named with its owner's last path element, such as `unique/002_x` ([`checkVersion`](ds:block?id=sql-store-checkversion-p7cnnnvj)). So a rollback is a roll forward: fix the newer release and deploy it again.
 
 ## Ship the SQL through your own tool
 
-When DDL goes through goose, Atlas, Flyway, Liquibase or a DBA review, or the app's database user has no DDL rights, take the SQL from `MigrationScripts(dialect, opts...)`. It returns every migration `Client.Migrate` applies, in order, as `MigrationScript` values: `Owner`, `Name` and the exact `Statements`, with table names resolved for the `WithTablePrefix` and `WithSchema` options you pass (others are ignored). Pass the same table options the app gives `New`.
+When DDL goes through goose, Atlas, Flyway, Liquibase or a DBA review, or the app's database user has no DDL rights, take the SQL from [`MigrationScripts(dialect, opts...)`](ds:block?id=sql-migrationscripts-3yurujx6). It returns every migration `Client.Migrate` applies, in order, as [`MigrationScript`](ds:block?id=sql-migrationscript-ucujx4tr) values: `Owner`, `Name` and the exact `Statements`, with table names resolved for the `WithTablePrefix` and `WithSchema` options you pass (others are ignored). Pass the same table options the app gives `New`.
 
 <!-- snippet: examples/migrations-export/main.go#export -->
 ```go
@@ -158,7 +160,7 @@ for i, m := range scripts {
 }
 ```
 
-The text is frozen per release exactly as `Migrate`'s is, and every statement is safe to run twice (`IF NOT EXISTS` forms). `Start` checks the tables, not the ledger, so a schema applied this way starts without `Migrate`:
+The text is frozen per release exactly as `Migrate`'s is, and every statement is safe to run twice (`IF NOT EXISTS` forms). `Start` checks the tables, not the ledger ([`checkSchema`](ds:block?id=sql-client-checkschema-5y2gj6z7)), so a schema applied this way starts without `Migrate`:
 
 <!-- snippet: examples/migrations-export/main.go#apply -->
 ```go
@@ -188,13 +190,13 @@ if err := c.Start(ctx); err != nil {
 c.Stop()
 ```
 
-`Migrate` is still safe on such a database later: it re-runs each script (a no-op) and records it. A database that holds only one store needs only that store's scripts: filter by `Owner`.
+`Migrate` is still safe on such a database later: it re-runs each script (a no-op) and records it ([`MigrationScripts`](ds:block?id=sql-migrationscripts-3yurujx6)). A database that holds only one store needs only that store's scripts: filter by `Owner`.
 
 ## Table names and schemas
 
-`WithTablePrefix(p)` starts every table name (default `wf_`), so two independent queues can share one database. It must match `^[a-z][a-z0-9_]{0,30}$`; `New` refuses anything else.
+[`WithTablePrefix(p)`](ds:block?id=sql-withtableprefix-27tumk8t) starts every table name (default `wf_`, [`defaultTablePrefix`](ds:block?id=sql-defaulttableprefix-2cbmbc9h)), so two independent queues can share one database. It must match `^[a-z][a-z0-9_]{0,30}$` ([`prefixPattern`](ds:block?id=sql-prefixpattern-yghnagrg)); `New` refuses anything else ([`build`](ds:block?id=sql-build-8nb2xeb9)).
 
-`WithSchema(name)` puts every table in a Postgres schema of its own (`"jobs"."wf_runs"`), for apps that keep queue tables apart for grants, backup or ownership, or one schema per tenant, without changing the pool's `search_path`. The schema must exist. The ledger stays in the connection's `search_path`, named `<prefix>migrations` as always, and its rows for this store are owned as `<owner>@<schema>`, so several schemas share one ledger table and keep separate histories. `New` refuses `WithSchema` on SQLite, which has no schemas, and on MySQL, whose schema is the database: point the pool at that database instead.
+[`WithSchema(name)`](ds:block?id=sql-withschema-es3gsbyz) puts every table in a Postgres schema of its own (`"jobs"."wf_runs"`), for apps that keep queue tables apart for grants, backup or ownership, or one schema per tenant, without changing the pool's `search_path`. The schema must exist. The ledger stays in the connection's `search_path`, named `<prefix>migrations` as always, and its rows for this store are owned as `<owner>@<schema>` ([`owner`](ds:block?id=sql-store-owner-eex7yefx)), so several schemas share one ledger table and keep separate histories. `New` refuses `WithSchema` on SQLite, which has no schemas, and on MySQL, whose schema is the database ([`build`](ds:block?id=sql-build-8nb2xeb9)): point the pool at that database instead.
 
 <!-- snippet: examples/migrations-export/main.go#schema -->
 ```go
@@ -280,12 +282,12 @@ The program stands in for a newer release by inserting a `099_from_the_future` r
 
 ## Pitfalls
 
-- `Start` never migrates. Forgetting `Migrate` (or the new scripts) after an upgrade fails `Start` on the missing table.
-- Never edit an applied migration's SQL in your own tool: a later `Migrate` compares checksums and refuses the database.
+- `Start` never migrates. Forgetting `Migrate` (or the new scripts) after an upgrade fails `Start` on the missing table ([`checkSchema`](ds:block?id=sql-client-checkschema-5y2gj6z7)).
+- Never edit an applied migration's SQL in your own tool: a later [`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d) compares checksums and refuses the database.
 - With your own tool, record each `(Owner, Name)` there; the next release adds new migrations to `MigrationScripts`, and only those should run.
-- Under `WithSchema`, the ledger is not in that schema; grants for the app user must cover the `search_path` schema's `<prefix>migrations` table too.
-- Restarting a worker of the old release after the new `Migrate` fails with `ErrSchemaTooNew`.
-- Migration `005_run_labels` creates the label index but cannot fill it in SQL, since the labels are JSON decoded in Go. `Migrate` runs the backfill (`Client.IndexLabels`) after the scripts; with your own tool, call `IndexLabels` once after applying 005, or label searches miss the older runs ([Search by label](../jobs/manage-runs.md#the-label-index-on-the-sql-driver)).
+- Under `WithSchema`, the ledger is not in that schema ([`ledger`](ds:block?id=sql-store-ledger-79jdgppv)); grants for the app user must cover the `search_path` schema's `<prefix>migrations` table too.
+- Restarting a worker of the old release after the new `Migrate` fails with [`ErrSchemaTooNew`](ds:block?id=sql-errschematoonew-ry9z2uyp).
+- Migration `005_run_labels` creates the label index but cannot fill it in SQL, since the labels are JSON decoded in Go. `Migrate` runs the backfill ([`Client.IndexLabels`](ds:block?id=sql-client-indexlabels-ccg4tdkz)) after the scripts; with your own tool, call `IndexLabels` once after applying 005, or label searches miss the older runs ([Search by label](../jobs/manage-runs.md#the-label-index-on-the-sql-driver)).
 
 ## Related
 

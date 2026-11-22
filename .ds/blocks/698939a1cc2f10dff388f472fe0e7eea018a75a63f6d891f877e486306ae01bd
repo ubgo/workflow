@@ -1,0 +1,11 @@
+func ValidateRecycle(r Recycle) error {
+	switch {
+	case r.MaxJobs < 0:
+		return invalidf("Recycle.MaxJobs is negative")
+	case r.MaxTime < 0:
+		return invalidf("Recycle.MaxTime is negative")
+	case r.CheckEvery < 0:
+		return invalidf("Recycle.CheckEvery is negative")
+	}
+	return nil
+}

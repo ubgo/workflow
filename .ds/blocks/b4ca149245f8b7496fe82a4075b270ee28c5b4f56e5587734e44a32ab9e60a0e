@@ -1,0 +1,24 @@
+func ParseCaps(s string) (Caps, error) {
+	var c Caps
+	s = strings.TrimSpace(s)
+	if s == "" || s == "none" {
+		return c, nil
+	}
+	for _, part := range strings.Split(s, "|") {
+		part = strings.TrimSpace(part)
+		if num, ok := strings.CutPrefix(part, "#"); ok {
+			n, err := strconv.Atoi(num)
+			if err != nil || n < 0 || n >= capBits {
+				return Caps{}, invalidf("capability number %q out of range 0..%d", part, capBits-1)
+			}
+			c = c.With(capBit(n))
+			continue
+		}
+		n := capNumber(part)
+		if n < 0 {
+			return Caps{}, invalidf("unknown capability %q", part)
+		}
+		c = c.With(capBit(n))
+	}
+	return c, nil
+}

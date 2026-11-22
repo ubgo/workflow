@@ -1,0 +1,8 @@
+func (c Caps) Has(want Caps) bool {
+	for i := range c.w {
+		if c.w[i]&want.w[i] != want.w[i] {
+			return false
+		}
+	}
+	return true
+}

@@ -1,0 +1,11 @@
+func SystemdTimerNextFire(s workflow.Schedule, t Target, clk clock.Clock) ([]File, error) {
+	j, err := systemdPrepare(s, t)
+	if err != nil {
+		return nil, err
+	}
+	next, err := j.nextFire(clk)
+	if err != nil {
+		return nil, err
+	}
+	return j.systemdUnits([]string{next.UTC().Format("2006-01-02 15:04:05") + " UTC"})
+}

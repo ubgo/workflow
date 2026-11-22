@@ -76,6 +76,7 @@ const (
 	// failed and waits on its retry backoff. RunInfo.NextAttemptAt says
 	// when it runs again. Only drivers with CapRunStates report it; the
 	// others report StatusQueued or StatusRunning for the same moment.
+	//ds:def id=statusretrying-x8eqka84 owner=@khanakia stability=stable
 	StatusRetrying Status = "retrying"
 
 	// StatusDiscarded is terminal: the run was dropped on purpose rather
@@ -87,12 +88,15 @@ const (
 	// Err matches ErrDiscarded and ErrCancelled. Only drivers with
 	// CapRunStates report it; the others report StatusCancelled (with
 	// CapDiscard) or StatusFailed for the same run.
+	//ds:def id=statusdiscarded-gm3h9fxg owner=@khanakia stability=stable
 	StatusDiscarded Status = "discarded"
 )
 
 // IsTerminal reports whether the run has finished and will not change
 // again, with one exception: Retry re-opens a failed run (CapRetryRun). An
 // idempotency key is released once its run is terminal.
+//
+//ds:def id=status-isterminal-tfxgce9u owner=@khanakia stability=stable
 func (s Status) IsTerminal() bool {
 	switch s {
 	case StatusSucceeded, StatusFailed, StatusCancelled, StatusDiscarded:
@@ -102,6 +106,8 @@ func (s Status) IsTerminal() bool {
 }
 
 // valid reports whether s is one of the Status constants.
+//
+//ds:def id=status-valid-hgp8uvf4 owner=@khanakia stability=stable
 func (s Status) valid() bool {
 	switch s {
 	case StatusScheduled, StatusQueued, StatusRunning, StatusWaiting, StatusRetrying,
@@ -113,6 +119,8 @@ func (s Status) valid() bool {
 
 // Valid reports whether s is one of the Status constants, so a driver or
 // an admin surface can refuse a status it read from storage or a request.
+//
+//ds:def id=status-valid-xt5e9vdc owner=@khanakia stability=stable
 func (s Status) Valid() bool { return s.valid() }
 
 // EndStatus is the terminal status a driver records for a run whose
@@ -122,6 +130,8 @@ func (s Status) Valid() bool { return s.valid() }
 // to Permanent, the direction that never hides a failure); any other
 // error is StatusFailed. Every driver calls it, so none decides the
 // mapping differently.
+//
+//ds:def id=endstatus-d3uc8s8n owner=@khanakia stability=stable
 func EndStatus(have Caps, err error) Status {
 	if !IsDiscarded(err) {
 		return StatusFailed
@@ -138,6 +148,8 @@ func EndStatus(have Caps, err error) Status {
 // Transition is one legal move of the run state machine: a run in From may
 // be reported as To when Trigger happens on a driver that has every
 // capability in Needs.
+//
+//ds:def id=transition-cymazc4a owner=@khanakia stability=stable
 type Transition struct {
 	From, To Status
 
@@ -155,6 +167,7 @@ var activeStatuses = []Status{StatusQueued, StatusRunning, StatusWaiting, Status
 // transitions is built once; Transitions hands out copies.
 var transitions = buildTransitions()
 
+//ds:def id=buildtransitions-vreab6mw owner=@khanakia stability=stable
 func buildTransitions() []Transition {
 	var t []Transition
 	t = append(t,
@@ -199,6 +212,8 @@ func buildTransitions() []Transition {
 
 // reportCaps is what a move between two active statuses needs: the
 // retrying status exists only with CapRunStates.
+//
+//ds:def id=reportcaps-jxeguskt owner=@khanakia stability=stable
 func reportCaps(from, to Status) Caps {
 	if from == StatusRetrying || to == StatusRetrying {
 		return CapRunStates
@@ -218,10 +233,14 @@ func hasTransition(t []Transition, from, to Status) bool {
 // Transitions returns every legal move of the run state machine. The
 // slice is a copy. Drivers and tests use it to check that a status change
 // they are about to store (or one they read) is a move the machine allows.
+//
+//ds:def id=transitions-pxgpmppa owner=@khanakia stability=stable
 func Transitions() []Transition { return append([]Transition(nil), transitions...) }
 
 // TransitionsFrom returns the moves that leave s: none for a terminal
 // status except failed, which Retry re-opens.
+//
+//ds:def id=status-transitionsfrom-h9u3qtwy owner=@khanakia stability=stable
 func (s Status) TransitionsFrom() []Transition {
 	var out []Transition
 	for _, t := range transitions {
@@ -236,4 +255,6 @@ func (s Status) TransitionsFrom() []Transition {
 // driver with every capability of some transition between them. It ignores
 // capabilities (a driver without CapRunStates never reports retrying); use
 // TransitionsFrom to see what gates each move.
+//
+//ds:def id=status-cantransitionto-3we4jpx7 owner=@khanakia stability=stable
 func (s Status) CanTransitionTo(to Status) bool { return hasTransition(transitions, s, to) }

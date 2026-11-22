@@ -1,0 +1,1 @@
+func WithClient(c *http.Client) Option { return func(d *deliverConfig) { d.client = c } }

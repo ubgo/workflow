@@ -1,0 +1,3 @@
+func WithLabelFilter(keep func(key string) bool) Option {
+	return func(c *config) { c.labels = keep }
+}

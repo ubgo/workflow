@@ -1,0 +1,1 @@
+func WithoutScheduler() Option { return func(cl *Client) { cl.noScheduler = true } }

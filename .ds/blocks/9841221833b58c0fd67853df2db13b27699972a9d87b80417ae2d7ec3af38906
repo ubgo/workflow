@@ -1,0 +1,1 @@
+func WeeklyOn(day time.Weekday, hhmm string) Builder { return Weekly().Days(day).At(hhmm) }

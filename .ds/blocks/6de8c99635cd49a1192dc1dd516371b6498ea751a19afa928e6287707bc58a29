@@ -1,0 +1,40 @@
+func shapeWorkflow(name string, d *rest.V1WorkflowRunDetails) workflow.Workflow {
+	done := map[openapi_types.UUID]bool{}
+	for _, t := range d.Tasks {
+		done[t.TaskExternalId] = t.Status == rest.V1TaskStatusCOMPLETED
+	}
+	// The start gate is the driver's task, not a step.
+	for _, sh := range d.Shape {
+		if sh.TaskName == startGateTask {
+			done[sh.TaskExternalId] = false
+		}
+	}
+	byStep := map[openapi_types.UUID]string{}
+	for _, sh := range d.Shape {
+		if done[sh.TaskExternalId] {
+			byStep[sh.StepId] = sh.TaskName
+		}
+	}
+	wf := workflow.Workflow{Name: name}
+	after := map[string][]string{}
+	for _, sh := range d.Shape {
+		if !done[sh.TaskExternalId] {
+			continue
+		}
+		for _, child := range sh.ChildrenStepIds {
+			if cn, ok := byStep[child]; ok {
+				after[cn] = append(after[cn], sh.TaskName)
+			}
+		}
+	}
+	for _, sh := range d.Shape {
+		if done[sh.TaskExternalId] {
+			wf.Steps = append(wf.Steps, workflow.Step{Name: sh.TaskName, After: after[sh.TaskName]})
+		}
+	}
+	// The shape's order is the engine's, not the declaration's, so the
+	// steps are put in name order: a result with several final steps then
+	// has its keys in name order on every unregistered client.
+	slices.SortFunc(wf.Steps, func(a, b workflow.Step) int { return strings.Compare(a.Name, b.Name) })
+	return wf
+}

@@ -1,0 +1,7 @@
+func WithPingTimeout(d time.Duration) PingerOption {
+	return func(p *Pinger) {
+		if d > 0 {
+			p.timeout = d
+		}
+	}
+}

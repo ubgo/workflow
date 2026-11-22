@@ -1,0 +1,28 @@
+func StepInput(payload []byte, parents []string, outs map[string][]byte) []byte {
+	switch len(parents) {
+	case 0:
+		return payload
+	case 1:
+		return outs[parents[0]]
+	}
+	buf := []byte{'{'}
+	for i, p := range parents {
+		if i > 0 {
+			buf = append(buf, ',')
+		}
+		name, _ := json.Marshal(p) // marshalling a string cannot fail
+		buf = append(buf, name...)
+		buf = append(buf, ':')
+		out, ok := outs[p]
+		switch {
+		case !ok || len(out) == 0:
+			buf = append(buf, "null"...)
+		case json.Valid(out):
+			buf = append(buf, out...)
+		default:
+			s, _ := json.Marshal(string(out)) // marshalling a string cannot fail
+			buf = append(buf, s...)
+		}
+	}
+	return append(buf, '}')
+}

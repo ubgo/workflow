@@ -1,0 +1,3 @@
+func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
+	return c.ResetRunWith(ctx, ref, step, workflow.ResetOptions{})
+}

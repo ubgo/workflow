@@ -1,0 +1,44 @@
+func (c *Client) startSchedule(s *schedule) {
+	s.caught = c.clk.Now()
+	if c.schedHeap {
+		c.pushScheduleLocked(s, true)
+		return
+	}
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		for {
+			c.mu.Lock()
+			caught := s.caught
+			c.mu.Unlock()
+			next := s.s.Next(caught, s.loc)
+			if next.IsZero() {
+				c.log.Warn("memory: cron schedule never fires again", "workflow", s.workflow, "cron", s.s.String())
+				return
+			}
+			// Read the clock as late as possible: a delay from an
+			// earlier reading lands past next whenever the clock moved
+			// in between (a fake clock advanced by a test), and the tick
+			// would fire late.
+			t := c.clk.NewTimer(next.Sub(c.clk.Now()))
+			select {
+			case <-t.C():
+			case <-s.stop:
+				t.Stop()
+				return
+			case <-c.ctx.Done():
+				t.Stop()
+				return
+			}
+			c.mu.Lock()
+			w, ok := c.wakeScheduleLocked(s)
+			c.mu.Unlock()
+			if !ok {
+				return
+			}
+			if w.fire {
+				c.fire(s, w.reg, w.ticks, w.windows, w.labels, w.input)
+			}
+		}
+	}()
+}

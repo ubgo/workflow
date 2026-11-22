@@ -1,0 +1,4 @@
+type BucketSpec struct {
+	Capacity      float64
+	LeakPerSecond float64
+}

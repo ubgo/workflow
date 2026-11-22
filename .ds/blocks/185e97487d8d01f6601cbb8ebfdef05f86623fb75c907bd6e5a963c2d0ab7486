@@ -1,0 +1,1 @@
+func PollSource(interval time.Duration) Source { return pollSource{interval: interval} }

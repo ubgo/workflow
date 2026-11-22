@@ -1,0 +1,24 @@
+func ExpireAfter(d time.Duration, clk clock.Clock) workflow.EnqueueMiddleware {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			if v, ok := job.Labels[LabelExpiresAt]; ok {
+				if _, err := parseExpiry(v); err != nil {
+					return workflow.RunRef{}, err
+				}
+				return next(workflow.AllowReservedLabels(ctx, LabelExpiresAt), job)
+			}
+			if d <= 0 {
+				return next(ctx, job)
+			}
+			base := clk.Now()
+			if job.RunAt.After(base) {
+				base = job.RunAt
+			}
+			job = ExpireAt(job, base.Add(d))
+			return next(workflow.AllowReservedLabels(ctx, LabelExpiresAt), job)
+		}
+	}
+}

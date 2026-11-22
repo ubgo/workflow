@@ -1,0 +1,5 @@
+func DrainTimeout(ctx context.Context, d Drainer, grace time.Duration) error {
+	dctx, cancel := DrainContext(ctx, grace)
+	defer cancel()
+	return d.Drain(dctx)
+}

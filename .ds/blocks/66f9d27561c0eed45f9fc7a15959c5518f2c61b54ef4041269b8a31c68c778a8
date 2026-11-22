@@ -1,0 +1,6 @@
+func (p RetryPolicy) ExhaustedError(attempts int, err error) error {
+	if !p.DiscardOnExhaust || err == nil || IsDiscarded(err) || errors.Is(err, ErrCancelled) {
+		return nil
+	}
+	return Discard(fmt.Errorf("gave up after %d attempt(s): %w", attempts, err))
+}

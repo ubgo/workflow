@@ -1,0 +1,4 @@
+type Windows struct {
+	Between []Window
+	Unless  []Window
+}

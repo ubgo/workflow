@@ -217,6 +217,8 @@ const createArity = 20
 // enqueueScript: ARGV base, idem field (empty for none), then the create
 // values. With an idempotency field held by an unfinished run it creates
 // nothing and returns {'dup', id, status, sid}; otherwise {'new'}.
+//
+//ds:def id=redis-enqueuescript-wy54hufy owner=@khanakia stability=stable
 var enqueueScript = goredis.NewScript(luaPrelude + `
 local b, f = ARGV[1], ARGV[2]
 local dup = create_idem(b, f, ARGV, 3)
@@ -237,6 +239,8 @@ return {'new'}
 // Job.Priority and age), then per served workflow its name and the
 // lowest and highest run version it runs (LO-11). It returns false when
 // nothing is ready, else {id, HGETALL of the run}.
+//
+//ds:def id=redis-claimscript-efkgkm8z owner=@khanakia stability=stable
 var claimScript = goredis.NewScript(luaPrelude + `
 local b, now, lnow, luntil, tok, started = ARGV[1], ARGV[2], ARGV[3], ARGV[4], ARGV[5], ARGV[6]
 readyNow = tonumber(now)
@@ -375,6 +379,8 @@ return 'ok'
 // JSON, attempts, progress ('1' resets the reclaim count: a step finished,
 // so the run is not killing its workers), error history JSON, chain JSON.
 // Returns 1, or 0 when fenced off.
+//
+//ds:def id=redis-savescript-bbjc9qdc owner=@khanakia stability=stable
 var saveScript = goredis.NewScript(luaPrelude + `
 local b, id, tok = ARGV[1], ARGV[2], ARGV[3]
 local h = redis.call('HMGET', rk(b, id), 'owner', 'status')
@@ -390,6 +396,8 @@ return 1
 // the run was held makes it ready now whatever due says. ARGV base, id,
 // token, steps JSON, attempts, due, status, error history JSON, chain
 // JSON, now (ms). Returns 1, or 0 when fenced.
+//
+//ds:def id=redis-releasescript-cagg29b9 owner=@khanakia stability=stable
 var releaseScript = goredis.NewScript(luaPrelude + `
 local b, id, tok, due = ARGV[1], ARGV[2], ARGV[3], tonumber(ARGV[6])
 readyNow = tonumber(ARGV[10])
@@ -416,6 +424,8 @@ return 1
 // succeeded run with a chain the next job's idempotency field and
 // createArity values, created in the same script. Returns 1, or 0 when
 // fenced.
+//
+//ds:def id=redis-finishscript-tp2gv92e owner=@khanakia stability=stable
 var finishScript = goredis.NewScript(luaPrelude + `
 local b, id, tok = ARGV[1], ARGV[2], ARGV[3]
 local key = rk(b, id)
@@ -480,6 +490,8 @@ return 'ok'
 // created} when this caller moved the schedule (the rest of the ticks
 // were skipped for overlap), {0, 0} when another client got there first or
 // the schedule is gone.
+//
+//ds:def id=redis-firescript-bmy9xed6 owner=@khanakia stability=stable
 var fireScript = goredis.NewScript(luaPrelude + `
 local b, sid = ARGV[1], ARGV[2]
 local sk = b .. ':sched:' .. sid
@@ -532,6 +544,8 @@ return 'ok'
 // ARGV base, schedule id, fire time (ms), then createArity values. It
 // returns {'ok'}, {'notfound'}, or {'overlap', run id, status, sid} when
 // the schedule's overlap policy is 'skip' and its last run is unfinished.
+//
+//ds:def id=redis-triggerscript-3rttgqu4 owner=@khanakia stability=stable
 var triggerScript = goredis.NewScript(luaPrelude + `
 local b, sid = ARGV[1], ARGV[2]
 local sk = b .. ':sched:' .. sid
@@ -558,6 +572,8 @@ return {'ok'}
 // whose spec is unchanged keeps its last and next fire times, so an app
 // that declares its schedules at every boot neither skips nor repeats a
 // tick; its input and labels are replaced. Returns the schedule id.
+//
+//ds:def id=redis-schedulescript-35j55x86 owner=@khanakia stability=stable
 var scheduleScript = goredis.NewScript(luaPrelude + `
 local b, id, f = ARGV[1], ARGV[2], ARGV[3]
 if f ~= '' then
@@ -603,6 +619,8 @@ return 1
 // failed. Returns 'ok', 'notfound' or the run's status when the mode does
 // not accept it. The holder is told through a published message and stops
 // its steps; its later writes are fenced off because the run is terminal.
+//
+//ds:def id=redis-forcescript-czt5bmrv owner=@khanakia stability=stable
 var forceScript = goredis.NewScript(luaPrelude + `
 local b, id, mode = ARGV[1], ARGV[2], ARGV[3]
 local key = rk(b, id)
@@ -664,6 +682,8 @@ return {'wait', ARGV[6]}
 // step and the run is made ready (or, when a client holds it, flagged so
 // its hand-back makes it ready). ARGV base, signal key, payload, now (ms).
 // Returns how many waits it resolved.
+//
+//ds:def id=redis-signalscript-h9ukfzmk owner=@khanakia stability=stable
 var signalScript = goredis.NewScript(luaPrelude + `
 local b, sk, payload = ARGV[1], ARGV[2], ARGV[3]
 readyNow = tonumber(ARGV[4])
@@ -707,6 +727,8 @@ return resumed
 // bucket), then L pairs of limit and window (ms), then per run: id, queue,
 // bucket, run deadline (ms, 0 for none), then L rate keys. Returns the
 // earliest time (ms) a run held back by a rate limit may start, or 0.
+//
+//ds:def id=redis-admitscript-xmfk6n9v owner=@khanakia stability=stable
 var admitScript = goredis.NewScript(luaPrelude + `
 local b, wf, now, fin, ret = ARGV[1], ARGV[2], tonumber(ARGV[3]), ARGV[4], ARGV[5]
 readyNow = now

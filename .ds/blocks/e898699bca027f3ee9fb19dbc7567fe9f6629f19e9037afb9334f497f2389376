@@ -1,0 +1,6 @@
+func (o StepOutcome) AssertReleased(t testing.TB, d time.Duration) {
+	t.Helper()
+	if got, ok := o.Released(); !ok || got != d {
+		t.Errorf("step outcome is %s, want released for %s", o.describe(), d)
+	}
+}

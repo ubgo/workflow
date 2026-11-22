@@ -33,6 +33,8 @@ import (
 // retention); a store without a Client bounds its table with PruneBefore.
 // Output may hold whatever a step logged, so treat the table like the
 // payloads: it is read only by what the app wires to it.
+//
+//ds:def id=sql-outputstore-fzkuk4hw owner=@khanakia stability=stable
 type OutputStore struct {
 	st  *store
 	lim OutputLimits
@@ -43,12 +45,16 @@ var _ middleware.OutputSink = (*OutputStore)(nil)
 // Defaults of OutputLimits, the same bounds as admin's in-memory store, so
 // moving from it to this one keeps what an operator sees.
 const (
-	DefaultOutputPerRun = 20       // attempts kept per run, the newest
-	DefaultOutputBytes  = 64 << 10 // bytes of text kept per attempt
+	//ds:def id=sql-defaultoutputperrun-k56bm7ef owner=@khanakia stability=stable
+	DefaultOutputPerRun = 20 // attempts kept per run, the newest
+	//ds:def id=sql-defaultoutputbytes-9nqdjpm2 owner=@khanakia stability=stable
+	DefaultOutputBytes = 64 << 10 // bytes of text kept per attempt
 )
 
 // OutputLimits bounds what an OutputStore keeps. A zero or negative field
 // takes its default.
+//
+//ds:def id=sql-outputlimits-baayz4jr owner=@khanakia stability=stable
 type OutputLimits struct {
 	// PerRun is how many attempts are kept per run, the newest; older ones
 	// are deleted as new ones arrive. Default DefaultOutputPerRun.
@@ -73,6 +79,8 @@ func (l OutputLimits) withDefaults() OutputLimits {
 // order, so an app converts with admin.AttemptOutput(o) inside an
 // admin.OutputSourceFunc. Keep them identical: a change here breaks that
 // conversion at compile time.
+//
+//ds:def id=sql-storedoutput-bakcyfzw owner=@khanakia stability=stable
 type StoredOutput struct {
 	Step    string
 	Attempt int
@@ -88,13 +96,18 @@ type StoredOutput struct {
 
 // ErrOutputNoRun is returned by Deliver for output captured outside a
 // driver (no StepInfo, or no RunID): there is no run to keep it under.
+//
+//ds:def id=sql-erroutputnorun-e5y5xv2n owner=@khanakia stability=stable
 var ErrOutputNoRun = errors.New("sqlstore: output has no run (captured outside a driver)")
 
 // OutputMigrationOwner is the ledger owner of OutputStore's migrations, a
 // list of its own like UniqueStore's: NewOutputStore(...).Migrate creates
 // only the outputs table, Client.Migrate applies it too.
+//
+//ds:def id=sql-outputmigrationowner-e6qguwyc owner=@khanakia stability=stable
 const OutputMigrationOwner = "ubgo/workflow/sqlstore/output"
 
+//ds:def id=sql-store-outputmigrations-v26pg56t owner=@khanakia stability=stable
 func (s *store) outputMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(OutputMigrationOwner), Name: "001_output", Script: s.script(s.render(outputDefs(typesFor(s.engine))))},
@@ -123,6 +136,8 @@ func outputDefs(t sqlTypes) []tableDef {
 // by lim. Of the Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Deliver.
+//
+//ds:def id=sql-newoutputstore-v2eznevn owner=@khanakia stability=stable
 func NewOutputStore(db *sql.DB, d sqlb.Dialect, lim OutputLimits, opts ...Option) (*OutputStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -134,6 +149,8 @@ func NewOutputStore(db *sql.DB, d sqlb.Dialect, lim OutputLimits, opts ...Option
 // OutputStore returns the output store in this client's database and
 // prefix, bounded by lim. Client.Migrate creates its table, and the client
 // deletes a run's output with the run.
+//
+//ds:def id=sql-client-outputstore-9bh2kwaz owner=@khanakia stability=stable
 func (c *Client) OutputStore(lim OutputLimits) *OutputStore {
 	return &OutputStore{st: c.st, lim: lim.withDefaults()}
 }
@@ -147,6 +164,8 @@ func (s *OutputStore) Migrate(ctx context.Context) error {
 // Deliver implements middleware.OutputSink: it stores one attempt's output
 // under its run and deletes the run's attempts past OutputLimits.PerRun,
 // in one transaction.
+//
+//ds:def id=sql-outputstore-deliver-znv6zb92 owner=@khanakia stability=stable
 func (s *OutputStore) Deliver(ctx context.Context, out middleware.Output) error {
 	if !out.HasInfo || out.Info.RunID.IsZero() {
 		return ErrOutputNoRun
@@ -182,6 +201,8 @@ func (s *OutputStore) Deliver(ctx context.Context, out middleware.Output) error 
 
 // RunOutput returns the stored output of run's attempts, oldest first; an
 // empty slice when it has none.
+//
+//ds:def id=sql-outputstore-runoutput-nsxwadsg owner=@khanakia stability=stable
 func (s *OutputStore) RunOutput(ctx context.Context, run workflow.RunID) ([]StoredOutput, error) {
 	out := []StoredOutput{}
 	var r StoredOutput
@@ -201,6 +222,8 @@ func (s *OutputStore) RunOutput(ctx context.Context, run workflow.RunID) ([]Stor
 // PruneBefore deletes the output of every attempt that finished before t
 // and returns how many rows went: the retention of a store used without a
 // Client, whose runs' deletes would otherwise take their output along.
+//
+//ds:def id=sql-outputstore-prunebefore-5qcustfs owner=@khanakia stability=stable
 func (s *OutputStore) PruneBefore(ctx context.Context, t time.Time) (int64, error) {
 	return s.st.execN(ctx, s.st.db, "DELETE FROM {outputs} WHERE finished_at < ?", t.UnixNano())
 }
@@ -208,6 +231,8 @@ func (s *OutputStore) PruneBefore(ctx context.Context, t time.Time) (int64, erro
 // cutText keeps at most max bytes of s, ending on a character boundary so
 // the stored text stays valid UTF-8 (Postgres and MySQL refuse anything
 // else), and reports whether it cut.
+//
+//ds:def id=sql-cuttext-fz9tqd9m owner=@khanakia stability=stable
 func cutText(s string, max int) (string, bool) {
 	if len(s) <= max {
 		return s, false

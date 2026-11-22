@@ -1,0 +1,24 @@
+func taskTimes(fl cron.Fields) ([]taskTime, error) {
+	var secs []int
+	for _, h := range fl.Hour {
+		for _, m := range fl.Minute {
+			for _, s := range fl.Second {
+				secs = append(secs, h*3600+m*60+s)
+			}
+		}
+	}
+	if len(secs) == 1 {
+		return []taskTime{{at: secs[0]}}, nil
+	}
+	if sp := spans(secs); len(sp) == 1 && sp[0].step >= 60 {
+		return []taskTime{{at: sp[0].lo, every: sp[0].step, span: sp[0].hi - sp[0].lo + sp[0].step/2}}, nil
+	}
+	if len(secs) > maxTriggers {
+		return nil, refuse(FormatTaskScheduler, "Cron", "it needs %d triggers, more than %d, and its times are not one repetition of at least a minute", len(secs), maxTriggers)
+	}
+	out := make([]taskTime, len(secs))
+	for i, s := range secs {
+		out[i] = taskTime{at: s}
+	}
+	return out, nil
+}

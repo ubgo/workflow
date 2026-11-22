@@ -1,0 +1,9 @@
+type AttributeCodec interface {
+	// Encode returns the attributes that carry job's metadata. The
+	// payload is not encoded: it travels as the message body.
+	Encode(job Job) (map[string]string, error)
+
+	// Decode reads attributes Encode wrote (or a sender following the
+	// same names) back into job metadata.
+	Decode(attrs map[string]string) (DecodedAttributes, error)
+}

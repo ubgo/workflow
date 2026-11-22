@@ -1,0 +1,34 @@
+func workerPools(cfg Config, order []string, specs map[string]workflow.Workflow, declared map[string]*hatchetsdk.Workflow, coordinator *hatchetsdk.Workflow) []workerPool {
+	var pools []workerPool
+	if len(cfg.Queues) == 0 {
+		p := workerPool{name: cfg.WorkerName, slots: cfg.Slots}
+		for _, name := range order {
+			p.workflows = append(p.workflows, declared[name])
+		}
+		if len(p.workflows) > 0 {
+			pools = append(pools, p)
+		}
+	} else {
+		for _, q := range cfg.Queues {
+			p := workerPool{name: cfg.WorkerName + "-" + q.Name, queue: q.Name, slots: q.Workers}
+			if p.slots == 0 {
+				p.slots = cfg.Slots
+			}
+			for _, name := range order {
+				if workflow.EffectiveQueue(specs[name], workflow.Job{}) == q.Name {
+					p.workflows = append(p.workflows, declared[name])
+				}
+			}
+			if len(p.workflows) > 0 {
+				pools = append(pools, p)
+			}
+		}
+	}
+	if coordinator != nil {
+		if len(pools) == 0 {
+			pools = append(pools, workerPool{name: cfg.WorkerName, slots: cfg.Slots})
+		}
+		pools[0].workflows = append(pools[0].workflows, coordinator)
+	}
+	return pools
+}

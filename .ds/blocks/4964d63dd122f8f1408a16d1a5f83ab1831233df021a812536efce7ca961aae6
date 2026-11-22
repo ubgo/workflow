@@ -1,0 +1,3 @@
+func (s *LineageStore) MigrationScripts() []MigrationScript {
+	return scriptsOf(s.lineageMigrations())
+}

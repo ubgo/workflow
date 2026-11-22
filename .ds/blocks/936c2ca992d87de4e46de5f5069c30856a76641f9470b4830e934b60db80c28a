@@ -1,0 +1,26 @@
+func resolveScheduled(ctx context.Context, look scheduleLookup, sid scheduledRef, lag time.Duration, deletedHere func(token string) bool) (string, runState, error) {
+	sched, err := look.schedule(ctx, sid.token)
+	switch {
+	case err != nil:
+		return "", 0, err
+	case sched != nil && sched.WorkflowRunId != nil:
+		return sched.WorkflowRunId.String(), stateRun, nil
+	case sched != nil:
+		return "", statePending, nil
+	}
+	deadline := time.Now().Add(lag)
+	for {
+		runID, err := look.firedRun(ctx, sid)
+		if err != nil || runID != "" {
+			return runID, stateRun, err
+		}
+		if deletedHere(sid.token) || time.Now().After(deadline) {
+			return "", stateGone, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", 0, ctx.Err()
+		case <-time.After(registerPoll):
+		}
+	}
+}

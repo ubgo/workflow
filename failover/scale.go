@@ -8,6 +8,8 @@ import (
 
 // primaryOnlyCaps are the capabilities the failover client takes from the
 // primary alone; see Capabilities.
+//
+//ds:def id=failover-primaryonlycaps-wycqgwrv owner=@khanakia stability=stable
 var primaryOnlyCaps = workflow.CapsOf(workflow.CapClosure, workflow.CapWorkerScale)
 
 var (
@@ -32,6 +34,8 @@ func primaryAs[I any](f *Client, field string, c workflow.Caps) (I, error) {
 // EnqueueClosure runs c on the primary only, with no failover: a closure
 // has no idempotency key, so an ambiguous primary failure retried on the
 // secondary could run it twice. The RunRef carries the primary prefix.
+//
+//ds:def id=failover-client-enqueueclosure-garv9aj8 owner=@khanakia stability=stable
 func (f *Client) EnqueueClosure(ctx context.Context, c workflow.ClosureJob) (workflow.RunRef, error) {
 	ce, err := primaryAs[workflow.ClosureEnqueuer](f, "EnqueueClosure", workflow.CapClosure)
 	if err != nil {
@@ -45,6 +49,8 @@ func (f *Client) EnqueueClosure(ctx context.Context, c workflow.ClosureJob) (wor
 }
 
 // QueueLoads reports the primary's queue loads.
+//
+//ds:def id=failover-client-queueloads-udgpt8pz owner=@khanakia stability=stable
 func (f *Client) QueueLoads(ctx context.Context) ([]workflow.QueueLoad, error) {
 	s, err := primaryAs[workflow.WorkerScaler](f, "QueueLoads", workflow.CapWorkerScale)
 	if err != nil {

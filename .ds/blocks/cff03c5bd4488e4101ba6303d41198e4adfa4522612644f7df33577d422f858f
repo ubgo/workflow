@@ -1,0 +1,6 @@
+func SendEvent(ctx context.Context, client Client, machine, key, event string, payload []byte, job Job) (RunRef, error) {
+	if event == "" {
+		return RunRef{}, invalidf("SendEvent needs an event name")
+	}
+	return sendMachine(ctx, client, machine, key, machineCall{Event: event, Payload: payload}, job)
+}

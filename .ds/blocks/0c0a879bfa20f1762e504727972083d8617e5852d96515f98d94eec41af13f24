@@ -1,0 +1,7 @@
+func NewAggregateStore(rdb goredis.UniversalClient, prefix string) (*AggregateStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &AggregateStore{rdb: rdb, base: base}, nil
+}

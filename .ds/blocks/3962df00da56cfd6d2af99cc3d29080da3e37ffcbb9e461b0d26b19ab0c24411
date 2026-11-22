@@ -1,0 +1,1 @@
+var ErrStepsFailed = errors.New("workflow: steps failed before the exit handler")

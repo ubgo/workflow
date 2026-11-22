@@ -1,0 +1,13 @@
+func HasPayloadJSON(v any) JobMatcher {
+	want, err := json.Marshal(v)
+	return Where("JSON payload "+string(want), func(j workflow.Job) bool {
+		if err != nil {
+			return false
+		}
+		var a, b any
+		if json.Unmarshal(j.Payload, &a) != nil || json.Unmarshal(want, &b) != nil {
+			return false
+		}
+		return reflect.DeepEqual(a, b)
+	})
+}

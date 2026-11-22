@@ -1,0 +1,79 @@
+func (a *Admin) check(op Operation) error {
+	have := a.c.Capabilities()
+	need := requirements[op]
+	if a.rq != nil && readOp(op) {
+		// The querier answers the run query; the client still says what
+		// statuses its runs can reach (CapRunStates for discarded).
+		have = have.With(a.rqCaps)
+	}
+	ok := have.Has(need)
+	if op == OpPause {
+		ok = have.HasAny(need)
+	}
+	if ok {
+		switch op {
+		case OpRuns, OpRun, OpFailures, OpDiscarded, OpQueues:
+			rq, _ := a.reader()
+			ok = rq != nil
+		case OpRetry:
+			_, ok = a.c.(workflow.RunRetrier)
+		case OpDelete:
+			_, ok = a.c.(workflow.RunDeleter)
+		case OpCancelAll:
+			_, ok = a.c.(workflow.BulkCanceller)
+		case OpPause:
+			_, ok = a.c.(workflow.Pauser)
+		case OpSchedules:
+			_, ok = a.c.(workflow.ScheduleLister)
+		case OpSchedulePause:
+			_, okList := a.c.(workflow.ScheduleLister)
+			_, ok = a.c.(workflow.SchedulePauser)
+			ok = ok && okList
+		case OpScheduleTrigger:
+			_, okList := a.c.(workflow.ScheduleLister)
+			_, ok = a.c.(workflow.ScheduleTriggerer)
+			ok = ok && okList
+		case OpForce:
+			_, ok = a.c.(workflow.RunForcer)
+		case OpRetryAll:
+			_, okList := a.c.(workflow.RunQuerier)
+			_, ok = a.c.(workflow.RunRetrier)
+			ok = ok && okList
+		case OpDeleteAll:
+			_, okList := a.c.(workflow.RunQuerier)
+			_, ok = a.c.(workflow.RunDeleter)
+			ok = ok && okList
+		// No capability bit: a wrapper (workflow.Forward, failover)
+		// implements these interfaces whatever it wraps, so ask
+		// workflow.Supports, which a wrapper answers for its backends.
+		case OpNodes:
+			ok = workflow.Supports(a.c, workflow.OpNodes)
+		case OpReschedule:
+			ok = workflow.Supports(a.c, workflow.OpReschedule)
+		case OpCancelStep:
+			ok = workflow.Supports(a.c, workflow.OpCancelStep)
+		case OpEditRun:
+			ok = workflow.Supports(a.c, workflow.OpEditRun)
+		case OpResetRun:
+			ok = workflow.Supports(a.c, workflow.OpResetRun)
+		case OpResetSucceeded:
+			ok = workflow.Supports(a.c, workflow.OpResetSucceeded)
+		case OpForkRun:
+			ok = workflow.Supports(a.c, workflow.OpForkRun)
+		case OpSignalWaiting:
+			ok = workflow.Supports(a.c, workflow.OpSignalWaiting)
+		}
+	}
+	if ok {
+		return nil
+	}
+	missing := have.Missing(need)
+	if op == OpPause && have.HasAny(need) {
+		missing = workflow.Caps{}
+	}
+	reason := "the client does not support this operation"
+	if missing.IsZero() {
+		reason = "the client does not implement the interface this operation needs"
+	}
+	return &workflow.UnsupportedError{Field: "admin." + string(op), Missing: missing, Reason: reason}
+}

@@ -1,16 +1,16 @@
 # Time zones
 
-"Every day at nine" means nine where the user is. A schedule evaluated in UTC drifts by an hour twice a year for anyone in a zone with daylight saving time, and by the zone's whole offset for everyone else. Every schedule in this library is evaluated in an explicit zone: a declared cron in `Workflow.CronLocation`, a run-time schedule in `Schedule.Location`. This page covers setting the zone and what happens on the days the clocks change.
+"Every day at nine" means nine where the user is. A schedule evaluated in UTC drifts by an hour twice a year for anyone in a zone with daylight saving time, and by the zone's whole offset for everyone else. Every schedule in this library is evaluated in an explicit zone: a declared cron in `Workflow.CronLocation`, a run-time schedule in `Schedule.Location` ([required](ds:block?id=validateschedule-knj437ed)). This page covers setting the zone and what happens on the days the clocks change.
 
 ## Before you start
 
-- A zone other than UTC needs `workflow.CapCronZone`. The memory, SQL and Redis drivers have it; Hatchet does not, because it evaluates crons in UTC only.
+- A zone other than UTC needs [`workflow.CapCronZone`](ds:block?id=capcronzone-4tkwuz9q). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j) and [Redis](ds:block?id=redis-caps-bfgdst9t) drivers have it; [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) does not, because it [evaluates crons in UTC only](ds:block?id=hatchet-checkschedulezone-9z4wzpcs).
 - The example is [`examples/cron-schedules`](../../examples/cron-schedules). Run it with `go run ./cron-schedules` from `examples/`.
-- Load zones with `cron.LoadZone("Europe/Berlin")` (see [load a zone by name](#load-a-zone-by-name)). The binary needs the zone database: the host's, or `cron/tzdata` to [embed it](#embed-the-zone-database).
+- Load zones with [`cron.LoadZone("Europe/Berlin")`](ds:block?id=cron-loadzone-9j72sr29) (see [load a zone by name](#load-a-zone-by-name)). The binary needs the zone database: the host's, or `cron/tzdata` to [embed it](#embed-the-zone-database).
 
 ## Schedules in a time zone
 
-`Workflow.CronLocation` is the zone of a workflow's declared crons. Nil means UTC. The example's digest fires at 09:00 in Kolkata, which is 03:30 UTC:
+`Workflow.CronLocation` is the zone of a workflow's declared crons. [Nil means UTC](ds:block?id=isutc-aj4baxqq). The example's digest fires at 09:00 in Kolkata, which is 03:30 UTC:
 
 <!-- snippet: examples/cron-schedules/main.go#declared -->
 ```go
@@ -25,7 +25,7 @@ err = c.Register(workflow.Workflow{
 })
 ```
 
-`Schedule.Location` is the zone of a run-time schedule, and it is required: a schedule without one fails with an error matching `workflow.ErrInvalid`, so none is ever evaluated in an implicit zone. Pass `time.UTC` for UTC:
+`Schedule.Location` is the zone of a run-time schedule, and it is required: a schedule without one [fails with an error matching `workflow.ErrInvalid`](ds:block?id=validateschedule-knj437ed), so none is ever evaluated in an implicit zone. Pass `time.UTC` for UTC:
 
 <!-- snippet: examples/cron-schedules/main.go#schedule -->
 ```go
@@ -43,7 +43,7 @@ if err != nil {
 // The app stores id (a column on the tenant row) to remove it later.
 ```
 
-`time.Local` is refused as a `CronLocation`, because it differs from machine to machine and a cron must fire at the same instant on all of them. `workflow.IsUTC(loc)` reports whether a zone evaluates as UTC: nil, `time.UTC`, or a zone named `UTC`. Those need no `CapCronZone`; anything else does, and a driver without it refuses the workflow or schedule rather than shifting the expression, since a shifted expression would be wrong for half the year:
+`time.Local` is [refused as a `CronLocation`](ds:block?id=validatepolicies-x88m4hwu), because it differs from machine to machine and a cron must fire at the same instant on all of them. [`workflow.IsUTC(loc)`](ds:block?id=isutc-aj4baxqq) reports whether a zone evaluates as UTC: nil, `time.UTC`, or a zone named `UTC`. Those need no `CapCronZone`; [anything else does](ds:block?id=requiresschedule-wk3hrhfy), and a driver without it refuses the workflow or schedule rather than shifting the expression, since a shifted expression would be wrong for half the year:
 
 <!-- snippet: examples/cron-schedules/main.go#refusals -->
 ```go
@@ -66,11 +66,11 @@ for _, wf := range []workflow.Workflow{
 
 ## Daylight saving time
 
-On the day the clocks jump forward, some wall times do not exist; on the day they fall back, some happen twice. The parser picks one of two rules by the hour field, so each kind of schedule does what its author meant:
+On the day the clocks jump forward, some wall times do not exist; on the day they fall back, some happen twice. The parser picks one of two rules by [the hour field](ds:block?id=cron-allhours-jav27y92), so each kind of schedule does what its author meant:
 
-- **Fixed-time schedules** (the hour field does not match all 24 hours, such as `30 2 * * *`) run once per day. A wall time inside the spring-forward gap fires once, at the first valid instant after the gap; a wall time inside the fall-back overlap fires once, on its first occurrence.
-- **Periodic schedules** (the hour field matches every hour, such as `30 * * * *`) follow real time. A wall time inside the gap is not a real instant and does not fire; a wall time inside the overlap fires on both occurrences. No real instant is skipped or fired twice.
-- **`@every` intervals** ignore the wall clock entirely, so DST never moves them.
+- **Fixed-time schedules** (the hour field does not match all 24 hours, such as `30 2 * * *`) [run once per day](ds:block?id=cron-firstfire-83zdvcv6). A wall time inside the spring-forward gap [fires once](ds:block?id=cron-resolve-dt9n6h3q), at the first valid instant after the gap; a wall time inside the fall-back overlap fires once, on its first occurrence.
+- **Periodic schedules** (the hour field matches every hour, such as `30 * * * *`) follow real time. A wall time inside the gap is not a real instant and [does not fire](ds:block?id=cron-resolve-dt9n6h3q); a wall time inside the overlap fires on both occurrences. No real instant is skipped or fired twice.
+- **`@every` intervals** [ignore the wall clock entirely](ds:block?id=cron-parsemacro-vdq7m596), so DST never moves them.
 
 The example prints both kinds around New York's two changes in 2026 (8 March, 02:00 jumps to 03:00; 1 November, 02:00 falls back to 01:00):
 
@@ -105,7 +105,7 @@ The daily 02:30 job runs at 03:00 on 8 March (02:30 did not exist) and at 02:30 
 
 ## Load a zone by name
 
-`cron.LoadZone(name)` loads an IANA zone for a schedule and fails at boot instead of firing at the wrong hour. It refuses `""` and `"Local"`, which `time.LoadLocation` silently turns into UTC and the host's zone, and any name the zone database does not have; the error wraps `cron.ErrZone` and names the zone. Use it wherever a zone comes from config or user data:
+[`cron.LoadZone(name)`](ds:block?id=cron-loadzone-9j72sr29) loads an IANA zone for a schedule and fails at boot instead of firing at the wrong hour. It refuses `""` and `"Local"`, which `time.LoadLocation` silently turns into UTC and the host's zone, and any name the zone database does not have; the error wraps [`cron.ErrZone`](ds:block?id=cron-errzone-jkqrdnz6) and names the zone. Use it wherever a zone comes from config or user data:
 
 <!-- snippet: examples/schedule-specs/main.go#zones -->
 ```go
@@ -117,7 +117,7 @@ if err != nil {
 
 ## Embed the zone database
 
-A container image without a zone database (scratch, distroless and many slim images) finds no zone but UTC, so `cron.LoadZone("Europe/Berlin")` fails at boot. Import `github.com/ubgo/workflow/cron/tzdata` once, for its side effect, in the main package to embed one:
+A container image without a zone database (scratch, distroless and many slim images) finds no zone but UTC, so `cron.LoadZone("Europe/Berlin")` fails at boot. Import `github.com/ubgo/workflow/cron/tzdata` once, for its side effect, in the main package to embed one ([its test](ds:block?id=tzdata-testzoneloadswithpackagelinked-rcgguwdm) loads a zone with it linked):
 
 <!-- snippet: examples/schedule-keep-runs/tzdata.go#tzdata -->
 ```go
@@ -130,7 +130,7 @@ It is the standard library's `time/tzdata` (about 450 KB) under a name that says
 
 ## Show the next runs in two zones
 
-`workflow.NextRuns` lists a schedule's next fire times, each in the schedule's zone and in UTC, for a dashboard's "next run" column or a confirmation screen. It drops the ticks the schedule's `Windows` and `Active` period would skip, so the list shows runs that will really start, and it reads no clock: the reference time is the query's `After`. `Count` is capped at `workflow.MaxNextRuns` (100).
+[`workflow.NextRuns`](ds:block?id=nextruns-eumy8g7g) lists a schedule's next fire times, each in the schedule's zone and in UTC, for a dashboard's "next run" column or a confirmation screen. It drops the ticks the schedule's `Windows` and `Active` period would skip, so the list shows runs that will really start, and it reads no clock: the reference time is the query's `After`. `Count` is capped at [`workflow.MaxNextRuns`](ds:block?id=maxnextruns-v73usp38) (100).
 
 <!-- snippet: examples/schedule-specs/main.go#nextruns -->
 ```go
@@ -150,7 +150,7 @@ for _, r := range runs {
 }
 ```
 
-`NextRun.String()` prints the schedule's wall clock with its zone abbreviation and the UTC time in parentheses (with the UTC date when it differs), so a reader in another zone sees both. Across the end of summer time the UTC column moves while the local one stays at 09:00:
+[`NextRun.String()`](ds:block?id=nextrun-string-chk5jqpn) prints the schedule's wall clock with its zone abbreviation and the UTC time in parentheses (with the UTC date when it differs), so a reader in another zone sees both. Across the end of summer time the UTC column moves while the local one stays at 09:00:
 
 ```text
   2026-10-24 09:00:00 CEST (07:00:00 UTC)
@@ -179,9 +179,9 @@ and, under `refusals:`, a schedule without a `Location`, a `time.Local` cron, an
 
 ## Pitfalls
 
-- **Hatchet is UTC only.** The Hatchet driver refuses any `CronLocation` or `Location` other than UTC (field `Workflow.CronLocation` or `Schedule.Location`, missing `CronZone`). Translating "09:00 Berlin" to a UTC expression yourself is wrong for half the year; run such schedules on the memory or SQL driver, or accept UTC.
-- **On the SQL driver a zone must load by name on every node.** The zone is stored by name, so every process must be able to `time.LoadLocation` it (or it must be a fixed offset). Ship the zone database with the binary (`cron/tzdata`) if your containers have none, and load zones with `cron.LoadZone` so a missing one fails at boot.
-- **`time.Local` is refused.** The host's zone differs from machine to machine, so validation refuses it both as a `Workflow.CronLocation` (at `Register`) and as a `Schedule.Location` (at `Schedule`), with an error matching `workflow.ErrInvalid`, on every driver. Name the zone.
+- **Hatchet is UTC only.** The Hatchet driver refuses any [`CronLocation`](ds:block?id=hatchet-checksupported-733uwgsp) or [`Location`](ds:block?id=hatchet-checkschedulezone-9z4wzpcs) other than UTC (field `Workflow.CronLocation` or `Schedule.Location`, missing `CronZone`). Translating "09:00 Berlin" to a UTC expression yourself is wrong for half the year; run such schedules on the memory or SQL driver, or accept UTC. See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- **On the SQL driver a zone must load by name on every node.** The zone is [stored by name](ds:block?id=sql-encodelocation-25guqe3a), so every process must be able to [`time.LoadLocation`](ds:block?id=sql-decodelocation-f8c7z3ct) it (or it must be a fixed offset). Ship the zone database with the binary (`cron/tzdata`) if your containers have none, and load zones with `cron.LoadZone` so a missing one fails at boot.
+- **`time.Local` is refused.** The host's zone differs from machine to machine, so validation refuses it both as a [`Workflow.CronLocation`](ds:block?id=validatepolicies-x88m4hwu) (at `Register`) and as a [`Schedule.Location`](ds:block?id=validateschedule-knj437ed) (at `Schedule`), with an error matching `workflow.ErrInvalid`, on every driver. Name the zone.
 - **A fixed offset is not a zone.** `time.FixedZone("CET", 3600)` never observes DST; use the IANA name (`Europe/Berlin`) when the schedule should follow local time.
 - **Print fire times with the zone.** Users read "09:00" in their own zone; store and show the zone name alongside the expression.
 

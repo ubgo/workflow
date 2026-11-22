@@ -1,0 +1,1 @@
+func (i StepInfo) TickAt() (time.Time, bool) { return TickTime(i.Labels) }

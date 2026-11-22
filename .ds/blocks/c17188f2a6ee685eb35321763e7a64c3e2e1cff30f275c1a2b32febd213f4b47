@@ -1,0 +1,19 @@
+type QueueLoad struct {
+	// Queue is the queue name.
+	Queue string
+
+	// Depth is how many step attempts are ready and waiting for a worker
+	// of this client (attempts in a retry backoff or a delayed start are
+	// not counted: no worker could take them yet).
+	Depth int
+
+	// OldestWait is how long the oldest of those attempts has waited,
+	// on the driver's clock; zero when Depth is zero.
+	OldestWait time.Duration
+
+	// Workers is the queue's current worker count on this client.
+	Workers int
+
+	// Running is how many of its attempts execute now.
+	Running int
+}

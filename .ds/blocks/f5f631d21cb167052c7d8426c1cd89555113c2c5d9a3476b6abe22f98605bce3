@@ -1,0 +1,9 @@
+func (e *ChainEdits) Apply(chain []Job) []Job {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := slices.Concat(e.prepend, chain, e.append)
+	for i := range out {
+		out[i] = CloneJob(out[i])
+	}
+	return out
+}

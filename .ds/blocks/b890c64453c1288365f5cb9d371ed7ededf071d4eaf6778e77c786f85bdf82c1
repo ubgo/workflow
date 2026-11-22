@@ -1,0 +1,69 @@
+func (c *Client) scheduler() {
+	defer c.wg.Done()
+	var t clock.Timer
+	var armed time.Time // t's deadline; zero while no timer is armed
+	defer func() {
+		if t != nil {
+			t.Stop()
+		}
+	}()
+	for {
+		c.mu.Lock()
+		for len(c.schedQ) > 0 && c.schedQ[0].s.halted {
+			heap.Pop(&c.schedQ)
+		}
+		var head time.Time
+		if len(c.schedQ) > 0 {
+			head = c.schedQ[0].at
+		}
+		c.mu.Unlock()
+
+		if !head.IsZero() && (t == nil || head.Before(armed)) {
+			if t != nil {
+				t.Stop()
+			}
+			// Read the clock as late as possible, as the per-schedule
+			// loop does: a fake clock advanced in between would make an
+			// earlier reading arm the tick late.
+			t, armed = c.clk.NewTimer(head.Sub(c.clk.Now())), head
+		}
+		var due <-chan time.Time
+		if t != nil {
+			due = t.C()
+		}
+		select {
+		case <-due:
+			t, armed = nil, time.Time{} // fired; a stale one (its head halted) just leads to an empty pass
+		case <-c.schedPoke:
+			continue
+		case <-c.ctx.Done():
+			return
+		}
+
+		c.mu.Lock()
+		now := c.clk.Now()
+		var ready []*schedule
+		for len(c.schedQ) > 0 && !c.schedQ[0].at.After(now) {
+			if e := heap.Pop(&c.schedQ).(schedEntry); !e.s.halted {
+				ready = append(ready, e.s)
+			}
+		}
+		c.mu.Unlock()
+		for _, s := range ready {
+			c.mu.Lock()
+			w, ok := c.wakeScheduleLocked(s)
+			c.mu.Unlock()
+			if !ok {
+				continue // halted while the others were handled
+			}
+			if w.fire {
+				c.fire(s, w.reg, w.ticks, w.windows, w.labels, w.input)
+			}
+			c.mu.Lock()
+			if !s.halted && !c.stopped {
+				c.pushScheduleLocked(s, false)
+			}
+			c.mu.Unlock()
+		}
+	}
+}

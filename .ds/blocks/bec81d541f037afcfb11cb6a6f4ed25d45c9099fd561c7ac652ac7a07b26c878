@@ -1,0 +1,1 @@
+func SpawnAllowDuplicates() SpawnOption { return func(c *spawnConfig) { c.allowDuplicates = true } }

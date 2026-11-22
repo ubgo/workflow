@@ -1,0 +1,18 @@
+func describeDays(domText, dowText string) string {
+	domStar := strings.HasPrefix(domText, "*") && !strings.ContainsAny(strings.ToUpper(domText), "LW")
+	dowStar := strings.HasPrefix(dowText, "*") && !strings.ContainsAny(dowText, "#Ll")
+	dom, dow := "", ""
+	if !(domStar && domText == "*") {
+		dom = describeDOM(domText)
+	}
+	if !(dowStar && dowText == "*") {
+		dow = describeDOW(dowText)
+	}
+	switch {
+	case dom != "" && dow != "" && !domStar && !dowStar:
+		return dom + " or " + dow
+	case dom != "" && dow != "":
+		return dom + ", " + onlyOn(dow)
+	}
+	return dom + onlyOn(dow)
+}

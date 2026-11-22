@@ -102,6 +102,7 @@ func runCLI(t *testing.T, srv *httptest.Server, env map[string]string, args ...s
 	return code, out.String(), errb.String()
 }
 
+//ds:def id=cli-testrun-usageerrorsexit2-6hzp7c5e owner=@khanakia stability=stable
 func TestRun_UsageErrorsExit2(t *testing.T) {
 	f, srv := newFake(t)
 	for _, args := range [][]string{
@@ -152,6 +153,8 @@ func TestRun_HelpExitsZero(t *testing.T) {
 
 // TestRun_AuthHeadersAndTokenNeverPrinted: the token and headers reach
 // the API, and the token never appears in any output, not even help.
+//
+//ds:def id=cli-testrun-authheadersandtokenneverprinted-kezrzh3z owner=@khanakia stability=stable
 func TestRun_AuthHeadersAndTokenNeverPrinted(t *testing.T) {
 	f, srv := newFake(t)
 	env := map[string]string{EnvToken: "s3cret-token", EnvHeader: "X-Tenant: acme"}
@@ -177,6 +180,7 @@ func TestRun_AuthHeadersAndTokenNeverPrinted(t *testing.T) {
 	}
 }
 
+//ds:def id=cli-testrun-apierrorexit1-4yyb8khk owner=@khanakia stability=stable
 func TestRun_APIErrorExit1(t *testing.T) {
 	_, srv := newFake(t)
 	code, _, stderr := runCLI(t, srv, nil, "delete", "r1")
@@ -222,6 +226,8 @@ func TestRun_ListAndJSON(t *testing.T) {
 
 // TestRun_DryRunNeverWrites: every destructive command with --dry-run
 // sends only GETs, or the bulk preview body with dry_run set.
+//
+//ds:def id=cli-testrun-dryrunneverwrites-9nx7hcq5 owner=@khanakia stability=stable
 func TestRun_DryRunNeverWrites(t *testing.T) {
 	f, srv := newFake(t)
 	for _, args := range [][]string{
@@ -357,6 +363,7 @@ func TestRun_HealthAndNodes(t *testing.T) {
 	}
 }
 
+//ds:def id=cli-testrun-drain-qnj74rva owner=@khanakia stability=stable
 func TestRun_Drain(t *testing.T) {
 	left := []int{3, 1, 0}
 	var mu sync.Mutex

@@ -14,6 +14,8 @@ import (
 // every other path. It keeps EnqueueMany's contract: one RunRef per job in
 // order, and on an error either nil refs or len(jobs) refs with a zero
 // RunRef for each job that did not start.
+//
+//ds:def id=batch-manyenqueuer-f3g9xun6 owner=@khanakia stability=stable
 type ManyEnqueuer interface {
 	EnqueueMany(ctx context.Context, jobs []workflow.Job) ([]workflow.RunRef, error)
 }
@@ -39,6 +41,8 @@ const bulkGroup = "bulk"
 // A client wrapper (workflow.Use, middleware.WithCodec, a Recorder)
 // implements neither interface, so EnqueueMany through it is the loop and
 // every job passes the wrapper's middleware.
+//
+//ds:def id=batch-enqueuemany-6wx8q3ub owner=@khanakia stability=stable
 func EnqueueMany(ctx context.Context, c workflow.Client, jobs []workflow.Job) ([]workflow.RunRef, error) {
 	if len(jobs) == 0 {
 		return nil, nil

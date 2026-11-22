@@ -1,0 +1,56 @@
+func (h *handler[P]) scoped(tr tenantRoute) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tenant, _ := TenantFrom(r.Context())
+		switch tr.rule {
+		case tenantRefused:
+			writeError(w, http.StatusForbidden, CodeForbidden, "not allowed for a tenant-scoped caller: "+string(tr.action))
+			return
+		case tenantList:
+			v := r.URL.Query()
+			for _, t := range v["tenant"] {
+				if t != tenant {
+					writeError(w, http.StatusForbidden, CodeForbidden, "not allowed: another tenant")
+					return
+				}
+			}
+			v.Set("tenant", tenant)
+			r = r.Clone(r.Context())
+			r.URL.RawQuery = v.Encode()
+		case tenantBulk:
+			body, status, msg := pinBodyTenant(r.Body, tenant)
+			if status != 0 {
+				code := CodeInvalid
+				if status == http.StatusForbidden {
+					code = CodeForbidden
+				}
+				writeError(w, status, code, msg)
+				return
+			}
+			r = r.Clone(r.Context())
+			r.Body, r.ContentLength = io.NopCloser(bytes.NewReader(body)), int64(len(body))
+		case tenantRun:
+			ref := pathRef(r)
+			info, err := h.a.Run(r.Context(), ref)
+			if err == nil && info.Tenant != tenant {
+				// The answer for a run that does not exist, word for word,
+				// so a caller cannot tell another tenant's run from none.
+				err = fmt.Errorf("%w: admin: run %s", workflow.ErrNotFound, refString(ref))
+			}
+			if err != nil {
+				h.fail(w, tr.action, err)
+				return
+			}
+		case tenantSchedule:
+			id := workflow.ScheduleID(r.PathValue("id"))
+			s, err := h.a.Schedule(r.Context(), id)
+			if err == nil && s.Tenant != tenant {
+				err = fmt.Errorf("%w: admin: schedule %s", workflow.ErrNotFound, id)
+			}
+			if err != nil {
+				h.fail(w, tr.action, err)
+				return
+			}
+		}
+		h.mux.ServeHTTP(w, r)
+	}
+}

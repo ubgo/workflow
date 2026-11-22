@@ -1,0 +1,41 @@
+func TestHandler_AnonymousRefused(t *testing.T) {
+	f := seeded()
+	h := NewHandler(New(f), bearerAuth())
+	for _, r := range append(routes, route{"GET", "/nope", "", ""}) {
+		req := httptest.NewRequest(r.method, r.path, strings.NewReader(r.body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnauthorized || errCode(t, rec) != CodeUnauthorized {
+			t.Errorf("anonymous %s %s = %d %s, want 401", r.method, r.path, rec.Code, rec.Body)
+		}
+	}
+
+	panicky := bearerAuth()
+	panicky.Identify = func(*http.Request) (user, error) { panic("token store down") }
+	hp := NewHandler(New(f), panicky)
+	for _, r := range routes {
+		if rec := do(t, hp, r.method, r.path, r.body); rec.Code != http.StatusUnauthorized {
+			t.Errorf("panicking Identify: %s %s = %d, want 401", r.method, r.path, rec.Code)
+		}
+	}
+
+	// A browser form post from another site cannot send a JSON content
+	// type without a preflight, so writes without one are refused.
+	for _, r := range routes {
+		if r.method == http.MethodGet {
+			continue
+		}
+		req := httptest.NewRequest(r.method, r.path, strings.NewReader(r.body))
+		req.Header.Set("Authorization", "Bearer admin")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusUnsupportedMediaType {
+			t.Errorf("form post %s %s = %d, want 415", r.method, r.path, rec.Code)
+		}
+	}
+	if c := f.Calls(); len(c) != 0 {
+		t.Errorf("operations ran for refused requests: %v", c)
+	}
+}

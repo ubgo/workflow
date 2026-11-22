@@ -1,0 +1,19 @@
+func nearestWeekday(day time.Time, n int) int {
+	last := lastDay(day)
+	if n > last {
+		return 0
+	}
+	switch time.Date(day.Year(), day.Month(), n, 0, 0, 0, 0, time.UTC).Weekday() {
+	case time.Saturday:
+		if n == 1 {
+			return 3 // Monday the 3rd: never the month before
+		}
+		return n - 1
+	case time.Sunday:
+		if n == last {
+			return n - 2 // Friday: never the month after
+		}
+		return n + 1
+	}
+	return n
+}

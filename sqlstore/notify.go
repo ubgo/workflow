@@ -16,6 +16,8 @@ import (
 // The sqlstore/pgnotify package implements it on Postgres LISTEN/NOTIFY.
 // Any other bus (Redis pub/sub, NATS, an in-process fan-out in tests) fits
 // the same two methods.
+//
+//ds:def id=sql-notifier-ra7v6r98 owner=@khanakia stability=stable
 type Notifier interface {
 	// Notify tells every client listening on channel that work may be due.
 	// The client calls it from one background goroutine, coalescing
@@ -34,6 +36,8 @@ type Notifier interface {
 // resume), and wakes this client when another one does. Without it, which
 // is the default, a client finds another node's work at its next poll.
 // Clients over different table prefixes or schemas use different channels.
+//
+//ds:def id=sql-withnotifier-zmpj2dtv owner=@khanakia stability=stable
 func WithNotifier(n Notifier) Option {
 	return func(cl *Client) { cl.notifier = n }
 }
@@ -48,14 +52,20 @@ const listenRetry = time.Second
 
 // maxChannelLen is the longest channel name Postgres accepts (NAMEDATALEN
 // minus one); longer names are hashed down to fit.
+//
+//ds:def id=sql-maxchannellen-chrc2urb owner=@khanakia stability=stable
 const maxChannelLen = 63
 
 // channelPrefix starts every wake-up channel name, so the library's
 // channels are recognisable on a shared bus.
+//
+//ds:def id=sql-channelprefix-eddt8gb5 owner=@khanakia stability=stable
 const channelPrefix = "ubgo_workflow_"
 
 // notifyChannel is the channel the clients of these tables share: the
 // schema and table prefix, which are what make two clients one cluster.
+//
+//ds:def id=sql-client-notifychannel-jjebh9y7 owner=@khanakia stability=stable
 func (c *Client) notifyChannel() string {
 	name := channelPrefix + c.prefix + "wake"
 	if c.schema != "" {
@@ -70,6 +80,8 @@ func (c *Client) notifyChannel() string {
 
 // signalFleet asks the sender goroutine to notify the other clients. It
 // never blocks: a signal already pending covers this one too.
+//
+//ds:def id=sql-client-signalfleet-4648fmrx owner=@khanakia stability=stable
 func (c *Client) signalFleet() {
 	if c.notifier == nil {
 		return

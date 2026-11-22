@@ -1,0 +1,4 @@
+type Client struct {
+	workflow.Forward // run-side optional interfaces go to the jobs client
+	sched, jobs      workflow.Client
+}

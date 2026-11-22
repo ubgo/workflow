@@ -1,0 +1,6 @@
+func validClaimKey(k string) error {
+	if k == "" || strings.Contains(k, claimKeySep) {
+		return fmt.Errorf("%w: claim check key must be non-empty and hold no %q", workflow.ErrInvalid, claimKeySep)
+	}
+	return nil
+}

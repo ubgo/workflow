@@ -1,0 +1,20 @@
+func (c *Caps) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	switch {
+	case bytes.Equal(data, []byte("null")):
+		return nil
+	case len(data) > 0 && data[0] == '"':
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return invalidf("capabilities %s: %v", data, err)
+		}
+		return c.UnmarshalText([]byte(s))
+	}
+	v, err := strconv.ParseUint(string(data), 10, 64)
+	if err != nil {
+		return invalidf("capabilities %s: want a string such as \"Durable|Cron\" or a v0.1 number", data)
+	}
+	*c = Caps{}
+	c.w[0] = v
+	return nil
+}

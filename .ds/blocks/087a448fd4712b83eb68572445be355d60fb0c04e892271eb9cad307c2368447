@@ -1,0 +1,7 @@
+func WithPollInterval(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.poll = d
+		}
+	}
+}

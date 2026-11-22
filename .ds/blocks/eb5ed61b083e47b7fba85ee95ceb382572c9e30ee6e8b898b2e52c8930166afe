@@ -1,0 +1,13 @@
+type CronJobOptions struct {
+	// Image is the container image. Required.
+	Image string
+	// Namespace is metadata.namespace; empty leaves it to kubectl.
+	Namespace string
+	// Container is the container's name; empty means "job".
+	Container string
+	// RestartPolicy is "OnFailure" (the default when empty) or "Never".
+	RestartPolicy string
+	// Suspend writes spec.suspend: true, so the CronJob exists but
+	// starts nothing until it is unsuspended.
+	Suspend bool
+}

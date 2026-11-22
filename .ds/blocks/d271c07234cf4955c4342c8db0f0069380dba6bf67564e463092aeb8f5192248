@@ -1,0 +1,9 @@
+func (s *LineageStore) lineageMigrations() []migrate.Migration {
+	stmts := s.st.render(lineageDefs(typesFor(s.st.engine)))
+	for i, q := range stmts {
+		stmts[i] = s.names.Replace(q)
+	}
+	return []migrate.Migration{
+		{Owner: s.st.owner(LineageMigrationOwner), Name: "001_lineage", Script: s.st.script(stmts)},
+	}
+}

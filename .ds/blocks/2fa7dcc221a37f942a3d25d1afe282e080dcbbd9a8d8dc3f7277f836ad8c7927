@@ -1,0 +1,21 @@
+func (c *Client) pruneSignalsLocked() {
+	oldest := c.seq + 1
+	for _, r := range c.runs {
+		if !r.status.IsTerminal() && r.seq < oldest {
+			oldest = r.seq
+		}
+	}
+	for _, r := range c.delayed {
+		if !r.status.IsTerminal() && r.seq < oldest {
+			oldest = r.seq
+		}
+	}
+	for k, sgs := range c.signals {
+		sgs = slices.DeleteFunc(sgs, func(sg signal) bool { return sg.seq < oldest })
+		if len(sgs) == 0 {
+			delete(c.signals, k)
+		} else {
+			c.signals[k] = sgs
+		}
+	}
+}

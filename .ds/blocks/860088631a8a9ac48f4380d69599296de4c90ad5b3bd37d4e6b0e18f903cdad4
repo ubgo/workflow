@@ -1,0 +1,24 @@
+func (s *DisableStore) Fail(ctx context.Context, key string, after int) (bool, error) {
+	h, now := keyHash(key), s.clk.Now().UnixNano()
+	first := int64(0)
+	if after <= 1 {
+		first = 1 // the first failure already reaches after
+	}
+	upsert := "INSERT INTO {disabled_endpoints} (key_hash, dkey, fails, disabled, tripped, updated_at) VALUES (?, ?, 1, ?, ?, ?)\n"
+	if s.st.engine == engineMySQL {
+		upsert += "ON DUPLICATE KEY UPDATE " + failSet
+	} else {
+		upsert += "ON CONFLICT (key_hash) DO UPDATE SET " + failSet
+	}
+	var tripped int64
+	err := s.st.tx(ctx, func(tx *sql.Tx) error {
+		if _, err := s.st.exec(ctx, tx, s.q(upsert), h, key, first, first, now, after, after, now); err != nil {
+			return err
+		}
+		return s.st.one(ctx, tx, s.q("SELECT tripped FROM {disabled_endpoints} WHERE key_hash = ?"), []any{h}, &tripped)
+	})
+	if err != nil {
+		return false, fmt.Errorf("sqlstore: count failure: %w", err)
+	}
+	return tripped == 1, nil
+}

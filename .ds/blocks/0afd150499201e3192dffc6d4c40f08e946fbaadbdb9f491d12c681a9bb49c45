@@ -1,0 +1,3 @@
+func IsUTC(loc *time.Location) bool {
+	return loc == nil || loc == time.UTC || loc.String() == "UTC"
+}

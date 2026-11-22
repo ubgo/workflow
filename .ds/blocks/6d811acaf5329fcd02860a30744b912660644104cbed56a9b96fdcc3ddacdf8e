@@ -1,0 +1,15 @@
+func FuncCatch[In any](fn func(ctx context.Context, in In) error) FuncOption {
+	return func(c *FuncConfig) {
+		if fn == nil {
+			c.Catch = nil
+			return
+		}
+		c.Catch = func(ctx context.Context, raw []byte) error {
+			var in In
+			if len(raw) > 0 {
+				_ = json.Unmarshal(raw, &in) // a catch still runs on input that never decoded
+			}
+			return fn(ctx, in)
+		}
+	}
+}

@@ -16,6 +16,8 @@ import (
 // jobs a batch.Manager added later with Add are included. The batch's
 // name and callbacks live in the Manager's Store, not on the jobs; read
 // them with Manager.Progress(ctx, ID) when a test needs them.
+//
+//ds:def id=workflowtest-fakebatch-m2ufyk2z owner=@khanakia stability=stable
 type FakeBatch struct {
 	ID   batch.ID
 	Jobs []workflow.Job
@@ -33,17 +35,23 @@ func (m BatchMatcher) String() string { return m.desc }
 
 // BatchWhere matches batches for which fn is true; desc names the
 // condition in failure messages.
+//
+//ds:def id=workflowtest-batchwhere-p3ekhvzb owner=@khanakia stability=stable
 func BatchWhere(desc string, fn func(FakeBatch) bool) BatchMatcher {
 	return BatchMatcher{desc: desc, match: fn}
 }
 
 // BatchSize matches a batch of exactly n jobs.
+//
+//ds:def id=workflowtest-batchsize-vnpqtsa6 owner=@khanakia stability=stable
 func BatchSize(n int) BatchMatcher {
 	return BatchWhere(strconv.Itoa(n)+" jobs", func(b FakeBatch) bool { return len(b.Jobs) == n })
 }
 
 // BatchHasJob matches a batch with at least one job of workflow wf
 // matching every m.
+//
+//ds:def id=workflowtest-batchhasjob-uppr49yf owner=@khanakia stability=stable
 func BatchHasJob(wf string, m ...JobMatcher) BatchMatcher {
 	return BatchWhere("a job of "+strconv.Quote(wf)+describe(m), func(b FakeBatch) bool {
 		return slices.ContainsFunc(b.Jobs, func(j workflow.Job) bool { return j.Workflow == wf && matchAll(j, m) })
@@ -52,6 +60,8 @@ func BatchHasJob(wf string, m ...JobMatcher) BatchMatcher {
 
 // batchesOf groups jobs by their batch label, in the order each batch's
 // first job was recorded, each batch's jobs in index order.
+//
+//ds:def id=workflowtest-batchesof-c7phrxex owner=@khanakia stability=stable
 func batchesOf(jobs []workflow.Job) []FakeBatch {
 	var out []FakeBatch
 	at := map[batch.ID]int{}
@@ -115,6 +125,8 @@ func describeBatch(ms []BatchMatcher) string {
 }
 
 // listBatches describes bs for a failure message.
+//
+//ds:def id=workflowtest-listbatches-59j5y7tv owner=@khanakia stability=stable
 func listBatches(bs []FakeBatch) string {
 	if len(bs) == 0 {
 		return "no batch was dispatched"
@@ -142,6 +154,8 @@ func listBatches(bs []FakeBatch) string {
 // checkChain reports why wf's steps are not exactly the chain steps (each
 // step after the one before it, the first after none), or "" when they
 // are.
+//
+//ds:def id=workflowtest-checkchain-9dhh5hyg owner=@khanakia stability=stable
 func checkChain(wf workflow.Workflow, steps []string) string {
 	got := make([]string, len(wf.Steps))
 	for i, s := range wf.Steps {

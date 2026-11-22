@@ -1,0 +1,14 @@
+func (r *Relay) Flush(ctx context.Context) (int, error) {
+	total := 0
+	for {
+		batch, token, err := r.claim(ctx)
+		if err != nil || len(batch) == 0 {
+			return total, err
+		}
+		n, err := r.deliver(ctx, batch, token)
+		total += n
+		if err != nil || len(batch) < r.batch || n == 0 {
+			return total, err
+		}
+	}
+}

@@ -1,0 +1,3 @@
+func (o *Outbox) migrations() []migrate.Migration {
+	return []migrate.Migration{{Owner: o.owner(), Name: "001_outbox", Script: o.script001()}}
+}

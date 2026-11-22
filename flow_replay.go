@@ -38,11 +38,15 @@ import (
 // is forgotten with the rest of the run's journal when the run finishes.
 
 // ErrNondeterminism matches a *NondeterminismError.
+//
+//ds:def id=errnondeterminism-4uctguxs owner=@khanakia stability=stable
 var ErrNondeterminism = errors.New("workflow: replay does not match the recorded history")
 
 // NondeterminismError reports a replayed handler that did not repeat its
 // recorded history: the code changed under a running run, or it depends
 // on something it did not record.
+//
+//ds:def id=nondeterminismerror-8x8pksxb owner=@khanakia stability=stable
 type NondeterminismError struct {
 	// Position is the index of the call, from 0.
 	Position int
@@ -72,9 +76,13 @@ func (e *NondeterminismError) Is(target error) bool { return target == ErrNondet
 // ReplayFunc is a replayed handler's body: it gets the replay context and
 // the step's input and returns the step's output. Return the error of a
 // ReplayCtx call as it is (it may be the suspension of a wait).
+//
+//ds:def id=replayfunc-r6m9n633 owner=@khanakia stability=stable
 type ReplayFunc func(rc *ReplayCtx, in []byte) ([]byte, error)
 
 // ReplayOptions configures NewReplay.
+//
+//ds:def id=replayoptions-6vpwfkpn owner=@khanakia stability=stable
 type ReplayOptions struct {
 	// Client, when set, is checked for CapSnooze, which waits need (a
 	// suspended wait is a snooze). Pass the client the workflow is
@@ -95,6 +103,8 @@ type ReplayOptions struct {
 // ErrNoJournal otherwise) and, for waits, CapSnooze: memory, sqlstore and
 // Redis; with opts.Client set, a client without CapSnooze is refused here
 // with an UnsupportedError.
+//
+//ds:def id=newreplay-4kar3evc owner=@khanakia stability=stable
 func NewReplay(fn ReplayFunc, opts ReplayOptions) (Handler, error) {
 	if fn == nil {
 		return nil, invalidf("NewReplay needs a function")
@@ -138,6 +148,8 @@ func NewReplay(fn ReplayFunc, opts ReplayOptions) (Handler, error) {
 // ReplayCtx is what a replayed handler records its calls through. It is
 // not safe for concurrent use: calls are recorded in the order they are
 // made, so make them from the handler's goroutine.
+//
+//ds:def id=replayctx-7t4tsdfs owner=@khanakia stability=stable
 type ReplayCtx struct {
 	ctx     context.Context
 	j       *journalScope
@@ -148,6 +160,11 @@ type ReplayCtx struct {
 	peekOK  bool  // whether a call is recorded at peeked-1
 	suspend error // set once a wait suspends this run of the handler
 	fault   error // set once a call failed for good (nondeterminism, a store error)
+
+	// children counts the ReplayChild calls per name made so far in this
+	// run of the body, recorded or live, so each call gets a spawn name
+	// of its own (childSpawnName).
+	children map[string]int
 }
 
 // Context returns the step's context.
@@ -159,6 +176,8 @@ func (rc *ReplayCtx) Context() context.Context { return rc.ctx }
 // the history (it reaches this point for the first time). Code that logs
 // or reports only once does it when Replaying is false. It reads the
 // store once per position; a read error counts as not replaying.
+//
+//ds:def id=replayctx-replaying-fp9hjkng owner=@khanakia stability=stable
 func (rc *ReplayCtx) Replaying() bool {
 	if rc.peeked != rc.pos+1 {
 		_, ok, err := rc.load(rc.pos)
@@ -177,6 +196,7 @@ type replayEntry struct {
 
 func (rc *ReplayCtx) key(pos int) string { return rc.prefix + strconv.Itoa(pos) }
 
+//ds:def id=replayctx-load-3kmgcg3a owner=@khanakia stability=stable
 func (rc *ReplayCtx) load(pos int) (replayEntry, bool, error) {
 	var e replayEntry
 	raw, ok, err := rc.j.store.Load(rc.ctx, rc.j.run, rc.key(pos))
@@ -196,6 +216,8 @@ func (rc *ReplayCtx) load(pos int) (replayEntry, bool, error) {
 // when there is one (checked against kind and name), and false for a new
 // call. Once the handler is suspended or failed every call returns that
 // error again, so code that ignores an error cannot run on.
+//
+//ds:def id=replayctx-next-suvs8w6w owner=@khanakia stability=stable
 func (rc *ReplayCtx) next(kind, name string) (replayEntry, bool, error) {
 	if rc.suspend != nil {
 		return replayEntry{}, false, rc.suspend
@@ -224,6 +246,8 @@ func (rc *ReplayCtx) next(kind, name string) (replayEntry, bool, error) {
 // error can never record a call at a position it does not own. A
 // Permanent err fails the run; any other one retries the step, which
 // re-runs the code from the top.
+//
+//ds:def id=replayctx-fail-m5hxy5p4 owner=@khanakia stability=stable
 func (rc *ReplayCtx) fail(err error) error {
 	rc.fault = err
 	return err
@@ -262,6 +286,8 @@ func (rc *ReplayCtx) suspendFor(d time.Duration) error {
 // later call returns it too) and the step's retry runs the code, and fn,
 // again. fn is at least once: the process can die after fn returns and
 // before its result is saved.
+//
+//ds:def id=replaystep-7ga7k5mw owner=@khanakia stability=stable
 func ReplayStep[T any](rc *ReplayCtx, name string, fn func(ctx context.Context) (T, error)) (T, error) {
 	var zero T
 	e, ok, err := rc.next("step", name)
@@ -308,6 +334,8 @@ func ReplayStep[T any](rc *ReplayCtx, name string, fn func(ctx context.Context) 
 
 // Now returns the time on the replay's clock, recorded under name: a
 // replay returns the recorded instant, so code may branch on it.
+//
+//ds:def id=replayctx-now-d769pxvb owner=@khanakia stability=stable
 func (rc *ReplayCtx) Now(name string) (time.Time, error) {
 	return ReplayStep(rc, name, func(context.Context) (time.Time, error) { return rc.opts.Clock.Now().UTC(), nil })
 }
@@ -315,15 +343,20 @@ func (rc *ReplayCtx) Now(name string) (time.Time, error) {
 // Sleep waits d from the first time the code reached it, without holding
 // a worker: the wake time is recorded under name, and until it passes the
 // handler is suspended (a snooze) and runs again at the wake time.
+//
+//ds:def id=replayctx-sleep-25nbyyt6 owner=@khanakia stability=stable
 func (rc *ReplayCtx) Sleep(name string, d time.Duration) error {
 	return rc.sleep("sleep", name, func() time.Time { return rc.opts.Clock.Now().Add(d) })
 }
 
 // SleepUntil waits until t, as Sleep does.
+//
+//ds:def id=replayctx-sleepuntil-xff2xf57 owner=@khanakia stability=stable
 func (rc *ReplayCtx) SleepUntil(name string, t time.Time) error {
 	return rc.sleep("sleep", name, func() time.Time { return t })
 }
 
+//ds:def id=replayctx-sleep-xgbfeav4 owner=@khanakia stability=stable
 func (rc *ReplayCtx) sleep(kind, name string, wake func() time.Time) error {
 	e, ok, err := rc.next(kind, name)
 	if err != nil {
@@ -352,6 +385,8 @@ func (rc *ReplayCtx) sleep(kind, name string, wake func() time.Time) error {
 // settled. While it is not, the handler is suspended and looks again
 // every ReplayOptions.Poll. A rejected promise returns a Permanent
 // *PromiseRejectedError, recorded like a value.
+//
+//ds:def id=replayctx-awaitpromise-y7k6qya8 owner=@khanakia stability=stable
 func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([]byte, error) {
 	e, ok, err := rc.next("promise", name)
 	if err != nil {
@@ -395,12 +430,18 @@ func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([
 // client again. A child that ended any other way returns a Permanent
 // *RunFailedError, recorded like a Permanent step error. client is the
 // client the child runs on; the parent's driver needs CapSnooze, and
-// the child's client needs results (ResultReader).
+// the child's client needs results (ResultReader). As with the other
+// calls the name need not be unique: each call with a name spawns its
+// own child (a loop calling ReplayChild(rc, "invoice", ...) starts one
+// per pass).
+//
+//ds:def id=replaychild-45qnbe3j owner=@khanakia stability=stable
 func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildOptions) ([]byte, error) {
 	e, ok, err := rc.next("child", name)
 	if err != nil {
 		return nil, err
 	}
+	spawnName := rc.childSpawnName(name)
 	if ok {
 		if e.Err != "" {
 			return nil, Permanent(errors.New(e.Err))
@@ -411,7 +452,7 @@ func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildO
 		}
 		return v, nil
 	}
-	out, err := AwaitChild(rc.ctx, client, "replay-child/"+name, job, opts)
+	out, err := AwaitChild(rc.ctx, client, spawnName, job, opts)
 	if d, snoozed := SnoozeDelay(err); snoozed {
 		return nil, rc.suspendFor(d)
 	}
@@ -429,4 +470,24 @@ func ReplayChild(rc *ReplayCtx, name string, client Client, job Job, opts ChildO
 		return nil, err
 	}
 	return out, nil
+}
+
+// childSpawnName is the name ReplayChild spawns its child under, counted
+// on every call (a recorded one too) so the same call gets the same name
+// on every run of the body: "replay-child/<name>" for the first call with
+// name, as it always was (a run already waiting on that child keeps it),
+// and "replay-child#<n>/<name>" for the n-th call with the same name, so
+// a loop may reuse a name, as with the other calls. The "#<n>" form
+// cannot be produced by a name in the first form, so the two never meet.
+//
+//ds:def id=replayctx-childspawnname-7dvcm2sd owner=@khanakia stability=stable
+func (rc *ReplayCtx) childSpawnName(name string) string {
+	if rc.children == nil {
+		rc.children = map[string]int{}
+	}
+	rc.children[name]++
+	if n := rc.children[name]; n > 1 {
+		return "replay-child#" + strconv.Itoa(n) + "/" + name
+	}
+	return "replay-child/" + name
 }

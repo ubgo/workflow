@@ -1,0 +1,8 @@
+func (r NextRun) String() string {
+	const day, clock = "2006-01-02", "15:04:05"
+	utc := r.UTC.Format(clock)
+	if r.UTC.Format(day) != r.Local.Format(day) {
+		utc = r.UTC.Format(day + " " + clock)
+	}
+	return r.Local.Format(day+" "+clock+" MST") + " (" + utc + " UTC)"
+}

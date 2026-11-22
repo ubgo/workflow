@@ -8,6 +8,8 @@ import "github.com/ubgo/workflow/cron"
 // WithCronParser dialect), else cron.Parse. The seconds flag wins over a
 // custom dialect because it is part of the schedule's stored meaning,
 // while a custom parser is one process's choice.
+//
+//ds:def id=parsecron-n4p5qx7s owner=@khanakia stability=stable
 func ParseCron(expr string, seconds bool, custom cron.Parser) (cron.Schedule, error) {
 	switch {
 	case seconds:

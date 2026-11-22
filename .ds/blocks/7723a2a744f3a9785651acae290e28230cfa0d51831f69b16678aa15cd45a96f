@@ -1,0 +1,15 @@
+func Sinks(wf Workflow) []string {
+	parent := make(map[string]bool, len(wf.Steps))
+	for _, s := range wf.Steps {
+		for _, p := range s.After {
+			parent[p] = true
+		}
+	}
+	var out []string
+	for _, s := range wf.Steps {
+		if !parent[s.Name] {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}

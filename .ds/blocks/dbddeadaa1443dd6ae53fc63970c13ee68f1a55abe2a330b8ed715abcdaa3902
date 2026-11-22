@@ -1,0 +1,14 @@
+func outcomeOf(err error) Outcome {
+	switch {
+	case err == nil:
+		return OutcomeOK
+	case workflow.IsDiscarded(err):
+		return OutcomeDiscarded
+	case errors.Is(err, workflow.ErrCancelled):
+		return OutcomeCancelled
+	case workflow.IsPermanent(err):
+		return OutcomePermanent
+	default:
+		return OutcomeError
+	}
+}

@@ -1,0 +1,19 @@
+func (p *signalsPlugin) StepMiddleware() []Middleware {
+	reader, h, names := p.reader, p.h, p.names
+	batch := h.Batch
+	if batch == 0 {
+		batch = DefaultSignalBatch
+	}
+	return []Middleware{func(next Handler) Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			info, ok := StepInfoFrom(ctx)
+			if reader == nil || !ok || info.RunID.IsZero() || (h.Workflow != "" && info.Workflow != h.Workflow) {
+				return next(ctx, in)
+			}
+			if err := handleRunSignals(ctx, reader, info.RunID, h.On, names, batch); err != nil {
+				return nil, err
+			}
+			return next(ctx, in)
+		}
+	}}
+}

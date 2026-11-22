@@ -1,0 +1,23 @@
+func launchdPrepare(s workflow.Schedule, t Target, o LaunchdOptions) (job, error) {
+	const f = FormatLaunchd
+	j, err := prepare(f, s, t)
+	if err != nil {
+		return job{}, err
+	}
+	if !launchdLabel.MatchString(j.name) {
+		return job{}, invalid(f, "label %q: use letters, digits, '.', '_' and '-'", j.name)
+	}
+	if len(t.Command) == 0 || t.Command[0] == "" {
+		return job{}, invalid(f, "Target.Command is required")
+	}
+	if o.Zone == nil {
+		return job{}, invalid(f, "LaunchdOptions.Zone is required: name the zone the Mac runs in")
+	}
+	if _, err := classify(f, s.Misfire); err != nil {
+		return job{}, err
+	}
+	if !s.Misfire.IsZero() {
+		return job{}, refuse(f, "Misfire", "launchd starts one run on wake for the ticks a sleeping Mac missed and none for a Mac that was off; leave Misfire zero")
+	}
+	return j, nil
+}

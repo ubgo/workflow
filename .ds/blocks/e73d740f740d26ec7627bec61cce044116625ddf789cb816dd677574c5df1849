@@ -1,0 +1,24 @@
+func (n *Notifier) Listen(ctx context.Context, channel string, wake func()) error {
+	conn, err := n.db.Conn(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("pgnotify: take a connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+	var listenErr error
+	// Raw always returns driver.ErrBadConn, which makes database/sql
+	// discard the connection: it is either still subscribed or in the
+	// unknown state a cancelled wait leaves it in.
+	_ = conn.Raw(func(dc any) error {
+		sc, ok := dc.(*stdlib.Conn)
+		if !ok {
+			listenErr = fmt.Errorf("%w (got %T)", ErrDriver, dc)
+			return driver.ErrBadConn
+		}
+		listenErr = listen(ctx, sc.Conn(), channel, wake)
+		return driver.ErrBadConn
+	})
+	return listenErr
+}

@@ -252,30 +252,6 @@ func (t *Tiny) runStep(ctx context.Context, wf workflow.Workflow, s workflow.Ste
 	}
 }
 
-// attempt runs h once, cancelling its ctx when timeout passes on the
-// injected clock.
-func (t *Tiny) attempt(ctx context.Context, h workflow.Handler, in []byte, timeout time.Duration) ([]byte, error) {
-	if timeout <= 0 {
-		return h(ctx, in)
-	}
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-	timer := t.clk.NewTimer(timeout)
-	defer timer.Stop()
-	go func() {
-		select {
-		case <-timer.C():
-			cancel(fmt.Errorf("step timed out after %s", timeout))
-		case <-ctx.Done():
-		}
-	}()
-	out, err := h(ctx, in)
-	if err == nil && ctx.Err() != nil {
-		err = context.Cause(ctx)
-	}
-	return out, err
-}
-
 // sleep waits d on the injected clock, or reports false when ctx ends.
 func (t *Tiny) sleep(ctx context.Context, d time.Duration) bool {
 	if d <= 0 {
@@ -291,4 +267,42 @@ func (t *Tiny) sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// snippet:timeout-handshake
+// attempt runs h once. When timeout passes on the injected clock it
+// cancels h's ctx with a workflow.TimeoutError, not wrapped, so the
+// handler's context.Cause matches workflow.ErrStepTimeout, and fails the
+// attempt with it whatever h returned, unless the handler chain claimed
+// it (workflow.ClaimTimeout: a step WithRules tolerates keeps its record).
+func (t *Tiny) attempt(ctx context.Context, h workflow.Handler, in []byte, timeout time.Duration) ([]byte, error) {
+	if timeout <= 0 {
+		return h(ctx, in)
+	}
+	info, _ := workflow.StepInfoFrom(ctx)
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("tiny: step %q attempt %d after %s", info.Step, info.Attempt, timeout))
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	timer := t.clk.NewTimer(timeout)
+	defer timer.Stop()
+	go func() {
+		select {
+		case <-timer.C():
+			cancel(errStep)
+		case <-ctx.Done():
+		}
+	}()
+	hctx, claimed := workflow.WithTimeoutClaim(ctx)
+	out, err := h(hctx, in)
+	// Compare by identity: any other cause (the client stopping) is not
+	// this attempt's timeout. A late success is never a success.
+	switch cause := context.Cause(ctx); {
+	case cause == errStep && !claimed():
+		return nil, errStep
+	case cause != errStep && err == nil && ctx.Err() != nil:
+		return nil, cause
+	}
+	return out, err
+}
+
+// snippet:end
 // snippet:end

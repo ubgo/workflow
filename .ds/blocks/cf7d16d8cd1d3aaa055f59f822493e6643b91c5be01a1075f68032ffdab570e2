@@ -1,0 +1,3 @@
+func FakeCaps(c workflow.Caps) FakeOption {
+	return func(f *Fake) { f.caps = c.Without(fakeUnserved) }
+}

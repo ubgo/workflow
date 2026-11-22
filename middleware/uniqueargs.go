@@ -14,6 +14,8 @@ import (
 // DefaultArgsKeyPrefix starts every key UniqueByArgs builds, so its locks
 // cannot collide with keys an app's own key function builds in the same
 // UniqueStore.
+//
+//ds:def id=mw-defaultargskeyprefix-rk2ta4j3 owner=@khanakia stability=stable
 const DefaultArgsKeyPrefix = "args:"
 
 // ArgsOption tunes UniqueByArgs.
@@ -33,21 +35,29 @@ type argsKey struct {
 // one set to null. A payload that is not a JSON object cannot be cut to
 // fields, so its whole bytes count instead: the key gets narrower, never
 // wider, so no job is ever dropped as a duplicate of a different one.
+//
+//ds:def id=mw-argsfields-8k2bg7nb owner=@khanakia stability=stable
 func ArgsFields(names ...string) ArgsOption {
 	return func(k *argsKey) { k.fields = append([]string(nil), names...) }
 }
 
 // ArgsQueue makes Job.Queue count, so the same arguments on two queues
 // are two unique jobs.
+//
+//ds:def id=mw-argsqueue-mw37nfwq owner=@khanakia stability=stable
 func ArgsQueue() ArgsOption { return func(k *argsKey) { k.queue = true } }
 
 // ArgsLabels makes the values of these Job.Labels keys count (a missing
 // label counts as absent).
+//
+//ds:def id=mw-argslabels-4quhx4yx owner=@khanakia stability=stable
 func ArgsLabels(keys ...string) ArgsOption {
 	return func(k *argsKey) { k.labels = append([]string(nil), keys...) }
 }
 
 // ArgsKeyPrefix replaces DefaultArgsKeyPrefix.
+//
+//ds:def id=mw-argskeyprefix-wjc7sxu6 owner=@khanakia stability=stable
 func ArgsKeyPrefix(p string) ArgsOption { return func(k *argsKey) { k.prefix = p } }
 
 // UniqueByArgs returns a key function for Unique, UniqueUntilFinished and
@@ -60,6 +70,8 @@ func ArgsKeyPrefix(p string) ArgsOption { return func(k *argsKey) { k.prefix = p
 // (1 and 1.0 differ). A payload that is not JSON is hashed as its bytes.
 // It hashes the payload the middleware sees, so place it before a codec
 // or claim check whose output changes from call to call (encryption).
+//
+//ds:def id=mw-uniquebyargs-rgxc6ark owner=@khanakia stability=stable
 func UniqueByArgs(opts ...ArgsOption) func(workflow.Job) string {
 	k := argsKey{prefix: DefaultArgsKeyPrefix}
 	for _, o := range opts {
@@ -87,6 +99,8 @@ func UniqueByArgs(opts ...ArgsOption) func(workflow.Job) string {
 // cannot collide: a canonical form is one valid JSON value, and raw bytes
 // are used only when the payload is not one (or, with ArgsFields, is not
 // an object, which no picked object encodes to).
+//
+//ds:def id=mw-argskey-canonical-rqdahqf4 owner=@khanakia stability=stable
 func (k argsKey) canonical(payload []byte) []byte {
 	var v any
 	dec := json.NewDecoder(bytes.NewReader(payload))
@@ -116,6 +130,8 @@ func (k argsKey) canonical(payload []byte) []byte {
 
 // UniqueTag is the struct tag ArgsTagged reads: a field tagged
 // `unique:"true"` counts toward the key.
+//
+//ds:def id=mw-uniquetag-r9sm3sfd owner=@khanakia stability=stable
 const UniqueTag = "unique"
 
 // ArgsTagged makes the fields of T tagged `unique:"true"` the ones that
@@ -131,6 +147,8 @@ const UniqueTag = "unique"
 // The JSON name comes from the json tag (its first part), else the Go
 // field name, as encoding/json does. A T that is not a struct, or has no
 // tagged field, makes the whole payload count, the same as no option.
+//
+//ds:def id=mw-argstagged-mvcqcdgf owner=@khanakia stability=stable
 func ArgsTagged[T any]() ArgsOption {
 	t := reflect.TypeFor[T]()
 	for t.Kind() == reflect.Pointer {

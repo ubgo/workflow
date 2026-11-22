@@ -196,6 +196,8 @@ func (c *Client) chainArgs(chain []workflow.Job, now time.Time) ([]any, error) {
 // held by an unfinished run of the same workflow it writes nothing and
 // returns that run's RunRef; the check and the write are one script, so
 // two clients racing on one key make one run.
+//
+//ds:def id=redis-client-enqueue-f4veqdur owner=@khanakia stability=stable
 func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -331,6 +333,8 @@ func (c *Client) Status(ctx context.Context, ref workflow.RunRef) (workflow.Stat
 // later takes it then, provided the run was enqueued before the signal was
 // sent. A signal nobody waits for is kept until no unfinished run may take
 // it, and is not an error.
+//
+//ds:def id=redis-client-signal-eqddczrc owner=@khanakia stability=stable
 func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -551,6 +555,8 @@ const runsBatch = 200
 // in Go with RunQuery.Match, so a narrow filter over a long history reads
 // more than it returns; finished runs leave the index when Delete or
 // retention removes them.
+//
+//ds:def id=redis-client-runs-t8fvwwas owner=@khanakia stability=stable
 func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
 	if err := workflow.ValidateRunQuery(q); err != nil {
 		return workflow.RunPage{}, err

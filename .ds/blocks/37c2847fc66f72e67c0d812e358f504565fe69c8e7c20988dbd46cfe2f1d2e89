@@ -1,0 +1,6 @@
+func (s *store) mark(err error) error {
+	if err != nil && s.classify(err).Unavailable && !workflow.IsUnavailable(err) {
+		return workflow.Unavailable(err)
+	}
+	return err
+}

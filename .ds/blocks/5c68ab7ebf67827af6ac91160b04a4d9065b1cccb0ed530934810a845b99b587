@@ -1,0 +1,7 @@
+func WithLease(d time.Duration) Option {
+	return func(c *Client) {
+		if d > 0 {
+			c.lease = d
+		}
+	}
+}

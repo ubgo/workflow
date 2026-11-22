@@ -1,0 +1,1 @@
+func WithClock(c clock.Clock) Option { return func(b *Bus) { b.clk = c } }

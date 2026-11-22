@@ -1,0 +1,3 @@
+func DefaultFingerprint(f workflow.Failure) []string {
+	return []string{"ubgo-workflow", f.Workflow, f.Step, errorType(f.Err)}
+}

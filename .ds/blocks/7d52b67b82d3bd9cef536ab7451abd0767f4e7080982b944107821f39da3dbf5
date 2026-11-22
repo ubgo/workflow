@@ -1,0 +1,1 @@
+	CapTickEvents = defineCap(31, "TickEvents")

@@ -1,0 +1,25 @@
+func listExpr(vals []int, lo, hi int) (string, error) {
+	if len(vals) == 0 {
+		return wild, nil
+	}
+	sorted := slices.Clone(vals)
+	slices.Sort(sorted)
+	sorted = slices.Compact(sorted)
+	if sorted[0] < lo || sorted[len(sorted)-1] > hi {
+		return "", fmt.Errorf("values must be %d-%d, got %v", lo, hi, vals)
+	}
+	var items []string
+	for i := 0; i < len(sorted); {
+		j := i
+		for j+1 < len(sorted) && sorted[j+1] == sorted[j]+1 {
+			j++
+		}
+		if j == i {
+			items = append(items, strconv.Itoa(sorted[i]))
+		} else {
+			items = append(items, strconv.Itoa(sorted[i])+"-"+strconv.Itoa(sorted[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(items, ","), nil
+}

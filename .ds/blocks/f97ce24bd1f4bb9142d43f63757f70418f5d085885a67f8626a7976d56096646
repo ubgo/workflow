@@ -1,0 +1,27 @@
+func NewMemoryStream(opt MemoryStreamOptions) *MemoryStream {
+	if opt.MaxChunk <= 0 {
+		opt.MaxChunk = DefaultStreamMaxChunk
+	}
+	if opt.MaxRunBytes <= 0 {
+		opt.MaxRunBytes = DefaultStreamMaxRunBytes
+	}
+	if opt.MaxRunChunks <= 0 {
+		opt.MaxRunChunks = DefaultStreamMaxRunChunks
+	}
+	if opt.MaxRuns <= 0 {
+		opt.MaxRuns = DefaultStreamMaxRuns
+	}
+	if opt.TTL <= 0 {
+		opt.TTL = DefaultStreamTTL
+	}
+	if opt.Retain <= 0 {
+		opt.Retain = DefaultStreamRetain
+	}
+	if opt.Buffer <= 0 {
+		opt.Buffer = DefaultStreamBuffer
+	}
+	if opt.Clock == nil {
+		opt.Clock = clock.Real{}
+	}
+	return &MemoryStream{opt: opt, runs: map[RunID]*memRunStream{}}
+}

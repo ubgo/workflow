@@ -1,0 +1,28 @@
+func Launchd(s workflow.Schedule, t Target, o LaunchdOptions) (File, error) {
+	const f = FormatLaunchd
+	j, err := launchdPrepare(s, t, o)
+	if err != nil {
+		return File{}, err
+	}
+	if !sameZone(s.Location, o.Zone) {
+		return File{}, refuse(f, "Location", "zone %s: launchd fires on the Mac's own zone, %s", s.Location, o.Zone)
+	}
+	if err := j.noWindows(f); err != nil {
+		return File{}, err
+	}
+	if !s.Active.IsZero() {
+		return File{}, refuse(f, "Active", "a job has no start or end; load and unload it at those times")
+	}
+	if s.Overlap != workflow.OverlapSkip {
+		return File{}, refuse(f, "Overlap", "a running job is never started twice, so a tick during a run is skipped; set Overlap to OverlapSkip")
+	}
+	fl, err := j.fields(f)
+	if err != nil {
+		return File{}, err
+	}
+	entries, err := calendarIntervals(fl)
+	if err != nil {
+		return File{}, err
+	}
+	return j.plist(entries), nil
+}

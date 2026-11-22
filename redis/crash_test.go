@@ -248,6 +248,8 @@ func waitStatus(t *testing.T, c workflow.Client, ref workflow.RunRef, want workf
 // TestCronTickFiresOnceAcrossClients: three clients over one prefix and
 // one scheduling clock race to fire every tick of a schedule; each tick
 // makes exactly one run.
+//
+//ds:def id=redis-testcrontickfiresonceacrossclients-2vzftmxg owner=@khanakia stability=stable
 func TestCronTickFiresOnceAcrossClients(t *testing.T) {
 	rdb := redisClient(t)
 	prefix := testPrefix(t, rdb)

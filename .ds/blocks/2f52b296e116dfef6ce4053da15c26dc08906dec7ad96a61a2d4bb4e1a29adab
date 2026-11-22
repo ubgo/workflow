@@ -1,0 +1,1 @@
+var ErrKeyRequired = errors.New("failover: Job.IdempotencyKey is required, because a primary that accepted the job and then failed to answer would make failover run it twice (use failover.AllowWithoutKey to accept that)")

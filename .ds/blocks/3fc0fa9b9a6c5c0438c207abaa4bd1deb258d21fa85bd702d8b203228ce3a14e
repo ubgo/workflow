@@ -1,0 +1,21 @@
+func (m *Manager) Attach(ctx context.Context) error {
+	srcs := m.sources
+	if !m.sourcesSet {
+		srcs = m.defaultSources()
+	}
+	polled := false
+	for _, src := range srcs {
+		if err := src.Attach(ctx, m); err != nil {
+			return err
+		}
+		_, isPoll := src.(pollSource)
+		polled = polled || isPoll
+		if _, ok := src.(LabelSource); ok {
+			m.byLabel = true
+		}
+	}
+	if !polled && !m.manualRetry {
+		go m.retryLoop(ctx)
+	}
+	return nil
+}

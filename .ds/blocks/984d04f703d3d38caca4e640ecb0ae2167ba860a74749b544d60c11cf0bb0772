@@ -1,0 +1,7 @@
+func PoolRetry(d time.Duration) PoolOption {
+	return func(c *poolConfig) {
+		if d > 0 {
+			c.retry = d
+		}
+	}
+}

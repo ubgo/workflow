@@ -1,0 +1,7 @@
+var rateLimitWindows = map[time.Duration]hatchetsdk.RateLimitDuration{
+	time.Second:        hatchetsdk.Second,
+	time.Minute:        hatchetsdk.Minute,
+	time.Hour:          hatchetsdk.Hour,
+	24 * time.Hour:     hatchetsdk.Day,
+	7 * 24 * time.Hour: hatchetsdk.Week,
+}

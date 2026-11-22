@@ -1,0 +1,12 @@
+func Timeout(d time.Duration) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		if d <= 0 {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			ctx, cancel := context.WithTimeout(ctx, d)
+			defer cancel()
+			return next(ctx, in)
+		}
+	}
+}

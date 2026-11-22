@@ -34,6 +34,8 @@ const quietHorizon = 50 * time.Hour
 // sends it at night; a job that is not moved needs nothing. A window
 // that is not "HH:MM", or one whose From equals its To, or windows that
 // allow no minute of the day, refuse the enqueue with workflow.ErrInvalid.
+//
+//ds:def id=mw-quiethours-jg4etzmz owner=@khanakia stability=stable
 func QuietHours(w workflow.Windows, zoneOf func(workflow.Job) *time.Location, clk clock.Clock) workflow.EnqueueMiddleware {
 	if clk == nil {
 		clk = clock.Real{}

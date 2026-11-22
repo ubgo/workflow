@@ -1,0 +1,38 @@
+func (c *Client) moveOne(ctx context.Context, info workflow.ScheduleInfo, input func(workflow.ScheduleInfo) ([]byte, error)) (Moved, error) {
+	in, err := input(info)
+	if err != nil {
+		return Moved{}, err
+	}
+	var pauser workflow.SchedulePauser
+	if info.Paused {
+		p, ok := c.new.(workflow.SchedulePauser)
+		if !ok || !c.new.Capabilities().Has(workflow.CapSchedulePause) {
+			return Moved{}, &workflow.UnsupportedError{Field: "MoveSchedules", Missing: workflow.CapSchedulePause, Reason: "the schedule is paused and the new backend cannot pause it"}
+		}
+		pauser = p
+	}
+	s := workflow.Schedule{
+		Name: info.Name, Workflow: info.Workflow, Cron: info.Cron, Location: info.Location, Input: in,
+		Labels: info.Labels, Misfire: info.Misfire, Windows: info.Windows, Overlap: info.Overlap,
+		Seconds: info.Seconds, Active: info.Active, KeepRuns: info.KeepRuns, Tenant: info.Tenant,
+	}
+	id, err := c.new.Schedule(ctx, s)
+	if err != nil {
+		return Moved{}, fmt.Errorf("schedule on the new backend: %w", err)
+	}
+	undo := func(cause error) error {
+		if uerr := c.new.Unschedule(context.WithoutCancel(ctx), id); uerr != nil {
+			return errors.Join(cause, fmt.Errorf("and removing the new copy %s failed, so it fires on both: %w", id, uerr))
+		}
+		return cause
+	}
+	if pauser != nil {
+		if err := pauser.PauseSchedule(ctx, workflow.ScheduleTarget{ID: id}); err != nil {
+			return Moved{}, undo(fmt.Errorf("pause the new copy: %w", err))
+		}
+	}
+	if err := c.old.Unschedule(ctx, info.ID); err != nil {
+		return Moved{}, undo(fmt.Errorf("unschedule on the old backend: %w", err))
+	}
+	return Moved{Name: info.Name, Workflow: info.Workflow, From: encodeScheduleID(SideOld, info.ID), To: encodeScheduleID(SideNew, id)}, nil
+}

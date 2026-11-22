@@ -1,0 +1,11 @@
+func (r *MachineRegistry[D]) guard(path, name string) (workflow.MachineGuard[D], error) {
+	if r != nil {
+		r.mu.RLock()
+		g, ok := r.guards[name]
+		r.mu.RUnlock()
+		if ok {
+			return g, nil
+		}
+	}
+	return nil, fieldErr(path, "no guard is registered as %q (registered: %s)", name, r.names(true))
+}

@@ -1,0 +1,29 @@
+func (a *Admin) CountRuns(ctx context.Context, q workflow.RunQuery) (RunCount, error) {
+	if err := a.check(OpRuns); err != nil {
+		return RunCount{}, err
+	}
+	if q.Cursor != "" {
+		return RunCount{}, fmt.Errorf("%w: admin: CountRuns starts at the first page; Cursor must be empty", workflow.ErrInvalid)
+	}
+	if err := a.validateQuery(q); err != nil {
+		return RunCount{}, err
+	}
+	rq, _ := a.reader()
+	out := RunCount{Cursors: []string{""}}
+	for {
+		page, err := rq.Runs(ctx, q)
+		if err != nil {
+			return RunCount{}, err
+		}
+		out.Total += len(page.Runs)
+		if page.Next == "" {
+			return out, nil
+		}
+		if out.Total >= a.maxScan {
+			out.Truncated = true
+			return out, nil
+		}
+		out.Cursors = append(out.Cursors, page.Next)
+		q.Cursor = page.Next
+	}
+}

@@ -1,0 +1,14 @@
+func (r *Recorder) recordLocked(job workflow.Job, ref workflow.RunRef) {
+	job.Payload = append([]byte(nil), job.Payload...)
+	if job.Labels != nil {
+		labels := make(map[string]string, len(job.Labels))
+		maps.Copy(labels, job.Labels)
+		job.Labels = labels
+	}
+	if job.Retry != nil {
+		p := *job.Retry
+		job.Retry = &p
+	}
+	r.jobs = append(r.jobs, job)
+	r.refs[ref] = true
+}

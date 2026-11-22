@@ -1,0 +1,4 @@
+func FairTurn(pass, now int64, w int) (start, next int64) {
+	start = max(pass, now)
+	return start, start + FairStride(w)
+}

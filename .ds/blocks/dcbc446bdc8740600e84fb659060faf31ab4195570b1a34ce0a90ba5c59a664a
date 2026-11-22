@@ -1,0 +1,18 @@
+func (f *Fake) ObjectCalls(object string) []FakeObjectCall {
+	var out []FakeObjectCall
+	for _, j := range f.Enqueued(object) {
+		key, ok := j.Labels[workflow.LabelObjectKey]
+		if !ok {
+			continue
+		}
+		var call struct {
+			Method string `json:"method"`
+			Args   []byte `json:"args,omitempty"`
+		}
+		if err := json.Unmarshal(j.Payload, &call); err != nil {
+			continue
+		}
+		out = append(out, FakeObjectCall{Key: key, Method: call.Method, Args: call.Args, Job: j})
+	}
+	return out
+}

@@ -1,0 +1,8 @@
+func runVersionDefs(t sqlTypes) []tableDef {
+	return []tableDef{{stem: tblRunVersion, lines: []string{
+		"run_id " + t.id + " NOT NULL PRIMARY KEY",
+		// version is the run's Workflow.Version, never zero here (zero is
+		// no row).
+		"version " + t.int + " NOT NULL",
+	}}}
+}

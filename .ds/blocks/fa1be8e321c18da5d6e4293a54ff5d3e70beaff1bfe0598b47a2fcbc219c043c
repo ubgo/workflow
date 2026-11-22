@@ -1,0 +1,1 @@
+	CapMisfireFireOnce = defineCap(13, "MisfireFireOnce")

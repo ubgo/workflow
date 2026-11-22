@@ -1,0 +1,3 @@
+func encodeBothScheduleID(p, s workflow.ScheduleID) workflow.ScheduleID {
+	return workflow.ScheduleID(bothPrefix + strconv.Itoa(len(p)) + ":" + string(p) + string(s))
+}

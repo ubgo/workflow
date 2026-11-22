@@ -1,0 +1,22 @@
+type AttemptError struct {
+	// Step is the step whose attempt failed.
+	Step string
+
+	// Attempt is the attempt number within that step, from 1.
+	Attempt int
+
+	// Error is the attempt's error message. It is a string because an
+	// engine stores only the message.
+	Error string
+
+	// At is when the attempt ended, on the driver's clock.
+	At time.Time
+
+	// Node is the node that ran the attempt; empty on a driver without
+	// CapNodeIdentity.
+	Node string
+
+	// Stack is the error's stack trace when it carries one (StackOf);
+	// empty otherwise.
+	Stack string
+}

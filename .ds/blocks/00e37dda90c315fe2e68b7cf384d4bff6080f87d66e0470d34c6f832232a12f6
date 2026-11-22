@@ -1,0 +1,25 @@
+func TestAudit_EveryWriteRoute(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC))
+	for _, r := range routes {
+		audit := &MemoryAudit{}
+		h := NewHandler(New(seeded(), WithClock(clk)), bearerAuth(), WithAudit(audit))
+		rec := do(t, h, r.method, r.path, r.body)
+		got := audit.Entries()
+		if r.action.ReadOnly() {
+			if len(got) != 0 {
+				t.Errorf("%s %s (read) recorded %d entries", r.method, r.path, len(got))
+			}
+			continue
+		}
+		if len(got) != 1 {
+			t.Fatalf("%s %s recorded %d entries, want 1", r.method, r.path, len(got))
+		}
+		e := got[0]
+		if e.Action != r.action || e.Who != (user{"ann", "admin"}) || !e.Allowed || e.Status != rec.Code || !e.At.Equal(clk.Now()) {
+			t.Errorf("%s %s: entry %+v, response %d", r.method, r.path, e, rec.Code)
+		}
+		if (e.Err == nil) != (rec.Code < 400) {
+			t.Errorf("%s %s: Err %v with status %d", r.method, r.path, e.Err, rec.Code)
+		}
+	}
+}

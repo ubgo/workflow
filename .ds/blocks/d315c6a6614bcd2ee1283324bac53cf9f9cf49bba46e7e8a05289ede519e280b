@@ -1,0 +1,29 @@
+func (c *Client) pruneLoop() {
+	defer c.wg.Done()
+	for {
+		t := c.leaseClk.NewTimer(c.pruneEvery)
+		select {
+		case <-c.ctx.Done():
+			t.Stop()
+			return
+		case <-t.C():
+		}
+		now := c.leaseNanos()
+		n, err := c.st.execN(c.ctx, c.st.db, "UPDATE {locks} SET n = ? WHERE name = ? AND n < ?", now+int64(c.pruneEvery), pruneLockName, now-int64(c.leaseSkew))
+		if err != nil || n == 0 {
+			if err != nil && c.ctx.Err() == nil {
+				c.log.Error("sqlstore: take the prune lock", "error", err)
+			}
+			continue
+		}
+		res, err := c.Prune(c.ctx)
+		if err != nil && c.ctx.Err() == nil {
+			c.log.Error("sqlstore: prune finished runs", "error", err)
+		}
+		if res.HeldUndelivered > 0 {
+			c.log.Warn("sqlstore: retention is holding back finished runs whose end was never delivered; "+
+				"register an OnRunFinished observer on a client, or set Retention.Undelivered if no client observes run ends",
+				"held", res.HeldUndelivered, "deleted", res.Deleted)
+		}
+	}
+}

@@ -1,0 +1,8 @@
+func (c *Client) release(a *attempt) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), releaseTimeout)
+	defer cancel()
+	if _, err := c.st.exec(ctx, c.st.db, `UPDATE {steps} SET status = ?, lease_token = NULL, lease_until = 0, attempts = attempts - 1
+		WHERE id = ? AND lease_token = ? AND status = ?`, stepReady, a.stepID, a.token, stepRunning); err != nil {
+		c.log.Error("sqlstore: release a step on stop (it runs again once its lease expires)", "run", a.runID, "step", a.name, "error", err)
+	}
+}

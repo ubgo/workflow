@@ -1,0 +1,1 @@
+type MetricsSourceFunc func(ctx context.Context, q MetricsQuery) (MetricsSeries, error)

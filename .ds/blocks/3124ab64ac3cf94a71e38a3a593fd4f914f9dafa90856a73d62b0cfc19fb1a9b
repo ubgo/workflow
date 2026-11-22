@@ -1,0 +1,56 @@
+func (f *Fake) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if !f.does(workflow.OpForkRun) {
+		return workflow.RunRef{}, workflow.Unsupported("ForkRun", "the client the Fake is like does not implement it")
+	}
+	if err := workflow.CheckFork(step, opts); err != nil {
+		return workflow.RunRef{}, err
+	}
+	f.mu.Lock()
+	orig, ok := f.byRef[ref]
+	if !ok {
+		f.mu.Unlock()
+		if f.inner != nil {
+			return f.Forward.ForkRun(ctx, ref, step, opts)
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	defer f.mu.Unlock()
+	wf := f.wfs[orig.job.Workflow]
+	if workflow.StepsFrom(wf, step) == nil {
+		return workflow.RunRef{}, fmt.Errorf("%w: workflow %q has no step %q", workflow.ErrInvalid, orig.job.Workflow, step)
+	}
+	if !workflow.ForkStatusOK(orig.status) {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s; only a finished run can be forked", workflow.ErrWrongState, ref, orig.status)
+	}
+	job := copyJob(orig.job)
+	job.Labels = workflow.ForkLabels(orig.job.Labels, opts.Labels, orig.ref.RunID, step, workflow.ForkRedo(orig.status, orig.job.Labels))
+	job.IdempotencyKey = opts.IdempotencyKey
+	job.Chain = nil
+	job.RunAt = time.Time{}
+	key := job.IdempotencyKey
+	switch wf.Idempotency {
+	case workflow.IdempotencyOff:
+		key = ""
+	case workflow.IdempotencyRequired:
+		if key == "" {
+			return workflow.RunRef{}, fmt.Errorf("%w: workflow %q requires an IdempotencyKey (ForkOptions.IdempotencyKey)", workflow.ErrInvalid, wf.Name)
+		}
+	}
+	r := &fakeRun{job: job, status: workflow.StatusQueued}
+	if key != "" {
+		r.key = [2]string{wf.Name, key}
+		if holder, ok := f.idem[r.key]; ok {
+			workflow.MarkDuplicate(ctx)
+			return holder.ref, nil
+		}
+		f.idem[r.key] = r
+	}
+	r.ref.RunID = workflow.RunID("fake-run-" + strconv.Itoa(len(f.runs)+1))
+	f.runs = append(f.runs, r)
+	f.byRef[r.ref] = r
+	f.forks = append(f.forks, FakeFork{From: ref, Ref: r.ref, Step: step, Opts: opts})
+	return r.ref, nil
+}

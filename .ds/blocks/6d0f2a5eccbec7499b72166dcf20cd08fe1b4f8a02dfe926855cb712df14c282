@@ -1,0 +1,4 @@
+type DataStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}

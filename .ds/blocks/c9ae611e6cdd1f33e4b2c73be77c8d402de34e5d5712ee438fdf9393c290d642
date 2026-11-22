@@ -1,0 +1,4 @@
+func AwaitID(run workflow.RunID, step string) ID {
+	sum := sha256.Sum256([]byte(string(run) + "\x00" + step))
+	return ID("await-" + hex.EncodeToString(sum[:16]))
+}

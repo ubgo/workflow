@@ -1,0 +1,1 @@
+	CapTenant = defineCap(48, "Tenant")

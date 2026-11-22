@@ -1,0 +1,29 @@
+type ClosureJob struct {
+	// Name says what the closure is, for logs and run listings (the
+	// LabelClosure label). Required.
+	Name string
+
+	// Fn is the work. Its ctx carries StepInfo and is cancelled when the
+	// run is cancelled or the client stops. Returning an error retries it
+	// under Retry. Required.
+	Fn func(ctx context.Context) error
+
+	// Queue is the queue it runs on; empty means DefaultQueue.
+	Queue string
+
+	// RunAt delays the start; zero means now.
+	RunAt time.Time
+
+	// Labels are copied onto the run, beside LabelClosure.
+	Labels map[string]string
+
+	// Priority orders it among waiting runs, as Job.Priority.
+	Priority int
+
+	// Retry is the retry policy; nil means no retry. Since the closure
+	// never leaves the process, NoRetryOn and DelayFor are allowed.
+	Retry *RetryPolicy
+
+	// Timeout bounds each attempt; zero means none.
+	Timeout time.Duration
+}

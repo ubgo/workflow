@@ -9,25 +9,32 @@ import (
 // ErrHeartbeatTimeout and ErrRunTimeout matches ErrTimeout too, so code
 // reacting to "a deadline was missed" checks one sentinel (IsTimeout), and
 // code that cares which deadline checks the specific one. Drivers with
-// CapRunTimeout wrap every timeout they report with TimeoutError.
+// CapRunTimeout wrap every timeout they report with TimeoutError; the
+// Hatchet driver, which has no run deadline, does so for its step and
+// wait timeouts.
 var (
 	// ErrTimeout matches every timeout below.
+	//ds:def id=errtimeout-w9sszmbd owner=@khanakia stability=stable
 	ErrTimeout = errors.New("workflow: deadline missed")
 
 	// ErrStepTimeout: a step attempt ran past Step.Timeout (or the
 	// workflow's Timeout). The retry policy applies.
+	//ds:def id=errsteptimeout-6b727264 owner=@khanakia stability=stable
 	ErrStepTimeout = errors.New("workflow: step attempt timed out")
 
 	// ErrWaitTimeout: a wait step reached its Deadline or Timeout with no
 	// matching event.
+	//ds:def id=errwaittimeout-vvzd9zgy owner=@khanakia stability=stable
 	ErrWaitTimeout = errors.New("workflow: wait expired")
 
 	// ErrHeartbeatTimeout: an attempt went Step.HeartbeatTimeout without
 	// calling Heartbeat. The retry policy applies.
+	//ds:def id=errheartbeattimeout-t75kucja owner=@khanakia stability=stable
 	ErrHeartbeatTimeout = errors.New("workflow: heartbeat timed out")
 
 	// ErrRunTimeout: the run went past Workflow.RunTimeout. It is never
 	// retried.
+	//ds:def id=errruntimeout-6cywh9de owner=@khanakia stability=stable
 	ErrRunTimeout = errors.New("workflow: run timed out")
 )
 
@@ -49,6 +56,8 @@ func (e *timeoutError) Is(target error) bool { return target == ErrTimeout || ta
 // A kind that is not one of them is still matched by kind, and by
 // ErrTimeout. Drivers build every timeout error with it, so IsTimeout is
 // reliable on every driver with CapRunTimeout.
+//
+//ds:def id=timeouterror-nqztem89 owner=@khanakia stability=stable
 func TimeoutError(kind error, detail string) error {
 	msg := kind.Error()
 	if detail != "" {
@@ -59,12 +68,16 @@ func TimeoutError(kind error, detail string) error {
 
 // IsTimeout reports whether err, or any error it wraps, is a missed
 // deadline (matches ErrTimeout).
+//
+//ds:def id=istimeout-ue449vg3 owner=@khanakia stability=stable
 func IsTimeout(err error) bool { return errors.Is(err, ErrTimeout) }
 
 // FailureHandler is the handler a driver runs when a run fails for good
 // with err: wf.OnTimeout when err is a timeout and OnTimeout is set, else
 // wf.OnFailure (nil when neither applies). Every driver calls it, so none
 // decides differently.
+//
+//ds:def id=failurehandler-numvgfuc owner=@khanakia stability=stable
 func FailureHandler(wf Workflow, err error) Handler {
 	if wf.OnTimeout != nil && IsTimeout(err) {
 		return wf.OnTimeout

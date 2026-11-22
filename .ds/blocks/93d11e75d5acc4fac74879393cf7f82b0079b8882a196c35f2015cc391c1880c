@@ -1,0 +1,7 @@
+func WithLocalCronParser(p cron.Parser) LocalCronOption {
+	return func(l *LocalCron) {
+		if p != nil {
+			l.parser = p
+		}
+	}
+}

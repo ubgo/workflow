@@ -1,0 +1,5 @@
+type TickSource interface {
+	// Between returns the fire times t with from < t <= to, ascending, at
+	// most limit of them.
+	Between(from, to time.Time, loc *time.Location, limit int) []time.Time
+}

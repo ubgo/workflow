@@ -1,0 +1,14 @@
+func (m *Manager) Cancel(ctx context.Context, id ID) error {
+	var eff effects
+	var claimed []PendingCallback
+	st, err := m.store.Update(ctx, id, func(s *State) error {
+		now := m.clk.Now()
+		eff = markCancelled(s, now)
+		claimed = m.claimCallbacks(s, eff, now)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return m.apply(ctx, st, eff, claimed)
+}

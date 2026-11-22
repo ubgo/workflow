@@ -1,0 +1,8 @@
+func WithDatabaseClock(resync time.Duration) Option {
+	return func(cl *Client) {
+		if resync <= 0 {
+			resync = defaultClockResync
+		}
+		cl.dbClockEvery = resync
+	}
+}

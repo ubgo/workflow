@@ -1,0 +1,133 @@
+func (c *Client) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	if err := workflow.ValidateRunQuery(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	// Label prefixes are not claimed (no CapLabelPrefix): refused, never ignored.
+	if err := workflow.CheckRunQuery(c.capabilities(), q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := checkRunStates(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	sdk, err := c.ready()
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	if !q.Ref.RunID.IsZero() || !q.Ref.ScheduledID.IsZero() {
+		return c.runByRef(ctx, sdk, q)
+	}
+	offRuns, offSched, err := parseCursor(q.Cursor)
+	if err != nil {
+		return workflow.RunPage{}, err
+	}
+	limit := int64(q.PageLimit())
+	wantRuns, wantSched, statuses := listedStatuses(q.Statuses)
+	filter := metadataFilter(q)
+
+	var runs []rest.V1TaskSummary
+	if wantRuns {
+		since := listEpoch
+		if !q.From.IsZero() {
+			since = q.From
+		}
+		params := rest.V1WorkflowRunListParams{Since: since, Limit: &limit, Offset: &offRuns, Statuses: statuses}
+		if !q.To.IsZero() {
+			to := q.To
+			params.Until = &to
+		}
+		if len(filter) > 0 {
+			and := rest.AND
+			params.AdditionalMetadata, params.AdditionalMetadataOperator = &filter, &and
+		}
+		page, err := sdk.Runs().List(ctx, params)
+		if err != nil {
+			return workflow.RunPage{}, engineErr(err, "list runs")
+		}
+		runs = page.Rows
+	}
+	var scheds []rest.ScheduledWorkflows
+	if wantSched {
+		field, dir := rest.ScheduledWorkflowsOrderByFieldCreatedAt, rest.WorkflowRunOrderByDirectionDESC
+		params := rest.WorkflowScheduledListParams{Limit: &limit, Offset: &offSched, OrderByField: &field, OrderByDirection: &dir}
+		if len(filter) > 0 {
+			params.AdditionalMetadata = &filter
+		}
+		page, err := sdk.Schedules().List(ctx, params)
+		if err != nil {
+			return workflow.RunPage{}, engineErr(err, "list scheduled runs")
+		}
+		if page.Rows != nil {
+			scheds = *page.Rows
+		}
+	}
+
+	// Merge both listings newest first, consuming at most limit rows, so
+	// the cursor can say how far into each one this page reached.
+	type pick struct {
+		run   *rest.V1TaskSummary
+		sched *rest.ScheduledWorkflows
+	}
+	var picks []pick
+	i, j := 0, 0
+	for len(picks) < int(limit) && (i < len(runs) || j < len(scheds)) {
+		switch {
+		case j >= len(scheds) || (i < len(runs) && !runs[i].Metadata.CreatedAt.Before(scheds[j].Metadata.CreatedAt)):
+			picks = append(picks, pick{run: &runs[i]})
+			i++
+		default:
+			picks = append(picks, pick{sched: &scheds[j]})
+			j++
+		}
+	}
+
+	infos := make([]*workflow.RunInfo, len(picks))
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, detailFetches)
+	for k, p := range picks {
+		if p.sched != nil {
+			if info, ok := scheduledRunInfo(*p.sched); ok {
+				infos[k] = &info
+			}
+			continue
+		}
+		id := p.run.WorkflowRunExternalId.String()
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			d, err := sdk.Runs().Get(ctx, id)
+			if isNotFound(err) || (err == nil && d == nil) {
+				return
+			}
+			if err != nil {
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = engineErr(err, "read run")
+				}
+				mu.Unlock()
+				return
+			}
+			if info, ok := c.runInfo(id, d); ok {
+				infos[k] = &info
+			}
+		}()
+	}
+	wg.Wait()
+	if firstErr != nil {
+		return workflow.RunPage{}, firstErr
+	}
+
+	var page workflow.RunPage
+	for _, info := range infos {
+		if info != nil && q.Match(*info) {
+			page.Runs = append(page.Runs, *info)
+		}
+	}
+	if i < len(runs) || j < len(scheds) || int64(len(runs)) == limit || int64(len(scheds)) == limit {
+		page.Next = formatCursor(offRuns+int64(i), offSched+int64(j))
+	}
+	return page, nil
+}

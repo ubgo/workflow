@@ -1,0 +1,60 @@
+type Config[P any] struct {
+	// Auth gates every request (see the package doc). Required.
+	Auth Auth[P]
+
+	// Workflows are the workflow names POST /{workflow} may start. Any
+	// other name answers 404. Empty means none can be started.
+	Workflows []string
+
+	// MaxBody is the largest payload accepted (DefaultMaxBody, 1 MiB);
+	// a larger body answers 413.
+	MaxBody int64
+
+	// MediaTypes are the Content-Types a start may send (default only
+	// application/json, whose body must then be valid JSON). The three a
+	// browser sends cross-site without a preflight
+	// (application/x-www-form-urlencoded, multipart/form-data,
+	// text/plain) are ignored here, so the CSRF guard cannot be turned
+	// off by accident.
+	MediaTypes []string
+
+	// Prepare edits the job before it is authorized and enqueued: set the
+	// tenant or an owner label from the caller, a queue, a priority. An
+	// error refuses the request (400 for one matching workflow.ErrInvalid,
+	// 403 otherwise). It may read the identity with PrincipalFrom.
+	Prepare func(r *http.Request, job *workflow.Job) error
+
+	// Mount is the path the handler is mounted at ("/api/jobs"); when
+	// set, Location is Mount + "/runs/{id}". Empty means a relative
+	// Location ("runs/{id}"), which resolves under the mount as long as
+	// the start path is directly below it.
+	Mount string
+
+	// Payloads includes the run's payload in GET /runs/{id} (needs
+	// CapRunQuery). Off by default: a payload can carry personal data.
+	Payloads bool
+
+	// Errors includes the run's error text in status responses and
+	// events. Off by default: an error message can name internal hosts
+	// or data, and the caller of a public route is not an operator.
+	Errors bool
+
+	// Stream, when set, is where GET /runs/{id}/events reads the chunks
+	// steps sent with workflow.Emit.
+	Stream workflow.StreamReader
+
+	// Poll is how often the events route asks Status when no lifecycle
+	// event arrives (DefaultPoll).
+	Poll time.Duration
+
+	// Heartbeat is how often the events route sends an SSE comment so
+	// proxies keep the connection open (DefaultHeartbeat).
+	Heartbeat time.Duration
+
+	// Clock drives Poll and Heartbeat; nil means clock.Real.
+	Clock clock.Clock
+
+	// Logger logs internal errors (answered with a bare 500), panics in
+	// Auth, and why live lifecycle events are off. Nil discards them.
+	Logger *slog.Logger
+}

@@ -9,6 +9,8 @@ import (
 // that ended badly (Final), or, when the reporter opted in, one failed
 // step attempt that will be retried. It never carries the payload, so a
 // third-party error tracker never receives job data.
+//
+//ds:def id=failure-znc2mpvh owner=@khanakia stability=stable
 type Failure struct {
 	// Ref is the run.
 	Ref RunRef
@@ -47,6 +49,8 @@ type Failure struct {
 // Reporter receives failures for an error tracker (Sentry and the like).
 // It must be safe for concurrent use and should not block for long: it
 // is called on a driver goroutine. Errors are the reporter's to log.
+//
+//ds:def id=reporter-qsjk4y5e owner=@khanakia stability=stable
 type Reporter interface {
 	Report(ctx context.Context, f Failure)
 }
@@ -60,6 +64,8 @@ func (fn ReporterFunc) Report(ctx context.Context, f Failure) { fn(ctx, f) }
 // FailureOf turns a run-finished event into a final Failure, or reports
 // false when the event is not a failure: StatusFailed always counts;
 // StatusDiscarded counts when discarded is true; anything else does not.
+//
+//ds:def id=failureof-tu4qyn4e owner=@khanakia stability=stable
 func FailureOf(ev RunEvent, discarded bool, at time.Time) (Failure, bool) {
 	switch {
 	case ev.Status == StatusFailed:

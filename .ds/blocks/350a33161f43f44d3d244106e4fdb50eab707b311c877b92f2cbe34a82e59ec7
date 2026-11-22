@@ -1,0 +1,9 @@
+func (c *Client) claimFilter(queues []any) string {
+	q := ""
+	if len(queues) > 0 {
+		q = " AND " + queueOf + " IN (" + inList(len(queues)) + ")"
+	}
+	vw, _ := c.versionWhere("st.run_id", "st.workflow")
+	return "st.workflow IN (" + inList(len(c.names)) + ") AND ((st.status IN (?, ?) AND st.due <= ?) OR (st.status = ? AND st.lease_until < ?))" +
+		q + c.limitSQL() + " AND " + notPaused + " AND " + vw
+}

@@ -19,6 +19,8 @@ import (
 // register wfs on the result, start it, return it, and stop it when t
 // ends. The driver client itself must be the one Use wraps, so
 // OnSignals binds its RunSignalReader.
+//
+//ds:def id=workflowtest-escalationharness-qup8s23a owner=@khanakia stability=stable
 type EscalationHarness struct {
 	Start func(t *testing.T, plugins []workflow.Plugin, wfs ...workflow.Workflow) workflow.Client
 }
@@ -99,6 +101,8 @@ func (g *sigGate) entered(t *testing.T) {
 // RejectRun, SignalChoiceRun and UpdateRun reaching only the run they
 // name; a handler that ends the run. A driver without a case's capability or RunSignalReader skips
 // that case.
+//
+//ds:def id=workflowtest-runescalationflows-nfcxu96e owner=@khanakia stability=stable
 func RunEscalationFlows(t *testing.T, h EscalationHarness) {
 	echo := func(_ context.Context, in []byte) ([]byte, error) { return in, nil }
 

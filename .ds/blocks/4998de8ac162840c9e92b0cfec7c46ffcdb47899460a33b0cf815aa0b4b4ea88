@@ -1,0 +1,7 @@
+func Journal(store JournalStore, opts ...JournalOption) Plugin {
+	p := &journalPlugin{store: store}
+	for _, o := range opts {
+		o(p)
+	}
+	return p
+}

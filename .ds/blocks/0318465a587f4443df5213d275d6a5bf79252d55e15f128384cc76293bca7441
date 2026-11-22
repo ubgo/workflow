@@ -1,0 +1,18 @@
+func ApplyFinish(r *RunRecord, f Finish, latestStart time.Time) bool {
+	if !f.FinishedAt.IsZero() && latestStart.After(f.FinishedAt) {
+		return false
+	}
+	fillRef(r, f.Ref)
+	fillIdentity(r, f.Workflow, "", f.Tenant, f.Labels, f.Source, f.SourceRef)
+	r.Status = f.Status
+	r.Error, r.FailedStep = f.Error, f.FailedStep
+	r.FinishedAt = f.FinishedAt
+	if f.Output != nil || f.OutputSize > 0 {
+		r.Output, r.OutputSize = slices.Clone(f.Output), f.OutputSize
+	}
+	if !r.OutcomeSet {
+		r.Outcome, r.OutcomeNote = workflow.DefaultOutcome(f.Status), ""
+	}
+	touch(r, f.At)
+	return true
+}

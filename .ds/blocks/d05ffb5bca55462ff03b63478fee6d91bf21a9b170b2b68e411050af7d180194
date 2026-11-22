@@ -1,0 +1,14 @@
+func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	if c.cfg.EnqueueOnly {
+		return workflow.Unsupported("Config.EnqueueOnly", "an enqueue-only client runs no run-finished poller; observe run ends on a worker process")
+	}
+	if fn != nil {
+		c.observers = append(c.observers, fn)
+	}
+	return nil
+}

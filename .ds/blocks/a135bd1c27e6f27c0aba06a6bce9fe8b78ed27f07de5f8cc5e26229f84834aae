@@ -1,0 +1,11 @@
+func (f *Fake) AssertClosureEnqueued(t testing.TB, name string) {
+	t.Helper()
+	if len(f.Closures(name)) > 0 {
+		return
+	}
+	var got []string
+	for _, c := range f.Closures() {
+		got = append(got, c.Name)
+	}
+	t.Errorf("no closure %q was enqueued; closures: [%s]", name, strings.Join(got, ", "))
+}

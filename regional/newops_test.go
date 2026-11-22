@@ -37,6 +37,8 @@ func startRegions(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
 
 // TestResetAndSignalFlows runs the shared ResetRun and signal suites
 // through a regional client.
+//
+//ds:def id=regional-testresetandsignalflows-4xgew6t4 owner=@khanakia stability=stable
 func TestResetAndSignalFlows(t *testing.T) {
 	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: startRegions})
 	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: startRegions,

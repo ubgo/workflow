@@ -1,0 +1,7 @@
+func WithPruneChunk(n int) Option {
+	return func(cl *Client) {
+		if n >= 1 {
+			cl.pruneChunk = n
+		}
+	}
+}

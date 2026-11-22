@@ -1,0 +1,9 @@
+func fireTime(md map[string]string, created time.Time) time.Time {
+	if t, err := time.Parse(time.RFC3339, md[metaCronScheduledAt]); err == nil {
+		return t
+	}
+	if ms, err := strconv.ParseInt(md[metaEnqueuedAt], 10, 64); err == nil {
+		return time.UnixMilli(ms)
+	}
+	return created
+}

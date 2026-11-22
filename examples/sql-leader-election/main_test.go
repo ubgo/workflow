@@ -28,7 +28,7 @@ client runs on the database clock: true
 node-a stopped its attempt with ErrLeaseLost: true
 node-b took the step over and ran it: run succeeded
 WithMaxReclaims(0): run failed, abandoned: true
-error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 workers (its lease expired 1 times, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
+error: sqlstore: step "charge" failed after 1 attempt(s): sqlstore: step "charge" abandoned by 1 worker (its lease expired 1 time, over WithMaxReclaims 0): sqlstore: step abandoned by its workers
 `
 	if got := out.String(); got != want {
 		t.Errorf("output =\n%s\nwant\n%s", got, want)

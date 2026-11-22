@@ -1,0 +1,13 @@
+func (c *Client) release(h *held, wake time.Time, status string) {
+	due := int64(0)
+	if !wake.IsZero() {
+		// Round up: the claim compares whole milliseconds, and a run
+		// claimed a fraction of a millisecond before its step is due would
+		// be handed straight back, over and over, until the clock moved.
+		due = max((wake.UnixNano()+int64(time.Millisecond)-1)/int64(time.Millisecond), 1)
+	}
+	c.handBack(h, due, status)
+	if due != 0 {
+		c.pokeDispatcher()
+	}
+}

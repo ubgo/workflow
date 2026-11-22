@@ -1,0 +1,3 @@
+func (c *Client) Capabilities() workflow.Caps {
+	return workflow.CapsOf(c.jobs.Capabilities().Without(scheduleCaps, notForwarded), c.sched.Capabilities().Intersect(scheduleCaps))
+}

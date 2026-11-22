@@ -1,0 +1,9 @@
+func (c *Client) withFailure(ev workflow.RunEvent, d *rest.V1WorkflowRunDetails) workflow.RunEvent {
+	if ev.Status != workflow.StatusFailed {
+		return ev
+	}
+	step, attempt := c.failedAttempt(ev.Workflow, d)
+	ev.Step = step
+	ev.Err = &workflow.RunError{RunID: ev.Ref.RunID, Workflow: ev.Workflow, Step: step, Attempt: attempt, Err: ev.Err}
+	return ev
+}

@@ -1,0 +1,51 @@
+type Instance struct {
+	// Client is fresh and unstarted.
+	Client workflow.Client
+
+	// Clock is the fake clock the client reads, or nil when the client
+	// runs on real time (an engine). With a fake clock the suite moves
+	// time itself; without one it uses short real durations and polls
+	// Status until Harness.Wait.
+	Clock *clock.Fake
+
+	// Restart, when set and the client claims CapDurable, stands for a
+	// process restart: the suite has already cancelled the old client's
+	// Start context, and Restart returns a new, unstarted client over the
+	// same storage and the same Clock. The suite registers the same
+	// workflows on it and starts it. Nil skips the durability subtests.
+	//
+	// Restart is also the kill-a-worker seam: the suite may cancel the old
+	// Start context while a step is running, and a durable driver must
+	// then resume the run on the new client (re-running the step, at once
+	// or after a lease expires on Clock) rather than mark it cancelled.
+	// Several workers over one store are modelled the same way: the old
+	// client is the lost worker, the new one the survivor.
+	Restart func(t *testing.T) workflow.Client
+
+	// Crash, when set and the client claims CapDurable, stands for the
+	// process dying mid-step: the suite does NOT cancel the old client's
+	// Start context first, and Crash must abandon the old client the way a
+	// killed process would (no lease release, no status writes, no further
+	// claims), then return a new, unstarted client over the same storage
+	// and Clock. The suite registers and starts it and expects the step
+	// that was running to run again within Wait, once the old worker's
+	// lease expires on whatever clock the driver measures leases with.
+	// The abandoned step's handler stays blocked until the subtest ends.
+	// Nil skips the crash subtest.
+	Crash func(t *testing.T) workflow.Client
+
+	// EnqueueOnly, when set and the client claims CapEnqueueOnly, returns
+	// a client built in the driver's enqueue-only mode over the same
+	// storage and Clock as Client. The suite never calls Start on it:
+	// it enqueues through it and expects Client (registered and started)
+	// to run the work. Nil skips the enqueue-only subtests.
+	EnqueueOnly func(t *testing.T) workflow.Client
+
+	// Peer, when set, returns a second, unstarted, fully working client
+	// over the same storage and Clock as Client (another node of the same
+	// deployment; Client stays alive). Only an Instance from
+	// Harness.NewWithQueues uses it, and the peer is built with the same
+	// queues. Nil skips the two-client cases: a driver whose state is one
+	// process has no second node.
+	Peer func(t *testing.T) workflow.Client
+}

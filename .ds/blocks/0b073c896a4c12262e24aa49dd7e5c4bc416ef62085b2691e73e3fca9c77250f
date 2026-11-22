@@ -1,0 +1,7 @@
+func RetryAfterDelay(err error, _ int) (time.Duration, bool) {
+	var r *retryAfterError
+	if errors.As(err, &r) {
+		return r.d, true
+	}
+	return 0, false
+}

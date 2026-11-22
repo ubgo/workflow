@@ -1,0 +1,14 @@
+func CancelChildren(ctx context.Context, client Client, run RunID, step string) (int, error) {
+	bc, ok := client.(BulkCanceller)
+	if client == nil || !ok || !client.Capabilities().Has(CapCancelAll) {
+		return 0, &UnsupportedError{Field: "CancelChildren", Missing: CapCancelAll, Reason: "the children's driver cannot cancel runs by label"}
+	}
+	if run.IsZero() {
+		return 0, invalidf("CancelChildren: run is zero")
+	}
+	n, err := bc.CancelAll(ctx, RunQuery{Labels: ChildLabels(run, step), Statuses: unfinishedStatuses(client.Capabilities())})
+	if err != nil {
+		return n, fmt.Errorf("workflow: cancel children of %s: %w", run, err)
+	}
+	return n, nil
+}

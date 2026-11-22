@@ -1,0 +1,2 @@
+	unroutedCaps = workflow.CapsOf(workflow.CapScheduleTrigger, workflow.CapTickEvents, workflow.CapWorkerScale,
+		workflow.CapClosure, workflow.CapForceRun, workflow.CapDrainReport)

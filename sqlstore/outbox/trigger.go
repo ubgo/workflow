@@ -38,6 +38,8 @@ func (op ChangeOp) suffix() string {
 // for it after the change commits: a change made by any program, a
 // migration or a person at a SQL prompt, not only by Go code that calls
 // Write.
+//
+//ds:def id=outbox-triggerspec-u6e88rcx owner=@khanakia stability=stable
 type TriggerSpec struct {
 	// Table is the app table the trigger watches. Required.
 	Table string
@@ -89,6 +91,8 @@ type TriggerSpec struct {
 }
 
 // TriggerSQL is a change trigger as SQL text for one engine.
+//
+//ds:def id=outbox-triggersql-j7czkbyr owner=@khanakia stability=stable
 type TriggerSQL struct {
 	// Create installs the trigger, in order. Running it again replaces the
 	// trigger with this definition (each CREATE is preceded by a DROP ...
@@ -103,19 +107,27 @@ type TriggerSQL struct {
 
 // identPattern is a plain SQL identifier: what every engine accepts
 // unquoted, so a quoted name can never carry another statement.
+//
+//ds:def id=outbox-identpattern-xtcg2ch7 owner=@khanakia stability=stable
 var identPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 // workflowLiteral is what a workflow name may hold to be written as a
 // string literal: no quote and no backslash (MySQL reads backslash escapes
 // by default), so the literal cannot end early on any engine.
+//
+//ds:def id=outbox-workflowliteral-6kg8txr4 owner=@khanakia stability=stable
 var workflowLiteral = regexp.MustCompile(`^[A-Za-z0-9_.:/@-]{1,191}$`)
 
 // maxTriggerColumns bounds TriggerSpec.Columns (plus OpField), because
 // Postgres's json_build_object takes at most 100 arguments.
+//
+//ds:def id=outbox-maxtriggercolumns-w9exfgnc owner=@khanakia stability=stable
 const maxTriggerColumns = 50
 
 // maxTriggerName is the longest trigger or function name ChangeTrigger
 // writes: Postgres's identifier limit (MySQL's is 64).
+//
+//ds:def id=outbox-maxtriggername-zjszg8gu owner=@khanakia stability=stable
 const maxTriggerName = 63
 
 // ChangeTrigger returns the SQL that installs a row trigger on spec.Table
@@ -146,6 +158,8 @@ const maxTriggerName = 63
 // repeated operation, no columns, more than 50, or a repeated column is
 // refused with workflow.ErrInvalid. TableSchema on MySQL or SQLite, and a
 // dialect other than these three, are refused with workflow.ErrUnsupported.
+//
+//ds:def id=outbox-changetrigger-jvb8ehcp owner=@khanakia stability=stable
 func ChangeTrigger(d sqlb.Dialect, spec TriggerSpec, opts ...Option) (TriggerSQL, error) {
 	o, err := build(nil, d, opts)
 	if err != nil {
@@ -165,6 +179,8 @@ func ChangeTrigger(d sqlb.Dialect, spec TriggerSpec, opts ...Option) (TriggerSQL
 }
 
 // checkTrigger validates spec and fills in its default Name.
+//
+//ds:def id=outbox-outbox-checktrigger-54jagn5j owner=@khanakia stability=stable
 func (o *Outbox) checkTrigger(spec *TriggerSpec) error {
 	invalid := func(format string, args ...any) error {
 		return fmt.Errorf("%w: outbox.ChangeTrigger: "+format, append([]any{workflow.ErrInvalid}, args...)...)
@@ -252,6 +268,8 @@ const insertColumns = "id, workflow, payload, labels, idem, priority, run_at, st
 // expressions for a new entry ID and the current Unix nanoseconds, payload
 // and key the row's payload and idempotency key (NULL: none). The entry
 // is due at once (due 0), never leased, with no labels and no RunAt.
+//
+//ds:def id=outbox-outbox-triggerinsert-qacdmzs5 owner=@khanakia stability=stable
 func (o *Outbox) triggerInsert(spec TriggerSpec, id, payload, key, now string) string {
 	return "INSERT INTO " + o.table + " (" + insertColumns + ") VALUES (" + id + ", '" + spec.Workflow + "', " + payload + ", '{}', " + key + ", " +
 		strconv.Itoa(spec.Priority) + ", 0, '" + statusPending + "', 0, 0, 0, " + now + ")"
@@ -273,6 +291,8 @@ func (o *Outbox) jsonPairs(spec TriggerSpec, row, op string) string {
 
 // pgTrigger is the Postgres form: one plpgsql function that reads OLD on a
 // delete and NEW otherwise, and one trigger for every operation chosen.
+//
+//ds:def id=outbox-outbox-pgtrigger-49mug8p7 owner=@khanakia stability=stable
 func (o *Outbox) pgTrigger(spec TriggerSpec) TriggerSQL {
 	qual := func(name string) string {
 		if spec.TableSchema == "" {
@@ -320,6 +340,7 @@ type engineExprs struct {
 	wrapped bool                    // the body needs BEGIN ... END (SQLite)
 }
 
+//ds:def id=outbox-mysqlexprs-68vfqywh owner=@khanakia stability=stable
 var mysqlExprs = engineExprs{
 	id:     "CONCAT('obx_', REPLACE(UUID(), '-', ''))",
 	now:    "CAST(UNIX_TIMESTAMP(NOW(6)) * 1000000000 AS SIGNED)",
@@ -327,6 +348,7 @@ var mysqlExprs = engineExprs{
 	key:    func(col string) string { return "CAST(" + col + " AS CHAR)" },
 }
 
+//ds:def id=outbox-sqliteexprs-t23t49x7 owner=@khanakia stability=stable
 var sqliteExprs = engineExprs{
 	id:      "'obx_' || lower(hex(randomblob(16)))",
 	now:     "CAST((julianday('now') - 2440587.5) * 86400000000000 AS INTEGER)",
@@ -339,6 +361,8 @@ var sqliteExprs = engineExprs{
 // operation per trigger, so each chosen operation gets its own trigger
 // whose body is the one INSERT (a single statement, so MySQL needs no
 // BEGIN ... END and no client-side DELIMITER).
+//
+//ds:def id=outbox-outbox-peroptrigger-f3ecak24 owner=@khanakia stability=stable
 func (o *Outbox) perOpTrigger(spec TriggerSpec, x engineExprs) TriggerSQL {
 	var out TriggerSQL
 	table := o.d.QuoteIdent(spec.Table)

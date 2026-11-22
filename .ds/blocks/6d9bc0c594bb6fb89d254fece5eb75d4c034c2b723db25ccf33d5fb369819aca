@@ -1,0 +1,21 @@
+func ApplyRunWrite(r *RunRecord, isNew bool, w RunWrite) {
+	fillRef(r, w.Ref)
+	fillIdentity(r, w.Workflow, w.Queue, w.Tenant, w.Labels, w.Source, w.SourceRef)
+	if isNew || r.Status == "" {
+		r.Status = w.Status
+	}
+	if r.Payload == nil && w.Payload != nil {
+		r.Payload = slices.Clone(w.Payload)
+	}
+	if r.PayloadSize == 0 {
+		r.PayloadSize = w.PayloadSize
+	}
+	if r.Priority == 0 {
+		r.Priority = w.Priority
+	}
+	if r.RunAt.IsZero() {
+		r.RunAt = w.RunAt
+	}
+	r.EnqueuedAt = earliest(r.EnqueuedAt, w.EnqueuedAt)
+	touch(r, w.At)
+}

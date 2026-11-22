@@ -15,6 +15,8 @@ import (
 // again, keeps the output of the step before it, and ends succeeded; an
 // unknown step and a run that is not failed are refused. h.Start may
 // return a client with or without plugins (Use forwards ResetRun).
+//
+//ds:def id=workflowtest-runresetflows-gdes24ha owner=@khanakia stability=stable
 func RunResetFlows(t *testing.T, h FlowHarness) {
 	var extracted, transformed, loaded atomic.Int32
 	var fixed atomic.Bool

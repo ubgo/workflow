@@ -24,6 +24,8 @@ const runKeyPrefix = LabelPrefixInternal + "run:"
 // RunKey returns the event key that addresses run id: a Signal with this
 // key reaches only that run, through a wait step with WaitSpec.OwnRun or
 // the OnSignals plugin. SignalRun builds it for you.
+//
+//ds:def id=runkey-d4ha7dbn owner=@khanakia stability=stable
 func RunKey(id RunID) string { return runKeyPrefix + id.String() }
 
 // RunSignaller is implemented by clients whose RunRefs are not the run
@@ -33,6 +35,8 @@ func RunKey(id RunID) string { return runKeyPrefix + id.String() }
 // the run's address is the key. A ref without a known prefix (a RunID a
 // step read from StepInfo or LabelParentRun) is signalled as the run's
 // own ID wherever the run may be.
+//
+//ds:def id=runsignaller-6w6xw3vh owner=@khanakia stability=stable
 type RunSignaller interface {
 	SignalRun(ctx context.Context, ref RunRef, ev Event) error
 }
@@ -45,6 +49,8 @@ type RunSignaller interface {
 // later still gets it), and one run takes it once. A ref the client does
 // not know is not an error, as with Signal. It needs CapWaitForEvent;
 // the run's wait additionally needs CapWaitOwnRun, which Register checks.
+//
+//ds:def id=signalrun-rr37h4py owner=@khanakia stability=stable
 func SignalRun(ctx context.Context, client Client, ref RunRef, name string, payload []byte) error {
 	if client == nil || name == "" || ref.RunID.IsZero() {
 		return invalidf("SignalRun needs a client, a run ID and a signal name")
@@ -70,6 +76,8 @@ var errNoRunSignaller = errors.New("workflow: no RunSignaller")
 
 // SignalRun forwards to Inner's RunSignaller. Without one it signals
 // nothing and lets SignalRun fall back to the outer client's Signal.
+//
+//ds:def id=forward-signalrun-nxfvz3jr owner=@khanakia stability=stable
 func (f Forward) SignalRun(ctx context.Context, ref RunRef, ev Event) error {
 	if rs, ok := f.Inner.(RunSignaller); ok {
 		return rs.SignalRun(ctx, ref, ev)
@@ -81,6 +89,8 @@ func (f Forward) SignalRun(ctx context.Context, ref RunRef, ev Event) error {
 // (LabelParentRun, set by Spawn, AwaitChild, JoinChildren and the other
 // child helpers), and false outside a step or for a run that is no
 // child.
+//
+//ds:def id=parentrun-s9vhkq7y owner=@khanakia stability=stable
 func ParentRun(ctx context.Context) (RunID, bool) {
 	info, ok := StepInfoFrom(ctx)
 	if !ok {
@@ -101,6 +111,8 @@ func ParentRun(ctx context.Context) (RunID, bool) {
 //
 // A retried step sends again: put an ID in the payload when the parent
 // must count each escalation once.
+//
+//ds:def id=signalparent-bmdph8ke owner=@khanakia stability=stable
 func SignalParent(ctx context.Context, client Client, name string, payload []byte) error {
 	parent, ok := ParentRun(ctx)
 	if !ok {
@@ -114,6 +126,8 @@ func SignalParent(ctx context.Context, client Client, name string, payload []byt
 
 // RunSignal is one signal addressed to a run (SignalRun), as
 // RunSignalReader lists it.
+//
+//ds:def id=runsignal-u22rcvj3 owner=@khanakia stability=stable
 type RunSignal struct {
 	// ID is the driver's identity of the signal, stable across reads, so
 	// a handler can dedup on it.
@@ -132,6 +146,8 @@ type RunSignal struct {
 // ones in a store it can query: memory, sqlstore and Redis. The calls
 // answer for themselves, so there is no capability bit; probe with
 // Supports(c, OpRunSignals).
+//
+//ds:def id=runsignalreader-wpdh9gjr owner=@khanakia stability=stable
 type RunSignalReader interface {
 	// PendingSignals lists the signals addressed to run (Key
 	// RunKey(run)) whose name is in names, sent after the run was
@@ -169,6 +185,8 @@ func (f Forward) TakeSignal(ctx context.Context, run RunID, id string) (bool, er
 // needs the driver (a reader, a store) gets it without the app passing
 // the client twice, and can refuse a client that lacks what it needs. A
 // BindClient error fails Use.
+//
+//ds:def id=clientbinder-q2955cf2 owner=@khanakia stability=api
 type ClientBinder interface {
 	BindClient(c Client) error
 }
@@ -186,6 +204,8 @@ type SignalHandler func(ctx context.Context, sig RunSignal) error
 const DefaultSignalBatch = 64
 
 // SignalHandlers configures OnSignals.
+//
+//ds:def id=signalhandlers-butqebnf owner=@khanakia stability=stable
 type SignalHandlers struct {
 	// Workflow names the workflow whose runs these handlers serve; empty
 	// serves every workflow registered through the client Use returns.
@@ -238,11 +258,15 @@ type signalsPlugin struct {
 // Redis have it, Hatchet has not. A plugin without handlers is refused
 // with ErrInvalid. Give each OnSignals in one Use call a different
 // Workflow, since a plugin's name includes it.
+//
+//ds:def id=onsignals-c9rrpw3d owner=@khanakia stability=stable
 func OnSignals(h SignalHandlers) Plugin {
 	return &signalsPlugin{h: h, names: slices.Sorted(maps.Keys(h.On))}
 }
 
 // Name names the plugin, per workflow, in refusals.
+//
+//ds:def id=signalsplugin-name-zhz3tgxh owner=@khanakia stability=stable
 func (p *signalsPlugin) Name() string {
 	if p.h.Workflow == "" {
 		return "on-signals"
@@ -251,6 +275,8 @@ func (p *signalsPlugin) Name() string {
 }
 
 // BindClient keeps c's RunSignalReader, or refuses c.
+//
+//ds:def id=signalsplugin-bindclient-g8nk42vn owner=@khanakia stability=stable
 func (p *signalsPlugin) BindClient(c Client) error {
 	if len(p.h.On) == 0 {
 		return invalidf("OnSignals: no handlers")
@@ -272,6 +298,8 @@ func (p *signalsPlugin) BindClient(c Client) error {
 }
 
 // StepMiddleware handles the run's pending signals before each attempt.
+//
+//ds:def id=signalsplugin-stepmiddleware-4c6jkyxr owner=@khanakia stability=stable
 func (p *signalsPlugin) StepMiddleware() []Middleware {
 	reader, h, names := p.reader, p.h, p.names
 	batch := h.Batch
@@ -294,6 +322,8 @@ func (p *signalsPlugin) StepMiddleware() []Middleware {
 
 // handleRunSignals runs the handlers of run's pending signals, oldest
 // first, taking each one its handler accepted.
+//
+//ds:def id=handlerunsignals-ftq8w68n owner=@khanakia stability=stable
 func handleRunSignals(ctx context.Context, reader RunSignalReader, run RunID, on map[string]SignalHandler, names []string, batch int) error {
 	sigs, err := reader.PendingSignals(ctx, run, names, batch)
 	if err != nil {

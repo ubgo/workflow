@@ -8,28 +8,28 @@ The question: when your handler writes rows and enqueues a job, what happens if 
 
 | Method | Guarantee | Drivers | Enqueue middleware | Guide | Example |
 |---|---|---|---|---|---|
-| `Client.Enqueue` after your commit | The job runs if the process survives until the call returns. A crash between commit and enqueue loses the job; an enqueue before the commit runs for data a rollback then removes | all | runs | [Enqueue a job](../jobs/enqueue.md#enqueue-a-job) | [quickstart](../../examples/quickstart/) |
-| `sqlstore.Client.EnqueueTx(ctx, tx, job)` | The run is a row in your transaction: it exists if and only if your writes commit. Admitted within the poll interval after the commit (one second by default), or at once after `Client.Wake()` | sqlstore, with the queue in the same database as your data | **does not run** (its side effects would not roll back with your transaction) | [Enqueue inside your transaction](../reliability/transactional-enqueue.md#enqueue-inside-your-transaction) | [transactional-enqueue](../../examples/transactional-enqueue/) |
-| `outbox.Outbox.Write(ctx, tx, job)` plus a `Relay` | An outbox row in your transaction; a relay enqueues it on any client after the commit, at least once, with the job's key or the entry ID as idempotency key | any target client (Hatchet, memory, a wrapped client, sqlstore in another database); the outbox table needs SQLite, Postgres or MySQL | runs, at relay time on the target | [Write jobs inside your transaction](../reliability/outbox.md#write-jobs-inside-your-transaction) | [outbox](../../examples/outbox/) |
+| [`Client.Enqueue`](ds:block?id=client-w9gg8dzm) after your commit | The job runs if the process survives until the call returns. A crash between commit and enqueue loses the job; an enqueue before the commit runs for data a rollback then removes | all | runs | [Enqueue a job](../jobs/enqueue.md#enqueue-a-job) | [quickstart](../../examples/quickstart/) |
+| [`sqlstore.Client.EnqueueTx(ctx, tx, job)`](ds:block?id=sql-client-enqueuetx-8tdebvcq) | The run is a row in your transaction: it exists if and only if your writes commit. Admitted within the poll interval after the commit (one second by default, [`defaultPoll`](ds:block?id=sql-defaultpoll-nn9t9vqu)), or at once after [`Client.Wake()`](ds:block?id=sql-client-wake-vdfsstn6) | sqlstore, with the queue in the same database as your data | **does not run** (its side effects would not roll back with your transaction) | [Enqueue inside your transaction](../reliability/transactional-enqueue.md#enqueue-inside-your-transaction) | [transactional-enqueue](../../examples/transactional-enqueue/) |
+| [`outbox.Outbox.Write(ctx, tx, job)`](ds:block?id=outbox-outbox-write-pxkp6pag) plus a `Relay` | An outbox row in your transaction; a relay enqueues it on any client after the commit, at least once, with the job's key or the entry ID as idempotency key | any target client (Hatchet, memory, a wrapped client, sqlstore in another database); the outbox table needs SQLite, Postgres or MySQL | runs, at relay time on the target | [Write jobs inside your transaction](../reliability/outbox.md#write-jobs-inside-your-transaction) | [outbox](../../examples/outbox/) |
 
 - If your data and your queue share one SQL database and you need no enqueue middleware, use `EnqueueTx`: no relay to run, nothing extra to monitor.
 - If the queue is elsewhere (Hatchet, another database), or you need unique jobs, debounce or tracing on these enqueues, use the outbox.
 - If the job does not depend on rows you just wrote (a cron fire, a manual retry button), plain `Enqueue` is enough.
 - Pitfall: the outbox relays at least once. A relay that dies after the target accepted an entry but before deleting it enqueues it again; the target drops the second one only while the first run is unfinished. Handlers must be idempotent.
-- Pitfall: `NewRelay` refuses a target without `CapIdempotencyKey`; `AllowDuplicates` accepts one and means a redelivered entry always runs twice.
-- Pitfall: on Postgres, call `EnqueueTx` under READ COMMITTED (the default). A REPEATABLE READ transaction cannot see an idempotency key committed after its snapshot and fails instead of returning the holder.
+- Pitfall: [`NewRelay`](ds:block?id=outbox-outbox-newrelay-5jmb3cm4) refuses a target without `CapIdempotencyKey`; [`AllowDuplicates`](ds:block?id=outbox-allowduplicates-wx53najx) accepts one and means a redelivered entry always runs twice.
+- Pitfall: on Postgres, call [`EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq) under READ COMMITTED (the default). A REPEATABLE READ transaction cannot see an idempotency key committed after its snapshot and fails instead of returning the holder.
 
 ## Workflow.Cron or Schedule
 
 | Method | Use it for | Lifetime | Drivers | Guide | Example |
 |---|---|---|---|---|---|
-| `Workflow.Cron` (plus `CronLocation`, `Misfire`) | Recurring work that is part of the app: the nightly cleanup, the hourly sync | Declared with the workflow at `Register`; registering again replaces it, never duplicates | every driver with `CapCron` (all four) | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
-| `Client.Schedule` / `Unschedule` | Recurring work created at run time: per tenant, per user, configured in your UI | Until `Unschedule` with the stored `ScheduleID` | every driver with `CapCron` | [Schedules at run time](../schedules/cron.md#schedules-at-run-time) | [cron-schedules](../../examples/cron-schedules/) |
+| [`Workflow.Cron`](ds:block?id=workflow-48xg8mdj) (plus `CronLocation`, `Misfire`) | Recurring work that is part of the app: the nightly cleanup, the hourly sync | Declared with the workflow at `Register`; registering again replaces it, never duplicates | every driver with `CapCron` (all four: [memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [redis](ds:block?id=redis-caps-bfgdst9t), [hatchet](ds:block?id=hatchet-caps-d6x9fv8z)) | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
+| [`Client.Schedule` / `Unschedule`](ds:block?id=client-w9gg8dzm) | Recurring work created at run time: per tenant, per user, configured in your UI | Until `Unschedule` with the stored `ScheduleID` | every driver with `CapCron` | [Schedules at run time](../schedules/cron.md#schedules-at-run-time) | [cron-schedules](../../examples/cron-schedules/) |
 
 - If every deployment runs it on the same expression, declare it on the workflow.
 - If it differs per tenant or a user can change it, use `Schedule`, store the returned ID next to the tenant, and `Unschedule` it when the tenant changes or leaves. `Unschedule("")` is a no-op, so pass the stored ID unchecked.
 - Pitfall: a `Schedule` without a `Name` adds a new schedule on every call. With a `Name` every driver keeps one schedule per workflow and name and returns the same `ScheduleID`, so calling it at every boot is safe (Hatchet replaces the engine trigger when the definition changed, since it cannot edit one in place).
-- Pitfall: `Schedule.Location` is required (`time.UTC` for UTC). Hatchet refuses any other zone, and refuses misfire policies: crons there run in UTC and a tick missed while the engine was down is dropped.
+- Pitfall: `Schedule.Location` is required (`time.UTC` for UTC). Hatchet refuses any other zone, and refuses misfire policies ([`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)): crons there run in UTC and a tick missed while the engine was down is dropped.
 - Pitfall: a declared cron runs on every client that registers the workflow. On sqlstore and Redis a tick fires once across all of them, and Hatchet's engine fires it once; on the memory driver each process fires its own. Who fires, and what happens to missed or stale ticks, is in [Choose a schedule tool](schedules.md).
 
 ## A batch or plain enqueues
@@ -37,14 +37,14 @@ The question: when your handler writes rows and enqueues a job, what happens if 
 | Method | Use it for | Guide | Example |
 |---|---|---|---|
 | A loop of `Enqueue` calls | Independent jobs nobody waits on as a group | [Enqueue a job](../jobs/enqueue.md#enqueue-a-job) | [quickstart](../../examples/quickstart/) |
-| `batch.New(client, store).Dispatch(ctx, batch.Batch{...})` | A group with an outcome: run `Then` when every job succeeded, `Catch` on the first failure, `Finally` when all finished; read `Progress`; `Cancel` the rest | [Dispatch a batch](../batches/batches.md#dispatch-a-batch) | [batches](../../examples/batches/) |
+| [`batch.New(client, store).Dispatch(ctx, batch.Batch{...})`](ds:block?id=batch-new-geazwpek) | A group with an outcome: run `Then` when every job succeeded, `Catch` on the first failure, `Finally` when all finished; read `Progress`; `Cancel` the rest | [Dispatch a batch](../batches/batches.md#dispatch-a-batch) | [batches](../../examples/batches/) |
 | One workflow with parallel steps | A fixed fan-out known when you write the code (charge, then receipt and shipping in parallel, then notify) | [Steps that depend on other steps](../workflows/steps.md#steps-that-depend-on-other-steps) | [first-workflow](../../examples/first-workflow/) |
 
 - If the number of jobs depends on data (import 10 000 rows, email every member), use a batch. If the shape is fixed, a workflow of steps is simpler and carries outputs from step to step.
-- If the batch must survive a restart of the process that dispatched it, give it a durable store (`sqlstore.Client.BatchStore()`) and a durable driver ([A durable store](../batches/durability.md#a-durable-store)).
+- If the batch must survive a restart of the process that dispatched it, give it a durable store ([`sqlstore.Client.BatchStore()`](ds:block?id=sql-client-batchstore-m5rnk82w)) and a durable driver ([A durable store](../batches/durability.md#a-durable-store)).
 - If you are on Hatchet, a batch starts as bulk triggers (one call per up to 1000 jobs) instead of one call per job ([Native group runs](../batches/native-groups.md#native-group-runs)).
-- Pitfall: a batch learns that a job ended through completion sources, connected by `Manager.Attach`: the run-finished hook where it is guaranteed, a `Status` poller otherwise. Without `Attach`, callbacks never fire ([How a batch learns a job ended](../batches/completion.md#how-a-batch-learns-a-job-ended)).
-- Pitfall: without `AllowFailures`, the first failure cancels the batch's running jobs.
+- Pitfall: a batch learns that a job ended through completion sources, connected by [`Manager.Attach`](ds:block?id=batch-manager-attach-xnchrce9): the run-finished hook where it is guaranteed, a `Status` poller otherwise. Without `Attach`, callbacks never fire ([How a batch learns a job ended](../batches/completion.md#how-a-batch-learns-a-job-ended)).
+- Pitfall: without [`AllowFailures`](ds:block?id=batch-batch-sbryq3mb), the first failure cancels the batch's running jobs.
 
 ## Idempotency key, unique or debounce
 
@@ -52,28 +52,28 @@ Three guards against duplicate work, answering three different questions:
 
 | Guard | Question it answers | Second job while the first is unfinished | After the first finished | Drivers | Guide | Example |
 |---|---|---|---|---|---|---|
-| `Job.IdempotencyKey` | "Is this the same request again?" (a retried webhook, a double-clicked button) | Starts nothing; `Enqueue` returns the first run's `RunRef` and a nil error | The key is released: the same key runs again | the driver must have `CapIdempotencyKey` (every driver; Hatchet refuses a key with `RunAt`) | [Idempotency keys](../jobs/idempotency.md#idempotency-keys) | [idempotency](../../examples/idempotency/) |
-| `middleware.Unique` / `UniqueUntilFinished` | "Is a job for this thing already queued?" (one sync per account at a time) | Refused: `Enqueue` returns an error wrapping `ErrDuplicate` | `Unique`: still refused until the TTL ends. `UniqueUntilFinished`: freed when the run ends (the TTL stays as a safety net) | any client; `UniqueUntilFinished` needs `RunNotifier`; a shared store for several processes | [Unique for a time](../reliability/unique-jobs.md#unique-for-a-time) | [unique-jobs](../../examples/unique-jobs/) |
-| `middleware.Debounce` | "Should a burst collapse into one run, after it goes quiet?" (reindex after the last of many edits) | The pending run is cancelled and replaced; the last job of the burst wins and runs once the key has been quiet for the window (`maxWait` caps the delay) | A new burst starts | needs `CapDelayedStart` and `CapCancel` (refused otherwise); a shared store for several processes | [Debounce a burst](../reliability/debounce.md#debounce-a-burst) | [debounce](../../examples/debounce/) |
+| [`Job.IdempotencyKey`](ds:block?id=job-j5g728nc) | "Is this the same request again?" (a retried webhook, a double-clicked button) | Starts nothing; `Enqueue` returns the first run's `RunRef` and a nil error | The key is released: the same key runs again | the driver must have `CapIdempotencyKey` (every driver; on Hatchet a key with `RunAt` goes through its start gate) | [Idempotency keys](../jobs/idempotency.md#idempotency-keys) | [idempotency](../../examples/idempotency/) |
+| [`middleware.Unique`](ds:block?id=mw-unique-pgzepgu6) / [`UniqueUntilFinished`](ds:block?id=mw-uniqueuntilfinished-kgv65kyf) | "Is a job for this thing already queued?" (one sync per account at a time) | Refused: `Enqueue` returns an error wrapping `ErrDuplicate` | `Unique`: still refused until the TTL ends. `UniqueUntilFinished`: freed when the run ends (the TTL stays as a safety net) | any client; `UniqueUntilFinished` needs `RunNotifier`; a shared store for several processes | [Unique for a time](../reliability/unique-jobs.md#unique-for-a-time) | [unique-jobs](../../examples/unique-jobs/) |
+| [`middleware.Debounce`](ds:block?id=mw-debounce-5g2ska6s) | "Should a burst collapse into one run, after it goes quiet?" (reindex after the last of many edits) | The pending run is cancelled and replaced; the last job of the burst wins and runs once the key has been quiet for the window (`maxWait` caps the delay) | A new burst starts | needs `CapDelayedStart` and `CapCancel` (refused otherwise); a shared store for several processes | [Debounce a burst](../reliability/debounce.md#debounce-a-burst) | [debounce](../../examples/debounce/) |
 
 - If a caller may send the same request twice and you want one run with the same answer, use an idempotency key. It is enforced by the driver, so it holds across every process on a durable driver, with no extra store.
 - If you want at most one queued or running job per entity, and the caller should be told, use `UniqueUntilFinished`.
 - If you want the latest state processed once after changes stop, use debounce.
-- If a workflow must never run without a key, set `Workflow.Idempotency` to `IdempotencyRequired`; an enqueue without one then fails ([Require or ignore keys](../jobs/idempotency.md#require-or-ignore-keys)).
+- If a workflow must never run without a key, set `Workflow.Idempotency` to [`IdempotencyRequired`](ds:block?id=idempotencyrequired-g889m7p8); an enqueue without one then fails ([Require or ignore keys](../jobs/idempotency.md#require-or-ignore-keys)).
 - Pitfall: do not set `IdempotencyKey` on debounced jobs. The pending run holds the key, so the replacement would be folded into it instead of replacing it.
-- Pitfall: `Unique` and `Debounce` keep their state in a store. The default in-memory stores hold only inside one process; with several processes enqueueing, pass `sqlstore.UniqueStore` / `sqlstore.DebounceStore` or your own ([Bring your own store](../extending/custom-stores.md#bring-your-own-store)).
-- Pitfall: a failover client requires an idempotency key on every job, because an ambiguous primary failure can send the job to both backends ([Why a key is required](../reliability/failover.md#why-a-key-is-required)).
+- Pitfall: `Unique` and `Debounce` keep their state in a store. The default in-memory stores hold only inside one process; with several processes enqueueing, pass [`sqlstore.UniqueStore`](ds:block?id=sql-client-uniquestore-k86jhwu9) / [`sqlstore.DebounceStore`](ds:block?id=sql-client-debouncestore-hxs5szus) or your own ([Bring your own store](../extending/custom-stores.md#bring-your-own-store)).
+- Pitfall: a failover client requires an idempotency key on every job ([`failover.ErrKeyRequired`](ds:block?id=failover-errkeyrequired-5ywe568r)), because an ambiguous primary failure can send the job to both backends ([Why a key is required](../reliability/failover.md#why-a-key-is-required)).
 
 ## Concurrency limit or rate limit
 
 | Policy | Caps | The run over the limit | Guide | Example |
 |---|---|---|---|---|
-| `Workflow.Concurrency` | Simultaneous runs per key (`MaxRuns`) | Waits, is dropped or cancelled, or cancels the running one, by `Strategy` | [Limit runs per key](../jobs/concurrency.md#limit-runs-per-key) | [concurrency](../../examples/concurrency/) |
-| `Workflow.RateLimits` | Run starts per key per window (`Limit` per `Per`) | Stays queued until the window allows it; never dropped | [Rate limits](../jobs/concurrency.md#rate-limits) | [concurrency](../../examples/concurrency/) |
-| `middleware.ThrottleErrors` | Calls to a failing dependency (a circuit breaker per key) | Fails fast with `ErrThrottled` until the cooldown passes | [Throttle a failing dependency](../middleware/step-middleware.md#throttle-a-failing-dependency) | [middleware-stack](../../examples/middleware-stack/) |
+| [`Workflow.Concurrency`](ds:block?id=concurrency-h4md62gd) | Simultaneous runs per key (`MaxRuns`) | Waits, is dropped or cancelled, or cancels the running one, by `Strategy` | [Limit runs per key](../jobs/concurrency.md#limit-runs-per-key) | [concurrency](../../examples/concurrency/) |
+| [`Workflow.RateLimits`](ds:block?id=ratelimit-n8n9g5d8) | Run starts per key per window (`Limit` per `Per`) | Stays queued until the window allows it; never dropped | [Rate limits](../jobs/concurrency.md#rate-limits) | [concurrency](../../examples/concurrency/) |
+| [`middleware.ThrottleErrors`](ds:block?id=mw-throttleerrors-fvbczfxu) | Calls to a failing dependency (a circuit breaker per key) | Fails fast with `ErrThrottled` until the cooldown passes | [Throttle a failing dependency](../middleware/step-middleware.md#throttle-a-failing-dependency) | [middleware-stack](../../examples/middleware-stack/) |
 
 - If a downstream allows N calls at once, use a concurrency limit; if it allows N calls per minute, a rate limit; if it is down, the circuit breaker stops you hammering it.
-- Pitfall: keys are Go functions on memory, sqlstore and Redis and CEL expressions on Hatchet; each refuses the other form.
+- Pitfall: keys are Go functions on memory, sqlstore and Redis and CEL expressions on Hatchet; each refuses the other form ([`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp) on Hatchet, [`exprKeys`](ds:block?id=sql-exprkeys-wxvw57q3) on sqlstore).
 
 ## RunAt, a sleep step or a schedule
 
@@ -81,15 +81,15 @@ Three ways to make work happen later, for three different shapes of "later":
 
 | Method | Use it for | Needs | Guide | Example |
 |---|---|---|---|---|
-| `Job.RunAt` | One job that must not start before a point in time: the reminder at 09:00 tomorrow, the trial-end email | `CapDelayedStart` (every driver) | [Run a job later](../jobs/delays.md#run-a-job-later) | [delayed-jobs](../../examples/delayed-jobs/) |
-| `Step.Sleep` | A pause between two steps of one run: charge now, send the survey three days later | `CapDurableSleep` (every driver) | [Sleep inside a workflow](../workflows/sleep.md#sleep-inside-a-workflow) | [signals-and-sleep](../../examples/signals-and-sleep/) |
+| [`Job.RunAt`](ds:block?id=job-j5g728nc) | One job that must not start before a point in time: the reminder at 09:00 tomorrow, the trial-end email | `CapDelayedStart` (every driver) | [Run a job later](../jobs/delays.md#run-a-job-later) | [delayed-jobs](../../examples/delayed-jobs/) |
+| [`Step.Sleep`](ds:block?id=step-hwhpkdfd) | A pause between two steps of one run: charge now, send the survey three days later | `CapDurableSleep` (every driver) | [Sleep inside a workflow](../workflows/sleep.md#sleep-inside-a-workflow) | [signals-and-sleep](../../examples/signals-and-sleep/) |
 | `Workflow.Cron` or `Client.Schedule` | Work that repeats | `CapCron` | [Cron on a workflow](../schedules/cron.md#cron-on-a-workflow) | [cron-schedules](../../examples/cron-schedules/) |
 
 - If the delay is measured from an absolute time, use `RunAt`. If it is measured from an earlier step finishing, use a sleep step, so the first step's output carries over and the run stays one run with one status.
 - If the job may be called off before it starts (the user replied, the order shipped), keep its `RunRef` and `Cancel` it ([Cancel a run](../jobs/cancel-and-status.md#cancel-a-run)). For a run that waits on a person, a [wait step](../workflows/signals.md#wait-for-an-event) with a deadline is usually better than a sleep, since a `Signal` ends the wait early.
 - Pitfall: on the memory driver, a delayed job and a sleeping run are lost when the process exits. Neither is refused, because durability is never inferred from a workflow.
 - Pitfall: never `time.Sleep` inside a `Run` handler. It holds a worker for the whole delay, ignores the fake clock and is lost on a crash.
-- Pitfall: Hatchet refuses `IdempotencyKey` together with `RunAt` (`ErrUnsupported`); dedup a delayed job there with unique jobs instead.
+- Pitfall: on Hatchet a delayed job with an `IdempotencyKey` starts at once and sleeps in a start gate until `RunAt` (refused on a workflow with a `Concurrency`; it cannot be rescheduled, [`errRescheduleGated`](ds:block?id=hatchet-errreschedulegated-9akd6fmr)); see [Hatchet limitations](../drivers/hatchet.md#limitations).
 
 ## Retry, snooze or release
 
@@ -97,21 +97,21 @@ A step that cannot finish now has several ways to say so. They differ in whether
 
 | Tool | Decided by | Spends an attempt | Recorded as an error | Run status meanwhile | Use it for | Needs | Guide | Example |
 |---|---|---|---|---|---|---|---|---|
-| An ordinary error, with `RetryPolicy{Max, Backoff}` | The handler failed | Yes | Yes | `retrying` (with `CapRunStates`) | A transient failure: a timeout, a 503 | the policy; the zero policy means no retries | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
-| `workflow.RetryAfter(err, d)` with `DelayFor: workflow.RetryAfterDelay` | The handler failed and knows when to come back | Yes | Yes | `retrying` | An HTTP 429 with `Retry-After` | `CapRetryDelay` (not Hatchet) | [Retry after a delay the error names](../jobs/retries.md#retry-after-a-delay-the-error-names) | [retries](../../examples/retries/) |
-| `workflow.Snooze(d)` | The handler, after starting: the work is not ready yet | No | No | `waiting` | "Not yet": a report not built, a window that opens at nine | `CapSnooze` (memory, sqlstore, Redis); elsewhere it is an ordinary error | [Snooze a step that is not ready](../jobs/retries.md#snooze-a-step-that-is-not-ready) | [snooze-heartbeat](../../examples/snooze-heartbeat/) |
-| `middleware.Release(when, d)` | Middleware, before the handler runs | Yes | Yes (matches `middleware.ErrReleased`) | `retrying` | A condition known before any work starts: a partner API in maintenance, a tenant over its quota | a policy with `DelayFor: workflow.RetryAfterDelay`, or the delay is the normal backoff | [Release a step for later](../middleware/step-middleware.md#release-a-step-for-later) | [release-jobs](../../examples/release-jobs/) |
-| `workflow.Permanent(err)` | The handler: this input can never succeed | No more: the step fails now, whatever `Max` says, and `OnFailure` runs | Yes | `failed` | A validation error, a 404 for a deleted record that someone should see | every driver | [Errors that must not retry](../jobs/retries.md#errors-that-must-not-retry) | [retries](../../examples/retries/) |
-| `workflow.Discard(err)` | The handler: the work no longer makes sense | No more: the run ends at once and `OnFailure` does not run | As the run's `Err` | `discarded` (with `CapRunStates`, else `cancelled`) | The order was deleted after the job was queued; nobody needs to look | `CapDiscard` (not Hatchet, where it acts as `Permanent`) | [Drop the run: Discard](../jobs/retries.md#drop-the-run-discard) | [retry-limits](../../examples/retry-limits/) |
-| `RetryPolicy.DiscardOnExhaust` | The policy: retries ran out | Every attempt, as usual | Yes | `discarded` instead of `failed`, with no `OnFailure` and no chain | Best-effort work whose final failure is not an incident | `CapDiscardExhausted` (not Hatchet) | [Quiet giving up: DiscardOnExhaust](../jobs/retries.md#quiet-giving-up-discardonexhaust) | [discard-exhausted](../../examples/discard-exhausted/) |
+| An ordinary error, with [`RetryPolicy{Max, Backoff}`](ds:block?id=retrypolicy-cjkmhshn) | The handler failed | Yes | Yes | `retrying` (with `CapRunStates`) | A transient failure: a timeout, a 503 | the policy; the zero policy means no retries | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
+| [`workflow.RetryAfter(err, d)`](ds:block?id=retryafter-xck6cdyv) with [`DelayFor: workflow.RetryAfterDelay`](ds:block?id=retryafterdelay-pgsc6bvn) | The handler failed and knows when to come back | Yes | Yes | `retrying` | An HTTP 429 with `Retry-After` | `CapRetryDelay` (not Hatchet) | [Retry after a delay the error names](../jobs/retries.md#retry-after-a-delay-the-error-names) | [retries](../../examples/retries/) |
+| [`workflow.Snooze(d)`](ds:block?id=snooze-mcp3r4p7) | The handler, after starting: the work is not ready yet | No | No | `waiting` | "Not yet": a report not built, a window that opens at nine | `CapSnooze` (memory, sqlstore, Redis); elsewhere it is an ordinary error | [Snooze a step that is not ready](../jobs/retries.md#snooze-a-step-that-is-not-ready) | [snooze-heartbeat](../../examples/snooze-heartbeat/) |
+| [`middleware.Release(when, d)`](ds:block?id=mw-release-ek3ppr3h) | Middleware, before the handler runs | Yes | Yes (matches [`middleware.ErrReleased`](ds:block?id=mw-errreleased-qtkkhua5)) | `retrying` | A condition known before any work starts: a partner API in maintenance, a tenant over its quota | a policy with `DelayFor: workflow.RetryAfterDelay`, or the delay is the normal backoff | [Release a step for later](../middleware/step-middleware.md#release-a-step-for-later) | [release-jobs](../../examples/release-jobs/) |
+| [`workflow.Permanent(err)`](ds:block?id=permanent-9e6vjm6s) | The handler: this input can never succeed | No more: the step fails now, whatever `Max` says, and `OnFailure` runs | Yes | `failed` | A validation error, a 404 for a deleted record that someone should see | every driver | [Errors that must not retry](../jobs/retries.md#errors-that-must-not-retry) | [retries](../../examples/retries/) |
+| [`workflow.Discard(err)`](ds:block?id=discard-ttxam8w8) | The handler: the work no longer makes sense | No more: the run ends at once and `OnFailure` does not run | As the run's `Err` | `discarded` (with `CapRunStates`, else `cancelled`) | The order was deleted after the job was queued; nobody needs to look | `CapDiscard` (not Hatchet, where it acts as `Permanent`) | [Drop the run: Discard](../jobs/retries.md#drop-the-run-discard) | [retry-limits](../../examples/retry-limits/) |
+| [`RetryPolicy.DiscardOnExhaust`](ds:block?id=retrypolicy-cjkmhshn) | The policy: retries ran out | Every attempt, as usual | Yes | `discarded` instead of `failed`, with no `OnFailure` and no chain | Best-effort work whose final failure is not an incident | `CapDiscardExhausted` (not Hatchet) | [Quiet giving up: DiscardOnExhaust](../jobs/retries.md#quiet-giving-up-discardonexhaust) | [discard-exhausted](../../examples/discard-exhausted/) |
 
-- If the step did nothing wrong and should come back later, snooze: it spends no retries, so a workflow with `Max: 0` can snooze for days.
+- If the step did nothing wrong and should come back later, [snooze](ds:block?id=snooze-mcp3r4p7): it spends no retries, so a workflow with `Max: 0` can snooze for days.
 - If the step failed and the dependency said when to come back, return `RetryAfter`; if you know before calling that it would fail, `Release` it in middleware so the handler never runs.
 - If the step waits for an outside event it can be told about, use a [wait step](waiting.md#wait-for-the-world-signals-approvals-polls-and-promises) instead of snoozing in a loop.
 - If retrying can never help, return `Permanent` when someone should see the failure and `Discard` when nobody should.
-- Pitfall: a release counts against `RetryPolicy.Max`, and under a policy without `DelayFor: workflow.RetryAfterDelay` the release's delay is ignored and the normal backoff applies. A step released on its last attempt fails its run.
-- Pitfall: on Hatchet a snooze spends an attempt, so a step that snoozes in a loop fails once its retries run out; `Poll`, `SleepUntil`, `AwaitPromise` and pools snooze too.
-- Pitfall: a snooze longer than `workflow.MaxSnooze` (30 days) is cut to it, and `RetryPolicy.Until` keeps counting through snoozes, since it is a deadline.
+- Pitfall: a [release](ds:block?id=mw-release-ek3ppr3h) counts against `RetryPolicy.Max`, and under a policy without `DelayFor: workflow.RetryAfterDelay` the release's delay is ignored and the normal backoff applies. A step released on its last attempt fails its run.
+- Pitfall: on Hatchet a snooze spends an attempt (no `CapSnooze` in its [caps](ds:block?id=hatchet-caps-d6x9fv8z)), so a step that snoozes in a loop fails once its retries run out; `Poll`, `SleepUntil`, `AwaitPromise` and pools snooze too.
+- Pitfall: a snooze longer than [`workflow.MaxSnooze`](ds:block?id=maxsnooze-jzy97vu4) (30 days) is cut to it ([`Snooze`](ds:block?id=snooze-mcp3r4p7)), and `RetryPolicy.Until` keeps counting through snoozes, since it is a deadline.
 
 ## Max, Permanent, NoRetryOn or FailOn
 
@@ -119,29 +119,29 @@ When a step fails, four tools decide whether it is tried again:
 
 | Tool | Where the decision lives | Use it for | Guide | Example |
 |---|---|---|---|---|
-| `RetryPolicy{Max, Backoff}` on `Workflow.Retry`, or `Step.Retry` to override one step | The workflow | How many retries a transient error gets, and how far apart. The zero value means no retries | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
-| `return workflow.Permanent(err)` | The handler | The handler knows this input can never succeed (a validation error, a 404 for a deleted record) | [Errors that must not retry](../jobs/retries.md#errors-that-must-not-retry) | [retries](../../examples/retries/), [first-workflow](../../examples/first-workflow/) |
-| `RetryPolicy.NoRetryOn` | The workflow | A class of error that never recovers for this workflow, without changing handler code | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
-| `middleware.FailOn(match)` | The client, through step middleware | The same rule for every workflow on the client | [Fail on chosen errors](../middleware/step-middleware.md#fail-on-chosen-errors) | [middleware-stack](../../examples/middleware-stack/) |
+| [`RetryPolicy{Max, Backoff}`](ds:block?id=retrypolicy-cjkmhshn) on `Workflow.Retry`, or `Step.Retry` to override one step | The workflow | How many retries a transient error gets, and how far apart. The zero value means no retries | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
+| [`return workflow.Permanent(err)`](ds:block?id=permanent-9e6vjm6s) | The handler | The handler knows this input can never succeed (a validation error, a 404 for a deleted record) | [Errors that must not retry](../jobs/retries.md#errors-that-must-not-retry) | [retries](../../examples/retries/), [first-workflow](../../examples/first-workflow/) |
+| [`RetryPolicy.NoRetryOn`](ds:block?id=retrypolicy-cjkmhshn) | The workflow | A class of error that never recovers for this workflow, without changing handler code | [Retry policy](../jobs/retries.md#retry-policy) | [retries](../../examples/retries/) |
+| [`middleware.FailOn(match)`](ds:block?id=mw-failon-pnqdj4g7) | The client, through step middleware | The same rule for every workflow on the client | [Fail on chosen errors](../middleware/step-middleware.md#fail-on-chosen-errors) | [middleware-stack](../../examples/middleware-stack/) |
 
 - If a dependency returns a delay to wait (an HTTP 429 with `Retry-After`), wrap the error with `workflow.RetryAfter` and set `DelayFor: workflow.RetryAfterDelay` ([Retry after a delay the error names](../jobs/retries.md#retry-after-a-delay-the-error-names)); this needs `CapRetryDelay`, which Hatchet lacks.
-- If one step must never retry while the workflow default does, set `Step.Retry: workflow.RetriesNone()`.
-- Pitfall: `Max` counts retries after the first attempt, so `Max: 3` means up to four attempts.
-- Pitfall: a cancelled run (`ErrCancelled`) is never retried, whatever the policy says.
-- Pitfall: Hatchet refuses `Backoff.Jitter` (no `CapRetryJitter`) and a `Backoff` whose `Initial` is not `Factor` seconds, because the engine waits `Factor`^n seconds between attempts.
+- If one step must never retry while the workflow default does, set [`Step.Retry: workflow.RetriesNone()`](ds:block?id=retriesnone-gvsc2j8f).
+- Pitfall: `Max` counts retries after the first attempt, so `Max: 3` means up to four attempts ([`Retryable`](ds:block?id=retrypolicy-retryable-ve8muksd)).
+- Pitfall: a cancelled run (`ErrCancelled`) is never retried, whatever the policy says ([`Retryable`](ds:block?id=retrypolicy-retryable-ve8muksd)).
+- Pitfall: Hatchet refuses `Backoff.Jitter` (no `CapRetryJitter`) and a `Backoff` whose `Initial` is not `Factor` seconds ([`checkRetry`](ds:block?id=hatchet-checkretry-ccamdfbn)), because the engine waits `Factor`^n seconds between attempts.
 
 ## OnFailure, OnRunFinished or a batch callback
 
 | Hook | When it runs | Scope | Guide | Example |
 |---|---|---|---|---|
-| `Workflow.OnFailure` | Once when a run fails for good, with the failing step's input | One workflow, as part of its definition | [Run a handler when a run fails](../workflows/steps.md#run-a-handler-when-a-run-fails) | [first-workflow](../../examples/first-workflow/) |
-| `OnRunFinished` (the `RunNotifier` a driver implements) | After every run ends: succeeded, failed or cancelled | Every run on the client, registered before `Start` | [React when a run finishes](../observability/run-finished.md#react-when-a-run-finishes) | [run-finished](../../examples/run-finished/) |
+| [`Workflow.OnFailure`](ds:block?id=workflow-48xg8mdj) | Once when a run fails for good, with the failing step's input | One workflow, as part of its definition | [Run a handler when a run fails](../workflows/steps.md#run-a-handler-when-a-run-fails) | [first-workflow](../../examples/first-workflow/) |
+| `OnRunFinished` (the [`RunNotifier`](ds:block?id=runnotifier-tbkv69uz) a driver implements) | After every run ends: succeeded, failed or cancelled | Every run on the client, registered before `Start` | [React when a run finishes](../observability/run-finished.md#react-when-a-run-finishes) | [run-finished](../../examples/run-finished/) |
 | Batch `Then`, `Catch`, `Finally` | When a group of jobs succeeded, first failed, or all finished | One batch | [Dispatch a batch](../batches/batches.md#dispatch-a-batch) | [batches](../../examples/batches/) |
 
 - If the reaction is part of the business process (refund the charge, mark the order failed), use `OnFailure`, so it travels with the workflow to every driver.
 - If it is cross-cutting (metrics, an audit log, freeing a lock), use `OnRunFinished`.
 - If what you want is a history of every run, with its steps, events and outcome, use the [run recorder](../observability/run-recorder.md) rather than writing your own observer: it is built from the same hook plus step and enqueue middleware.
-- Pitfall: `OnRunFinished` is guaranteed only where the driver declares `CapRunFinished` (memory, sqlstore and Redis). On Hatchet it is best-effort, so anything that relies on it needs a fallback, such as a TTL or a poller.
+- Pitfall: `OnRunFinished` is guaranteed only where the driver declares `CapRunFinished` (memory, sqlstore and Redis: [memory](ds:block?id=memory-caps-yxkuq583), [sqlstore](ds:block?id=sql-caps-yu37ef2j), [redis](ds:block?id=redis-caps-bfgdst9t)). On Hatchet it is best-effort, so anything that relies on it needs a fallback, such as a TTL or a poller.
 
 ## Related
 

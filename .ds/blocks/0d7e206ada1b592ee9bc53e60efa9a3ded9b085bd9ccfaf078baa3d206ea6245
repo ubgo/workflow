@@ -1,0 +1,33 @@
+func checkJoin(client Client, name string, n int, spec JoinSpec) error {
+	if client == nil {
+		return Permanent(invalidf("join %q: client is nil", name))
+	}
+	if spec.Need < 0 || (spec.More == nil && spec.Need > n) {
+		return Permanent(invalidf("join %q: Need %d of %d children", name, spec.Need, n))
+	}
+	if n == 0 && spec.More == nil {
+		return Permanent(invalidf("join %q: no children", name))
+	}
+	parent := spec.Parent
+	if parent == nil {
+		parent = client
+	}
+	if !parent.Capabilities().Has(CapSnooze) {
+		return Permanent(&UnsupportedError{Field: "JoinChildren", Missing: CapSnooze,
+			Reason: "the parent's driver would spend an attempt on every look at unfinished children"})
+	}
+	switch spec.Rest {
+	case JoinKeepRest:
+	case JoinCancelRest:
+		if !client.Capabilities().Has(CapCancel) {
+			return Permanent(&UnsupportedError{Field: "JoinSpec.Rest", Missing: CapCancel, Reason: "the children's driver cannot cancel a run"})
+		}
+	case JoinCompleteRest:
+		if _, ok := client.(RunForcer); !ok || !client.Capabilities().Has(CapForceRun) || !client.Capabilities().Has(CapCancel) {
+			return Permanent(&UnsupportedError{Field: "JoinSpec.Rest", Missing: CapForceRun, Reason: "the children's driver cannot force a run complete"})
+		}
+	default:
+		return Permanent(invalidf("join %q: unknown Rest %q", name, spec.Rest))
+	}
+	return nil
+}

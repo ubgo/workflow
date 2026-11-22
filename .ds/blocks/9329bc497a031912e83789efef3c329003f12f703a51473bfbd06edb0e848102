@@ -1,0 +1,4 @@
+func IsPermanent(err error) bool {
+	var p *permanentError
+	return errors.As(err, &p)
+}

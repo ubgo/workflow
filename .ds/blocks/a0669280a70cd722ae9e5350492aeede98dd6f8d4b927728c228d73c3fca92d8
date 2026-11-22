@@ -1,0 +1,3 @@
+type RunSignaller interface {
+	SignalRun(ctx context.Context, ref RunRef, ev Event) error
+}

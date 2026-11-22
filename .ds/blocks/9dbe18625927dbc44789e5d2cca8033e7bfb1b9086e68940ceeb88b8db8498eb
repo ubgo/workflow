@@ -1,0 +1,10 @@
+func (m *MemoryUnique) Acquire(_ context.Context, key, owner string, ttl time.Duration) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.clk.Now()
+	if l, ok := m.held[key]; ok && now.Before(l.expires) {
+		return false, nil
+	}
+	m.held[key] = uniqueLock{owner: owner, expires: now.Add(ttl)}
+	return true, nil
+}

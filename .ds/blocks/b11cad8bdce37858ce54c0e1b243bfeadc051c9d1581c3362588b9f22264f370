@@ -1,0 +1,45 @@
+func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
+	id, err := runID(ref)
+	if err != nil {
+		return err
+	}
+	r, err := c.load(ctx, id, ref)
+	if err != nil {
+		return err
+	}
+	wf, known := c.registered(r.wf)
+	var spec workflow.Step
+	if known {
+		found := false
+		for _, s := range wf.Steps {
+			if s.Name == step {
+				spec, found = s, true
+			}
+		}
+		if !found {
+			return fmt.Errorf("%w: run %+v has no step %q", workflow.ErrNotFound, ref, step)
+		}
+	}
+	if r.status.IsTerminal() {
+		return fmt.Errorf("%w: run %+v is %s", workflow.ErrWrongState, ref, r.status)
+	}
+	rec := r.steps[step]
+	if rec == nil {
+		rec = &stepRec{}
+	}
+	if rec.Done || !c.stepStarted(r, wf, known, spec, rec) {
+		return fmt.Errorf("%w: step %q of run %+v has not started or has ended", workflow.ErrWrongState, step, ref)
+	}
+	res, err := cancelStepScript.Run(ctx, c.rdb, c.keys(), c.base, id, step, c.clk.Now().UnixMilli()).Text()
+	if err != nil {
+		return fmt.Errorf("redis: cancel step: %w", classify(err))
+	}
+	switch res {
+	case "ok":
+		c.wakeAll()
+		return nil
+	case "notfound":
+		return fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	return fmt.Errorf("%w: run %+v is %s", workflow.ErrWrongState, ref, res)
+}

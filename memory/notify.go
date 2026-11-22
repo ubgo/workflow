@@ -15,6 +15,8 @@ var errShutdown = fmt.Errorf("%w: client shut down", workflow.ErrCancelled)
 // registration order and in the order runs ended, never on the goroutine
 // that enqueued or cancelled the run, and never while the client's lock is
 // held, so an observer may call back into the client.
+//
+//ds:def id=memory-client-onrunfinished-4jxy93vq owner=@khanakia stability=stable
 func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnRunFinished with a nil func", workflow.ErrInvalid)
@@ -32,6 +34,8 @@ func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
 // workflow.TickNotifier). Tick observers share the run-finished
 // observers' goroutine and guarantees: in registration order, in the
 // order ticks happened, never while the client's lock is held.
+//
+//ds:def id=memory-client-ontick-u7krufw9 owner=@khanakia stability=stable
 func (c *Client) OnTick(fn workflow.TickObserver) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnTick with a nil func", workflow.ErrInvalid)
@@ -73,6 +77,8 @@ func (c *Client) cancelLocked(r *run, why error) {
 // queueEndedLocked queues r's end for the observers. finishLocked calls it
 // after setting the terminal status, so an observer calling Status sees
 // that status. Callers hold c.mu.
+//
+//ds:def id=memory-client-queueendedlocked-w8yb438q owner=@khanakia stability=stable
 func (c *Client) queueEndedLocked(r *run) {
 	c.emitLocked(r, workflow.LifecycleFinished, r.failedStep, 0, r.err)
 	if len(c.observers) == 0 {

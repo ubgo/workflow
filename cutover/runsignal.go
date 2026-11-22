@@ -16,6 +16,8 @@ var (
 // driver resolved (workflow.RunSignaller). A ref without a prefix (a run
 // the old backend held before the cutover) goes, addressed as given, to
 // both backends, as Signal does.
+//
+//ds:def id=cutover-client-signalrun-r4bhq358 owner=@khanakia stability=stable
 func (c *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow.Event) error {
 	if s, inner, ok := decodeRef(ref); ok && s != "" {
 		return workflow.SignalRun(ctx, c.backend(s), inner, ev.Name, ev.Payload)
@@ -27,6 +29,8 @@ func (c *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow
 // PendingSignals asks the backend the run's prefix names
 // (workflow.RunSignalReader); steps see prefixed RunIDs. The backend must
 // implement workflow.RunSignalReader (Supports answers for both).
+//
+//ds:def id=cutover-client-pendingsignals-aq22dbuz owner=@khanakia stability=stable
 func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
 	var out []workflow.RunSignal
 	err := c.onRef(workflow.RunRef{RunID: run}, func(s Side, b workflow.Client, inner workflow.RunRef) error {

@@ -1,0 +1,56 @@
+func (h *handler[P]) start(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("workflow")
+	if !h.workflows[name] {
+		writeError(w, http.StatusNotFound, CodeNotFound, "no such workflow")
+		return
+	}
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || !h.media[strings.ToLower(mt)] {
+		writeError(w, http.StatusUnsupportedMediaType, CodeMediaType, "a start must send one of the accepted Content-Types")
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, h.cfg.MaxBody))
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeError(w, http.StatusRequestEntityTooLarge, CodeTooLarge, fmt.Sprintf("payload is larger than %d bytes", h.cfg.MaxBody))
+			return
+		}
+		writeError(w, http.StatusBadRequest, CodeInvalid, "could not read the body")
+		return
+	}
+	if strings.EqualFold(mt, MediaTypeJSON) && len(body) > 0 && !json.Valid(body) {
+		writeError(w, http.StatusBadRequest, CodeInvalid, "the body is not valid JSON")
+		return
+	}
+	job := workflow.Job{Workflow: name, IdempotencyKey: r.Header.Get(HeaderIdempotencyKey)}
+	if len(body) > 0 {
+		job.Payload = body
+	}
+	if h.cfg.Prepare != nil {
+		if err := h.cfg.Prepare(r, &job); err != nil {
+			if errors.Is(err, workflow.ErrInvalid) {
+				writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
+			} else {
+				writeError(w, http.StatusForbidden, CodeForbidden, "refused by Prepare")
+			}
+			return
+		}
+		job.Workflow = name // Prepare may not redirect the start to another workflow
+	}
+	if !h.authorize(w, r, ActionStart, Resource{Workflow: name, Job: &job}) {
+		return
+	}
+	ref, err := h.c.Enqueue(r.Context(), job)
+	if err != nil {
+		h.fail(w, ActionStart, err)
+		return
+	}
+	loc := h.location(ref)
+	w.Header().Set("Location", loc)
+	writeJSON(w, http.StatusAccepted, struct {
+		Ref       refJSON `json:"ref"`
+		StatusURL string  `json:"status_url"`
+		EventsURL string  `json:"events_url"`
+	}{toRefJSON(ref), loc, eventsURL(loc)})
+}

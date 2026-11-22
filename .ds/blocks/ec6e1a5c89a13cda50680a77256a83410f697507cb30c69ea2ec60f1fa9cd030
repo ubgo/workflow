@@ -1,0 +1,4 @@
+func (c *Client) Drain(ctx context.Context) error {
+	_, err := c.DrainWithReport(ctx)
+	return err
+}

@@ -61,6 +61,8 @@ type chunkJSON struct {
 }
 
 // events serves GET /runs/{id}/events.
+//
+//ds:def id=httprun-handler-p-events-x4bwpc9w owner=@khanakia stability=stable
 func (h *handler[P]) events(w http.ResponseWriter, r *http.Request) {
 	ref, info, ok := h.open(w, r, ActionEvents)
 	if !ok {
@@ -134,6 +136,7 @@ func (f *follower[P]) detach() {
 	}
 }
 
+//ds:def id=httprun-follower-p-follow-492nbx3j owner=@khanakia stability=stable
 func (f *follower[P]) follow(ctx context.Context, st workflow.Status) {
 	defer f.detach()
 	f.attach(ctx)
@@ -229,6 +232,7 @@ func (f *follower[P]) catchUp(ctx context.Context) {
 	}
 }
 
+//ds:def id=httprun-follower-p-chunk-whmhyt5v owner=@khanakia stability=stable
 func (f *follower[P]) chunk(c workflow.StreamChunk) {
 	if c.Pos <= f.last {
 		return // already sent (seen by both Read and Subscribe)
@@ -250,6 +254,8 @@ func (f *follower[P]) status(ev eventJSON) {
 }
 
 // end sends the last chunks and the end event.
+//
+//ds:def id=httprun-follower-p-end-ajms2jdv owner=@khanakia stability=stable
 func (f *follower[P]) end(ctx context.Context, st workflow.Status) {
 	f.catchUp(ctx)
 	ev := eventJSON{Status: st, Done: true}
@@ -270,6 +276,7 @@ func (f *follower[P]) end(ctx context.Context, st workflow.Status) {
 	f.send("", EventEnd, ev)
 }
 
+//ds:def id=httprun-follower-p-fail-dyxmv9y8 owner=@khanakia stability=stable
 func (f *follower[P]) fail(err error) {
 	code, msg := CodeInternal, "internal error"
 	switch {

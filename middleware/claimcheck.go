@@ -18,6 +18,8 @@ import (
 // ErrBlobNotFound is what a BlobStore's Get returns for a key it does not
 // hold. The claim check step middleware turns it into a Permanent error: a
 // blob that is gone (expired, deleted by hand) does not come back on retry.
+//
+//ds:def id=mw-errblobnotfound-ezj4fu6t owner=@khanakia stability=stable
 var ErrBlobNotFound = errors.New("workflow/middleware: blob not found")
 
 // BlobStore holds the payloads a ClaimCheck moves out of the queue. It is
@@ -27,6 +29,8 @@ var ErrBlobNotFound = errors.New("workflow/middleware: blob not found")
 // A store shared by every process that enqueues or runs steps is what
 // makes the claim check work across processes: the step that resolves a
 // reference may run on another machine than the enqueue that stored it.
+//
+//ds:def id=mw-blobstore-qhytdhk9 owner=@khanakia stability=stable
 type BlobStore interface {
 	// Put stores data under key, replacing any blob already there.
 	Put(ctx context.Context, key string, data []byte) error
@@ -44,6 +48,8 @@ type BlobStore interface {
 // without it, only the run's payload is removed and step outputs are left
 // to the store's own expiry. A store that cannot do it is never forced to
 // pretend it can.
+//
+//ds:def id=mw-blobprefixdeleter-sre4kb37 owner=@khanakia stability=stable
 type BlobPrefixDeleter interface {
 	// DeletePrefix removes every blob whose key starts with prefix.
 	DeletePrefix(ctx context.Context, prefix string) error
@@ -58,6 +64,8 @@ type BlobPrefixDeleter interface {
 // two (Unique may run before it), so a caller can neither choose a token
 // nor point a run at another run's blobs. A job enqueued straight on
 // the driver, bypassing ClaimCheck.Enqueue, must not carry it.
+//
+//ds:def id=mw-claimchecklabel-y2nauzvc owner=@khanakia stability=stable
 const ClaimCheckLabel = "ubgo.workflow/claim-check"
 
 // claimRefPrefix starts every reference. A reference is a JSON string,
@@ -91,6 +99,8 @@ const (
 
 // claimTokenBytes is the size of the default random key: 128 bits, so two
 // runs never share a token and a token cannot be guessed.
+//
+//ds:def id=mw-claimtokenbytes-deg4dsf8 owner=@khanakia stability=stable
 const claimTokenBytes = 16
 
 // ClaimCheck stores payloads larger than a threshold outside the queue and
@@ -117,6 +127,8 @@ const claimTokenBytes = 16
 // made outside any run, so there is no token to scope them by), and runs
 // fired by a Schedule or a declared Cron carry no token, so their payload
 // and outputs stay inline whatever their size.
+//
+//ds:def id=mw-claimcheck-2w4r29tw owner=@khanakia stability=stable
 type ClaimCheck struct {
 	store     BlobStore
 	threshold int
@@ -133,6 +145,8 @@ type ClaimCheckOption func(*ClaimCheck)
 // "/" fails the enqueue or step with workflow.ErrInvalid, because "/"
 // separates a token from its keys and would let one run's prefix cover
 // another's. A nil fn keeps the default, 128 random bits in hex.
+//
+//ds:def id=mw-withclaimkeys-kgxzzy73 owner=@khanakia stability=stable
 func WithClaimKeys(fn func() (string, error)) ClaimCheckOption {
 	return func(cc *ClaimCheck) {
 		if fn != nil {
@@ -144,6 +158,8 @@ func WithClaimKeys(fn func() (string, error)) ClaimCheckOption {
 // NewClaimCheck returns a ClaimCheck storing in store any payload or step
 // output longer than threshold bytes; one of exactly threshold bytes stays
 // inline. A nil store or a threshold of zero or less is workflow.ErrInvalid.
+//
+//ds:def id=mw-newclaimcheck-vbjnm6gt owner=@khanakia stability=stable
 func NewClaimCheck(store BlobStore, threshold int, opts ...ClaimCheckOption) (*ClaimCheck, error) {
 	if store == nil {
 		return nil, fmt.Errorf("%w: NewClaimCheck needs a BlobStore", workflow.ErrInvalid)
@@ -168,6 +184,8 @@ func NewClaimCheck(store BlobStore, threshold int, opts ...ClaimCheckOption) (*C
 // and deleting the payload of a run that exists would fail it. A blob
 // whose run never existed, or a job deduplicated by its IdempotencyKey
 // onto an older run, is an orphan the store's own expiry must remove.
+//
+//ds:def id=mw-claimcheck-enqueue-xdp7mwr4 owner=@khanakia stability=stable
 func (cc *ClaimCheck) Enqueue() workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -189,6 +207,8 @@ func (cc *ClaimCheck) Enqueue() workflow.EnqueueMiddleware {
 // a run of its own; a chain that ends early leaves the blobs of the jobs
 // it never started, which CleanupOnFinish cannot see, so give a store
 // holding chained payloads its own expiry.
+//
+//ds:def id=mw-claimcheck-prepare-dyrwb8kw owner=@khanakia stability=stable
 func (cc *ClaimCheck) prepare(ctx context.Context) func(workflow.Job) (workflow.Job, error) {
 	return func(job workflow.Job) (workflow.Job, error) {
 		if err := refuseInternalLabels(ctx, "ClaimCheck", job.Labels, []string{ClaimCheckLabel}, UniqueKeyLabel, UniqueOwnerLabel); err != nil {
@@ -226,6 +246,8 @@ func (cc *ClaimCheck) prepare(ctx context.Context) func(workflow.Job) (workflow.
 // ErrBlobNotFound; any other store error, on Get or Put, fails the attempt
 // and leaves the retry to the policy. A step outside a run stamped by
 // Enqueue (no workflow.StepInfo, or no ClaimCheckLabel) runs untouched.
+//
+//ds:def id=mw-claimcheck-step-vezvse3j owner=@khanakia stability=stable
 func (cc *ClaimCheck) Step() workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -271,6 +293,8 @@ func (cc *ClaimCheck) Step() workflow.Middleware {
 // set one longer than the longest run. A run replayed by hand on an engine
 // after it finished finds its blobs gone. Failed deletes are not reported
 // (the observer has no caller); expiry catches them too.
+//
+//ds:def id=mw-claimcheck-cleanuponfinish-n9fn72cs owner=@khanakia stability=stable
 func (cc *ClaimCheck) CleanupOnFinish(c workflow.Client) error {
 	n, ok := c.(workflow.RunNotifier)
 	if !ok {
@@ -410,6 +434,8 @@ func (cc *ClaimCheck) fetch(ctx context.Context, key string) ([]byte, error) {
 // parseClaimRef reports the blob key of v when v is a reference under
 // token. A value with the prefix but another token, or none, is a
 // lookalike and reports false, so it is passed through, never fetched.
+//
+//ds:def id=mw-parseclaimref-udepr64k owner=@khanakia stability=stable
 func parseClaimRef(v []byte, token string) (string, bool) {
 	var s string
 	if json.Unmarshal(v, &s) != nil {
@@ -424,6 +450,8 @@ func parseClaimRef(v []byte, token string) (string, bool) {
 
 // runClaimToken is the token of the run ctx belongs to, or "" when the
 // step is not in a run stamped by ClaimCheck.Enqueue.
+//
+//ds:def id=mw-runclaimtoken-qtta8r5c owner=@khanakia stability=stable
 func runClaimToken(ctx context.Context) string {
 	info, ok := workflow.StepInfoFrom(ctx)
 	if !ok {
@@ -436,6 +464,7 @@ func runClaimToken(ctx context.Context) string {
 	return token
 }
 
+//ds:def id=mw-validclaimkey-6737rm3n owner=@khanakia stability=stable
 func validClaimKey(k string) error {
 	if k == "" || strings.Contains(k, claimKeySep) {
 		return fmt.Errorf("%w: claim check key must be non-empty and hold no %q", workflow.ErrInvalid, claimKeySep)
@@ -463,6 +492,8 @@ func randomClaimKey() (string, error) {
 // MemoryBlobStore is a BlobStore inside one process, for tests and a
 // single server where every step runs in the enqueuing process. It has no
 // expiry. Use NewMemoryBlobStore.
+//
+//ds:def id=mw-memoryblobstore-aygfdxck owner=@khanakia stability=stable
 type MemoryBlobStore struct {
 	mu    sync.Mutex
 	blobs map[string][]byte
@@ -501,6 +532,8 @@ func (m *MemoryBlobStore) Delete(_ context.Context, key string) error {
 }
 
 // DeletePrefix implements BlobPrefixDeleter.
+//
+//ds:def id=mw-memoryblobstore-deleteprefix-akarnjr5 owner=@khanakia stability=stable
 func (m *MemoryBlobStore) DeletePrefix(_ context.Context, prefix string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

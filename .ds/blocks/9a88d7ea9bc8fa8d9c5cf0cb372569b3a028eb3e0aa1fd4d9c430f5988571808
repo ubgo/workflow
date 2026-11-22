@@ -1,0 +1,24 @@
+func update(ctx context.Context, client Client, store PromiseStore, ev Event, opts AwaitOptions, send func(Event) error) ([]byte, error) {
+	if !client.Capabilities().Has(CapWaitForEvent) {
+		return nil, &UnsupportedError{Field: "Update", Missing: CapWaitForEvent, Reason: "the run receives an update through a wait step"}
+	}
+	id, err := NewPromiseID()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(updateEnvelope{Update: &UpdateRequest{Reply: id, Payload: ev.Payload}})
+	if err != nil {
+		return nil, fmt.Errorf("workflow: update: encode: %w", err)
+	}
+	ev.Payload = raw
+	if err := send(ev); err != nil {
+		return nil, fmt.Errorf("workflow: update: signal: %w", err)
+	}
+	out, err := WaitPromise(ctx, store, id, opts)
+	if err == nil || errors.As(err, new(*PromiseRejectedError)) {
+		if derr := store.Delete(context.WithoutCancel(ctx), id); derr != nil && err == nil {
+			err = fmt.Errorf("workflow: update: delete reply: %w", derr)
+		}
+	}
+	return out, err
+}

@@ -30,6 +30,8 @@ func pauseField(t workflow.PauseTarget) string {
 
 // Pause holds the runs t names: no step attempt of them is claimed until
 // Resume; attempts already executing finish. See workflow.Pauser.
+//
+//ds:def id=redis-client-pause-5u3ebhwq owner=@khanakia stability=stable
 func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	if err := workflow.CheckPause(caps, t); err != nil {
 		return err
@@ -90,6 +92,8 @@ func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 // key again (ErrDuplicate when another unfinished run holds it) and is
 // reported again to run-finished observers when it ends. See
 // workflow.RunRetrier.
+//
+//ds:def id=redis-client-retry-66taq4s8 owner=@khanakia stability=stable
 func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	return c.retryFrom(ctx, ref, "", workflow.ResetOptions{})
 }
@@ -100,6 +104,8 @@ func (c *Client) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRe
 // gets workflow.LabelRedo, loses its stored result and never hands its
 // chain on again; the status check is in the script, so a run that moved
 // meanwhile is not touched.
+//
+//ds:def id=redis-client-retryfrom-8hgvpxc8 owner=@khanakia stability=stable
 func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	id, err := runID(ref)
 	if err != nil {
@@ -110,7 +116,7 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 		return workflow.RunRef{}, err
 	}
 	if !workflow.ResetStatusOK(r.status, opts) {
-		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, r.status, resetWants(opts))
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, r.status, resetWants(r.status, from != "", opts))
 	}
 	redo := r.status == workflow.StatusSucceeded
 	if redo && len(r.chain) > 0 {
@@ -168,16 +174,22 @@ func (c *Client) retryFrom(ctx context.Context, ref workflow.RunRef, from string
 	case "chain":
 		return workflow.RunRef{}, chainPending(ref)
 	}
-	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(opts))
+	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, %s", workflow.ErrWrongState, ref, str(res[1]), resetWants(workflow.Status(str(res[1])), from != "", opts))
 }
 
-// resetWants names the statuses retryFrom accepts with opts, for its
-// ErrWrongState message.
-func resetWants(opts workflow.ResetOptions) string {
-	if opts.Succeeded {
-		return "failed or succeeded"
+// resetWants ends retryFrom's ErrWrongState message for a run in st: the
+// statuses a Retry (reset false) or a ResetRun with opts accepts, and for
+// a refused reset of a succeeded run the opt-in that would take it.
+func resetWants(st workflow.Status, reset bool, opts workflow.ResetOptions) string {
+	switch {
+	case !reset:
+		return "not failed"
+	case opts.Succeeded:
+		return "only a failed or succeeded run can be reset"
+	case st == workflow.StatusSucceeded:
+		return "only a failed run can be reset (ResetOptions.Succeeded, the CLI's reset --succeeded, also resets a succeeded run)"
 	}
-	return "failed"
+	return "only a failed run can be reset"
 }
 
 // chainPending is the error of a reset of a succeeded run that still
@@ -249,6 +261,8 @@ var (
 // its backoff, snooze, wait or sleep fails for good at once, with an error
 // matching workflow.ErrStepCancelled. A step not started or ended is
 // ErrWrongState; an unknown run or step ErrNotFound.
+//
+//ds:def id=redis-client-cancelstep-dzgd8reg owner=@khanakia stability=stable
 func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
 	id, err := runID(ref)
 	if err != nil {

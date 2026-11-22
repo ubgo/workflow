@@ -23,6 +23,8 @@ import (
 // Errors and First. First is the start of the step's first failed
 // attempt: an earlier attempt whose worker died before it could record
 // anything left no trace, so a takeover's start stands in for it.
+//
+//ds:def id=sql-client-recordfailure-xw2rpzdx owner=@khanakia stability=stable
 func (c *Client) recordFailure(ctx context.Context, tx *sql.Tx, reg *registered, row *runRow, step workflow.Step, a *attempt, herr error, o *txOut) error {
 	override, err := c.runRetry(ctx, tx, row.id)
 	if err != nil {
@@ -136,6 +138,8 @@ func runError(id, wf, step, status, msg, kind string, discarded, forced bool) er
 
 // failedRunError wraps a failed run's cause in a *workflow.RunError, so
 // the error (RunEvent.Err) and its text (RunInfo.Error) name the run.
+//
+//ds:def id=sql-failedrunerror-rvgy9mqm owner=@khanakia stability=stable
 func failedRunError(id, wf, step string, cause error) error {
 	return &workflow.RunError{RunID: workflow.RunID(id), Workflow: wf, Step: step, Err: cause}
 }

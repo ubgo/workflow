@@ -1,0 +1,21 @@
+func (f *Fake) SignalWaiting(ctx context.Context, ev workflow.Event) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	if !f.does(workflow.OpSignalWaiting) {
+		return 0, workflow.Unsupported("SignalWaiting", "the client the Fake is like does not implement it")
+	}
+	f.mu.Lock()
+	if !f.started {
+		f.mu.Unlock()
+		return 0, workflow.ErrNotStarted
+	}
+	rec := ev
+	rec.Payload = bytes.Clone(ev.Payload)
+	f.waiting = append(f.waiting, rec)
+	f.mu.Unlock()
+	if f.inner != nil {
+		return f.Forward.SignalWaiting(ctx, ev)
+	}
+	return 0, nil
+}

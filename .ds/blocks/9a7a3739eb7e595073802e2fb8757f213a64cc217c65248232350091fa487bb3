@@ -1,0 +1,1 @@
+func StepCaps(c workflow.Caps) StepOption { return func(s *stepRun) { s.caps = c } }

@@ -1,0 +1,20 @@
+func MachineStatus[D any](ctx context.Context, store JournalStore, machine, key string) (MachineSnapshot[D], bool, error) {
+	var snap MachineSnapshot[D]
+	if store == nil || machine == "" || key == "" {
+		return snap, false, invalidf("MachineStatus needs a store, a machine and a key")
+	}
+	rec, err := loadMachine(ctx, store, objectRun(machine, key))
+	if err != nil {
+		return snap, false, fmt.Errorf("workflow: machine %q key %q: %w", machine, key, err)
+	}
+	if !rec.Started {
+		return snap, false, nil
+	}
+	if len(rec.Data) > 0 {
+		if err := json.Unmarshal(rec.Data, &snap.Data); err != nil {
+			return snap, false, fmt.Errorf("workflow: machine %q key %q: stored data does not decode: %w", machine, key, err)
+		}
+	}
+	snap.Done, snap.States, snap.Active, snap.Seq, snap.Log = rec.Done, rec.Leaves, rec.Active, rec.Seq, rec.Log
+	return snap, true, nil
+}

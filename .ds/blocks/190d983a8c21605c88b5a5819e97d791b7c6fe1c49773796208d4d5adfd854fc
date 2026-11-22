@@ -1,0 +1,13 @@
+func Skip(skip func(ctx context.Context, in []byte) bool) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		if skip == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if skip(ctx, in) {
+				return nil, nil
+			}
+			return next(ctx, in)
+		}
+	}
+}

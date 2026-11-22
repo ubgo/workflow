@@ -1,0 +1,26 @@
+func TestRefusals(t *testing.T) {
+	e := engines(t)[0]
+	f := newFixture(t, e)
+	ctx := context.Background()
+	if _, err := f.ob.Write(ctx, nil, workflow.Job{Workflow: "ship"}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil tx: %v", err)
+	}
+	tx, err := f.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = tx.Rollback() })
+	if _, err := f.ob.Write(ctx, tx, workflow.Job{}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("no workflow: %v", err)
+	}
+	if _, err := f.ob.NewRelay(nil); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("nil target: %v", err)
+	}
+	m, _ := target(t)
+	if _, err := f.ob.NewRelay(m, outbox.WithLease(time.Second), outbox.WithEnqueueTimeout(time.Second)); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("lease not above timeout: %v", err)
+	}
+	if _, err := outbox.New(f.db, e.dialect, outbox.WithTablePrefix("Bad-")); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("bad prefix: %v", err)
+	}
+}

@@ -1,0 +1,10 @@
+func ParseMachine(data []byte) (MachineDefinition, error) {
+	def, err := parseDoc[MachineDefinition](data)
+	if err != nil {
+		return MachineDefinition{}, err
+	}
+	if err := def.Validate(); err != nil {
+		return MachineDefinition{}, err
+	}
+	return def, nil
+}

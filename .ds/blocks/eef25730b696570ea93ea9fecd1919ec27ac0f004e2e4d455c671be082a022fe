@@ -1,0 +1,27 @@
+func TestRoutingByRef(t *testing.T) {
+	fx := newFixture(t)
+	fx.up(waitWF)
+	onP := fx.enqueue("p")
+	fx.p.down.Store(true)
+	onS := fx.enqueue("s")
+	fx.p.down.Store(false)
+
+	pid := strings.TrimPrefix(string(onP.RunID), "primary:")
+	sid := strings.TrimPrefix(string(onS.RunID), "secondary:")
+	if pid != sid {
+		t.Fatalf("driver IDs %q and %q differ; the test needs them to collide", pid, sid)
+	}
+	fx.waitStatus(onP, workflow.StatusWaiting)
+	fx.waitStatus(onS, workflow.StatusWaiting)
+
+	if err := fx.c.Cancel(fx.ctx, onS); err != nil {
+		t.Fatalf("Cancel(secondary run): %v", err)
+	}
+	fx.waitStatus(onS, workflow.StatusCancelled)
+	fx.waitStatus(onP, workflow.StatusWaiting)
+
+	if err := fx.c.Cancel(fx.ctx, onP); err != nil {
+		t.Fatalf("Cancel(primary run): %v", err)
+	}
+	fx.waitStatus(onP, workflow.StatusCancelled)
+}

@@ -1,0 +1,7 @@
+func WithLeaderElection(node string, opts ...LeaderOption) Option {
+	return func(cl *Client) {
+		cl.leaderNode = node
+		cl.leaderOpts = opts
+		cl.leaderOn = true
+	}
+}

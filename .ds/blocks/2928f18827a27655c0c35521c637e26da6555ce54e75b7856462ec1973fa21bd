@@ -1,0 +1,26 @@
+func (h *handler[P]) route(w http.ResponseWriter, r *http.Request, who P) {
+	g := h.tenant
+	if g == nil {
+		h.mux.ServeHTTP(w, r)
+		return
+	}
+	if g.closed != nil {
+		if errors.Is(g.closed, workflow.ErrUnsupported) {
+			writeError(w, http.StatusNotImplemented, CodeUnsupported, g.closed.Error())
+			return
+		}
+		h.cfg.logger.Error("admin: " + g.closed.Error())
+		writeError(w, http.StatusForbidden, CodeForbidden, g.closed.Error())
+		return
+	}
+	tenant, err := h.callScope(g.scope, r, who)
+	if err != nil {
+		writeError(w, http.StatusForbidden, CodeForbidden, "not allowed: no tenant for this caller")
+		return
+	}
+	if tenant == AllTenants {
+		h.mux.ServeHTTP(w, r)
+		return
+	}
+	g.mux.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), tenantKey{}, tenant)))
+}

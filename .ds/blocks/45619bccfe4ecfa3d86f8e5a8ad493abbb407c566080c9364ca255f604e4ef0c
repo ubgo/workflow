@@ -1,0 +1,41 @@
+func Validate(wf Workflow) error {
+	if wf.Name == "" {
+		return invalidf("workflow has no name")
+	}
+	if wf.Name == ClosureWorkflow {
+		return invalidf("workflow name %q is reserved for closure runs", wf.Name)
+	}
+	if len(wf.Steps) == 0 {
+		return invalidf("workflow %q has no steps", wf.Name)
+	}
+	if wf.Version < 0 || wf.MinVersion < 0 || wf.MinVersion > wf.Version {
+		return invalidf("workflow %q: Version %d and MinVersion %d: both must be zero or more and MinVersion at most Version", wf.Name, wf.Version, wf.MinVersion)
+	}
+	index := make(map[string]int, len(wf.Steps))
+	for i, s := range wf.Steps {
+		if s.Name == "" {
+			return invalidf("workflow %q: step %d has no name", wf.Name, i)
+		}
+		if _, dup := index[s.Name]; dup {
+			return invalidf("workflow %q: step name %q is used twice", wf.Name, s.Name)
+		}
+		index[s.Name] = i
+		if err := validateStep(s); err != nil {
+			return invalidf("workflow %q: step %q: %v", wf.Name, s.Name, err)
+		}
+	}
+	for _, s := range wf.Steps {
+		for _, p := range s.After {
+			if p == s.Name {
+				return invalidf("workflow %q: step %q lists itself in After", wf.Name, s.Name)
+			}
+			if _, ok := index[p]; !ok {
+				return invalidf("workflow %q: step %q is After unknown step %q", wf.Name, s.Name, p)
+			}
+		}
+	}
+	if name := findCycle(wf.Steps, index); name != "" {
+		return invalidf("workflow %q: step %q is part of an After cycle", wf.Name, name)
+	}
+	return validatePolicies(wf)
+}

@@ -1,0 +1,1 @@
+type TickObserver func(ctx context.Context, t Tick)

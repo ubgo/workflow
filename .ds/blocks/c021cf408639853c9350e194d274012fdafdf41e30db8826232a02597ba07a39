@@ -1,0 +1,7 @@
+var storedSentinels = []error{
+	ErrAbandoned,
+	workflow.ErrRunTimeout,
+	workflow.ErrHeartbeatTimeout,
+	workflow.ErrWaitTimeout,
+	workflow.ErrStepTimeout,
+}

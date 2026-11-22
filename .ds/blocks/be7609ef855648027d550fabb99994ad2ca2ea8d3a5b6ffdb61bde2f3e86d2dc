@@ -1,0 +1,5 @@
+func chunkKey(run workflow.RunID, name string) func(int64, workflow.Job) string {
+	sum := sha256.Sum256([]byte(string(run) + "\x00" + name))
+	base := "ubgo-chunk/" + hex.EncodeToString(sum[:16]) + "/"
+	return func(i int64, _ workflow.Job) string { return base + strconv.FormatInt(i, 10) }
+}

@@ -1,0 +1,6 @@
+func NewMemoryDebounce(clk clock.Clock) *MemoryDebounce {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &MemoryDebounce{clk: clk, bursts: map[string]DebounceBurst{}}
+}

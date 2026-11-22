@@ -1,0 +1,1 @@
+var forwardRetry = workflow.RetryPolicy{Max: 5, Backoff: workflow.Backoff{Initial: time.Second, Max: 30 * time.Second, Factor: 2}}

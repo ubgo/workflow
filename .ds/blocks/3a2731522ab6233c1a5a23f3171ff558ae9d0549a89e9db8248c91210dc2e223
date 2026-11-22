@@ -1,0 +1,11 @@
+type WorkerScaler interface {
+	// QueueLoads returns the load of every configured queue, sorted by
+	// name. Before Start it returns ErrNotStarted.
+	QueueLoads(ctx context.Context) ([]QueueLoad, error)
+
+	// SetWorkers sets queue's worker count to n, effective for the next
+	// attempt claimed: lowering it never interrupts running attempts.
+	// n below one wraps ErrInvalid; a queue the client was not configured
+	// with wraps ErrNotFound. Before Start it returns ErrNotStarted.
+	SetWorkers(ctx context.Context, queue string, n int) error
+}

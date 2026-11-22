@@ -1,0 +1,9 @@
+func ShutdownHookReport(d Drainer, grace time.Duration, onReport func(report DrainReport, detailed bool)) func(context.Context) error {
+	return func(ctx context.Context) error {
+		report, detailed, err := DrainTimeoutReport(ctx, d, grace)
+		if onReport != nil {
+			onReport(report, detailed)
+		}
+		return err
+	}
+}

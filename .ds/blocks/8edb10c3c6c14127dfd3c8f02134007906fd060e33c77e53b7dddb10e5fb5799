@@ -1,0 +1,1 @@
+var ErrQuotaExceeded = errors.New("workflow/middleware: tenant quota exceeded")

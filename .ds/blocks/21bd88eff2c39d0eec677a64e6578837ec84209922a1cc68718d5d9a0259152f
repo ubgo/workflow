@@ -1,0 +1,1 @@
+var ErrNoJournal = errors.New("workflow: no journal on this context (use the Journal plugin)")

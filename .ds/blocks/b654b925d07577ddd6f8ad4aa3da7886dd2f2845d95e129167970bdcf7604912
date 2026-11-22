@@ -1,0 +1,9 @@
+func (c *Client) before(a, b *task) bool {
+	if qa, qb := c.queues[a.r.queue].Priority, c.queues[b.r.queue].Priority; qa != qb {
+		return qa > qb
+	}
+	if a.priority != b.priority {
+		return a.priority > b.priority
+	}
+	return a.seq < b.seq
+}

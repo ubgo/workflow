@@ -1,10 +1,10 @@
 # Test queues, retries and pauses
 
-App and operator code does more than enqueue: it sends a job to a named queue, gives one run a larger retry budget, pauses a queue during maintenance, retries a failed run and forgets a finished one. `workflowtest.Fake` validates and records each of these, with assertions to check them, so the code is tested without a worker.
+App and operator code does more than enqueue: it sends a job to a named queue, gives one run a larger retry budget, pauses a queue during maintenance, retries a failed run and forgets a finished one. `workflowtest.Fake` validates and records each of these ([`Pause`](ds:block?id=workflowtest-fake-pause-dyzqvats), [`Retry`](ds:block?id=workflowtest-fake-retry-ysejvqw2), [`Delete`](ds:block?id=workflowtest-fake-delete-a56tbdv9)), with assertions to check them, so the code is tested without a worker.
 
 ## Before you start
 
-- App code that takes a `workflow.Client` and reaches the optional interfaces (`workflow.Pauser`, `workflow.RunRetrier`, `workflow.RunDeleter`) by type assertion, so the Fake can stand in for a driver.
+- App code that takes a `workflow.Client` and reaches the optional interfaces (`workflow.Pauser`, `workflow.RunRetrier`, `workflow.RunDeleter`) by type assertion, so the Fake, which implements all three itself ([`Pause`](ds:block?id=workflowtest-fake-pause-dyzqvats), [`Retry`](ds:block?id=workflowtest-fake-retry-ysejvqw2), [`Delete`](ds:block?id=workflowtest-fake-delete-a56tbdv9)), can stand in for a driver.
 - The runnable program for this page is [examples/batch-tests](../../examples/batch-tests/).
 
 The app code under test reprocesses a file on the `bulk` queue with ten retries, and gives operators three calls:
@@ -69,20 +69,20 @@ func (a *Admin) Forget(ctx context.Context, ref workflow.RunRef) error {
 
 ## Step 1: assert the queue and the retry budget
 
-`fake.AssertEnqueuedOn(t, queue, wf, matchers...)` passes when a job of wf matching every matcher runs on queue. The queue is the effective one (`workflow.EffectiveQueue`): `Job.Queue`, else the registered workflow's `Queue`, else `workflow.DefaultQueue`, so a job that names no queue is checked against its workflow's.
+[`fake.AssertEnqueuedOn(t, queue, wf, matchers...)`](ds:block?id=workflowtest-fake-assertenqueuedon-8g9bz6fq) passes when a job of wf matching every matcher runs on queue. The queue is the effective one ([`workflow.EffectiveQueue`](ds:block?id=effectivequeue-uzpgk6se)): `Job.Queue`, else the registered workflow's `Queue`, else `workflow.DefaultQueue`, so a job that names no queue is [checked against its workflow's](ds:block?id=workflowtest-asserton-z87be4q7).
 
 Two job matchers cover the new job fields:
 
 | Matcher | Matches a job |
 |---|---|
-| `HasQueue(q)` | whose `Job.Queue` is q as given (empty means the workflow's queue) |
-| `HasRetry(policy)` | whose `Job.Retry` override equals policy |
+| [`HasQueue(q)`](ds:block?id=workflowtest-hasqueue-dju5r36s) | whose `Job.Queue` is q as given (empty means the workflow's queue) |
+| [`HasRetry(policy)`](ds:block?id=workflowtest-hasretry-8c2xz2u8) | whose `Job.Retry` override equals policy |
 
-The Fake also refuses these fields as a driver does: `workflow.ValidateJob` (a bad queue name, a `Job.Retry` that carries functions), `workflow.CheckJob` (a field whose capability the Fake was built without, such as `CapJobRetry`), and `workflow.CheckJobQueue` (a queue other than the workflow's without `CapQueueOverride`).
+The Fake also refuses these fields as a driver does ([`Enqueue`](ds:block?id=workflowtest-fake-enqueue-at6ywx4h)): [`workflow.ValidateJob`](ds:block?id=validatejob-a7nq3u2t) (a bad queue name, a `Job.Retry` that carries functions), [`workflow.CheckJob`](ds:block?id=checkjob-2rsfu9ma) (a field whose capability the Fake was built without, such as `CapJobRetry`), and [`workflow.CheckJobQueue`](ds:block?id=checkjobqueue-nkkxjr77) (a queue other than the workflow's without `CapQueueOverride`).
 
 ## Step 2: assert pauses, retries and deletes
 
-The Fake implements `Pauser`, `RunRetrier` and `RunDeleter` itself and records each call:
+The Fake implements `Pauser`, `RunRetrier` and `RunDeleter` itself and records each call ([`Pause`](ds:block?id=workflowtest-fake-pause-dyzqvats), [`Retry`](ds:block?id=workflowtest-fake-retry-ysejvqw2), [`Delete`](ds:block?id=workflowtest-fake-delete-a56tbdv9)):
 
 <!-- snippet: examples/batch-tests/main_test.go#ops-test -->
 ```go
@@ -131,13 +131,13 @@ func TestOperations(t *testing.T) {
 
 | Call | What the Fake does | Assertion |
 |---|---|---|
-| `Pause(t)`, `Resume(t)` | checks the target (`workflow.CheckPause`) and records it; `Resume(PauseAll())` clears every pause; `Paused` lists them in the driver order | `AssertPaused(t, target)`, `AssertNotPaused(t, target)` |
-| `Retry(ref)` | needs a run that `Finish` moved to failed (else `ErrWrongState`), takes its idempotency key again (`ErrDuplicate` when another run holds it) and puts it back to queued under the same ref | `AssertRetried(t, ref)`, `Retries()` |
-| `Delete(ref)` | needs a finished run (else `ErrWrongState`); `Status` then returns `ErrNotFound`, while the job stays in `Jobs` | `AssertDeleted(t, ref)`, `Deletes()` |
+| [`Pause(t)`](ds:block?id=workflowtest-fake-pause-dyzqvats), [`Resume(t)`](ds:block?id=workflowtest-fake-resume-v9bar436) | checks the target ([`workflow.CheckPause`](ds:block?id=checkpause-9fyvd7wv)) and records it; `Resume(PauseAll())` clears every pause; `Paused` lists them in the driver order ([`sortPauses`](ds:block?id=workflowtest-sortpauses-wjen4cdx)) | `AssertPaused(t, target)`, `AssertNotPaused(t, target)` |
+| [`Retry(ref)`](ds:block?id=workflowtest-fake-retry-ysejvqw2) | needs a run that `Finish` moved to failed (else `ErrWrongState`), takes its idempotency key again (`ErrDuplicate` when another run holds it) and puts it back to queued under the same ref | `AssertRetried(t, ref)`, `Retries()` |
+| [`Delete(ref)`](ds:block?id=workflowtest-fake-delete-a56tbdv9) | needs a finished run (else `ErrWrongState`); `Status` then returns `ErrNotFound`, while the job stays in `Jobs` | `AssertDeleted(t, ref)`, `Deletes()` |
 
-Nothing runs on the Fake, so a pause changes no status; it is recorded to be asserted. A pause of a workflow passed through with `FakeExcept` or `FakeOnly`, and a retry or delete of a run the Fake did not create, go to the real client instead.
+Nothing runs on the Fake, so a [`pause`](ds:block?id=workflowtest-fake-pause-dyzqvats) changes no status; it is recorded to be asserted. A pause of a workflow passed through with `FakeExcept` or `FakeOnly`, and a [`retry`](ds:block?id=workflowtest-fake-retry-ysejvqw2) or [`delete`](ds:block?id=workflowtest-fake-delete-a56tbdv9) of a run the Fake did not create, go to the real client instead.
 
-The [Recorder](recorder.md) has the same assertions over a real client: its `Retry` and `Delete` forward and record each call that succeeded, and its `AssertPaused` reads the real client's `Paused`.
+The [Recorder](recorder.md) has the same assertions over a real client: its [`Retry`](ds:block?id=workflowtest-recorder-retry-axyjxfka) and [`Delete`](ds:block?id=workflowtest-recorder-delete-h378zgef) forward and record each call that succeeded, and its [`AssertPaused`](ds:block?id=workflowtest-recorder-assertpaused-upbe9ctg) reads the real client's `Paused`.
 
 ## Try it
 
@@ -157,10 +157,10 @@ ok  	github.com/ubgo/workflow/examples/batch-tests	0.008s
 
 ## Pitfalls
 
-- **Capabilities follow the production driver.** A default Fake claims what the memory driver claims. Build it with `FakeLike(productionClient)` so a test fails when the code pauses a queue or overrides a queue on a driver that cannot (Hatchet has no `CapPauseQueue`, `CapQueueOverride` or `CapJobRetry`).
-- **`FakeLike` drops what the Fake does not serve.** The run query, bulk cancel, schedule pause, schedule listing, tick and drain capabilities are never claimed, because the Fake answers those interfaces only by forwarding to a pass-through client; test that code on the memory driver.
-- **`HasQueue("")` is not the default queue.** It matches a job that named no queue; use `AssertEnqueuedOn` with `workflow.DefaultQueue` to check where the run lands.
-- **Retry needs a failed run.** The Fake never fails a run by itself; call `Finish(ref, workflow.StatusFailed)` first, as the example does.
+- **Capabilities follow the production driver.** A default Fake claims [nearly what the memory driver claims](ds:block?id=workflowtest-fakedefaultcaps-cgj8yc2b) (see [Behave like your production driver](fake.md#behave-like-your-production-driver)). Build it with [`FakeLike(productionClient)`](ds:block?id=workflowtest-fakelike-my3v73nf) so a test fails when the code pauses a queue or overrides a queue on a driver that cannot (Hatchet's [capability list](ds:block?id=hatchet-caps-d6x9fv8z) has no `CapPauseQueue`, `CapQueueOverride` or `CapJobRetry`).
+- **`FakeLike` drops what the Fake does not serve.** The run query, bulk cancel, schedule pause, schedule listing, tick and drain capabilities, among others, are [never claimed](ds:block?id=workflowtest-fakeunserved-jwdtfx8n), because the Fake answers those interfaces only by forwarding to a pass-through client; test that code on the memory driver.
+- **`HasQueue("")` is not the default queue.** [`HasQueue`](ds:block?id=workflowtest-hasqueue-dju5r36s) compares `Job.Queue` as given, so `HasQueue("")` matches a job that named no queue; use `AssertEnqueuedOn` with `workflow.DefaultQueue` to check where the run lands.
+- **Retry needs a failed run.** [`Retry`](ds:block?id=workflowtest-fake-retry-ysejvqw2) refuses any other with `ErrWrongState`, and the Fake never fails a run by itself; call `Finish(ref, workflow.StatusFailed)` first, as the example does.
 
 ## Related
 

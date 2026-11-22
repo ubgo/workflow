@@ -1,0 +1,30 @@
+func (f *Client) onSchedules(ctx context.Context, field string, t workflow.ScheduleTarget, fn func(context.Context, workflow.SchedulePauser, workflow.ScheduleTarget) error) error {
+	backends, err := scheduleBackends[workflow.SchedulePauser](f, field, workflow.CapSchedulePause)
+	if err != nil {
+		return err
+	}
+	if err := workflow.ValidateScheduleTarget(t); err != nil {
+		return err
+	}
+	ids := map[side]workflow.ScheduleID{}
+	if !t.All {
+		ids[primarySide], ids[secondarySide] = decodeScheduleID(t.ID)
+	}
+	errs := map[side]error{}
+	applied := 0
+	for sd, sp := range backends {
+		target := t
+		if !t.All {
+			if ids[sd].IsZero() {
+				continue // the schedule has no copy there
+			}
+			target.ID = ids[sd]
+		}
+		applied++
+		errs[sd] = fn(ctx, sp, target)
+	}
+	if applied == 0 {
+		return fmt.Errorf("%w: failover: schedule %q is on no backend this client schedules on", workflow.ErrNotFound, t.ID)
+	}
+	return joinSides(field, errs[primarySide], errs[secondarySide])
+}

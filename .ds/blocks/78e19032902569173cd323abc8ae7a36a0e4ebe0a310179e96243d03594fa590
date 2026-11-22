@@ -1,0 +1,1 @@
+type LocalCronFunc func(ctx context.Context, at time.Time) error

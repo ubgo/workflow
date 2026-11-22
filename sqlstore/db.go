@@ -30,56 +30,84 @@ const (
 // stem, quoted by the dialect; statements refer to a table as {stem} and
 // sqlText substitutes it, so no table name is ever concatenated by hand.
 const (
-	tblRuns      = "runs"
-	tblSteps     = "steps"
-	tblSignals   = "signals"
-	tblConsumed  = "consumed"
+	//ds:def id=sql-tblruns-crcw4vkh owner=@khanakia stability=stable
+	tblRuns = "runs"
+	//ds:def id=sql-tblsteps-mx6jws2f owner=@khanakia stability=stable
+	tblSteps = "steps"
+	//ds:def id=sql-tblsignals-tzpgbhs8 owner=@khanakia stability=stable
+	tblSignals = "signals"
+	//ds:def id=sql-tblconsumed-fr8wadgj owner=@khanakia stability=stable
+	tblConsumed = "consumed"
+	//ds:def id=sql-tblschedules-da7nr9br owner=@khanakia stability=stable
 	tblSchedules = "schedules"
-	tblTicks     = "ticks"
-	tblLocks     = "locks"
-	tblStarts    = "starts"
-	tblBatches   = "batches"
+	//ds:def id=sql-tblticks-gwfthj6n owner=@khanakia stability=stable
+	tblTicks = "ticks"
+	//ds:def id=sql-tbllocks-639vb69r owner=@khanakia stability=stable
+	tblLocks = "locks"
+	//ds:def id=sql-tblstarts-9p5vzj2d owner=@khanakia stability=stable
+	tblStarts = "starts"
+	//ds:def id=sql-tblbatches-w54n66kh owner=@khanakia stability=stable
+	tblBatches = "batches"
 	// tblUnique holds UniqueStore's locks. Not "unique", a reserved word
 	// on every engine.
+	//ds:def id=sql-tblunique-3bscsy6b owner=@khanakia stability=stable
 	tblUnique = "unique_locks"
 	// tblMisfire holds the misfire policy of the schedules that set one
 	// (migration 002); a schedule without a row uses the default.
+	//ds:def id=sql-tblmisfire-wzsef3uz owner=@khanakia stability=stable
 	tblMisfire = "schedule_misfire"
 	// tblDebounce holds DebounceStore's bursts (its own migration list).
+	//ds:def id=sql-tbldebounce-hn8hybqy owner=@khanakia stability=stable
 	tblDebounce = "debounce"
 	// tblRunExt, tblStepExt, tblPauses and tblScheduleExt are migration
 	// 003's tables (adminDefs): queues, retry overrides and discards per
 	// run, attempt counts per step, pauses, and schedule windows and pauses.
-	tblRunExt      = "run_ext"
-	tblStepExt     = "step_ext"
-	tblPauses      = "pauses"
+	//ds:def id=sql-tblrunext-dvgwbhqn owner=@khanakia stability=stable
+	tblRunExt = "run_ext"
+	//ds:def id=sql-tblstepext-d423z354 owner=@khanakia stability=stable
+	tblStepExt = "step_ext"
+	//ds:def id=sql-tblpauses-aczgu7kr owner=@khanakia stability=stable
+	tblPauses = "pauses"
+	//ds:def id=sql-tblscheduleext-2emgnm3b owner=@khanakia stability=stable
 	tblScheduleExt = "schedule_ext"
 	// tblRunChain and tblStepErr are migration 004's tables
 	// (statesChainDefs): the rest of a run's job chain (chain.go), and the
 	// error of a step's last failed attempt while it waits on its backoff.
+	//ds:def id=sql-tblrunchain-mu5pw4ps owner=@khanakia stability=stable
 	tblRunChain = "run_chain"
-	tblStepErr  = "step_err"
+	//ds:def id=sql-tblsteperr-x969pp4w owner=@khanakia stability=stable
+	tblStepErr = "step_err"
 	// tblRunLabels is migration 005's label index (labelDefs, labels.go):
 	// one row per label of a run, so a label filter reads an index.
+	//ds:def id=sql-tblrunlabels-e7nm2sa2 owner=@khanakia stability=stable
 	tblRunLabels = "run_labels"
 	// tblScheduleLast and tblAttemptErr are migration 006's tables
 	// (historyDefs): each schedule's overlap policy and last fire, and the
 	// bounded per-attempt error history of each run.
+	//ds:def id=sql-tblschedulelast-kpdez43k owner=@khanakia stability=stable
 	tblScheduleLast = "schedule_last"
-	tblAttemptErr   = "attempt_errors"
+	//ds:def id=sql-tblattempterr-y8ddesqf owner=@khanakia stability=stable
+	tblAttemptErr = "attempt_errors"
 	// tblRunForced is migration 006's marker of runs ForceFail ended.
+	//ds:def id=sql-tblrunforced-v6wrmhzw owner=@khanakia stability=stable
 	tblRunForced = "run_forced"
 	// tblOutputs is OutputStore's table (its own migration list, output.go).
+	//ds:def id=sql-tbloutputs-awmn9gcn owner=@khanakia stability=stable
 	tblOutputs = "outputs"
 	// tblScheduleTenant is migration 009: Schedule.Tenant per schedule.
+	//ds:def id=sql-tblscheduletenant-wvy2ce87 owner=@khanakia stability=stable
 	tblScheduleTenant = "schedule_tenant"
 	// tblJournal and tblBuckets are JournalStore's and BucketStore's tables
 	// (each its own migration list).
+	//ds:def id=sql-tbljournal-qvy5a5gx owner=@khanakia stability=stable
 	tblJournal = "journal"
+	//ds:def id=sql-tblbuckets-ddjy9v4m owner=@khanakia stability=stable
 	tblBuckets = "buckets"
 	// tblData is DataStore's table (its own migration list, data.go).
+	//ds:def id=sql-tbldata-3efb5e72 owner=@khanakia stability=stable
 	tblData = "data"
 	// tblInbox is Inbox's table (its own migration list, inbox.go).
+	//ds:def id=sql-tblinbox-4sjrc252 owner=@khanakia stability=stable
 	tblInbox = "inbox"
 )
 
@@ -118,6 +146,8 @@ func newStore(db *sql.DB, d sqlb.Dialect, c *Client) *store {
 
 // table is the quoted name of the table stem, qualified by the schema when
 // WithSchema set one.
+//
+//ds:def id=sql-store-table-mg4f34za owner=@khanakia stability=stable
 func (s *store) table(stem string) string {
 	if s.schema == "" {
 		return s.d.QuoteIdent(s.prefix + stem)
@@ -129,6 +159,8 @@ func (s *store) table(stem string) string {
 // WithSchema it carries "@<schema>", because sqlb's ledger table is not
 // schema-qualified: it lives in the connection's search_path, and two
 // schemas sharing one ledger must keep separate histories.
+//
+//ds:def id=sql-store-owner-eex7yefx owner=@khanakia stability=stable
 func (s *store) owner(base string) string {
 	if s.schema == "" {
 		return base
@@ -198,6 +230,8 @@ func (s *store) each(ctx context.Context, x sqlb.DBTX, q string, args []any, fn 
 // tried in all before the error reaches the caller (WithTxAttempts). Five
 // covers the short bursts of contention a busy queue sees without hiding a
 // lock that never frees.
+//
+//ds:def id=sql-defaulttxattempts-vkdfysz7 owner=@khanakia stability=stable
 const defaultTxAttempts = 5
 
 // tx runs fn in a transaction, committing when it returns nil. A
@@ -307,6 +341,8 @@ const (
 // ErrorClass is what an ErrorClassifier says about one database error. The
 // zero value, "neither", is the safe answer: the error reaches the caller
 // as a failure.
+//
+//ds:def id=sql-errorclass-ct5h2saw owner=@khanakia stability=stable
 type ErrorClass struct {
 	// UniqueViolation means a unique constraint refused the write. The
 	// driver's correctness guards are unique indexes (an idempotency key
@@ -351,6 +387,8 @@ type ErrorClassifier func(err error) ErrorClass
 // (retryable). On any engine a *net.OpError, driver.ErrBadConn,
 // sql.ErrConnDone or a pgx "failed to connect to" dial error is
 // unavailable.
+//
+//ds:def id=sql-defaulterrorclassifier-he4afwga owner=@khanakia stability=stable
 func DefaultErrorClassifier(err error) ErrorClass {
 	if err == nil {
 		return ErrorClass{}
@@ -400,6 +438,8 @@ func (s *store) isUnique(err error) bool {
 // mark wraps err with workflow.Unavailable when the classifier says the
 // database could not be reached, so callers can match
 // workflow.ErrUnavailable; any other error is returned as is.
+//
+//ds:def id=sql-store-mark-6tkf8nxr owner=@khanakia stability=stable
 func (s *store) mark(err error) error {
 	if err != nil && s.classify(err).Unavailable && !workflow.IsUnavailable(err) {
 		return workflow.Unavailable(err)
@@ -422,18 +462,24 @@ type IDKind string
 // and always 128 random bits.
 const (
 	// IDRun is a run's RunID.
+	//ds:def id=sql-idrun-a2xeh3xu owner=@khanakia stability=stable
 	IDRun IDKind = "run"
 	// IDScheduled is the ScheduledID of a run enqueued with a future RunAt.
+	//ds:def id=sql-idscheduled-gss6h33a owner=@khanakia stability=stable
 	IDScheduled IDKind = "sched"
 	// IDStep is a step row's ID (StepInfo carries it).
+	//ds:def id=sql-idstep-3c5s37gd owner=@khanakia stability=stable
 	IDStep IDKind = "step"
 	// IDSchedule is the ScheduleID of a Client.Schedule without a Name. A
 	// named schedule's ID is derived from its workflow and name, so the
 	// same name is the same row on every node and every boot.
+	//ds:def id=sql-idschedule-m223789f owner=@khanakia stability=stable
 	IDSchedule IDKind = "sch"
 )
 
 // maxIDLen is the width of every ID column (VARCHAR(64)).
+//
+//ds:def id=sql-maxidlen-dshvfbhv owner=@khanakia stability=stable
 const maxIDLen = 64
 
 // IDGenerator returns a new ID of kind. IDs must be unique per kind across
@@ -454,6 +500,8 @@ type IDGenerator func(kind IDKind) (string, error)
 // hex ("run_3f2a..."). It panics only if the operating system's random
 // source fails, which crypto/rand documents as never happening on
 // supported platforms.
+//
+//ds:def id=sql-defaultidgenerator-s4a7t379 owner=@khanakia stability=stable
 func DefaultIDGenerator(kind IDKind) (string, error) { return randomID(string(kind)), nil }
 
 // newID asks the store's generator for an ID of kind and checks it fits.

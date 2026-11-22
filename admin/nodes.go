@@ -12,6 +12,8 @@ import (
 
 // Nodes lists the nodes that are online, sorted by ID; see
 // workflow.NodeLister for when a node drops out.
+//
+//ds:def id=admin-admin-nodes-daeezrud owner=@khanakia stability=stable
 func (a *Admin) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	if err := a.check(OpNodes); err != nil {
 		return nil, err
@@ -29,6 +31,8 @@ func (a *Admin) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // check saying it cannot tell. An admin screen shows it; a liveness or
 // readiness probe should call workflow.CheckHealth on the app's own
 // unauthenticated probe route instead of going through the admin API.
+//
+//ds:def id=admin-admin-health-ku9bvxt6 owner=@khanakia stability=stable
 func (a *Admin) Health(ctx context.Context) workflow.HealthReport {
 	return workflow.CheckHealth(ctx, a.c)
 }
@@ -37,6 +41,8 @@ func (a *Admin) Health(ctx context.Context) workflow.HealthReport {
 // workflow.RunRescheduler. A zero at is refused here (the interface
 // reads it as now, which an operator should say on purpose with the
 // current time).
+//
+//ds:def id=admin-admin-reschedule-uc56s9bn owner=@khanakia stability=stable
 func (a *Admin) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	if err := a.check(OpReschedule); err != nil {
 		return workflow.RunRef{}, err
@@ -52,6 +58,8 @@ func (a *Admin) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Tim
 
 // CancelStep withdraws one step of a run; see workflow.StepCanceller for
 // what the run does next.
+//
+//ds:def id=admin-admin-cancelstep-furxhnk2 owner=@khanakia stability=stable
 func (a *Admin) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
 	if err := a.check(OpCancelStep); err != nil {
 		return err

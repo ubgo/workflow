@@ -20,24 +20,30 @@ const (
 	// RuleAllSucceeded runs the step only when every parent succeeded
 	// (the default for a child of a tolerated or ruled step). A failed or
 	// skipped parent skips it.
+	//ds:def id=ruleallsucceeded-rb23vtac owner=@khanakia stability=stable
 	RuleAllSucceeded TriggerRule = "all_succeeded"
 
 	// RuleNoneFailed runs the step when no parent failed; skipped parents
 	// count as fine (the continue policy).
+	//ds:def id=rulenonefailed-sw2t9ffg owner=@khanakia stability=stable
 	RuleNoneFailed TriggerRule = "none_failed"
 
 	// RuleAllDone runs the step whatever its parents did (succeeded,
 	// failed or skipped): the always rule.
+	//ds:def id=rulealldone-apc5tzgu owner=@khanakia stability=stable
 	RuleAllDone TriggerRule = "all_done"
 
 	// RuleOneFailed runs the step when at least one parent failed, of any
 	// kind: an error-handling branch.
+	//ds:def id=ruleonefailed-epgevkfz owner=@khanakia stability=stable
 	RuleOneFailed TriggerRule = "one_failed"
 
 	// RuleAllFailed runs the step only when every parent failed.
+	//ds:def id=ruleallfailed-rq28tyzz owner=@khanakia stability=stable
 	RuleAllFailed TriggerRule = "all_failed"
 
 	// RuleOneSucceeded runs the step when at least one parent succeeded.
+	//ds:def id=ruleonesucceeded-7hffk2d3 owner=@khanakia stability=stable
 	RuleOneSucceeded TriggerRule = "one_succeeded"
 )
 
@@ -47,14 +53,18 @@ const ruleFailedPrefix = "one_failed:"
 // RuleOneFailedOf runs the step when at least one parent failed with this
 // kind (WP-01, error routing): the kind a CatchRoute gave the failure, or
 // FailureTimeout, FailureError.
+//
+//ds:def id=ruleonefailedof-fsnzz3ss owner=@khanakia stability=stable
 func RuleOneFailedOf(kind string) TriggerRule { return TriggerRule(ruleFailedPrefix + kind) }
 
 // Failure kinds a tolerated step records when no CatchRoute matched.
 const (
 	// FailureTimeout is the kind of a failure matching ErrTimeout (a step,
 	// wait or heartbeat timeout).
+	//ds:def id=failuretimeout-tuhban6c owner=@khanakia stability=stable
 	FailureTimeout = "timeout"
 	// FailureError is the kind of every other failure.
+	//ds:def id=failureerror-uhnjkhy8 owner=@khanakia stability=stable
 	FailureError = "error"
 )
 
@@ -62,6 +72,8 @@ const (
 // first route whose Match returns true gives the failure its Kind, which
 // RuleOneFailedOf routes on. Match runs in the failing attempt, on the
 // real error, so errors.Is and errors.As work.
+//
+//ds:def id=catchroute-f563zdkd owner=@khanakia stability=stable
 type CatchRoute struct {
 	// Kind is the name the failure gets; not empty.
 	Kind string
@@ -71,6 +83,8 @@ type CatchRoute struct {
 
 // StepFailure is what a tolerated step recorded when its last attempt
 // failed, as a step handler with a rule reads it (ParentFailures).
+//
+//ds:def id=stepfailure-xq2xnjvt owner=@khanakia stability=stable
 type StepFailure struct {
 	// Step is the step that failed.
 	Step string `json:"step"`
@@ -83,6 +97,8 @@ type StepFailure struct {
 
 // RulesSpec turns some steps of a workflow into tolerated steps and gives
 // others a trigger rule; WithRules applies it.
+//
+//ds:def id=rulesspec-n7pbvchr owner=@khanakia stability=stable
 type RulesSpec struct {
 	// Tolerate lists Run steps whose final failure is recorded instead of
 	// failing the run. A failure is final when the step's policy (the
@@ -138,6 +154,8 @@ type parentFailuresKey struct{}
 // ParentFailures returns the failures the parents of a step with a
 // trigger rule recorded, directly or through a skipped parent, in parent
 // order; nil inside any other step.
+//
+//ds:def id=parentfailures-8u89n2hu owner=@khanakia stability=stable
 func ParentFailures(ctx context.Context) []StepFailure {
 	f, _ := ctx.Value(parentFailuresKey{}).([]StepFailure)
 	return f
@@ -158,6 +176,8 @@ func ParentFailures(ctx context.Context) []StepFailure {
 // Pitfall: the last attempt is judged from the step's or workflow's
 // policy. A per-dispatch Job.Retry is not visible to the step, so a job
 // that overrides the policy should not use tolerated steps.
+//
+//ds:def id=withrules-q3mcee45 owner=@khanakia stability=stable
 func WithRules(wf Workflow, spec RulesSpec) (Workflow, error) {
 	steps := slices.Clone(wf.Steps)
 	index := map[string]int{}
@@ -276,6 +296,8 @@ func validRule(r TriggerRule) bool {
 }
 
 // leavesExcept returns the steps no other step waits on, but skip.
+//
+//ds:def id=leavesexcept-2vzduexk owner=@khanakia stability=stable
 func leavesExcept(steps []Step, skip string) []string {
 	hasChild := map[string]bool{}
 	for _, s := range steps {
@@ -293,9 +315,23 @@ func leavesExcept(steps []Step, skip string) []string {
 }
 
 // toleratedHandler runs next and turns its final failure into a record.
+// An attempt cut off by its own Step.Timeout or HeartbeatTimeout fails
+// with that timeout whatever next returned (the handler itself only sees
+// a cancelled ctx), so it is recorded as a FailureTimeout, and the record
+// claims the timeout (ClaimTimeout) so the driver keeps it instead of
+// failing the attempt.
+//
+//ds:def id=toleratedhandler-xnm5kays owner=@khanakia stability=stable
 func toleratedHandler(step string, policy RetryPolicy, routes []CatchRoute, next Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		out, err := next(ctx, in)
+		if te := attemptTimeout(ctx); te != nil && !IsTimeout(err) {
+			if err == nil {
+				err = te
+			} else {
+				err = fmt.Errorf("%w: %w", te, err)
+			}
+		}
 		if err == nil || IsDiscarded(err) || errors.Is(err, ErrCancelled) || errors.Is(err, ErrSnoozed) {
 			return out, err
 		}
@@ -316,12 +352,18 @@ func toleratedHandler(step string, policy RetryPolicy, routes []CatchRoute, next
 				break
 			}
 		}
-		return encodeJSON("tolerated step "+step, ruleRecord{Failed: &StepFailure{Step: step, Kind: kind, Error: err.Error()}})
+		rec, rerr := encodeJSON("tolerated step "+step, ruleRecord{Failed: &StepFailure{Step: step, Kind: kind, Error: err.Error()}})
+		if rerr == nil {
+			ClaimTimeout(ctx) // a no-op unless the attempt timed out
+		}
+		return rec, rerr
 	}
 }
 
 // ruledHandler applies rule to the parents' records, then runs next with
 // failed and skipped parents nulled, or ends with a skip record.
+//
+//ds:def id=ruledhandler-sxsw3vmv owner=@khanakia stability=stable
 func ruledHandler(step string, parents []string, rule TriggerRule, isFinally bool, next Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		outs := map[string][]byte{}
@@ -396,4 +438,6 @@ func ruledHandler(step string, parents []string, rule TriggerRule, isFinally boo
 
 // ErrStepsFailed is the error a Finally step ends its run with after its
 // handler ran, when a step before it failed.
+//
+//ds:def id=errstepsfailed-q4yb27zg owner=@khanakia stability=stable
 var ErrStepsFailed = errors.New("workflow: steps failed before the exit handler")

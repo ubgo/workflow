@@ -1,0 +1,17 @@
+func sendMachine(ctx context.Context, client Client, machine, key string, call machineCall, job Job) (RunRef, error) {
+	if client == nil || machine == "" || key == "" {
+		return RunRef{}, invalidf("a machine event needs a client, a machine and a key")
+	}
+	payload, err := json.Marshal(call)
+	if err != nil {
+		return RunRef{}, fmt.Errorf("workflow: machine %q: %w", machine, err)
+	}
+	job.Workflow, job.Payload = machine, payload
+	labels := make(map[string]string, len(job.Labels)+1)
+	for k, v := range job.Labels {
+		labels[k] = v
+	}
+	labels[LabelObjectKey] = key
+	job.Labels = labels
+	return client.Enqueue(AllowReservedLabels(ctx, LabelObjectKey), job)
+}

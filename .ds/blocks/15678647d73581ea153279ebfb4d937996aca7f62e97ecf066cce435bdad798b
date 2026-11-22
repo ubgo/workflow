@@ -1,0 +1,3 @@
+type Verifier interface {
+	Verify(r *http.Request, body []byte) (id string, err error)
+}

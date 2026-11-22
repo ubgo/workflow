@@ -1,0 +1,11 @@
+func triggerKey(trigger string, versions map[string]string) string {
+	var b strings.Builder
+	for _, ds := range slices.Sorted(maps.Keys(versions)) {
+		b.WriteString(url.QueryEscape(ds))
+		b.WriteByte('@')
+		b.WriteString(url.QueryEscape(versions[ds]))
+		b.WriteByte('\n')
+	}
+	sum := sha256.Sum256([]byte(b.String()))
+	return "dataset/" + trigger + "/" + hex.EncodeToString(sum[:16])
+}

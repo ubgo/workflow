@@ -4,14 +4,14 @@
 
 ## Before you start
 
-- Promises and updates keep their values in a `workflow.PromiseStore`. `workflow.NewMemoryPromises()` is the in-process store; `sqlstore.Client.PromiseStore()` (or `sqlstore.NewPromiseStore`, rows in the journal table) and `redis.Client.PromiseStore()` (or `redis.NewPromiseStore`, needs Redis 7 or later) are durable and shared by every process on that database. The caller and the run must use the same store.
-- `AwaitPromise` waits by snoozing, so it needs `workflow.CapSnooze` (memory, SQL and Redis). `Update` and `SignalWithStart` need `workflow.CapWaitForEvent`; `SignalWithStart` and `ContinueAsNew` need `workflow.CapIdempotencyKey`.
-- `CancelSteps` needs a client that implements `workflow.StepCanceller` (memory, SQL and Redis; no capability bit, so check with a type assertion or `workflow.Supports(c, workflow.OpCancelStep)`).
+- Promises and updates keep their values in a [`workflow.PromiseStore`](ds:block?id=promisestore-fpf8x3m4). [`workflow.NewMemoryPromises()`](ds:block?id=newmemorypromises-capatjkk) is the in-process store; [`sqlstore.Client.PromiseStore()`](ds:block?id=sql-client-promisestore-fw6wxfdm) (or [`sqlstore.NewPromiseStore`](ds:block?id=sql-newpromisestore-cpmkmayx), rows in the journal table) and [`redis.Client.PromiseStore()`](ds:block?id=redis-client-promisestore-r626cn6b) (or [`redis.NewPromiseStore`](ds:block?id=redis-newpromisestore-v66xmp89), one `SET NX` key per promise, with an optional TTL) are durable and shared by every process on that database. The caller and the run must use the same store.
+- [`AwaitPromise`](ds:block?id=awaitpromise-338jz9js) waits by snoozing, so it needs [`workflow.CapSnooze`](ds:block?id=capsnooze-pffu58xc) ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j) and [Redis](ds:block?id=redis-caps-bfgdst9t)). [`Update`](ds:block?id=update-khsw5ev5) and [`SignalWithStart`](ds:block?id=signalwithstart-hk5sr9sg) need [`workflow.CapWaitForEvent`](ds:block?id=capwaitforevent-2km3dkzy); `SignalWithStart` and [`ContinueAsNew`](ds:block?id=continueasnew-9dkhw3cb) need [`workflow.CapIdempotencyKey`](ds:block?id=capidempotencykey-5wcqqwy8).
+- [`CancelSteps`](ds:block?id=cancelsteps-9p2f2na7) needs a client that implements [`workflow.StepCanceller`](ds:block?id=stepcanceller-gp5urxfn) ([memory](ds:block?id=memory-client-cancelstep-cn7kxx27), [SQL](ds:block?id=sql-client-cancelstep-fnqpwd5z) and [Redis](ds:block?id=redis-client-cancelstep-dzgd8reg); no capability bit, so check with a type assertion or [`workflow.Supports`](ds:block?id=supports-4xyjjwvz) with [`workflow.OpCancelStep`](ds:block?id=opcancelstep-x8n8q838)).
 - The examples are [`examples/flow-promises`](../../examples/flow-promises) and, for withdrawing steps, [`examples/flow-cancel`](../../examples/flow-cancel). Run them with `go run ./flow-promises` and `go run ./flow-cancel` from `examples/`.
 
 ## Wait for a promise
 
-A promise is a value stored once under an id and read by anyone who knows the id. A step waits for it with `workflow.AwaitPromise(ctx, store, id, poll)`, which returns the value once the promise is settled and `workflow.Snooze(poll)` until then, so the step holds no worker while it waits:
+A promise is a value stored once under an id and read by anyone who knows the id. A step waits for it with [`workflow.AwaitPromise(ctx, store, id, poll)`](ds:block?id=awaitpromise-338jz9js), which returns the value once the promise is settled and `workflow.Snooze(poll)` until then ([`DefaultPromisePoll`](ds:block?id=defaultpromisepoll-2vu4hbw2) when `poll` is zero), so the step holds no worker while it waits:
 
 <!-- snippet: examples/flow-promises/main.go#await-promise -->
 ```go
@@ -33,13 +33,13 @@ if err := workflow.ResolvePromise(ctx, c, promises, "req-42", []byte(`"approved 
 }
 ```
 
-`workflow.ResolvePromise(ctx, client, store, id, value)` stores the value and signals `workflow.PromiseEvent` with the id as key, so a run waiting in a wait step (`WaitSpec{Event: workflow.PromiseEvent, Key: id}`) resumes at once; pass a nil client to skip the signal. `workflow.RejectPromise` settles it as failed with a reason, and `AwaitPromise` then fails the step with a permanent `*workflow.PromiseRejectedError`. A promise settles once: the store's `Settle` is an atomic insert, so of two processes settling one promise at once exactly one wins. Settling again with the same outcome is a no-op (a retried handler is safe); a different outcome returns an error matching `workflow.ErrPromiseSettled`.
+[`workflow.ResolvePromise(ctx, client, store, id, value)`](ds:block?id=resolvepromise-ej2zjk37) stores the value and signals [`workflow.PromiseEvent`](ds:block?id=promiseevent-9gzm4g33) with the id as key ([`settlePromise`](ds:block?id=settlepromise-e3d6pbhr)), so a run waiting in a wait step (`WaitSpec{Event: workflow.PromiseEvent, Key: id}`) resumes at once; pass a nil client to skip the signal. [`workflow.RejectPromise`](ds:block?id=rejectpromise-e6uyyurn) settles it as failed with a reason, and `AwaitPromise` then fails the step with a permanent [`*workflow.PromiseRejectedError`](ds:block?id=promiserejectederror-t8d9km2g). A promise settles once: the [store's `Settle`](ds:block?id=promisestore-fpf8x3m4) is an atomic insert, so of two processes settling one promise at once exactly one wins. Settling again with the same outcome is a no-op (a retried handler is safe); a different outcome returns an error matching [`workflow.ErrPromiseSettled`](ds:block?id=errpromisesettled-cbm2esnm).
 
-Outside a step, `workflow.WaitPromise(ctx, store, id, opts)` blocks until the promise settles, and `workflow.PromiseResult` reads it once. `workflow.NewPromiseID()` makes a random id when the request has none of its own.
+Outside a step, [`workflow.WaitPromise(ctx, store, id, opts)`](ds:block?id=waitpromise-4tdkst6u) blocks until the promise settles, and [`workflow.PromiseResult`](ds:block?id=promiseresult-f3bszagg) reads it once. [`workflow.NewPromiseID()`](ds:block?id=newpromiseid-gs7uukr4) makes a random id when the request has none of its own.
 
 ## Ask a run and get its answer
 
-`workflow.Update(ctx, client, store, event, opts)` is a signal that returns a result: it signals `event` with a fresh promise id wrapped around its payload, and waits until the run answers. The run takes it with a wait step, and the step after it wraps its body in `workflow.UpdateHandler(store, fn)`, which calls `fn` with the caller's payload and answers with `fn`'s output:
+[`workflow.Update(ctx, client, store, event, opts)`](ds:block?id=update-qj6esyyk) is a signal that returns a result: it signals `event` with a fresh promise id wrapped around its payload, and waits until the run answers. The run takes it with a wait step, and the step after it wraps its body in [`workflow.UpdateHandler(store, fn)`](ds:block?id=updatehandler-cegfe95e), which calls `fn` with the caller's payload and answers with `fn`'s output:
 
 <!-- snippet: examples/flow-promises/main.go#update-handler -->
 ```go
@@ -65,11 +65,11 @@ if err != nil {
 }
 ```
 
-A permanent error from `fn` rejects the update and `Update` returns a `*workflow.PromiseRejectedError`; any other error goes to the step's retry policy while the caller keeps waiting. An input that is not an update (a plain `Signal`) is passed to `fn` as it is and nobody is answered, so one run takes both. Signals are kept from a run's enqueue, so an update sent before the run reaches its wait step is still taken. Give the caller's ctx a deadline: a run that never reaches the wait step never answers. `Update` deletes the reply once read.
+A permanent error from `fn` rejects the update ([`UpdateHandler`](ds:block?id=updatehandler-cegfe95e)) and `Update` returns a `*workflow.PromiseRejectedError`; any other error goes to the step's retry policy while the caller keeps waiting. An input that is not an update (a plain `Signal`) is passed to `fn` as it is and nobody is answered, so one run takes both. Signals are kept from a run's enqueue, so an update sent before the run reaches its wait step is still taken. Give the caller's ctx a deadline: a run that never reaches the wait step never answers. `Update` deletes the reply once read ([`update`](ds:block?id=update-khsw5ev5)).
 
 ## Start a run if it is not running, then signal it
 
-`workflow.SignalWithStart(ctx, client, job, event)` enqueues `job` and then signals `event`. The job needs an `IdempotencyKey`: when a run holding that key is still unfinished, the enqueue returns that run instead of starting a second one. A run just started still takes the signal when it reaches its wait step.
+[`workflow.SignalWithStart(ctx, client, job, event)`](ds:block?id=signalwithstart-hk5sr9sg) enqueues `job` and then signals `event`. The job needs an `IdempotencyKey`: when a run holding that key is still unfinished, the enqueue returns that run instead of starting a second one. A run just started still takes the signal when it reaches its wait step.
 
 <!-- snippet: examples/flow-promises/main.go#signal-with-start -->
 ```go
@@ -82,7 +82,7 @@ if err != nil {
 
 ## Loop for ever as a chain of runs
 
-A run that loops for months (a subscription renewed monthly, a poller) would keep a growing journal, step history and error history. `workflow.ContinueAsNew(ctx, client, payload)` starts the next run of the same workflow with a new payload, carrying the run's app labels and tenant; return from the step after it and the current run ends as usual:
+A run that loops for months (a subscription renewed monthly, a poller) would keep a growing journal, step history and error history. [`workflow.ContinueAsNew(ctx, client, payload)`](ds:block?id=continueasnew-9dkhw3cb) starts the next run of the same workflow with a new payload, carrying the run's app labels and tenant; return from the step after it and the current run ends as usual:
 
 <!-- snippet: examples/flow-promises/main.go#continue -->
 ```go
@@ -103,13 +103,13 @@ poller := workflow.Workflow{Name: "poller", Steps: []workflow.Step{{Name: "round
 }}}}
 ```
 
-The next run's idempotency key is derived from the current run, so a retried step never starts two. It carries `workflow.LabelContinuedFrom` with the run it continues, which a step reads with `workflow.ContinuedFrom(ctx)`. Labels under a reserved prefix (schedule, tick, parent) are not carried.
+The next run's idempotency key is derived from the current run, so a retried step never starts two. It carries [`workflow.LabelContinuedFrom`](ds:block?id=labelcontinuedfrom-njsmcapf) with the run it continues, which a step reads with [`workflow.ContinuedFrom(ctx)`](ds:block?id=continuedfrom-uw5kcqu4). Labels under a reserved prefix (schedule, tick, parent) are not carried.
 
 ## Withdraw several steps of a run
 
-Sometimes a part of a run is no longer wanted while the rest still is: two price feeds hang, and the quote should go on with cached prices rather than wait or fail. `workflow.CancelSteps(ctx, client, ref, steps...)` withdraws each listed step of one run through `workflow.StepCanceller`, as `CancelStep` does for one, and leaves the rest of the run alone. The example is [`examples/flow-cancel`](../../examples/flow-cancel): a quote runs `feed-eu` and `feed-us` in parallel, both hang, and `combine` runs after both.
+Sometimes a part of a run is no longer wanted while the rest still is: two price feeds hang, and the quote should go on with cached prices rather than wait or fail. [`workflow.CancelSteps(ctx, client, ref, steps...)`](ds:block?id=cancelsteps-9p2f2na7) withdraws each listed step of one run through [`workflow.StepCanceller`](ds:block?id=stepcanceller-gp5urxfn), as `CancelStep` does for one, and leaves the rest of the run alone. The example is [`examples/flow-cancel`](../../examples/flow-cancel): a quote runs `feed-eu` and `feed-us` in parallel, both hang, and `combine` runs after both.
 
-Each feed watches its ctx and, when the cause is `workflow.ErrStepCancelled`, returns a fallback, so the step succeeds and the run continues:
+Each feed watches its ctx and, when the cause is [`workflow.ErrStepCancelled`](ds:block?id=errstepcancelled-bxbppyku), returns a fallback, so the step succeeds and the run continues:
 
 <!-- snippet: examples/flow-cancel/main.go#cancel-steps -->
 ```go
@@ -123,13 +123,13 @@ if err != nil {
 fmt.Fprintf(w, "  quote succeeded with %s\n", out)
 ```
 
-What happens to each step is `StepCanceller`'s contract:
+What happens to each step is [`StepCanceller`](ds:block?id=stepcanceller-gp5urxfn)'s contract:
 
 - **A running attempt** has its ctx cancelled with cause `workflow.ErrStepCancelled` (read it with `context.Cause`). An output from the handler means the step succeeded; an error fails the step for good, without retry, with an error matching `ErrStepCancelled`, and the run fails (`OnFailure` runs).
 - **A step with no attempt running** (in retry backoff, snoozed, or a suspended wait or sleep) fails for good at once with an error matching `ErrStepCancelled`, which fails the run. Withdraw a wait step only when the run should end.
 - **A step that has not started or has ended** answers `workflow.ErrWrongState`, an unknown run or step `workflow.ErrNotFound`.
 
-`CancelSteps` tries every step, even after one fails, and returns their answers joined, each prefixed with its step name, so `errors.Is` finds any of them. No steps at all is an error matching `workflow.ErrInvalid`, and a client without `StepCanceller` is refused with an `*workflow.UnsupportedError`. The memory, SQL and Redis drivers implement it; Hatchet does not.
+[`CancelSteps`](ds:block?id=cancelsteps-9p2f2na7) tries every step, even after one fails, and returns their answers joined, each prefixed with its step name, so `errors.Is` finds any of them. No steps at all is an error matching `workflow.ErrInvalid`, and a client without `StepCanceller` is refused with an `*workflow.UnsupportedError`. The [memory](ds:block?id=memory-client-cancelstep-cn7kxx27), [SQL](ds:block?id=sql-client-cancelstep-fnqpwd5z) and [Redis](ds:block?id=redis-client-cancelstep-dzgd8reg) drivers implement it; Hatchet does not.
 
 ## Try it
 
@@ -166,11 +166,12 @@ The second call finds the run ended, so both steps answer `ErrWrongState` and bo
 
 ## Pitfalls
 
-- A signal reaches every run waiting with its name and key. With `Update` the first answer wins and later ones are ignored; with `SignalWithStart` give each run its own key (`WaitSpec.KeyFrom`) so the signal reaches only the run it started.
-- Promises stay in the store until deleted. Delete the ones you settle and nobody reads, or give the Redis store a TTL.
-- `AwaitPromise` looks again every `poll`; a wait step on `workflow.PromiseEvent` resumes at the signal instead.
-- `CancelSteps` is not atomic. It withdraws the steps one by one; if one of them fails the run (a wait step, or a handler that returns an error), the steps after it answer `ErrWrongState` because the run has ended.
-- A handler that ignores its ctx is not interrupted. Withdrawing a running step only cancels its ctx; pass `ctx` to every call and check `context.Cause` to offer a fallback.
+- A signal reaches every run waiting with its name and key. With [`Update`](ds:block?id=update-qj6esyyk) the first answer wins and later ones are ignored; with [`SignalWithStart`](ds:block?id=signalwithstart-hk5sr9sg) give each run its own key (`WaitSpec.KeyFrom`) so the signal reaches only the run it started.
+- Promises stay in the store until deleted. Delete the ones you settle and nobody reads, or give the [Redis store](ds:block?id=redis-newpromisestore-v66xmp89) a TTL.
+- [`AwaitPromise`](ds:block?id=awaitpromise-338jz9js) looks again every `poll`; a wait step on `workflow.PromiseEvent` resumes at the signal instead.
+- [`CancelSteps`](ds:block?id=cancelsteps-9p2f2na7) is not atomic. It withdraws the steps one by one; if one of them fails the run (a wait step, or a handler that returns an error), the steps after it answer `ErrWrongState` because the run has ended.
+- A handler that ignores its ctx is not interrupted. Withdrawing a running step only cancels its ctx ([`StepCanceller`](ds:block?id=stepcanceller-gp5urxfn)); pass `ctx` to every call and check `context.Cause` to offer a fallback.
+- **Hatchet has no promise store.** The Hatchet driver offers no `PromiseStore`, so a promise settled there lives in the process unless you pass the [SQL](ds:block?id=sql-newpromisestore-cpmkmayx) or [Redis](ds:block?id=redis-newpromisestore-v66xmp89) driver's store. See [Hatchet limitations](../drivers/hatchet.md#limitations).
 
 ## Related
 

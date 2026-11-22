@@ -1,0 +1,12 @@
+func assertOn(t testing.TB, queue, wf string, def workflow.Workflow, jobs []workflow.Job, m []JobMatcher, recorded string) {
+	t.Helper()
+	var seen []string
+	for _, j := range jobs {
+		q := workflow.EffectiveQueue(def, j)
+		if q == queue {
+			return
+		}
+		seen = append(seen, q)
+	}
+	t.Errorf("workflow %q%s was not enqueued on queue %q (queues seen: %v); %s", wf, describe(m), queue, seen, recorded)
+}

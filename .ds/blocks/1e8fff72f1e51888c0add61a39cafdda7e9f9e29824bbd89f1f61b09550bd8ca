@@ -1,0 +1,19 @@
+func (i *Instrumentation) ObserveQueueDepth(fn QueueDepthFunc) (metric.Registration, error) {
+	if fn == nil {
+		return nil, fmt.Errorf("%w: workflow/otel: ObserveQueueDepth needs a QueueDepthFunc", workflow.ErrInvalid)
+	}
+	reg, err := i.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		depths, err := fn(ctx)
+		if err != nil {
+			return fmt.Errorf("workflow/otel: queue depth: %w", err)
+		}
+		for _, q := range slices.Sorted(maps.Keys(depths)) {
+			o.ObserveInt64(i.queueDepth, depths[q], metric.WithAttributes(AttrQueue.String(q)))
+		}
+		return nil
+	}, i.queueDepth)
+	if err != nil {
+		return nil, fmt.Errorf("workflow/otel: %s: %w", MetricQueueDepth, err)
+	}
+	return reg, nil
+}

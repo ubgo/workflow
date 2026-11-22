@@ -14,11 +14,15 @@ import (
 // prunes of signals, consumed markers, old ticks and expired unique locks
 // (WithHousekeepingEvery): with the one-second default poll, about once a
 // minute on an idle client and more often on a busy one.
+//
+//ds:def id=sql-defaulthousekeepevery-bgu3ufnh owner=@khanakia stability=stable
 const defaultHousekeepEvery = 50
 
 // defaultTickRetention is how long a fired tick's row is kept
 // (WithTickRetention). A tick only guards against a second fire while some
 // node may still see it due, which is well under a day.
+//
+//ds:def id=sql-defaulttickretention-wf8c7dmu owner=@khanakia stability=stable
 const defaultTickRetention = 24 * time.Hour
 
 // dispatcher moves time-driven work forward: cron ticks, delayed starts,
@@ -26,6 +30,8 @@ const defaultTickRetention = 24 * time.Hour
 // and run-end notifications. It wakes when this client nudges it, when the
 // earliest due time it knows of arrives on the scheduling clock, and every
 // poll interval for work other clients made due.
+//
+//ds:def id=sql-client-dispatcher-zzcdk7h7 owner=@khanakia stability=stable
 func (c *Client) dispatcher() {
 	defer c.wg.Done()
 	var due clock.Timer
@@ -75,6 +81,8 @@ func (c *Client) dispatcher() {
 // time it knows of (Unix nanoseconds on the scheduling clock; 0: none).
 // A failing step is logged and the others still run, so one bad row
 // cannot stall the queue.
+//
+//ds:def id=sql-client-pass-zj3mdjzk owner=@khanakia stability=stable
 func (c *Client) pass(ctx context.Context, n int) int64 {
 	steps := []struct {
 		what       string
@@ -142,6 +150,8 @@ func (c *Client) nameArgs(extra ...any) []any {
 func (c *Client) inNames() string { return "workflow IN (" + inList(len(c.names)) + ")" }
 
 // promote turns delayed runs whose RunAt has come into pending runs.
+//
+//ds:def id=sql-client-promote-5d4ts6nj owner=@khanakia stability=stable
 func (c *Client) promote(ctx context.Context) error {
 	_, err := c.st.exec(ctx, c.st.db, "UPDATE {runs} SET status = ? WHERE "+c.inNames()+" AND status = ? AND run_at <= ?",
 		append(append([]any{runPending}, c.names...), runScheduled, c.nowNanos())...)
@@ -322,6 +332,8 @@ func (c *Client) deliver(ctx context.Context) error {
 
 // recoverFailing takes over failing runs whose OnFailure claim expired
 // (the client running it died) and finishes them.
+//
+//ds:def id=sql-client-recoverfailing-q3wafxbw owner=@khanakia stability=stable
 func (c *Client) recoverFailing(ctx context.Context) error {
 	var ids []string
 	var id string
@@ -351,6 +363,8 @@ func (c *Client) recoverFailing(ctx context.Context) error {
 // prune drops what can never matter again: signals no unfinished run may
 // take (each run only takes signals above its floor), the consumed markers
 // of finished runs, ticks long past and expired uniqueness locks.
+//
+//ds:def id=sql-client-prune-5kgznfp8 owner=@khanakia stability=stable
 func (c *Client) prune(ctx context.Context) error {
 	var floor, top sql.NullInt64
 	if err := c.st.one(ctx, c.st.db, "SELECT MIN(sig_floor) FROM {runs} WHERE status IN (?, ?, ?, ?)",

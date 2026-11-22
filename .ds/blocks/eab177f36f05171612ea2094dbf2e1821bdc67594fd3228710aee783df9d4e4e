@@ -1,0 +1,7 @@
+func ShapeGuard(wfs ...Workflow) Plugin {
+	p := shapePlugin{shapes: map[string]string{}}
+	for _, wf := range wfs {
+		p.shapes[wf.Name] = Shape(wf)
+	}
+	return p
+}

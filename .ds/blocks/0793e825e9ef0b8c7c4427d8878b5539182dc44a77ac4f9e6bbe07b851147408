@@ -1,0 +1,5 @@
+type StandardWebhooks struct {
+	secrets   [][]byte
+	tolerance time.Duration
+	clk       clock.Clock
+}

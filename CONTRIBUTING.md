@@ -13,14 +13,7 @@ The backend suites skip without their server; [Tasks while you work](#tasks-whil
 ## Before you start
 
 - Go 1.26 (the `go.work` version; `task gomin` fetches the older toolchains it needs by itself), [Task](https://taskfile.dev) v3, and Docker for the suites that start a throwaway database, Redis or Hatchet.
-- `testlock` on your `PATH`. The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test`, `redis:test`, `sqlstore:test`, `recorder:test` and the live suites) wrap their command in `testlock`, a machine-wide lock the maintainers use so two suites never run at once on one machine. The tool is not part of this repository; when you do not have it, a pass-through script is enough:
-
-```sh
-mkdir -p ~/.local/bin
-printf '#!/bin/sh\nexec "$@"\n' > ~/.local/bin/testlock
-chmod +x ~/.local/bin/testlock
-```
-
+- Nothing for locking. The heavy tasks (`test`, `vet`, `check`, `gomin`, `examples:test`, `redis:test`, `sqlstore:test`, `recorder:test` and the live suites) wrap their command in `testlock` when it is on your `PATH`: a machine-wide lock the maintainers use so two suites never run at once on one machine. It is not part of this repository; without it the commands run directly (the Taskfiles' `LOCK` variable).
 - The `ds` CLI for `docs:drift` (`go install github.com/ubgo/docsync/cli/cmd/ds@latest`).
 
 ## Tasks while you work
@@ -80,6 +73,7 @@ The guides copy their Go code from the example programs, so a snippet cannot dri
 | `task docs:links` | Fails when a relative link or `#anchor` in `README.md`, `docs/` or `examples/` does not resolve | After renaming a heading or moving a page |
 | `task docs:words` | Fails when a word from a private list appears in the public Markdown or Go files; skipped when no list is set | Run by the maintainers |
 | `task docs:drift` | Fails when code a doc sentence cites changed since the sentence was checked (needs `ds`) | Before proposing; `check` runs it |
+| `task docs:def -- <file>#<Symbol> [stable\|api] [--label <label>]` | Gives the declaration a docsync id (a `//ds:def` directive, which godoc hides) and prints it; idempotent, one writer at a time under `flock` (needs `ds`) | When a sentence you write states what library code does: link the name it already uses to that id with a `ds:block` link, as the guides do; `stable` for behaviour, defaults and lists, `api` for a type's or function's shape |
 
 To sync only the files you touched, run the checker on them directly:
 
@@ -93,19 +87,19 @@ go run ./examples/internal/doccheck/snippets -root . -sync docs/reliability/fail
 
 ## The rules a change is reviewed against
 
-**The core imports only the standard library.** The root module may not import a third-party package or any other ubgo package; `deps_test.go` is the check. Logging, tracing and metrics reach the core through middleware and stdlib interfaces (`log/slog`, `context.Context`, `time`). Anything that needs a dependency is a separate module (`hatchet`, `otel`, `sqlstore`).
+**The core imports only the standard library.** The root module may not import a third-party package or any other ubgo package; `deps_test.go` is the check ([`TestGuard_CoreModuleIsStdlibOnly`](ds:block?id=testguard-coremoduleisstdlibonly-pje3bjqj)). Logging, tracing and metrics reach the core through middleware and stdlib interfaces (`log/slog`, `context.Context`, `time`). Anything that needs a dependency is a separate module (`hatchet`, `otel`, `sqlstore`).
 
-**Capabilities are honest.** A driver declares only what it really does, and every declared capability is proven by the shared `workflowtest` conformance suite against the real backend. A field a driver cannot honour returns an error wrapping `workflow.ErrUnsupported` that names it; nothing is silently dropped or emulated badly. A new refusal is listed in that driver's `doc.go`.
+**Capabilities are honest.** A driver declares only what it really does, and every declared capability is proven by the shared `workflowtest` conformance suite ([`workflowtest.Run`](ds:block?id=workflowtest-run-2dxkjk9h)) against the real backend. A field a driver cannot honour returns an error wrapping [`workflow.ErrUnsupported`](ds:block?id=errunsupported-wacxcsch) that names it ([`UnsupportedError`](ds:block?id=unsupportederror-46jkqrxt)); nothing is silently dropped or emulated badly. A new refusal is listed in that driver's `doc.go`.
 
 **Scheduling code meets a correctness bar.** Time is injected through `clock.Clock`, never read from `time.Now` in logic. Every schedule is evaluated in an explicit time zone and tested across DST gaps and overlaps. "Runs once across N workers" and "survives a crash mid-step" are claims proven by tests that run several workers against a real database, never by prose.
 
-**Nothing runs until `Start(ctx)`, and everything stops with that ctx.** No package-level scheduler, no global registry that changes behaviour, no cache files.
+**Nothing runs until [`Start(ctx)`](ds:block?id=client-start-qges69hj), and everything stops with that ctx.** No package-level scheduler, no global registry that changes behaviour, no cache files.
 
 **No project-specific decisions in the library.** Queue names, tenant layout and the choice of engine belong to the application.
 
 **Every closed-set value is a named constant, and every exported symbol has a doc comment** that says why it exists and what stays true, not what the code does.
 
-**Schema changes are new numbered migrations.** `sqlstore` and `sqlstore/outbox` apply numbered migrations through sqlb's `contrib/migrate` ledger; an applied migration is never edited.
+**Schema changes are new numbered migrations.** `sqlstore` and `sqlstore/outbox` apply numbered migrations through sqlb's `contrib/migrate` ledger ([`migrations`](ds:block?id=sql-store-migrations-sysbsdpd)); an applied migration is never edited, since the ledger stores each one's checksum.
 
 ## Tests
 
@@ -115,7 +109,7 @@ Never suppress a diagnostic to make a gate pass. No `//nolint`, no loosened asse
 
 ## Docs
 
-A change to a package, task or contract updates the places that list it: the packages and commands tables in `README.md`, the driver's `doc.go`, the `Client` doc comments in `client.go`, and `CHANGELOG.md` under Unreleased.
+A change to a package, task or contract updates the places that list it: the packages and commands tables in `README.md`, the driver's `doc.go`, the [`Client`](ds:block?id=client-w9gg8dzm) doc comments in `client.go`, and `CHANGELOG.md` under Unreleased.
 
 ## Commits
 
@@ -127,7 +121,7 @@ Describe what changed and why. The repository history is read by people deciding
 - `task fmt` rewrites files in place; `fmt:check` only reports. A gate failure on `fmt:check` is fixed by `task fmt`, not by hand.
 - `docs:snippets:sync` rewrites every block that copies a changed region, in any guide. Renaming or changing the meaning of a region another guide copies changes that guide too: grep `docs/` for `snippet: examples/<name>/` first.
 - The live tasks start and remove Docker containers on fixed local ports (Redis 36379, MySQL 33072, Postgres 35432); a server already on that port makes the start fail.
-- Without `testlock` on `PATH` every heavy task fails with `testlock: command not found`; see [Before you start](#before-you-start).
+- Without `testlock` on `PATH` two heavy tasks started at once on one machine run side by side and compete for CPU and the fixed container ports; start them one after the other.
 
 ## Related
 

@@ -1,0 +1,11 @@
+func (c *Client) parseCronFor(expr string, seconds bool) (cron.Schedule, error) {
+	parse := c.parse
+	if seconds {
+		parse = cron.ParseSeconds
+	}
+	s, err := parse(expr)
+	if err == nil && s == nil {
+		err = fmt.Errorf("cron parser returned no schedule for %q", expr)
+	}
+	return s, err
+}

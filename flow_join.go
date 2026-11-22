@@ -19,20 +19,25 @@ const (
 	// JoinKeepRest leaves them running; their ends are ignored by the
 	// join (a structured discriminator or partial join, WC-09, WC-30,
 	// WC-34). The zero value.
+	//ds:def id=joinkeeprest-88sa9sg4 owner=@khanakia stability=stable
 	JoinKeepRest JoinRest = ""
 
 	// JoinCancelRest cancels them (Client.Cancel): a cancelling
 	// discriminator or partial join (WC-29, WC-32, WC-35).
+	//ds:def id=joincancelrest-j4ju6z9r owner=@khanakia stability=stable
 	JoinCancelRest JoinRest = "cancel"
 
 	// JoinCompleteRest force-completes them as succeeded without running
 	// their remaining steps (RunForcer.ForceComplete, CapForceRun): the
 	// instances still running count as done and the step moves on (WC-27,
 	// complete multiple-instance task).
+	//ds:def id=joincompleterest-ae3vwxd7 owner=@khanakia stability=stable
 	JoinCompleteRest JoinRest = "complete"
 )
 
 // JoinSpec configures JoinChildren.
+//
+//ds:def id=joinspec-p4n46erj owner=@khanakia stability=stable
 type JoinSpec struct {
 	// Need is how many children must succeed for the join to pass; zero
 	// means every child (an AND-join, as AwaitChildren). One makes a
@@ -64,6 +69,8 @@ type JoinSpec struct {
 }
 
 // JoinResult is the outcome of a passed join.
+//
+//ds:def id=joinresult-uucbtd8w owner=@khanakia stability=stable
 type JoinResult struct {
 	// Refs are every child started, in job order (More's jobs after the
 	// first ones).
@@ -79,6 +86,8 @@ type JoinResult struct {
 
 // JoinFailedError is the Permanent error of a join that can no longer
 // reach Need: too many children ended without succeeding.
+//
+//ds:def id=joinfailederror-r52ajzv8 owner=@khanakia stability=stable
 type JoinFailedError struct {
 	// Name is the join's name.
 	Name string
@@ -128,6 +137,8 @@ type joinDecision struct {
 // JoinCompleteRest a RunForcer (CapForceRun); each is checked before
 // any child starts. Spawn's requirements apply: the Journal plugin and
 // CapIdempotencyKey (or SpawnAllowDuplicates).
+//
+//ds:def id=joinchildren-a95h7rs8 owner=@khanakia stability=stable
 func JoinChildren(ctx context.Context, client Client, name string, jobs []Job, spec JoinSpec) (JoinResult, error) {
 	if err := checkJoin(client, name, len(jobs), spec); err != nil {
 		return JoinResult{}, err
@@ -221,6 +232,8 @@ func joinPoll(spec JoinSpec) time.Duration {
 }
 
 // checkJoin refuses what a join could not honour, before any child starts.
+//
+//ds:def id=checkjoin-5zxqmnan owner=@khanakia stability=stable
 func checkJoin(client Client, name string, n int, spec JoinSpec) error {
 	if client == nil {
 		return Permanent(invalidf("join %q: client is nil", name))
@@ -256,6 +269,8 @@ func checkJoin(client Client, name string, n int, spec JoinSpec) error {
 }
 
 // settleRest applies rest to the children at the indexes in running.
+//
+//ds:def id=settlerest-53yzjzvw owner=@khanakia stability=stable
 func settleRest(ctx context.Context, client Client, name string, rest JoinRest, refs []RunRef, running []int) error {
 	for _, i := range running {
 		var err error
@@ -291,6 +306,8 @@ func joinOutputs(ctx context.Context, client Client, name string, d joinDecision
 // ChildLabels returns the labels every child a step spawned under the
 // current run carries (LabelParentRun, and LabelParentStep when step is
 // not empty), for a RunQuery that lists or cancels them.
+//
+//ds:def id=childlabels-se7ep9y5 owner=@khanakia stability=stable
 func ChildLabels(run RunID, step string) map[string]string {
 	l := map[string]string{LabelParentRun: run.String()}
 	if step != "" {
@@ -305,6 +322,14 @@ func ChildLabels(run RunID, step string) map[string]string {
 // inside the run or from outside it. It finds them by their parent
 // labels, so it needs a BulkCanceller (CapCancelAll) on the children's
 // client; a client without it is refused with an UnsupportedError.
+//
+// Unfinished means scheduled (a delayed start), queued, running and
+// waiting, plus retrying on a client with CapRunStates. A client without
+// that capability has no retrying status (a run in retry backoff reads
+// queued or running there, so it is still matched), and asking it for
+// one would be refused, as Hatchet does.
+//
+//ds:def id=cancelchildren-hh6njpmy owner=@khanakia stability=stable
 func CancelChildren(ctx context.Context, client Client, run RunID, step string) (int, error) {
 	bc, ok := client.(BulkCanceller)
 	if client == nil || !ok || !client.Capabilities().Has(CapCancelAll) {
@@ -313,16 +338,25 @@ func CancelChildren(ctx context.Context, client Client, run RunID, step string) 
 	if run.IsZero() {
 		return 0, invalidf("CancelChildren: run is zero")
 	}
-	n, err := bc.CancelAll(ctx, RunQuery{Labels: ChildLabels(run, step), Statuses: unfinishedStatuses()})
+	n, err := bc.CancelAll(ctx, RunQuery{Labels: ChildLabels(run, step), Statuses: unfinishedStatuses(client.Capabilities())})
 	if err != nil {
 		return n, fmt.Errorf("workflow: cancel children of %s: %w", run, err)
 	}
 	return n, nil
 }
 
-// unfinishedStatuses lists every status a run can be in before it ends.
-func unfinishedStatuses() []Status {
-	return []Status{StatusQueued, StatusRunning, StatusWaiting, StatusRetrying}
+// unfinishedStatuses lists every status a run can be in before it ends
+// on a client with caps: StatusRetrying only with CapRunStates, because a
+// driver without it reports that moment as queued or running and refuses
+// a filter on a status it does not have.
+//
+//ds:def id=unfinishedstatuses-uvmyv6mp owner=@khanakia stability=stable
+func unfinishedStatuses(caps Caps) []Status {
+	s := []Status{StatusScheduled, StatusQueued, StatusRunning, StatusWaiting}
+	if caps.Has(CapRunStates) {
+		s = append(s, StatusRetrying)
+	}
+	return s
 }
 
 // helperKey is the journal key of a helper's own state (a join's

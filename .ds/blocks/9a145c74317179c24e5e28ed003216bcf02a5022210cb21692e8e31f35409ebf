@@ -1,0 +1,7 @@
+func (f *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow.Event) error {
+	if s, inner, ok := decodeRef(ref); ok && s != unknownSide {
+		return workflow.SignalRun(ctx, f.backend(s), inner, ev.Name, ev.Payload)
+	}
+	ev.Key = workflow.RunKey(ref.RunID)
+	return f.Signal(ctx, ev)
+}

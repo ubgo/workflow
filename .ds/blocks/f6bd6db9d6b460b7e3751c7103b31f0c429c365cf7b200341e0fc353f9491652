@@ -1,0 +1,9 @@
+func SpanContextOf(labels map[string]string, prop propagation.TextMapPropagator) trace.SpanContext {
+	if len(labels) == 0 {
+		return trace.SpanContext{}
+	}
+	if prop == nil {
+		prop = propagation.TraceContext{}
+	}
+	return trace.SpanContextFromContext(prop.Extract(context.Background(), labelCarrier{labels: labels}))
+}

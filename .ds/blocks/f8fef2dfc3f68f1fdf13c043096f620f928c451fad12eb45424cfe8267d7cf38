@@ -1,0 +1,10 @@
+func (c *Client) Capabilities() workflow.Caps {
+	o, n := c.old.Capabilities(), c.new.Capabilities()
+	caps := n.Without(sharedCaps, scheduleCaps).
+		With(n.Intersect(o).Intersect(sharedCaps)).
+		With(c.backend(c.sched).Capabilities().Intersect(scheduleCaps))
+	if _, _, ok := c.notifiers(); !ok {
+		caps = caps.Without(workflow.CapRunFinished)
+	}
+	return caps.Without(unroutedCaps)
+}

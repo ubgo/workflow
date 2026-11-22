@@ -1,0 +1,16 @@
+func CloneJob(j Job) Job {
+	j.Payload = bytes.Clone(j.Payload)
+	j.Labels = maps.Clone(j.Labels)
+	if j.Retry != nil {
+		r := *j.Retry
+		j.Retry = &r
+	}
+	if j.Chain != nil {
+		chain := make([]Job, len(j.Chain))
+		for i, next := range j.Chain {
+			chain[i] = CloneJob(next)
+		}
+		j.Chain = chain
+	}
+	return j
+}

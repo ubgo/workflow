@@ -1,0 +1,1 @@
+var FireJitterNeeds = workflow.CapsOf(workflow.CapTickTime, workflow.CapSnooze)

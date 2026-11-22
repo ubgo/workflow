@@ -1,0 +1,30 @@
+func nextFire(ctx context.Context, cfg LatestOnlyConfig, s workflow.ScheduleInfo, tick, now time.Time) (time.Time, bool, error) {
+	if s.Paused || s.Overlap.Blocks(workflow.StatusRunning) {
+		return time.Time{}, false, nil
+	}
+	sched, err := workflow.ParseCron(s.Cron, s.Seconds, cfg.Parser)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	loc := s.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	policy := s.Misfire
+	if policy.IsZero() {
+		policy = cfg.DefaultMisfire
+	}
+	if policy.IsZero() {
+		policy = workflow.Misfire{Policy: workflow.MisfireFireOnce}
+	}
+	for _, at := range policy.Due(activeTicks{sched, s.Active}, tick, now, loc) {
+		if !s.Windows.IsZero() && !s.Windows.Allows(at, loc) {
+			continue
+		}
+		if cfg.When != nil && !cfg.When(ctx, latestTick(s, at, loc)) {
+			continue
+		}
+		return at, true, nil
+	}
+	return time.Time{}, false, nil
+}

@@ -1,0 +1,1 @@
+func RetriesNone() *RetryPolicy { return &RetryPolicy{Max: DefaultRetryMax} }

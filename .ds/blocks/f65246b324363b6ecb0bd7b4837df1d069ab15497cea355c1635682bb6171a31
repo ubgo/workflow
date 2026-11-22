@@ -1,0 +1,1 @@
+func WithOutputs(src OutputSource) Option { return func(a *Admin) { a.outputs = src } }

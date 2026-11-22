@@ -1,0 +1,33 @@
+func parseMetricsQuery(r *http.Request, now time.Time) (MetricsQuery, error) {
+	v := r.URL.Query()
+	q := MetricsQuery{Workflow: v.Get("workflow")}
+	var err error
+	if q.To, err = parseTime(v.Get("to"), "to"); err != nil {
+		return q, err
+	}
+	if q.To.IsZero() {
+		q.To = now
+	}
+	if q.From, err = parseTime(v.Get("from"), "from"); err != nil {
+		return q, err
+	}
+	if q.From.IsZero() {
+		window := DefaultMetricsWindow
+		if s := v.Get("window"); s != "" {
+			if window, err = time.ParseDuration(s); err != nil || window <= 0 {
+				return q, fmt.Errorf("window %q: want a positive duration such as 1h", s)
+			}
+		}
+		q.From = q.To.Add(-window)
+	} else if v.Get("window") != "" {
+		return q, errors.New("give from or window, not both")
+	}
+	if s := v.Get("step"); s != "" {
+		if q.Step, err = time.ParseDuration(s); err != nil || q.Step <= 0 {
+			return q, fmt.Errorf("step %q: want a positive duration such as 1m", s)
+		}
+	} else {
+		q.Step = max(q.To.Sub(q.From)/DefaultMetricsPoints, time.Second)
+	}
+	return q, ValidateMetricsQuery(q)
+}

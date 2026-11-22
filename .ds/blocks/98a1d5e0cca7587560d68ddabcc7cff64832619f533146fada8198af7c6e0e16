@@ -1,0 +1,7 @@
+func FakeCronParser(p cron.Parser) FakeOption {
+	return func(f *Fake) {
+		if p != nil {
+			f.parse = p
+		}
+	}
+}

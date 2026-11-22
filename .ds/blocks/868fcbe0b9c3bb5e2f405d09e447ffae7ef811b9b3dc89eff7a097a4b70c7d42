@@ -1,0 +1,1 @@
+func Folder(folder string) DataScope { return DataScope{Kind: ScopeFolder, Name: folder} }

@@ -1,0 +1,6 @@
+func CheckJobEdit(e JobEdit) error {
+	if e.IsZero() {
+		return invalidf("job edit changes nothing")
+	}
+	return nil
+}

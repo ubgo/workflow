@@ -1,0 +1,1 @@
+var storedTimeoutKinds = []error{workflow.ErrStepTimeout, workflow.ErrWaitTimeout}

@@ -1,0 +1,6 @@
+func EverySeconds(n int) Builder {
+	if n < 1 || n > 59 || 60%n != 0 {
+		return failed("EverySeconds(%d): n must divide 60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30)", n)
+	}
+	return Builder{every: fmt.Sprintf("@every %ds", n)}
+}

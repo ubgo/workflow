@@ -1,0 +1,29 @@
+type JoinSpec struct {
+	// Need is how many children must succeed for the join to pass; zero
+	// means every child (an AND-join, as AwaitChildren). One makes a
+	// discriminator: the first child to succeed wins.
+	Need int
+
+	// Rest is what happens to the children still running once the join
+	// is decided; the zero value leaves them running.
+	Rest JoinRest
+
+	// More, when set, may add children while the join waits (WC-36,
+	// dynamic partial join): it is called on every look and returns every
+	// job added so far beyond the first ones, and closed true once no
+	// more will come. It must be append-only (a later look returns the
+	// same list or a longer one), since each job is started once, keyed by
+	// its index. While More is open the join waits rather than fail.
+	More func(ctx context.Context) (jobs []Job, closed bool, err error)
+
+	// Poll is the snooze between looks at unfinished children; zero
+	// means DefaultChildPoll.
+	Poll time.Duration
+
+	// Spawn are passed to Spawn (SpawnAllowDuplicates).
+	Spawn []SpawnOption
+
+	// Parent is the client the calling step's workflow runs on (it must
+	// honour Snooze); nil means the client the children run on.
+	Parent Client
+}

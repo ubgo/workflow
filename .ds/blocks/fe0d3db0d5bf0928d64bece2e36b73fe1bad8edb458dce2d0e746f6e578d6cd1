@@ -1,0 +1,91 @@
+func (c *Client) Start(ctx context.Context) error {
+	if c.enqueueOnly {
+		return nil
+	}
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return workflow.ErrAlreadyStarted
+	}
+	if err := workflow.ValidateQueues(c.queues); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	// A run is claimed whole and its parallel steps are not counted
+	// individually, so a cluster-wide count of in-flight step attempts would
+	// need a lease-scored slot set beside the claim script; until then the
+	// driver refuses QueueConfig.Limit rather than enforce it per client.
+	if err := workflow.CheckQueueLimits(caps, c.queues); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	for _, q := range c.queues {
+		c.queueCfg[q.Name] = q
+	}
+	for _, reg := range c.wfs {
+		if err := workflow.CheckCaps(caps, reg.wf); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+		if err := exprKeys(reg.wf); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	names := make([]string, 0, len(c.wfs))
+	for n := range c.wfs {
+		names = append(names, n)
+	}
+	c.mu.Unlock()
+
+	if err := c.declareCrons(ctx); err != nil {
+		return err
+	}
+	if err := c.declareFIFO(ctx); err != nil {
+		return err
+	}
+	ps := c.rdb.Subscribe(ctx, c.base+":wake")
+	if _, err := ps.Receive(ctx); err != nil {
+		_ = ps.Close()
+		return fmt.Errorf("redis: subscribe to wake-ups: %w", classify(err))
+	}
+
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		_ = ps.Close()
+		return workflow.ErrAlreadyStarted
+	}
+	c.started = true
+	c.names = names
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.startedAt = c.leaseClk.Now()
+	workers := c.workers
+	if c.mode == workflow.NodeScheduler {
+		workers = 0
+	}
+	c.mu.Unlock()
+
+	c.wg.Add(5 + workers)
+	go c.listen(ps)
+	go c.dispatch()
+	go c.notifier()
+	go c.reporter()
+	go c.lifecycleLoop()
+	for range workers {
+		go c.worker()
+	}
+	go func() { // not in wg: it waits for wg
+		<-c.ctx.Done()
+		// Stopped is set before Done closes, so anyone woken by Done finds
+		// every call refused with ErrNotStarted.
+		c.mu.Lock()
+		c.stopped = true
+		c.mu.Unlock()
+		c.wakeAll()
+		_ = ps.Close()
+		c.wg.Wait()
+		close(c.done)
+	}()
+	return nil
+}

@@ -14,6 +14,8 @@ import (
 // *workflow.RecycleError; workflow.Serve returns it. Since nothing in
 // memory outlives the client, runs left unfinished become
 // StatusCancelled. Start refuses an invalid r (workflow.ValidateRecycle).
+//
+//ds:def id=memory-withrecycle-tsfrb2gk owner=@khanakia stability=stable
 func WithRecycle(r workflow.Recycle) Option {
 	return func(m *Client) { m.recycle = r }
 }
@@ -82,6 +84,8 @@ func (c *Client) recycleAfterAttempt() {
 
 // recycleNow records hit as the stop cause, once, and drains the client
 // without a deadline: running attempts finish, nothing new is claimed.
+//
+//ds:def id=memory-client-recyclenow-fmh3b27f owner=@khanakia stability=stable
 func (c *Client) recycleNow(hit *workflow.RecycleError) {
 	c.mu.Lock()
 	first := c.stopCause == nil && !c.stopped

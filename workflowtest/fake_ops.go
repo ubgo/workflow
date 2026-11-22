@@ -28,6 +28,8 @@ var (
 // holds is workflow.ErrDuplicate, and a ref the Fake did not issue goes to
 // the pass-through client, or is ErrNotFound without one. Use Finish to
 // fail a run first.
+//
+//ds:def id=workflowtest-fake-retry-ysejvqw2 owner=@khanakia stability=stable
 func (f *Fake) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -64,6 +66,8 @@ func (f *Fake) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef,
 // since it was enqueued. It needs CapDeleteRun. A run that is not
 // terminal is workflow.ErrWrongState, and a ref the Fake did not issue
 // goes to the pass-through client, or is ErrNotFound without one.
+//
+//ds:def id=workflowtest-fake-delete-a56tbdv9 owner=@khanakia stability=stable
 func (f *Fake) Delete(ctx context.Context, ref workflow.RunRef) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -95,6 +99,8 @@ func (f *Fake) Delete(ctx context.Context, ref workflow.RunRef) error {
 // no status; it is there to be asserted (AssertPaused) and listed
 // (Paused). A pause of a passed-through workflow (FakeExcept, FakeOnly)
 // goes to the real client instead and is not recorded.
+//
+//ds:def id=workflowtest-fake-pause-dyzqvats owner=@khanakia stability=stable
 func (f *Fake) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -114,6 +120,8 @@ func (f *Fake) Pause(ctx context.Context, t workflow.PauseTarget) error {
 // Resume removes the pause t, or every pause for workflow.PauseAll(), as
 // workflow.Pauser does; resuming a target that is not paused is a no-op.
 // A passed-through workflow's target goes to the real client.
+//
+//ds:def id=workflowtest-fake-resume-v9bar436 owner=@khanakia stability=stable
 func (f *Fake) Resume(ctx context.Context, t workflow.PauseTarget) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -151,6 +159,8 @@ func (f *Fake) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 }
 
 // sortPauses orders targets as workflow.Pauser.Paused lists them.
+//
+//ds:def id=workflowtest-sortpauses-wjen4cdx owner=@khanakia stability=stable
 func sortPauses(ts []workflow.PauseTarget) {
 	rank := func(t workflow.PauseTarget) int {
 		switch {
@@ -210,6 +220,8 @@ func (f *Fake) AssertNotPaused(t testing.TB, target workflow.PauseTarget) {
 // was enqueued to run on queue: its effective queue (workflow.EffectiveQueue:
 // Job.Queue, else the registered workflow's Queue, else
 // workflow.DefaultQueue).
+//
+//ds:def id=workflowtest-fake-assertenqueuedon-8g9bz6fq owner=@khanakia stability=stable
 func (f *Fake) AssertEnqueuedOn(t testing.TB, queue, wf string, m ...JobMatcher) {
 	t.Helper()
 	def, _ := f.Workflow(wf)
@@ -219,12 +231,16 @@ func (f *Fake) AssertEnqueuedOn(t testing.TB, queue, wf string, m ...JobMatcher)
 // HasQueue matches a job whose Job.Queue is q as given. An empty Job.Queue
 // (the workflow's queue) matches only HasQueue(""); use AssertEnqueuedOn
 // to match the queue a run actually lands on.
+//
+//ds:def id=workflowtest-hasqueue-dju5r36s owner=@khanakia stability=stable
 func HasQueue(q string) JobMatcher {
 	return Where("queue "+strconv.Quote(q), func(j workflow.Job) bool { return j.Queue == q })
 }
 
 // HasRetry matches a job whose Job.Retry override equals p (Max, Backoff,
 // Until, MaxErrors, DiscardOnExhaust; a job's override carries no functions).
+//
+//ds:def id=workflowtest-hasretry-8c2xz2u8 owner=@khanakia stability=stable
 func HasRetry(p workflow.RetryPolicy) JobMatcher {
 	return Where(fmt.Sprintf("retry %+v", p), func(j workflow.Job) bool {
 		return j.Retry != nil && reflect.DeepEqual(*j.Retry, p)
@@ -271,6 +287,8 @@ func describePauses(ps []workflow.PauseTarget) string {
 }
 
 // assertOn fails t unless a job in jobs runs on queue under def.
+//
+//ds:def id=workflowtest-asserton-z87be4q7 owner=@khanakia stability=stable
 func assertOn(t testing.TB, queue, wf string, def workflow.Workflow, jobs []workflow.Job, m []JobMatcher, recorded string) {
 	t.Helper()
 	var seen []string

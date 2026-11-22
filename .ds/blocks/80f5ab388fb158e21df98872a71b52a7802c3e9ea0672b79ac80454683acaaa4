@@ -1,0 +1,13 @@
+type DeadEntry struct {
+	// ID is the entry's ID, which Requeue takes.
+	ID string
+	// Job is the job as written. Its IdempotencyKey is the job's own; the
+	// entry ID the relay adds when it has none is not filled in.
+	Job workflow.Job
+	// Attempts is how many enqueues failed.
+	Attempts int
+	// LastErr is the text of the last enqueue error.
+	LastErr string
+	// CreatedAt is when Write added the entry.
+	CreatedAt time.Time
+}

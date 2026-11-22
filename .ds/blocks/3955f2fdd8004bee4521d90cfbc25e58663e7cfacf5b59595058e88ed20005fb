@@ -1,0 +1,17 @@
+func sideQuery(q workflow.RunQuery, s side) (workflow.RunQuery, bool) {
+	id, ok := q.Labels[workflow.LabelSchedule]
+	if !ok {
+		return q, true
+	}
+	p, sec := decodeScheduleID(workflow.ScheduleID(id))
+	inner := p
+	if s == secondarySide {
+		inner = sec
+	}
+	if inner.IsZero() {
+		return q, false
+	}
+	q.Labels = maps.Clone(q.Labels)
+	q.Labels[workflow.LabelSchedule] = string(inner)
+	return q, true
+}

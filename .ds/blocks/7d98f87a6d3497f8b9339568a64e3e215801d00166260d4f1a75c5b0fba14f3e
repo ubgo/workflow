@@ -1,0 +1,7 @@
+func WithLeaseSkew(d time.Duration) Option {
+	return func(cl *Client) {
+		if d >= 0 {
+			cl.leaseSkew = d
+		}
+	}
+}

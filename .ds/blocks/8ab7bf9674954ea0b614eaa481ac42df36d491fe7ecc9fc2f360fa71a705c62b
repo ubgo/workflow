@@ -1,0 +1,12 @@
+func NewUpstreamLimit(store BucketStore, spec BucketSpec, clk clock.Clock) (*UpstreamLimit, error) {
+	if err := spec.validate(); err != nil {
+		return nil, err
+	}
+	if store == nil {
+		store = &MemoryBuckets{}
+	}
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return &UpstreamLimit{store: store, spec: spec, clk: clk}, nil
+}

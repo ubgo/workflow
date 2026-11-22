@@ -1,0 +1,9 @@
+func (f *Fake) Workflow(name string) (workflow.Workflow, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if wf, ok := f.wfs[name]; ok {
+		return wf, true
+	}
+	wf, ok := f.pwfs[name]
+	return wf, ok
+}

@@ -1,0 +1,4 @@
+var UnfinishedStatuses = []workflow.Status{
+	workflow.StatusScheduled, workflow.StatusQueued, workflow.StatusRunning,
+	workflow.StatusWaiting, workflow.StatusRetrying,
+}

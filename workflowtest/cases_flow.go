@@ -9,6 +9,7 @@ import (
 	"github.com/ubgo/workflow"
 )
 
+//ds:def id=workflowtest-cancelcases-67m5qgnv owner=@khanakia stability=stable
 var cancelCases = []testCase{
 	{"Cancel stops a running run, and cancelling twice is fine", func(e *env) {
 		e.need(workflow.CapCancel)
@@ -84,6 +85,7 @@ func waitWorkflow(name, event, key string, timeout time.Duration, after *counter
 	}}
 }
 
+//ds:def id=workflowtest-waitcases-qxwsxwkk owner=@khanakia stability=stable
 var waitCases = []testCase{
 	{"Signal with the matching key resumes the run, another key does not", func(e *env) {
 		e.need(workflow.CapWaitForEvent)

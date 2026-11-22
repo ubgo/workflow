@@ -15,21 +15,31 @@ import (
 // ErrNotExpressible is matched by every refusal of a schedule a format
 // cannot express exactly. The concrete error is a *NotExpressibleError
 // naming the format, the field and the reason.
+//
+//ds:def id=schedexport-errnotexpressible-6gamr9aa owner=@khanakia stability=stable
 var ErrNotExpressible = errors.New("schedexport: not expressible in this format")
 
 // ErrNoNextFire is returned by the NextFire forms when the schedule never
 // fires again after the clock's time: its Active period or its last year
 // has passed, or no tick passes its windows.
+//
+//ds:def id=schedexport-errnonextfire-2pu4m79k owner=@khanakia stability=stable
 var ErrNoNextFire = errors.New("schedexport: the schedule never fires again")
 
 // Format names an output format in a NotExpressibleError.
+//
+//ds:def id=schedexport-format-n224t5n3 owner=@khanakia stability=stable
 type Format string
 
 // The formats.
 const (
-	FormatKubernetes    Format = "kubernetes"
-	FormatSystemd       Format = "systemd"
-	FormatLaunchd       Format = "launchd"
+	//ds:def id=schedexport-formatkubernetes-w8hwdk4e owner=@khanakia stability=stable
+	FormatKubernetes Format = "kubernetes"
+	//ds:def id=schedexport-formatsystemd-64bz5hh3 owner=@khanakia stability=stable
+	FormatSystemd Format = "systemd"
+	//ds:def id=schedexport-formatlaunchd-pbkgytm7 owner=@khanakia stability=stable
+	FormatLaunchd Format = "launchd"
+	//ds:def id=schedexport-formattaskscheduler-dfgxw7y7 owner=@khanakia stability=stable
 	FormatTaskScheduler Format = "taskscheduler"
 )
 
@@ -37,6 +47,8 @@ const (
 // express, so the caller can change that field (or pick another format)
 // instead of shipping a file that fires at other times than the driver
 // would.
+//
+//ds:def id=schedexport-notexpressibleerror-nwwc7ap8 owner=@khanakia stability=stable
 type NotExpressibleError struct {
 	Format Format
 	// Field is the Schedule field ("Cron", "Location", "Misfire",
@@ -63,6 +75,8 @@ func invalid(f Format, format string, args ...any) error {
 }
 
 // File is one exported file: a suggested file name and its contents.
+//
+//ds:def id=schedexport-file-utggyyut owner=@khanakia stability=stable
 type File struct {
 	// Name is the file name the format expects ("report.timer",
 	// "com.example.report.plist"); the directory is the app's choice.
@@ -73,6 +87,8 @@ type File struct {
 
 // Target is what an exported schedule runs, and what its files are
 // called.
+//
+//ds:def id=schedexport-target-htxk8djj owner=@khanakia stability=stable
 type Target struct {
 	// Name names the job, unit, label or task. Empty means the
 	// Schedule's Name. Each format checks it against its own rules.
@@ -113,6 +129,8 @@ type job struct {
 }
 
 // prepare validates s and t for format f and parses the expression.
+//
+//ds:def id=schedexport-prepare-w5mrnvgs owner=@khanakia stability=stable
 func prepare(f Format, s workflow.Schedule, t Target) (job, error) {
 	if err := workflow.ValidateSchedule(s); err != nil {
 		return job{}, fmt.Errorf("schedexport: %s: %w", f, err)
@@ -161,6 +179,8 @@ func (j job) fields(f Format) (cron.Fields, error) {
 }
 
 // noWindows refuses time-of-day windows: no format has them.
+//
+//ds:def id=schedexport-job-nowindows-bmfak65q owner=@khanakia stability=stable
 func (j job) noWindows(f Format) error {
 	if !j.s.Windows.IsZero() {
 		return refuse(f, "Windows", "it has no time-of-day windows; drop them or check the time in the command")
@@ -172,6 +192,8 @@ func (j job) noWindows(f Format) error {
 // zone, "" for UTC. A zone that time.LoadLocation cannot find again by
 // its name (time.FixedZone) is refused: the other scheduler only reads
 // names.
+//
+//ds:def id=schedexport-zonename-ufzk25yh owner=@khanakia stability=stable
 func zoneName(f Format, loc *time.Location) (string, error) {
 	if workflow.IsUTC(loc) {
 		return "", nil
@@ -197,6 +219,8 @@ const maxNextScan = 100000
 
 // nextFire is the schedule's next fire strictly after the clock's time:
 // inside its Active period and its windows, as a driver would fire it.
+//
+//ds:def id=schedexport-job-nextfire-vhxvmqtq owner=@khanakia stability=stable
 func (j job) nextFire(clk clock.Clock) (time.Time, error) {
 	if clk == nil {
 		clk = clock.Real{}
@@ -265,6 +289,8 @@ const (
 
 // classify maps m, refusing MisfireFireAll: no format fires every missed
 // tick.
+//
+//ds:def id=schedexport-classify-a9sc88gr owner=@khanakia stability=stable
 func classify(f Format, m workflow.Misfire) (misfire, error) {
 	switch m.Policy {
 	case "":

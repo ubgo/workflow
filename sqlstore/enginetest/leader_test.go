@@ -170,3 +170,75 @@ func TestNewLeaderElectorRefuses(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkerOnlyNeverLeads: a WithoutScheduler client given
+// WithLeaderElection never takes the role, even when it starts first, so
+// the full node beside it leads and fires the cron tick. Before the fix
+// the worker won the election and no client fired anything.
+func TestWorkerOnlyNeverLeads(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			clk := clock.NewFake(start)
+			var runs atomic.Int64
+			wf := workflow.Workflow{Name: "tick", Cron: []string{"* * * * *"}, Steps: []workflow.Step{{Name: "a",
+				Run: func(context.Context, []byte) ([]byte, error) { runs.Add(1); return nil, nil }}}}
+			lease := sqlstore.LeaderLease(time.Hour) // a role once taken stays taken for the whole test
+			worker := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithoutScheduler(), sqlstore.WithLeaderElection("worker", lease))
+			startWith(t, worker, wf)
+			time.Sleep(20 * testPoll) // the worker has had every chance to campaign alone
+			if worker.IsLeader() {
+				t.Fatal("a WithoutScheduler client leads the scheduler role")
+			}
+			full := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithLeaderElection("full", lease))
+			startWith(t, full, wf)
+			waitFor(t, 10*time.Second, "the full node to lead", full.IsLeader)
+			clk.Advance(time.Minute)
+			waitFor(t, 10*time.Second, "the leader's cron fire", func() bool { return runs.Load() >= 1 })
+			if worker.IsLeader() {
+				t.Fatal("the worker-only client leads after the full node took the role")
+			}
+		})
+	}
+}
+
+// countingElector always says "you lead" and counts how often it is asked.
+type countingElector struct{ asked atomic.Int64 }
+
+func (c *countingElector) IsLeader() bool { c.asked.Add(1); return true }
+
+// TestWorkerOnlyIgnoresCustomElector: a WithoutScheduler client given a
+// custom WithElector that always says "you lead" never asks it and never
+// leads (no cron fire, no housekeeping), while the full node beside it,
+// with the same kind of elector, leads and fires the cron tick. Before
+// the fix the worker asked its elector and reported leadership, so it ran
+// the leader's housekeeping.
+func TestWorkerOnlyIgnoresCustomElector(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			clk := clock.NewFake(start)
+			var runs atomic.Int64
+			wf := workflow.Workflow{Name: "tick", Cron: []string{"* * * * *"}, Steps: []workflow.Step{{Name: "a",
+				Run: func(context.Context, []byte) ([]byte, error) { runs.Add(1); return nil, nil }}}}
+			workerEl, fullEl := &countingElector{}, &countingElector{}
+			worker := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithoutScheduler(), sqlstore.WithElector(workerEl))
+			startWith(t, worker, wf)
+			full := newClient(t, e, db, prefix, sqlstore.WithClock(clk), sqlstore.WithElector(fullEl))
+			startWith(t, full, wf)
+			waitFor(t, 10*time.Second, "the full node to lead", full.IsLeader)
+			clk.Advance(time.Minute)
+			waitFor(t, 10*time.Second, "the leader's cron fire", func() bool { return runs.Load() >= 1 })
+			time.Sleep(20 * testPoll) // the worker's dispatcher has passed many times
+			if worker.IsLeader() {
+				t.Error("a WithoutScheduler client with an always-leading custom elector leads")
+			}
+			if n := workerEl.asked.Load(); n != 0 {
+				t.Errorf("the worker-only client asked its elector %d times, want never", n)
+			}
+			if fullEl.asked.Load() == 0 {
+				t.Error("the full client never asked its elector")
+			}
+		})
+	}
+}

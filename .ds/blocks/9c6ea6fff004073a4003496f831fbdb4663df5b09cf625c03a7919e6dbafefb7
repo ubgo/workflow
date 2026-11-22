@@ -1,0 +1,6 @@
+func RegisterFunc(client Client, f FuncDefinition) error {
+	if err := client.Register(f.Workflow()); err != nil {
+		return fmt.Errorf("func %q: %w", f.Name(), err)
+	}
+	return nil
+}

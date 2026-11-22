@@ -1,0 +1,43 @@
+func ReplayStep[T any](rc *ReplayCtx, name string, fn func(ctx context.Context) (T, error)) (T, error) {
+	var zero T
+	e, ok, err := rc.next("step", name)
+	if err != nil {
+		return zero, err
+	}
+	if ok {
+		if e.Err != "" {
+			return zero, Permanent(errors.New(e.Err))
+		}
+		var v T
+		if err := json.Unmarshal(e.Value, &v); err != nil {
+			return zero, rc.fail(Permanent(fmt.Errorf("workflow: replay: step %q: recorded result does not decode: %w", name, err)))
+		}
+		return v, nil
+	}
+	v, err := fn(rc.ctx)
+	if err != nil {
+		if !IsPermanent(err) {
+			return zero, rc.fail(err) // not recorded: the step's retry runs it again
+		}
+		// The error the code sees is the one every replay will see: its
+		// text, Permanent, so the first run and the replays branch alike.
+		if rerr := rc.record(replayEntry{Kind: "step", Name: name, Err: err.Error()}); rerr != nil {
+			return zero, rerr
+		}
+		return zero, Permanent(errors.New(err.Error()))
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return zero, rc.fail(Permanent(fmt.Errorf("workflow: replay: step %q: encode result: %w", name, err)))
+	}
+	// The value the code sees is the decoded one, as on every replay (a
+	// time's zone name, unexported fields and the like do not survive JSON).
+	var back T
+	if err := json.Unmarshal(raw, &back); err != nil {
+		return zero, rc.fail(Permanent(fmt.Errorf("workflow: replay: step %q: result does not decode back: %w", name, err)))
+	}
+	if err := rc.record(replayEntry{Kind: "step", Name: name, Value: raw}); err != nil {
+		return zero, err
+	}
+	return back, nil
+}

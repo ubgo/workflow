@@ -1,0 +1,10 @@
+func (m *Manager) Prune(ctx context.Context, f PruneFilter) (int, error) {
+	if f.IsZero() {
+		return 0, fmt.Errorf("%w: batch.PruneFilter has no rule; set FinishedBefore, UnfinishedBefore or CancelledBefore", workflow.ErrInvalid)
+	}
+	p, ok := m.store.(Pruner)
+	if !ok {
+		return 0, &workflow.UnsupportedError{Field: "batch.Manager.Prune", Reason: "the batch.Store does not implement batch.Pruner"}
+	}
+	return p.Prune(ctx, f)
+}

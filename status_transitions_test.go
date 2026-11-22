@@ -13,6 +13,7 @@ var allStatuses = []Status{
 	StatusSucceeded, StatusFailed, StatusCancelled, StatusDiscarded,
 }
 
+//ds:def id=testtransitiontablewalk-kcd7sx3a owner=@khanakia stability=stable
 func TestTransitionTableWalk(t *testing.T) {
 	for _, s := range allStatuses {
 		if !s.Valid() {
@@ -40,6 +41,7 @@ func TestTransitionTableWalk(t *testing.T) {
 	}
 }
 
+//ds:def id=testtransitiontableshape-k65vuntn owner=@khanakia stability=stable
 func TestTransitionTableShape(t *testing.T) {
 	for _, s := range allStatuses {
 		out := s.TransitionsFrom()
@@ -87,6 +89,7 @@ func TestTransitionTableShape(t *testing.T) {
 	}
 }
 
+//ds:def id=testeffectiveretriesforprecedence-cdkxqcpy owner=@khanakia stability=stable
 func TestEffectiveRetriesForPrecedence(t *testing.T) {
 	job := &RetryPolicy{Max: 1}
 	step := &RetryPolicy{Max: 2}

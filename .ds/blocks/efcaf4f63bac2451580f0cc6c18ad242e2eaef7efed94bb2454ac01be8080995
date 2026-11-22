@@ -1,0 +1,8 @@
+func (s Status) valid() bool {
+	switch s {
+	case StatusScheduled, StatusQueued, StatusRunning, StatusWaiting, StatusRetrying,
+		StatusSucceeded, StatusFailed, StatusCancelled, StatusDiscarded:
+		return true
+	}
+	return false
+}

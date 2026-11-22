@@ -1,0 +1,3 @@
+func WithRunRetention(r RunRetention) Option {
+	return func(m *Client) { m.retention = RunRetention{MaxAge: max(r.MaxAge, 0), MaxRuns: max(r.MaxRuns, 0)} }
+}

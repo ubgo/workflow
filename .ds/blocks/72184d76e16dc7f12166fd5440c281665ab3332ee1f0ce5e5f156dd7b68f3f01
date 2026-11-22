@@ -1,0 +1,1 @@
+	DefaultHeartbeat = 15 * time.Second

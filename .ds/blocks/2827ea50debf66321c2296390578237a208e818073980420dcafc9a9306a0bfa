@@ -1,0 +1,5 @@
+func (s *store) journalMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(JournalMigrationOwner), Name: "001_journal", Script: s.script(s.render(journalDefs(typesFor(s.engine))))},
+	}
+}

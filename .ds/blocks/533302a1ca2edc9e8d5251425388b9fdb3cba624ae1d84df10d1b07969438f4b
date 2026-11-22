@@ -1,0 +1,18 @@
+type Progress struct {
+	// Percent is from 0 to 100.
+	Percent float64
+
+	// Message is a short human-readable note ("exported 4,000 of 10,000
+	// orders").
+	Message string
+
+	// Data is optional app data, at most MaxProgressData bytes.
+	Data []byte
+
+	// Step is the step that reported it; the driver fills it.
+	Step string
+
+	// At is when it was reported, on the driver's clock; the driver
+	// fills it.
+	At time.Time
+}

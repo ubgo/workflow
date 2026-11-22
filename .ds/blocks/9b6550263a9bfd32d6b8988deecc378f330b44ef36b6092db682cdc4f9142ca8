@@ -1,0 +1,6 @@
+func (c *Client) BatchSource(store batch.Store, interval time.Duration, log *slog.Logger) batch.Source {
+	if log == nil {
+		log = c.cfg.Logger
+	}
+	return &batchSource{c: c, store: store, interval: interval, log: log}
+}

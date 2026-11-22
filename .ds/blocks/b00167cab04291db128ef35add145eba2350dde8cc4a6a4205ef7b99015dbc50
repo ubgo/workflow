@@ -1,0 +1,7 @@
+type ThenError struct {
+	Rule string
+	// From is the finished run.
+	From RunRef
+	Job  Job
+	Err  error
+}

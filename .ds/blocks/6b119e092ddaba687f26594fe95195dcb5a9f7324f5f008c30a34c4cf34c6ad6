@@ -1,0 +1,11 @@
+type Envelope struct {
+	// Workflow, Run and Step name the delivering step (StepInfo).
+	Workflow string `json:"workflow"`
+	Run      string `json:"run"`
+	Step     string `json:"step"`
+	// Attempt is the delivering step's attempt, from 1, so the endpoint
+	// can tell a retry from a first delivery.
+	Attempt int `json:"attempt"`
+	// Payload is the step's input (base64 in the JSON).
+	Payload []byte `json:"payload"`
+}

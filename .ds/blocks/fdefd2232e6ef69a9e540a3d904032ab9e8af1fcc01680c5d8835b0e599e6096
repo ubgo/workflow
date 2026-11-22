@@ -1,0 +1,1 @@
+var ErrNoNextFire = errors.New("schedexport: the schedule never fires again")

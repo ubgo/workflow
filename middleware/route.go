@@ -7,6 +7,8 @@ import (
 )
 
 // RouteRule maps the jobs Match accepts to a workflow name and labels.
+//
+//ds:def id=mw-routerule-9pesaaf2 owner=@khanakia stability=stable
 type RouteRule struct {
 	// Match selects the jobs this rule routes. Nil matches every job.
 	Match func(workflow.Job) bool
@@ -24,6 +26,8 @@ type RouteRule struct {
 // app-side table that keeps queue names and tenant labels out of the code
 // that enqueues. The job's Labels map is copied before it is changed, so
 // the caller's map is never mutated.
+//
+//ds:def id=mw-route-j6bkjhsv owner=@khanakia stability=stable
 func Route(rules ...RouteRule) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {

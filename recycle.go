@@ -13,6 +13,8 @@ import (
 // itself because a Recycle limit was reached. A supervisor (systemd, a
 // container restart policy, a process manager) then starts a fresh
 // process, which frees whatever the old one leaked.
+//
+//ds:def id=errrecycle-smp6ce9f owner=@khanakia stability=stable
 var ErrRecycle = errors.New("workflow: worker recycled")
 
 // RecycleReason names the limit that stopped a client.
@@ -20,6 +22,7 @@ type RecycleReason string
 
 // The recycle reasons.
 const (
+	//ds:def id=recyclemaxjobs-a7e34ytz owner=@khanakia stability=stable
 	RecycleMaxJobs   RecycleReason = "max_jobs"
 	RecycleMaxTime   RecycleReason = "max_time"
 	RecycleMaxMemory RecycleReason = "max_memory"
@@ -32,6 +35,8 @@ const (
 // Drain does (claims nothing more, lets running attempts finish), then
 // stops; its StopCause is a *RecycleError. A driver takes it through its
 // own option (memory.WithRecycle, sqlstore.WithRecycle).
+//
+//ds:def id=recycle-xh3besny owner=@khanakia stability=stable
 type Recycle struct {
 	// MaxJobs is how many step attempts this client may finish, whatever
 	// their outcome. Attempts already running when it is reached still
@@ -57,6 +62,8 @@ type Recycle struct {
 }
 
 // DefaultRecycleCheck is Recycle.CheckEvery when it is zero.
+//
+//ds:def id=defaultrecyclecheck-amqh8hxt owner=@khanakia stability=stable
 const DefaultRecycleCheck = time.Second
 
 // Enabled reports whether any limit is set.
@@ -64,6 +71,8 @@ func (r Recycle) Enabled() bool { return r.MaxJobs > 0 || r.MaxTime > 0 || r.Max
 
 // ValidateRecycle refuses negative limits and a negative CheckEvery.
 // Errors wrap ErrInvalid.
+//
+//ds:def id=validaterecycle-nuecyb5b owner=@khanakia stability=stable
 func ValidateRecycle(r Recycle) error {
 	switch {
 	case r.MaxJobs < 0:
@@ -82,6 +91,8 @@ const heapObjectsMetric = "/memory/classes/heap/objects:bytes"
 // HeapObjectBytes returns the bytes held by live and not yet swept heap
 // objects (runtime/metrics), the default Recycle.Memory. It reads no
 // process-wide state other than the runtime's own counters.
+//
+//ds:def id=heapobjectbytes-c5bmxcaa owner=@khanakia stability=stable
 func HeapObjectBytes() uint64 {
 	s := []metrics.Sample{{Name: heapObjectsMetric}}
 	metrics.Read(s)
@@ -92,6 +103,8 @@ func HeapObjectBytes() uint64 {
 }
 
 // RecycleError says which limit stopped a client. It matches ErrRecycle.
+//
+//ds:def id=recycleerror-qfzrpxmt owner=@khanakia stability=stable
 type RecycleError struct {
 	Reason RecycleReason
 	// Jobs is how many step attempts the client had finished.
@@ -167,6 +180,7 @@ func (w *RecycleWatch) Check(now time.Time) *RecycleError {
 	return w.checkLocked(now)
 }
 
+//ds:def id=recyclewatch-checklocked-mwcm8y6t owner=@khanakia stability=stable
 func (w *RecycleWatch) checkLocked(now time.Time) *RecycleError {
 	if w.hit != nil {
 		return w.hit
@@ -199,6 +213,8 @@ func (w *RecycleWatch) checkLocked(now time.Time) *RecycleError {
 // asked for (the Start ctx ended, Drain, a stop-when-idle option), and a
 // *RecycleError when a Recycle limit stopped it. It is final once the
 // Drainer's Done channel is closed.
+//
+//ds:def id=stopcauser-6chpc2ds owner=@khanakia stability=stable
 type StopCauser interface {
 	StopCause() error
 }
@@ -214,6 +230,8 @@ type StopCauser interface {
 // a recycle limit stopped it, and nil for every requested stop. It waits
 // on the Drainer's Done channel; a client without CapDrain is waited on
 // until ctx ends.
+//
+//ds:def id=serve-m3sgzd2c owner=@khanakia stability=stable
 func Serve(ctx context.Context, client Client) error {
 	if err := client.Start(ctx); err != nil {
 		return err

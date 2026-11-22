@@ -15,6 +15,8 @@ import (
 // run is deleted). Every failed attempt is recorded, retried, final or
 // discarded; an attempt cut short by a clean stop is not a failure and is
 // not recorded.
+//
+//ds:def id=sql-witherrorhistory-fzd4btky owner=@khanakia stability=stable
 func WithErrorHistory(n int) Option {
 	return func(cl *Client) { cl.errHistory = n }
 }

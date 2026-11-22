@@ -1,0 +1,6 @@
+func (a *Admin) Retry(ctx context.Context, ref workflow.RunRef) (workflow.RunRef, error) {
+	if err := a.check(OpRetry); err != nil {
+		return workflow.RunRef{}, err
+	}
+	return a.c.(workflow.RunRetrier).Retry(ctx, ref)
+}

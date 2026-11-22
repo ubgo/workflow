@@ -1,0 +1,1 @@
+var ErrBatchPending = errors.New("batch: still running")

@@ -19,6 +19,7 @@ import (
 // registers the workflow writes the same schedule.
 const declaredPrefix = "cron:"
 
+//ds:def id=redis-declaredid-pch9kf9d owner=@khanakia stability=stable
 func declaredID(wf string, i int) string { return declaredPrefix + wf + ":" + strconv.Itoa(i) }
 
 // spec is what decides a schedule's fire times. A schedule written again
@@ -95,6 +96,8 @@ const fixedPrefix = "fixed:"
 // IANA name when the time zone database knows it, or for a fixed-offset
 // zone (time.FixedZone) its offset and name. Any other zone (built from
 // custom zone data) is refused, since another client could not rebuild it.
+//
+//ds:def id=redis-encodeloc-57x26wvx owner=@khanakia stability=stable
 func encodeLoc(loc *time.Location) (string, error) {
 	name := locName(loc)
 	if _, err := time.LoadLocation(name); err == nil {
@@ -125,6 +128,8 @@ func decodeLoc(s string) (*time.Location, error) {
 // effectiveMisfire is the policy applied: the schedule's own, or for the
 // zero policy this driver's default, fire the newest missed tick once with
 // no age limit (what the memory and SQL drivers do).
+//
+//ds:def id=redis-effectivemisfire-ued3ypmw owner=@khanakia stability=stable
 func effectiveMisfire(m workflow.Misfire) workflow.Misfire {
 	if m.IsZero() {
 		return workflow.Misfire{Policy: workflow.MisfireFireOnce}
@@ -137,6 +142,8 @@ func effectiveMisfire(m workflow.Misfire) workflow.Misfire {
 // unchanged expression, zone and misfire policy keep their next fire time.
 // Any client of the prefix may fire it; the fire is a compare-and-set on
 // the schedule's last catch-up time, so each tick runs once.
+//
+//ds:def id=redis-client-schedule-hyqh8g3k owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -398,6 +405,8 @@ func (c *Client) housekeep(ctx context.Context) {
 
 // fire fires schedule id's due ticks under its misfire policy. The
 // compare-and-set in fireScript makes one client fire each tick.
+//
+//ds:def id=redis-client-fire-47d4zjqj owner=@khanakia stability=stable
 func (c *Client) fire(ctx context.Context, id string, now time.Time) error {
 	h, err := c.rdb.HGetAll(ctx, c.base+":sched:"+id).Result()
 	if err != nil {
@@ -530,6 +539,8 @@ func (c *Client) allSchedulesPaused(ctx context.Context) (bool, error) {
 
 // askWhen calls a ScheduleWhen, treating a panic as "no" so one bad
 // predicate cannot stop the dispatcher.
+//
+//ds:def id=redis-client-askwhen-exxfr27e owner=@khanakia stability=stable
 func (c *Client) askWhen(ctx context.Context, when func(context.Context, workflow.Tick) bool, t workflow.Tick) (ok bool) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -579,6 +590,8 @@ func droppedTicks(src workflow.TickSource, last, now time.Time, loc *time.Locati
 // a TriggerSchedule. Each tick is reported by the one client whose script
 // moved the schedule, after it ran; a crash in between loses the report.
 // Register before Start.
+//
+//ds:def id=redis-client-ontick-hmnu4z48 owner=@khanakia stability=stable
 func (c *Client) OnTick(fn workflow.TickObserver) error {
 	if fn == nil {
 		return fmt.Errorf("%w: OnTick needs a function", workflow.ErrInvalid)
@@ -738,6 +751,8 @@ func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error)
 // enqueues nothing while the schedule's last run is unfinished and
 // returns an error matching workflow.ErrOverlap; the check and the
 // enqueue are one script.
+//
+//ds:def id=redis-client-triggerschedule-9q9w6cv9 owner=@khanakia stability=stable
 func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := c.usable(); err != nil {
 		return workflow.RunRef{}, err

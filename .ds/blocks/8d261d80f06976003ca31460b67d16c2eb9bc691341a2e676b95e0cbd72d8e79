@@ -1,0 +1,10 @@
+func NextInChain(chain []Job) (Job, bool) {
+	if len(chain) == 0 {
+		return Job{}, false
+	}
+	next := CloneJob(chain[0])
+	for _, rest := range chain[1:] {
+		next.Chain = append(next.Chain, CloneJob(rest))
+	}
+	return next, true
+}

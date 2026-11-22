@@ -1,0 +1,1 @@
+	CapSchedulePause = defineCap(28, "SchedulePause")

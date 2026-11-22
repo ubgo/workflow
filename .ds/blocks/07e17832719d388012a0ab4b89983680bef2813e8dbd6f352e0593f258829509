@@ -1,0 +1,9 @@
+func (a *Admin) Metrics(ctx context.Context, q MetricsQuery) (MetricsSeries, error) {
+	if a.metrics == nil {
+		return MetricsSeries{}, errNoMetrics
+	}
+	if err := ValidateMetricsQuery(q); err != nil {
+		return MetricsSeries{}, err
+	}
+	return a.metrics.Series(ctx, q)
+}

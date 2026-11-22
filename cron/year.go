@@ -12,7 +12,9 @@ import (
 // a schedule two centuries of room while keeping the year set a small
 // fixed bitset. A schedule with "*" in the year field stops after 2199.
 const (
+	//ds:def id=cron-minyear-2dge929e owner=@khanakia stability=stable
 	MinYear = 1970
+	//ds:def id=cron-maxyear-25rqcrwu owner=@khanakia stability=stable
 	MaxYear = 2199
 )
 
@@ -49,6 +51,8 @@ var yearField = field{name: "year", min: MinYear, max: MaxYear}
 //
 // DST is handled as by ParseSeconds; a fire time belongs to the year it
 // falls in on the schedule's zone.
+//
+//ds:def id=cron-parseyear-rv99u3rm owner=@khanakia stability=stable
 func ParseYear(expr string) (Schedule, error) {
 	trimmed := strings.TrimSpace(expr)
 	if strings.HasPrefix(trimmed, "@") || trimmed == "" {

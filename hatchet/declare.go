@@ -19,12 +19,48 @@ func (c *Client) declare(wf workflow.Workflow) (*hatchetsdk.Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
-	hw := c.sdk.NewWorkflow(wf.Name, opts...)
+	return c.declareSteps(c.sdk.NewWorkflow(wf.Name, opts...), wf, nil)
+}
+
+// declareDelayed builds wf's delayed variant (delayedName), which runs a
+// delayed start with an idempotency key: the start gate, a durable task
+// that sleeps until the run's RunAt (startGateFunc), as the parent of
+// every first step, then wf's own steps and on-failure task. It takes wf's
+// idempotency expression and rate limits, both computed from wf's own
+// name, so a key and a bucket are shared with the workflow's other runs,
+// and no cron. Only a workflow with hasStartGate has one (no Concurrency,
+// whose slots the engine keeps per workflow). A first step still reads
+// the run payload: every task of a Hatchet run receives the run's input.
+//
+//ds:def id=hatchet-client-declaredelayed-vjsnjb2h owner=@khanakia stability=stable
+func (c *Client) declareDelayed(wf workflow.Workflow) (*hatchetsdk.Workflow, error) {
+	plain := wf
+	plain.Cron, plain.CronSeconds = nil, false
+	opts, err := c.workflowOptions(plain)
+	if err != nil {
+		return nil, err
+	}
+	hw := c.sdk.NewWorkflow(delayedName(wf.Name), opts...)
+	gate := hw.NewDurableTask(startGateTask, startGateFunc,
+		// The sleep counts against a durable task's execution timeout
+		// (seen live on hatchet-lite v0.110.5), and a keyed delayed start
+		// is refused past IdempotencyMaxHold (checkDelayedKey).
+		hatchetsdk.WithExecutionTimeout(c.cfg.IdempotencyMaxHold+engineTimeoutMargin),
+		hatchetsdk.WithScheduleTimeout(c.cfg.ScheduleTimeout))
+	return c.declareSteps(hw, wf, gate)
+}
+
+// declareSteps adds wf's steps, in dependency order, and its on-failure
+// task to hw; gate, when set, becomes the parent of every first step.
+func (c *Client) declareSteps(hw *hatchetsdk.Workflow, wf workflow.Workflow, gate *hatchetsdk.Task) (*hatchetsdk.Workflow, error) {
 	tasks := make(map[string]*hatchetsdk.Task, len(wf.Steps))
 	for _, s := range topoOrder(wf.Steps) {
 		topts, err := c.taskOptions(s, wf, tasks)
 		if err != nil {
 			return nil, err
+		}
+		if len(s.After) == 0 && gate != nil {
+			topts = append(topts, hatchetsdk.WithParents(gate))
 		}
 		if s.Kind() == workflow.StepWait {
 			tasks[s.Name] = hw.NewDurableTask(s.Name, c.waitFunc(s, wf), topts...)
@@ -56,8 +92,9 @@ func (c *Client) workflowOptions(wf workflow.Workflow) ([]hatchetsdk.WorkflowOpt
 	if wf.Idempotency != workflow.IdempotencyOff {
 		opts = append(opts, hatchetsdk.WithWorkflowIdempotency(hatchetsdk.IdempotencyConfig{
 			Expression: idempotencyExpression(engineName(c.cfg.Namespace, wf.Name)),
-			// STATUS holds the key while its run is unfinished, the
-			// Job.IdempotencyKey contract; TTL only caps a stuck run.
+			// STATUS releases the key when the first task created with
+			// the run ends (the engine's ReleaseIdempotencyKeys), not when
+			// the run ends; TTL caps how long it can be held at all.
 			Method: hatchetsdk.IdempotencyMethodStatus,
 			TTL:    c.cfg.IdempotencyMaxHold,
 		}))
@@ -76,7 +113,14 @@ func (c *Client) taskOptions(s workflow.Step, wf workflow.Workflow, tasks map[st
 		}
 		opts = append(opts, hatchetsdk.WithParents(parents...))
 	}
-	opts = append(opts, hatchetsdk.WithExecutionTimeout(stepTimeout(s, wf, c.cfg.StepTimeout)), hatchetsdk.WithScheduleTimeout(c.cfg.ScheduleTimeout))
+	timeout := stepTimeout(s, wf, c.cfg.StepTimeout)
+	switch s.Kind() {
+	case workflow.StepRun:
+		timeout = engineTimeout(s, wf, c.cfg.StepTimeout)
+	case workflow.StepWait:
+		timeout = waitTimeout(s, wf, c.cfg.StepTimeout, time.Now())
+	}
+	opts = append(opts, hatchetsdk.WithExecutionTimeout(timeout), hatchetsdk.WithScheduleTimeout(c.cfg.ScheduleTimeout))
 	switch s.Kind() {
 	case workflow.StepRun:
 		policy := workflow.EffectiveRetries(s, wf)
@@ -121,12 +165,13 @@ func (c *Client) taskFunc(s workflow.Step, wf workflow.Workflow, tasks map[strin
 	}
 	h := c.wrap(s.Run)
 	policy := workflow.EffectiveRetries(s, wf)
+	limit := userTimeout(s, wf)
 	return func(hctx hatchetsdk.Context, input any) (any, error) {
 		in, err := stepInput(hctx, input, s, tasks)
 		if err != nil {
 			return nil, finalErr(err)
 		}
-		out, err := h(withStepInfo(hctx, wf.Name, s.Name, c.cfg.NodeID), in)
+		out, err := c.callTimed(withStepInfo(hctx, wf.Name, s.Name, c.cfg.NodeID), h, in, s.Name, int(hctx.RetryCount())+1, limit)
 		if err != nil {
 			// The last attempt the policy allows is marked final too: the
 			// engine (hatchet-lite v0.110.5) sometimes retries a failed
@@ -143,6 +188,74 @@ func (c *Client) taskFunc(s workflow.Step, wf workflow.Workflow, tasks map[strin
 	}
 }
 
+// startGateFunc is the start gate's body (declareDelayed). It sleeps on the
+// engine until the run's metaStartAt, holding no worker slot once the
+// engine evicts it; a run without one, or with one already past, passes at
+// once. Now is the engine-memoized clock, so a replay after a worker
+// restart sleeps until the same time. The first steps start when the gate
+// completes, so they never start before RunAt; the engine wakes a sleep
+// about a second late at most (measured live).
+//
+//ds:def id=hatchet-startgatefunc-u8ju3mwr owner=@khanakia stability=stable
+func startGateFunc(dctx hatchetsdk.DurableContext, _ any) (any, error) {
+	at, ok := startAtOf(dctx.AdditionalMetadata())
+	if !ok {
+		return encodeOutput(nil), nil
+	}
+	now, err := dctx.Now()
+	if err != nil {
+		return nil, err
+	}
+	if d := at.Sub(now); d > 0 {
+		if _, err := dctx.SleepFor(d); err != nil {
+			return nil, err
+		}
+	}
+	return encodeOutput(nil), nil
+}
+
+// callTimed runs one attempt of step h under the step's own timeout d
+// (Step.Timeout or the workflow's Timeout; zero runs it untimed), the
+// handshake every driver keeps: when d passes, the attempt's context is
+// cancelled with workflow.TimeoutError(workflow.ErrStepTimeout, ...), so
+// context.Cause in the handler matches ErrStepTimeout and ErrTimeout, and
+// the attempt fails with that error whatever the handler returns, unless
+// step middleware claimed the timeout (workflow.ClaimTimeout: a step
+// tolerated by WithRules records it as FailureTimeout), whose result is
+// then kept. The engine's execution timeout is set a margin later
+// (engineTimeout), so it only catches a handler that ignores its context.
+// The cause is compared by identity: the engine's own cancel (a run
+// cancel, the engine timeout, a worker stop) is another cause.
+//
+//ds:def id=hatchet-client-calltimed-xjgb6ju6 owner=@khanakia stability=stable
+func (c *Client) callTimed(ctx context.Context, h workflow.Handler, in []byte, step string, attempt int, d time.Duration) ([]byte, error) {
+	if d <= 0 {
+		return h(ctx, in)
+	}
+	actx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("hatchet: step %q attempt %d after %s", step, attempt, d))
+	tm := c.cfg.Clock.NewTimer(d)
+	go func() {
+		select {
+		case <-tm.C():
+			cancel(errStep)
+		case <-actx.Done():
+			tm.Stop()
+		}
+	}()
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err := h(hctx, in)
+	if context.Cause(actx) == errStep {
+		if claimed() {
+			return out, err
+		}
+		return nil, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded)
+	}
+	return out, err
+}
+
 // waitFunc is the durable task body of wait step s. It resolves the key
 // for this run, then suspends on the event (or the event or the timeout)
 // with the engine holding no worker slot, and hands the event payload on
@@ -153,6 +266,8 @@ func (c *Client) taskFunc(s workflow.Step, wf workflow.Workflow, tasks map[strin
 // that arrives before the run reaches its wait step is therefore not
 // dropped but resumes the wait. The key and the deadline are memoized, so a replay
 // after a worker restart waits on the same key until the same time.
+//
+//ds:def id=hatchet-client-waitfunc-ed3hwy7u owner=@khanakia stability=stable
 func (c *Client) waitFunc(s workflow.Step, wf workflow.Workflow) func(hatchetsdk.DurableContext, any) (any, error) {
 	wait := *s.Wait
 	return func(dctx hatchetsdk.DurableContext, input any) (any, error) {
@@ -187,7 +302,12 @@ func (c *Client) waitFunc(s workflow.Step, wf workflow.Workflow) func(hatchetsdk
 		}
 		trigger, ok := eventTrigger(res.Keys())
 		if !ok {
-			return nil, finalErr(fmt.Errorf("workflow: step %q: wait for %q timed out", s.Name, wait.Event))
+			// The same error the other drivers report: it matches
+			// workflow.ErrWaitTimeout and ErrTimeout, and its text starts
+			// with ErrWaitTimeout's, so runError can rebuild it from the
+			// engine's stored message.
+			return nil, finalErr(fmt.Errorf("%w: %w", workflow.TimeoutError(workflow.ErrWaitTimeout,
+				fmt.Sprintf("hatchet: wait step %q for event %q key %q", s.Name, wait.Event, key)), context.DeadlineExceeded))
 		}
 		var doc map[string]any
 		if err := res.Unmarshal(trigger, &doc); err != nil {
@@ -261,7 +381,9 @@ func withStepInfo(hctx hatchetsdk.Context, wfName, step, node string) context.Co
 // when none is reported.
 func failedStep(hctx hatchetsdk.Context) string {
 	for name := range hctx.StepRunErrors() {
-		return name
+		if name != startGateTask {
+			return name
+		}
 	}
 	return ""
 }

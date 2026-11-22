@@ -1,0 +1,46 @@
+func (m *MemoryStream) Write(ctx context.Context, run RunID, step string, seq int64, chunk []byte) error {
+	if run.IsZero() {
+		return invalidf("stream: empty run ID")
+	}
+	if len(chunk) > m.opt.MaxChunk {
+		return invalidf("stream: chunk is %d bytes, more than %d", len(chunk), m.opt.MaxChunk)
+	}
+	attempt := 0
+	if info, ok := StepInfoFrom(ctx); ok {
+		attempt = info.Attempt
+	}
+	now := m.opt.Clock.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.prune(now)
+	rs := m.runs[run]
+	if rs == nil {
+		if len(m.runs) >= m.opt.MaxRuns && !m.evictClosed() {
+			return ErrStreamFull
+		}
+		rs = &memRunStream{next: 1, subs: map[*memStreamSub]struct{}{}}
+		m.runs[run] = rs
+	}
+	if !rs.closedAt.IsZero() {
+		return fmt.Errorf("%w: stream: run %s is closed", ErrWrongState, run)
+	}
+	c := StreamChunk{Pos: rs.next, Step: step, Attempt: attempt, Seq: seq, Data: slices.Clone(chunk), At: now}
+	rs.next++
+	rs.lastAt = now
+	rs.chunks = append(rs.chunks, c)
+	rs.bytes += len(c.Data)
+	for len(rs.chunks) > 0 && (len(rs.chunks) > m.opt.MaxRunChunks || rs.bytes > m.opt.MaxRunBytes) {
+		rs.bytes -= len(rs.chunks[0].Data)
+		rs.chunks[0] = StreamChunk{}
+		rs.chunks = rs.chunks[1:]
+	}
+	for sub := range rs.subs {
+		select {
+		case sub.ch <- cloneStreamChunk(c):
+		default: // too far behind: drop it, it resynchronises with Read
+			delete(rs.subs, sub)
+			sub.close()
+		}
+	}
+	return nil
+}

@@ -1,0 +1,28 @@
+func TestDisableStore(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			db, prefix := e.open(t)
+			t.Cleanup(func() { _, _ = db.Exec("DROP TABLE IF EXISTS " + e.dialect.QuoteIdent(prefix+"disabled_endpoints")) })
+			a, err := sqlstore.NewDisableStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := a.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			b, err := sqlstore.NewDisableStore(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Migrate(ctx); err != nil {
+				t.Fatalf("a second Migrate: %v", err)
+			}
+			scripts := a.MigrationScripts()
+			if len(scripts) != 1 || scripts[0].Owner != sqlstore.DisableMigrationOwner || scripts[0].Name != "001_disable" {
+				t.Fatalf("migration scripts = %+v", scripts)
+			}
+			workflowtest.DisableStoreContract(t, a, b)
+		})
+	}
+}

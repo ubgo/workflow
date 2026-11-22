@@ -1,0 +1,10 @@
+func location(name string) (*time.Location, error) {
+	if name == "" {
+		return nil, nil
+	}
+	loc, err := cron.LoadZone(name)
+	if err != nil {
+		return nil, fieldErr("cron_location", "%q is not a loadable IANA zone: %v", name, err)
+	}
+	return loc, nil
+}

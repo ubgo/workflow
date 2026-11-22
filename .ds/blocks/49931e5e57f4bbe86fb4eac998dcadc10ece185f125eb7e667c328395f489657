@@ -1,0 +1,24 @@
+func NextRuns(q NextRunsQuery) []NextRun {
+	if q.Schedule == nil || q.Count <= 0 {
+		return nil
+	}
+	n := min(q.Count, MaxNextRuns)
+	loc := q.Location
+	if loc == nil {
+		loc = time.UTC
+	}
+	out := make([]NextRun, 0, n)
+	after := q.After
+	for scanned := 0; len(out) < n && scanned < maxNextRunsScan; scanned++ {
+		t := NextActive(q.Schedule, after, loc, q.Active)
+		if t.IsZero() {
+			break
+		}
+		after = t
+		if !q.Windows.Allows(t, loc) {
+			continue
+		}
+		out = append(out, NextRun{Local: t.In(loc), UTC: t.UTC()})
+	}
+	return out
+}

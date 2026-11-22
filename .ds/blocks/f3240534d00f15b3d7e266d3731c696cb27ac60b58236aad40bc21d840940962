@@ -1,0 +1,44 @@
+func TestQueueWait(t *testing.T) {
+	t0 := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	clk := clock.NewFake(t0)
+	h := newHarness(t, wfotel.WithClock(clk))
+	step := h.inst.Step()(func(context.Context, []byte) ([]byte, error) { return nil, nil })
+
+	ready := workflow.StepInfo{Workflow: "w", Step: "a", Queue: "emails", Attempt: 1, ReadyAt: t0.Add(-1500 * time.Millisecond)}
+	if _, err := step(workflow.WithStepInfo(context.Background(), ready), nil); err != nil {
+		t.Fatal(err)
+	}
+	unknown := ready
+	unknown.ReadyAt = time.Time{}
+	if _, err := step(workflow.WithStepInfo(context.Background(), unknown), nil); err != nil {
+		t.Fatal(err)
+	}
+	// A ReadyAt after the start (clock skew between nodes) records zero,
+	// never a negative wait.
+	skewed := ready
+	skewed.ReadyAt = t0.Add(time.Minute)
+	if _, err := step(workflow.WithStepInfo(context.Background(), skewed), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	m, ok := metricNamed(collect(t, h), wfotel.MetricQueueWait)
+	if !ok {
+		t.Fatal("no wait histogram")
+	}
+	pts := m.Data.(metricdata.Histogram[float64]).DataPoints
+	if len(pts) != 1 || pts[0].Count != 2 || pts[0].Sum != 1.5 {
+		t.Fatalf("wait points = %+v, want one series with 2 samples summing 1.5s", pts)
+	}
+	if q, _ := pts[0].Attributes.Value(wfotel.AttrQueue); q.AsString() != "emails" {
+		t.Errorf("queue attribute = %q", q.AsString())
+	}
+
+	spans := h.spans.GetSpans()
+	if v, ok := attr(spans[0], wfotel.AttrQueue); !ok || v.AsString() != "emails" {
+		t.Errorf("step span queue = %v %v", v, ok)
+	}
+	dur, _ := metricNamed(collect(t, h), wfotel.MetricStepDuration)
+	if q, _ := dur.Data.(metricdata.Histogram[float64]).DataPoints[0].Attributes.Value(wfotel.AttrQueue); q.AsString() != "emails" {
+		t.Errorf("duration queue attribute = %q", q.AsString())
+	}
+}

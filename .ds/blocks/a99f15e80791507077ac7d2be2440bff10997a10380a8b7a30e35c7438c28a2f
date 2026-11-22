@@ -1,0 +1,7 @@
+func (f Func[In]) Job(in In) (Job, error) {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return Job{}, invalidf("func %q: encode argument: %v", f.name, err)
+	}
+	return Job{Workflow: f.name, Payload: b}, nil
+}

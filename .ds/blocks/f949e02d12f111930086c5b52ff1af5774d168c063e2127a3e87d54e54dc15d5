@@ -1,0 +1,23 @@
+func (p recursionPlugin) EnqueueMiddleware() []EnqueueMiddleware {
+	return []EnqueueMiddleware{func(next EnqueueFunc) EnqueueFunc {
+		return func(ctx context.Context, job Job) (RunRef, error) {
+			info, ok := StepInfoFrom(ctx)
+			if !ok {
+				return next(ctx, job)
+			}
+			depth := 1
+			if d, err := strconv.Atoi(info.Labels[LabelDepth]); err == nil {
+				depth = d + 1
+			}
+			if depth > p.max {
+				return RunRef{}, fmt.Errorf("%w: %w: job of %q would be at depth %d, over %d (enqueued by run %s, step %q)", ErrInvalid, ErrDepth, job.Workflow, depth, p.max, info.RunID, info.Step)
+			}
+			job.Labels = maps.Clone(job.Labels)
+			if job.Labels == nil {
+				job.Labels = map[string]string{}
+			}
+			job.Labels[LabelDepth] = strconv.Itoa(depth)
+			return next(AllowReservedLabels(ctx, LabelDepth), job)
+		}
+	}}
+}

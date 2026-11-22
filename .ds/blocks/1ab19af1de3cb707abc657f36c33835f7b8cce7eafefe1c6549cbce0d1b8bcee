@@ -1,0 +1,7 @@
+func (m MachineCtx[D]) In(state string) bool {
+	if m.run == nil {
+		return false
+	}
+	n := m.run.m.nodes[state]
+	return n != nil && m.run.active[n]
+}

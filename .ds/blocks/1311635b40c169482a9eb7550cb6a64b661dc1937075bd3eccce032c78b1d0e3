@@ -1,0 +1,39 @@
+func Run(ctx context.Context, args []string, opts Options) int {
+	if opts.Stdout == nil {
+		opts.Stdout = io.Discard
+	}
+	if opts.Stderr == nil {
+		opts.Stderr = io.Discard
+	}
+	if opts.Getenv == nil {
+		opts.Getenv = func(string) string { return "" }
+	}
+	if opts.Name == "" {
+		opts.Name = "workflow"
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	if opts.Sleep == nil {
+		opts.Sleep = sleepCtx
+	}
+	stdout := &stickyWriter{w: opts.Stdout}
+	opts.Stdout = stdout
+	err := run(ctx, args, opts)
+	if err == nil && stdout.err != nil {
+		err = fmt.Errorf("write output: %w", stdout.err)
+	}
+	switch {
+	case err == nil:
+		return ExitOK
+	case errors.Is(err, flag.ErrHelp):
+		return ExitOK
+	case errors.Is(err, errUsage):
+		fprintf(opts.Stderr, "%s: %v\n", opts.Name, strings.TrimPrefix(err.Error(), errUsage.Error()+": "))
+		fprintf(opts.Stderr, "run '%s help' for usage\n", opts.Name)
+		return ExitUsage
+	default:
+		fprintf(opts.Stderr, "%s: %v\n", opts.Name, err)
+		return ExitError
+	}
+}

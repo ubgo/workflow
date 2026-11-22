@@ -12,10 +12,14 @@ import (
 // step; each branch step is named "<choice>.<branch>", and the join step
 // carries the Choice's own name, so later steps list the Choice's name in
 // After as they would any step.
+//
+//ds:def id=choicedecidesuffix-krhnazkt owner=@khanakia stability=stable
 const ChoiceDecideSuffix = ".decide"
 
 // Branch is one path of a Choice: an ordinary step body with its own
 // retry policy and timeout.
+//
+//ds:def id=branch-jwxjmbzn owner=@khanakia stability=stable
 type Branch struct {
 	// Name identifies the branch; Decide returns it. Unique within the
 	// Choice.
@@ -34,6 +38,8 @@ type Branch struct {
 
 // ChoiceSpec is an exclusive choice (WC-04): exactly one of several
 // branches runs, picked at run time by Decide.
+//
+//ds:def id=choicespec-847qjne6 owner=@khanakia stability=stable
 type ChoiceSpec struct {
 	// Name is the name of the step that carries the chosen branch's
 	// output; later steps put it in After.
@@ -78,6 +84,8 @@ type choiceOut struct {
 //
 // Append the result to Workflow.Steps. It returns an error wrapping
 // ErrInvalid when the spec is incomplete or a branch name repeats.
+//
+//ds:def id=choice-e8thbtfu owner=@khanakia stability=stable
 func Choice(c ChoiceSpec) ([]Step, error) {
 	if c.Name == "" {
 		return nil, invalidf("choice has no Name")
@@ -113,6 +121,8 @@ func Choice(c ChoiceSpec) ([]Step, error) {
 }
 
 // choiceDecide calls decide and records the branch and the input.
+//
+//ds:def id=choicedecide-qahzbqqm owner=@khanakia stability=stable
 func choiceDecide(choice string, decide func(context.Context, []byte) (string, error), branches []string) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		branch, err := decide(ctx, in)
@@ -127,6 +137,8 @@ func choiceDecide(choice string, decide func(context.Context, []byte) (string, e
 }
 
 // choiceBranch runs run only when the decide step picked this branch.
+//
+//ds:def id=choicebranch-j64qt7da owner=@khanakia stability=stable
 func choiceBranch(choice, branch string, run Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		var r choiceRoute
@@ -146,6 +158,8 @@ func choiceBranch(choice, branch string, run Handler) Handler {
 
 // choiceJoin returns the output of the one branch taken. Its input is the
 // single branch's output, or an object keyed by branch step (StepInput).
+//
+//ds:def id=choicejoin-jjwc8kef owner=@khanakia stability=stable
 func choiceJoin(choice string, branchSteps []string) Handler {
 	return func(_ context.Context, in []byte) ([]byte, error) {
 		outs := map[string]json.RawMessage{}

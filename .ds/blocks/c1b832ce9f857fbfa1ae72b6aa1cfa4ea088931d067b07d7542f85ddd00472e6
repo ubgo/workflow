@@ -1,0 +1,14 @@
+func SetData(ctx context.Context, scope DataScope, name string, v any) error {
+	store, scope, err := dataFrom(ctx, scope, name)
+	if err != nil {
+		return err
+	}
+	b, err := encodeJSON(scope.String()+" data "+name, v)
+	if err != nil {
+		return err
+	}
+	if _, err := store.Put(ctx, scope, name, b, AnyVersion); err != nil {
+		return fmt.Errorf("workflow: %s data %q: put: %w", scope, name, err)
+	}
+	return nil
+}

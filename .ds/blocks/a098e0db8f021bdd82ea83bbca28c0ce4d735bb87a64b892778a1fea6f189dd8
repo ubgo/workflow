@@ -1,0 +1,13 @@
+type UpdateResult struct {
+	// Lineage is the produced record Updated wrote.
+	Lineage Lineage
+
+	// Event is the bus's outcome of publishing EventDatasetUpdated.
+	Event Published
+
+	// Triggered has one entry per trigger the update started (or found
+	// already started), in the order the triggers were added. A trigger
+	// still waiting for another dataset, or whose versions were already
+	// consumed, has none.
+	Triggered []TriggerRun
+}

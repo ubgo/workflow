@@ -1,0 +1,15 @@
+type Misfire struct {
+	// Policy is what happens to missed ticks. Empty is the driver default.
+	Policy MisfirePolicy
+
+	// Within drops a missed tick reached more than this long after its
+	// time, for MisfireFireOnce and MisfireFireAll (a starting deadline).
+	// Zero means no limit. MisfireSkip uses MisfireGrace and refuses it.
+	Within time.Duration
+
+	// Max caps how many missed ticks MisfireFireAll fires per catch-up:
+	// the newest Max, oldest first. Required (at least 1) for
+	// MisfireFireAll and refused for the other policies, so a backfill is
+	// never unbounded by accident.
+	Max int
+}

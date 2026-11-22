@@ -1,0 +1,4 @@
+func objectRun(name, key string) RunID {
+	sum := sha256.Sum256([]byte(name + "\x00" + key))
+	return RunID(LabelPrefixInternal + "object/" + hex.EncodeToString(sum[:20]))
+}

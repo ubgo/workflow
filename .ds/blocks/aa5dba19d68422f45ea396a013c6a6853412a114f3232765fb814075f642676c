@@ -1,0 +1,30 @@
+func (f *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	started := f.started
+	f.mu.Unlock()
+	if started {
+		return workflow.ErrAlreadyStarted
+	}
+	if err := f.primary.Register(withSide(wf, primarySide)); err != nil {
+		return fmt.Errorf("failover: primary: %w", err)
+	}
+	sec := withSide(wf, secondarySide)
+	if !f.schedBoth {
+		// The secondary fires no schedules, so it gets none of the
+		// schedule fields: a secondary without CapScheduleWhen must not
+		// refuse a condition it would never be asked.
+		sec.Cron, sec.CronWindows, sec.ScheduleWhen = nil, workflow.Windows{}, nil
+		sec.Misfire, sec.CronOverlap = workflow.Misfire{}, ""
+		sec.CronSeconds, sec.CronActive, sec.CronKeepRuns = false, workflow.Active{}, 0
+	}
+	if err := f.secondary.Register(sec); err != nil {
+		return fmt.Errorf("failover: secondary: %w", err)
+	}
+	f.mu.Lock()
+	f.wfs[wf.Name] = wf
+	f.mu.Unlock()
+	return nil
+}

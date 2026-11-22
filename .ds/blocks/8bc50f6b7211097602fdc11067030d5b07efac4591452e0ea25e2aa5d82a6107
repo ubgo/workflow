@@ -1,0 +1,4 @@
+type Drainer interface {
+	Drain(ctx context.Context) error
+	Done() <-chan struct{}
+}

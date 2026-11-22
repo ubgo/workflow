@@ -226,6 +226,8 @@ func TestLabelFilter(t *testing.T) {
 }
 
 // Labels are closed by default: without an opt-in no span records one.
+//
+//ds:def id=sdktest-testlabelsoffbydefault-8x287kzb owner=@khanakia stability=stable
 func TestLabelsOffByDefault(t *testing.T) {
 	h := newHarness(t)
 	wf := workflow.Workflow{Name: "w", Steps: []workflow.Step{
@@ -244,6 +246,8 @@ func TestLabelsOffByDefault(t *testing.T) {
 // A caller-supplied label under the reserved prefix is refused with
 // ErrInvalid, so it can never choose the trace the steps join, and the job
 // does not reach the driver.
+//
+//ds:def id=sdktest-testreservedlabelrefused-fuyarhwh owner=@khanakia stability=stable
 func TestReservedLabelRefused(t *testing.T) {
 	h := newHarness(t)
 	forged := "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"

@@ -1,0 +1,26 @@
+type RulesSpec struct {
+	// Tolerate lists Run steps whose final failure is recorded instead of
+	// failing the run. A failure is final when the step's policy (the
+	// step's Retry, else the workflow's Retry) would not retry it, or it
+	// is Permanent. A cancelled, discarded or snoozed attempt is passed
+	// through untouched.
+	Tolerate []string
+
+	// Catch gives the failures of a tolerated step their kinds, tried in
+	// order; keyed by step name.
+	Catch map[string][]CatchRoute
+
+	// Rules gives a step its trigger rule. A child of a tolerated or ruled
+	// step without an entry gets RuleAllSucceeded, so a failure or a skip
+	// propagates as a skip instead of reaching a handler as data.
+	Rules map[string]TriggerRule
+
+	// Finally lists exit handlers (WP-11): steps that run once every
+	// parent is done whatever happened (RuleAllDone), and then fail the
+	// run when any parent, or any step a skipped parent stood for, failed.
+	// A Finally step with no After is placed after every leaf of the
+	// workflow, and every other Run step is tolerated so nothing can stop
+	// the handler from running; the run still ends failed when a step
+	// failed, so its status stays honest.
+	Finally []string
+}

@@ -1,0 +1,16 @@
+func AwaitPromise(ctx context.Context, store PromiseStore, id string, poll time.Duration) ([]byte, error) {
+	v, settled, err := PromiseResult(ctx, store, id)
+	var rej *PromiseRejectedError
+	switch {
+	case errors.As(err, &rej):
+		return nil, Permanent(err)
+	case err != nil:
+		return nil, err
+	case !settled:
+		if poll <= 0 {
+			poll = DefaultPromisePoll
+		}
+		return nil, Snooze(poll)
+	}
+	return v, nil
+}

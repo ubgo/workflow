@@ -1,0 +1,11 @@
+func (a *Admin) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
+	if err := a.check(OpNodes); err != nil {
+		return nil, err
+	}
+	ns, err := a.c.(workflow.NodeLister).Nodes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(ns, func(x, y workflow.NodeInfo) int { return strings.Compare(x.ID, y.ID) })
+	return ns, nil
+}

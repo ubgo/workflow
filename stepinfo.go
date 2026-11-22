@@ -10,6 +10,8 @@ import (
 // without a driver-specific context. Every driver sets it on the ctx it
 // passes to a step handler, with WithStepInfo, before the Middleware chain
 // runs.
+//
+//ds:def id=stepinfo-kun3n4c3 owner=@khanakia stability=api
 type StepInfo struct {
 	// Workflow is the workflow name.
 	Workflow string
@@ -59,12 +61,16 @@ type stepInfoKey struct{}
 
 // WithStepInfo returns a ctx carrying info. Drivers call it before
 // invoking a step handler.
+//
+//ds:def id=withstepinfo-t26f3eu3 owner=@khanakia stability=stable
 func WithStepInfo(ctx context.Context, info StepInfo) context.Context {
 	return context.WithValue(ctx, stepInfoKey{}, info)
 }
 
 // StepInfoFrom returns the StepInfo a driver set on ctx, and false when
 // ctx is not a step's context (for example in an enqueue middleware).
+//
+//ds:def id=stepinfofrom-rr9mwh2c owner=@khanakia stability=stable
 func StepInfoFrom(ctx context.Context) (StepInfo, bool) {
 	info, ok := ctx.Value(stepInfoKey{}).(StepInfo)
 	return info, ok

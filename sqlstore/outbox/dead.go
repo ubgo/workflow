@@ -13,6 +13,8 @@ import (
 
 // DeadEntry is an entry that failed WithMaxAttempts enqueues and is no
 // longer relayed, as ListDead and a DeadFunc see it.
+//
+//ds:def id=outbox-deadentry-gcwp47z5 owner=@khanakia stability=stable
 type DeadEntry struct {
 	// ID is the entry's ID, which Requeue takes.
 	ID string
@@ -30,12 +32,16 @@ type DeadEntry struct {
 // Limits of one ListDead page.
 const (
 	// defaultDeadPage is a page's size when DeadQuery.Limit is zero.
+	//ds:def id=outbox-defaultdeadpage-vkk9f7rb owner=@khanakia stability=stable
 	defaultDeadPage = 100
 	// maxDeadPage caps a page, so one call never reads an unbounded table.
+	//ds:def id=outbox-maxdeadpage-8p3g9zrv owner=@khanakia stability=stable
 	maxDeadPage = 1000
 )
 
 // DeadQuery selects a page of dead entries, oldest first.
+//
+//ds:def id=outbox-deadquery-pn6n9arw owner=@khanakia stability=stable
 type DeadQuery struct {
 	// Workflow keeps only entries for this workflow; empty keeps all.
 	Workflow string
@@ -49,6 +55,8 @@ type DeadQuery struct {
 // ListDead returns a page of dead entries, oldest first, for an operator
 // screen, an alert or a replay script. An After that names no dead entry
 // returns ErrNotFound rather than restarting from the beginning.
+//
+//ds:def id=outbox-outbox-listdead-pa6u6bwe owner=@khanakia stability=stable
 func (o *Outbox) ListDead(ctx context.Context, q DeadQuery) ([]DeadEntry, error) {
 	limit := q.Limit
 	switch {
@@ -99,6 +107,8 @@ func (o *Outbox) ListDead(ctx context.Context, q DeadQuery) ([]DeadEntry, error)
 // at once, so the next relay pass sends it (call Relay.Notify to send it
 // now). It keeps the entry's ID, so the idempotency key the relay sends is
 // the same as before. An id that names no dead entry returns ErrNotFound.
+//
+//ds:def id=outbox-outbox-requeue-nd4mvayp owner=@khanakia stability=stable
 func (o *Outbox) Requeue(ctx context.Context, id string) error {
 	res, err := o.db.ExecContext(ctx, o.sql("UPDATE {t} SET status = ?, attempts = 0, due = ?, lease_token = NULL, lease_until = 0 WHERE id = ? AND status = ?"),
 		statusPending, o.clk.Now().UnixNano(), id, statusDead)

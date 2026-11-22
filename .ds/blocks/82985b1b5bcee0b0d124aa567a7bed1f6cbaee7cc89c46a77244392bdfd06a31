@@ -1,0 +1,11 @@
+func (s *store) ledger() (migrate.Ledger, error) {
+	key := s.prefix + lockStem
+	if s.schema != "" {
+		key = s.schema + "." + key
+	}
+	l, err := migrate.NewLedger(s.d, s.prefix+ledgerStem, migrate.EngineLock(s.d, key))
+	if err != nil {
+		return migrate.Ledger{}, fmt.Errorf("sqlstore: migration ledger: %w", err)
+	}
+	return l, nil
+}

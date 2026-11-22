@@ -1,0 +1,10 @@
+func (m *MemoryBlobStore) DeletePrefix(_ context.Context, prefix string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k := range m.blobs {
+		if strings.HasPrefix(k, prefix) {
+			delete(m.blobs, k)
+		}
+	}
+	return nil
+}

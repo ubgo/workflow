@@ -1,0 +1,8 @@
+func UpdateRun(ctx context.Context, client Client, store PromiseStore, ref RunRef, name string, payload []byte, opts AwaitOptions) ([]byte, error) {
+	if client == nil || store == nil || name == "" || ref.RunID.IsZero() {
+		return nil, invalidf("UpdateRun needs a client, a promise store, a run ID and a signal name")
+	}
+	return update(ctx, client, store, Event{Name: name, Payload: payload}, opts, func(ev Event) error {
+		return SignalRun(ctx, client, ref, ev.Name, ev.Payload)
+	})
+}

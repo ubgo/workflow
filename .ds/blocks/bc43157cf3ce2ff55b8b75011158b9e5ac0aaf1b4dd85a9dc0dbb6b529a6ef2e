@@ -1,0 +1,11 @@
+func TwiceDailyAt(first, second, minute int) Builder {
+	switch {
+	case first < 0 || first > 23 || second < 0 || second > 23:
+		return failed("TwiceDailyAt(%d, %d, %d): hours must be 0-23", first, second, minute)
+	case first == second:
+		return failed("TwiceDailyAt(%d, %d, %d): the two hours are the same", first, second, minute)
+	case minute < 0 || minute > 59:
+		return failed("TwiceDailyAt(%d, %d, %d): minute must be 0-59", first, second, minute)
+	}
+	return builderFields(strconv.Itoa(minute), joinInts([]int{first, second}), wild, wild, wild, false)
+}

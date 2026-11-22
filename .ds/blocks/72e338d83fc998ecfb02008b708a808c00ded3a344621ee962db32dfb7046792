@@ -1,0 +1,26 @@
+func TestTransitionTableWalk(t *testing.T) {
+	for _, s := range allStatuses {
+		if !s.Valid() {
+			t.Errorf("%s is not Valid", s)
+		}
+	}
+	for _, from := range allStatuses {
+		for _, to := range allStatuses {
+			got := from.CanTransitionTo(to)
+			want := false
+			for _, tr := range Transitions() {
+				if tr.From == from && tr.To == to {
+					want = true
+				}
+			}
+			if got != want {
+				t.Errorf("%s -> %s: CanTransitionTo %v, table says %v", from, to, got, want)
+			}
+		}
+	}
+	for _, tr := range Transitions() {
+		if !tr.From.Valid() || !tr.To.Valid() || tr.From == tr.To || tr.Trigger == "" {
+			t.Errorf("malformed transition %+v", tr)
+		}
+	}
+}

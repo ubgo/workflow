@@ -14,6 +14,8 @@ import (
 // keeps a 1,000-job batch at 200 calls a second at worst, while a Then or
 // Finally that runs a few seconds late is acceptable for work batched in
 // the background. Change it with WithStatusPoll.
+//
+//ds:def id=batch-defaultpollinterval-a8rdxsaq owner=@khanakia stability=stable
 const DefaultPollInterval = 5 * time.Second
 
 // Source tells a Manager that batch jobs ended. It is the seam between the
@@ -21,6 +23,8 @@ const DefaultPollInterval = 5 * time.Second
 // status poller, or a native engine feed. A Source reports through
 // Manager.RunFinished, which ignores repeats, so several Sources may report
 // the same job: the first terminal status recorded wins.
+//
+//ds:def id=batch-source-2g3gyra2 owner=@khanakia stability=stable
 type Source interface {
 	// Attach connects the source to m. It is called once, by
 	// Manager.Attach, before the client starts. A source that works in the
@@ -32,10 +36,13 @@ type Source interface {
 // HookSource reports run ends from the client's run-finished hook
 // (workflow.RunNotifier). Its Attach fails with an error wrapping
 // workflow.ErrUnsupported when the client is not a RunNotifier.
+//
+//ds:def id=batch-hooksource-4vdc7c8r owner=@khanakia stability=stable
 func HookSource() Source { return hookSource{} }
 
 type hookSource struct{}
 
+//ds:def id=batch-hooksource-attach-3ympu39g owner=@khanakia stability=stable
 func (hookSource) Attach(_ context.Context, m *Manager) error {
 	n, ok := m.client.(workflow.RunNotifier)
 	if !ok {
@@ -53,10 +60,13 @@ func (hookSource) Attach(_ context.Context, m *Manager) error {
 // is logged and retried on the next tick, never guessed into a status. Its
 // Attach fails with workflow.ErrInvalid for an interval that is not
 // positive.
+//
+//ds:def id=batch-pollsource-kr85dvdk owner=@khanakia stability=stable
 func PollSource(interval time.Duration) Source { return pollSource{interval: interval} }
 
 type pollSource struct{ interval time.Duration }
 
+//ds:def id=batch-pollsource-attach-2eyttg2p owner=@khanakia stability=stable
 func (p pollSource) Attach(ctx context.Context, m *Manager) error {
 	if p.interval <= 0 {
 		return fmt.Errorf("%w: batch.PollSource interval must be positive, got %s", workflow.ErrInvalid, p.interval)
@@ -79,6 +89,8 @@ func (p pollSource) loop(ctx context.Context, m *Manager) {
 }
 
 // poll is one tick of PollSource.
+//
+//ds:def id=batch-manager-poll-q7znr3wp owner=@khanakia stability=stable
 func (m *Manager) poll(ctx context.Context) {
 	open, err := m.store.Unfinished(ctx)
 	if err != nil {
@@ -119,6 +131,8 @@ func (m *Manager) poll(ctx context.Context) {
 //   - a RunNotifier without CapRunFinished: the hook for speed plus the
 //     poller as the safety net for events it loses;
 //   - no RunNotifier: the poller alone.
+//
+//ds:def id=batch-manager-defaultsources-cgw2pdqt owner=@khanakia stability=stable
 func (m *Manager) defaultSources() []Source {
 	_, notifier := m.client.(workflow.RunNotifier)
 	switch {

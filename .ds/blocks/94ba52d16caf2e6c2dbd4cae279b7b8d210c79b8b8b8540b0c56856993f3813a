@@ -1,0 +1,15 @@
+type DataStore interface {
+	// Get returns the value under (scope, name), its version (above
+	// zero) and true; or false when there is none.
+	Get(ctx context.Context, scope DataScope, name string) (val []byte, ver DataVersion, ok bool, err error)
+
+	// Put stores val under (scope, name) when the entry's current
+	// version is match (0: no entry yet; AnyVersion: whatever is there)
+	// and returns the new version; otherwise it writes nothing and
+	// returns ErrDataConflict.
+	Put(ctx context.Context, scope DataScope, name string, val []byte, match DataVersion) (DataVersion, error)
+
+	// Delete removes the entry under (scope, name). Deleting an entry
+	// that is not there is not an error.
+	Delete(ctx context.Context, scope DataScope, name string) error
+}

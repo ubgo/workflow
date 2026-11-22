@@ -227,6 +227,8 @@ func TestNextFireHonoursWindowsActiveAndYears(t *testing.T) {
 
 // TestRefusals: what a format cannot express exactly is refused with a
 // NotExpressibleError naming the field, never written without it.
+//
+//ds:def id=schedexport-testrefusals-8mg3qn96 owner=@khanakia stability=stable
 func TestRefusals(t *testing.T) {
 	berlin := zone(t, "Europe/Berlin")
 	base := func(mod func(*workflow.Schedule)) workflow.Schedule {

@@ -10,6 +10,7 @@ import (
 	"github.com/ubgo/workflow"
 )
 
+//ds:def id=workflowtest-lifecyclecases-24esa2ph owner=@khanakia stability=stable
 var lifecycleCases = []testCase{
 	{"Enqueue before Start is ErrNotStarted", func(e *env) {
 		var c counter
@@ -241,6 +242,7 @@ var idempotencyCases = []testCase{
 	}},
 }
 
+//ds:def id=workflowtest-delayedcases-m54xtw3z owner=@khanakia stability=stable
 var delayedCases = []testCase{
 	{"RunAt does not run before its time and runs after", func(e *env) {
 		e.need(workflow.CapDelayedStart)

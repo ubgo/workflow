@@ -5,6 +5,8 @@ import "fmt"
 // DefaultQueue is the queue of a run whose Job.Queue and Workflow.Queue
 // are both empty. Naming it lets a QueueConfig give the default queue its
 // own worker limit and priority.
+//
+//ds:def id=defaultqueue-4qxqag88 owner=@khanakia stability=stable
 const DefaultQueue = "default"
 
 // maxQueueName bounds a queue name so every engine (a worker name, a SQL
@@ -14,6 +16,8 @@ const maxQueueName = 64
 // EffectiveQueue is the queue a run of wf enqueued as job runs on:
 // job.Queue, else wf.Queue, else DefaultQueue. Every driver calls it, so
 // no two drivers resolve a queue differently.
+//
+//ds:def id=effectivequeue-uzpgk6se owner=@khanakia stability=stable
 func EffectiveQueue(wf Workflow, job Job) string {
 	switch {
 	case job.Queue != "":
@@ -32,6 +36,8 @@ func EffectiveQueue(wf Workflow, job Job) string {
 // before queues existed. A client given some serves only those queues: on
 // a shared store the runs of other queues wait for a client that serves
 // them, which is how separate worker processes per queue are deployed.
+//
+//ds:def id=queueconfig-mvvmr2y9 owner=@khanakia stability=stable
 type QueueConfig struct {
 	// Name is the queue; it must pass ValidateQueueName.
 	Name string
@@ -74,6 +80,8 @@ type QueueConfig struct {
 // given r, a uniform value in [0, 1). Every driver that weights queues
 // calls it with its injectable random source, so all of them choose the
 // same way and a test can pin the draw. It returns -1 for no weights.
+//
+//ds:def id=pickweighted-utkqpnbx owner=@khanakia stability=stable
 func PickWeighted(weights []int, r float64) int {
 	if len(weights) == 0 {
 		return -1
@@ -94,6 +102,8 @@ func PickWeighted(weights []int, r float64) int {
 
 // ValidateQueueName checks a queue name: 1 to 64 characters from
 // letters, digits and ".", "_", ":", "-". Errors wrap ErrInvalid.
+//
+//ds:def id=validatequeuename-wv597ytz owner=@khanakia stability=stable
 func ValidateQueueName(name string) error {
 	if name == "" {
 		return invalidf("queue name is empty")
@@ -114,6 +124,8 @@ func ValidateQueueName(name string) error {
 // ValidateQueues checks a QueueConfig list: valid, unique names and
 // Workers not negative. Errors wrap ErrInvalid. Drivers call it from their
 // option or from Start.
+//
+//ds:def id=validatequeues-7c2dyk85 owner=@khanakia stability=stable
 func ValidateQueues(qs []QueueConfig) error {
 	seen := make(map[string]bool, len(qs))
 	for i, q := range qs {
@@ -141,6 +153,8 @@ func ValidateQueues(qs []QueueConfig) error {
 // lacks CapQueueLimitGlobal, so a driver that cannot count attempts across
 // clients says so at Start instead of silently enforcing only a per-client
 // cap. Drivers call it next to ValidateQueues.
+//
+//ds:def id=checkqueuelimits-ehvp2923 owner=@khanakia stability=stable
 func CheckQueueLimits(have Caps, qs []QueueConfig) error {
 	if have.Has(CapQueueLimitGlobal) {
 		return nil

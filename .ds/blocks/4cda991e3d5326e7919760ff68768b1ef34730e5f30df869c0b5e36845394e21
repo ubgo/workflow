@@ -1,0 +1,1 @@
+"the Hatchet engine fires a cron tick without asking any worker first and has no setting that skips a tick while the previous run is unfinished"

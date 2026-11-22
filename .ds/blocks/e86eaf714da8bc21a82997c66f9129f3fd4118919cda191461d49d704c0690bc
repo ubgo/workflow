@@ -1,0 +1,11 @@
+func (w WaitSpec) ResolveKey(job Job) (string, error) {
+	switch {
+	case w.OwnRun:
+		return "", Unsupported("WaitSpec.OwnRun", "this driver does not resolve a wait key from the run ID")
+	case w.KeyFrom.Func != nil:
+		return w.KeyFrom.Func(job), nil
+	case w.KeyFrom.Expr != "":
+		return "", Unsupported("WaitSpec.KeyFrom.Expr", "this driver evaluates Go key functions only")
+	}
+	return w.Key, nil
+}

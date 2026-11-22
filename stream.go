@@ -15,10 +15,14 @@ import (
 // ErrStreamFull means a MemoryStream already holds MemoryStreamOptions.MaxRuns
 // open runs and none can be evicted, so a chunk for a new run is refused
 // rather than pushing out a run someone may still be reading.
+//
+//ds:def id=errstreamfull-yqqf883d owner=@khanakia stability=stable
 var ErrStreamFull = errors.New("workflow: stream store is full")
 
 // StreamChunk is one piece of output a step sent with Emit (a token of a
 // model's answer, a line of a long export), as a StreamReader returns it.
+//
+//ds:def id=streamchunk-p96pj84v owner=@khanakia stability=stable
 type StreamChunk struct {
 	// Pos is the chunk's position in its run, from 1, given by the store
 	// in the order chunks arrived. Read's after and the SSE event ID of
@@ -116,6 +120,8 @@ type streamKey struct{}
 // MemoryStream the chunks live in the process that ran the step, so a
 // reader in another process sees nothing; a fleet needs a shared store
 // (a table, a Redis stream) implementing StreamSink and StreamReader.
+//
+//ds:def id=emit-zsknwfun owner=@khanakia stability=stable
 func Emit(ctx context.Context, chunk []byte) error {
 	b, ok := ctx.Value(streamKey{}).(*streamBinding)
 	if !ok {
@@ -210,17 +216,26 @@ func (p *streamClosePlugin) RunFinishedObservers() []RunFinishedFunc {
 
 // The MemoryStream defaults.
 const (
-	DefaultStreamMaxChunk     = 64 << 10
-	DefaultStreamMaxRunBytes  = 1 << 20
+	//ds:def id=defaultstreammaxchunk-x32wk6hd owner=@khanakia stability=stable
+	DefaultStreamMaxChunk = 64 << 10
+	//ds:def id=defaultstreammaxrunbytes-5k2knh9n owner=@khanakia stability=stable
+	DefaultStreamMaxRunBytes = 1 << 20
+	//ds:def id=defaultstreammaxrunchunks-7nh94m5f owner=@khanakia stability=stable
 	DefaultStreamMaxRunChunks = 4096
-	DefaultStreamMaxRuns      = 1000
-	DefaultStreamTTL          = time.Hour
-	DefaultStreamRetain       = time.Minute
-	DefaultStreamBuffer       = 256
+	//ds:def id=defaultstreammaxruns-e3k8y7xk owner=@khanakia stability=stable
+	DefaultStreamMaxRuns = 1000
+	//ds:def id=defaultstreamttl-vmnd7ey7 owner=@khanakia stability=stable
+	DefaultStreamTTL = time.Hour
+	//ds:def id=defaultstreamretain-z5dfhqra owner=@khanakia stability=stable
+	DefaultStreamRetain = time.Minute
+	//ds:def id=defaultstreambuffer-7xcbfcjg owner=@khanakia stability=stable
+	DefaultStreamBuffer = 256
 )
 
 // MemoryStreamOptions bounds a MemoryStream. Zero fields take the
 // defaults named on each.
+//
+//ds:def id=memorystreamoptions-5bawxsf7 owner=@khanakia stability=stable
 type MemoryStreamOptions struct {
 	// MaxChunk is the largest chunk Write accepts (DefaultStreamMaxChunk,
 	// 64 KiB); a larger one is refused with ErrInvalid.
@@ -266,6 +281,8 @@ type MemoryStreamOptions struct {
 // safe for concurrent use. It serves one process (a worker that also
 // answers the httprun routes); a fleet needs a shared store implementing
 // the same interfaces.
+//
+//ds:def id=memorystream-z4prqky7 owner=@khanakia stability=stable
 type MemoryStream struct {
 	opt  MemoryStreamOptions
 	mu   sync.Mutex
@@ -301,6 +318,8 @@ var (
 )
 
 // NewMemoryStream returns an empty MemoryStream with opt's bounds.
+//
+//ds:def id=newmemorystream-mk959v4h owner=@khanakia stability=stable
 func NewMemoryStream(opt MemoryStreamOptions) *MemoryStream {
 	if opt.MaxChunk <= 0 {
 		opt.MaxChunk = DefaultStreamMaxChunk
@@ -334,6 +353,8 @@ func NewMemoryStream(opt MemoryStreamOptions) *MemoryStream {
 // already closed (ErrWrongState), and a new run when the store is full
 // (ErrStreamFull). A subscriber whose buffer is full is dropped (its
 // channel closed), never waited for, so a slow reader cannot stall a step.
+//
+//ds:def id=memorystream-write-9us37kub owner=@khanakia stability=stable
 func (m *MemoryStream) Write(ctx context.Context, run RunID, step string, seq int64, chunk []byte) error {
 	if run.IsZero() {
 		return invalidf("stream: empty run ID")
@@ -478,6 +499,8 @@ func (m *MemoryStream) Runs() []RunID {
 }
 
 // prune drops runs past their TTL or Retain. The caller holds m.mu.
+//
+//ds:def id=memorystream-prune-bn39fqan owner=@khanakia stability=stable
 func (m *MemoryStream) prune(now time.Time) {
 	for id, rs := range m.runs {
 		expired := now.Sub(rs.lastAt) >= m.opt.TTL
@@ -493,6 +516,8 @@ func (m *MemoryStream) prune(now time.Time) {
 
 // evictClosed drops the run closed longest ago and reports whether there
 // was one. The caller holds m.mu.
+//
+//ds:def id=memorystream-evictclosed-r393dw88 owner=@khanakia stability=stable
 func (m *MemoryStream) evictClosed() bool {
 	var oldest RunID
 	var at time.Time

@@ -1,0 +1,8 @@
+func (c *Client) Supports(op workflow.Op) bool {
+	for _, name := range c.names {
+		if !workflow.Supports(c.regions[name], op) {
+			return false
+		}
+	}
+	return true
+}

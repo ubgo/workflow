@@ -1,0 +1,7 @@
+func NewBucketStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*BucketStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.BucketStore(), nil
+}

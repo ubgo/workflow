@@ -1,0 +1,34 @@
+func (rc *ReplayCtx) AwaitPromise(name string, store PromiseStore, id string) ([]byte, error) {
+	e, ok, err := rc.next("promise", name)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		if e.Err != "" {
+			return nil, Permanent(&PromiseRejectedError{ID: id, Reason: e.Err})
+		}
+		var v []byte
+		if err := json.Unmarshal(e.Value, &v); err != nil {
+			return nil, rc.fail(Permanent(fmt.Errorf("workflow: replay: promise %q: recorded value does not decode: %w", name, err)))
+		}
+		return v, nil
+	}
+	v, settled, err := PromiseResult(rc.ctx, store, id)
+	var rej *PromiseRejectedError
+	switch {
+	case errors.As(err, &rej):
+		if rerr := rc.record(replayEntry{Kind: "promise", Name: name, Err: rej.Reason}); rerr != nil {
+			return nil, rerr
+		}
+		return nil, Permanent(err)
+	case err != nil:
+		return nil, rc.fail(err)
+	case !settled:
+		return nil, rc.suspendFor(rc.opts.Poll)
+	}
+	raw, _ := json.Marshal(v)
+	if err := rc.record(replayEntry{Kind: "promise", Name: name, Value: raw}); err != nil {
+		return nil, err
+	}
+	return v, nil
+}

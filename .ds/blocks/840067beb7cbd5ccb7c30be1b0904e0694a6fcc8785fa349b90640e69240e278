@@ -1,0 +1,34 @@
+func TestTenantScope_Schedules(t *testing.T) {
+	ts := newTenants(t)
+	h := NewHandler(New(ts.c), scopedAuth(), WithTenantScope(byName))
+
+	rec := as(t, h, "a", "GET", "/schedules", "")
+	var list struct {
+		Schedules []scheduleJSON `json:"schedules"`
+		Total     int            `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || list.Total != 1 || list.Schedules[0].ID != string(ts.aSched) {
+		t.Fatalf("a's schedules = %+v, %v", list, err)
+	}
+	for _, id := range []workflow.ScheduleID{ts.bSched, ts.no} {
+		for _, r := range []route{
+			{"GET", "/schedules/" + string(id), "", ActionShowSchedule},
+			{"POST", "/schedules/" + string(id) + "/pause", "", ActionPauseSchedule},
+			{"POST", "/schedules/" + string(id) + "/resume", "", ActionResumeSchedule},
+			{"POST", "/schedules/" + string(id) + "/trigger", "", ActionTriggerSchedule},
+		} {
+			if rec := as(t, h, "a", r.method, r.path, ""); rec.Code != http.StatusNotFound {
+				t.Errorf("a %s %s = %d %s, want 404", r.method, r.path, rec.Code, rec.Body)
+			}
+		}
+	}
+	if rec := as(t, h, "a", "POST", "/schedules/"+string(ts.aSched)+"/trigger", ""); rec.Code != http.StatusOK {
+		t.Fatalf("a triggers its own schedule: %d %s", rec.Code, rec.Body)
+	}
+	infos, _ := ts.c.Schedules(t.Context())
+	for _, s := range infos {
+		if s.ID != ts.aSched && !s.Last.Fire.IsZero() {
+			t.Errorf("schedule %s fired", s.ID)
+		}
+	}
+}

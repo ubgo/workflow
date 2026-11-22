@@ -1,0 +1,26 @@
+func (k argsKey) canonical(payload []byte) []byte {
+	var v any
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil || dec.More() {
+		return payload
+	}
+	if k.fields != nil {
+		obj, ok := v.(map[string]any)
+		if !ok {
+			return payload
+		}
+		picked := make(map[string]any, len(k.fields))
+		for _, f := range k.fields {
+			if fv, ok := obj[f]; ok {
+				picked[f] = fv
+			}
+		}
+		v = picked
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return payload
+	}
+	return out
+}

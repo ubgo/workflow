@@ -1,0 +1,3 @@
+func HasRunAt(t time.Time) JobMatcher {
+	return Where("RunAt "+t.Format(time.RFC3339Nano), func(j workflow.Job) bool { return j.RunAt.Equal(t) })
+}

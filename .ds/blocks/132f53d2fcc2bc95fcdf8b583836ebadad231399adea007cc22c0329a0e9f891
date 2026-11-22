@@ -1,0 +1,4 @@
+type RunForcer interface {
+	ForceComplete(ctx context.Context, ref RunRef) error
+	ForceFail(ctx context.Context, ref RunRef, reason string) error
+}

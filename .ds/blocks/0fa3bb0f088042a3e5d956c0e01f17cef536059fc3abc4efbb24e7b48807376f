@@ -1,0 +1,24 @@
+func (m *MemoryAlertLimiter) Allow(_ context.Context, key string, at time.Time) (bool, int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pruneLocked(at)
+	st := m.keys[key]
+	if st == nil {
+		st = &alertKeyState{}
+		m.keys[key] = st
+	}
+	if m.lim.Dedup > 0 && !st.last.IsZero() && at.Sub(st.last) < m.lim.Dedup {
+		st.suppressed++
+		return false, 0, nil
+	}
+	if m.lim.Max > 0 && m.lim.Per > 0 && len(m.sent) >= m.lim.Max {
+		st.suppressed++
+		return false, 0, nil
+	}
+	suppressed := st.suppressed
+	st.last, st.suppressed = at, 0
+	if m.lim.Max > 0 && m.lim.Per > 0 {
+		m.sent = append(m.sent, at)
+	}
+	return true, suppressed, nil
+}

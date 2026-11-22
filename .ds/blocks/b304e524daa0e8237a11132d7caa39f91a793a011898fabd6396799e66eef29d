@@ -1,0 +1,9 @@
+func (c *Client) IsLeader() bool {
+	switch {
+	case c.elector == nil:
+		return true
+	case c.noScheduler:
+		return false
+	}
+	return c.elector.IsLeader()
+}

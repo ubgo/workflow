@@ -1,0 +1,3 @@
+func StrictClassifier(err error) bool {
+	return err != nil && !workflow.IsPermanent(err) && workflow.IsUnavailable(err)
+}

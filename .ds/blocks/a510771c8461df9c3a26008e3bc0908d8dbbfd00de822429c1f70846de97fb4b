@@ -1,0 +1,37 @@
+func ClusterCronTickFiresOnce(t *testing.T) {
+	const ticks = 4
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			db, prefix := e.open(t)
+			clk := clock.NewFake(start)
+			var runs atomic.Int64
+			wf := workflow.Workflow{Name: "tick", Cron: []string{"* * * * *"}, Steps: []workflow.Step{{Name: "only",
+				Run: func(_ context.Context, in []byte) ([]byte, error) { runs.Add(1); return in, nil }}}}
+			startCluster(t, e, db, prefix, wf, sqlstore.WithClock(clk))
+			for n := 1; n <= ticks; n++ {
+				// Every client arms a timer for the next fire; waiting for all of
+				// them means every client sees the tick due at the same moment.
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := clk.BlockUntil(ctx, nodes); err != nil {
+					cancel()
+					t.Fatalf("waiting for every client's cron timer: %v", err)
+				}
+				cancel()
+				clk.Advance(time.Minute)
+				want := int64(n)
+				waitFor(t, 5*time.Second, fmt.Sprintf("tick %d to run", n), func() bool { return runs.Load() >= want })
+				time.Sleep(100 * time.Millisecond) // room for a second fire of the same tick
+				if got := runs.Load(); got != want {
+					t.Fatalf("after %d ticks on %d clients, %d runs fired, want %d", n, nodes, got, want)
+				}
+			}
+			var rows int64
+			if err := db.QueryRow("SELECT COUNT(*) FROM " + e.dialect.QuoteIdent(prefix+"ticks")).Scan(&rows); err != nil {
+				t.Fatalf("count ticks: %v", err)
+			}
+			if rows != ticks {
+				t.Fatalf("%d tick rows, want one per tick (%d)", rows, ticks)
+			}
+		})
+	}
+}

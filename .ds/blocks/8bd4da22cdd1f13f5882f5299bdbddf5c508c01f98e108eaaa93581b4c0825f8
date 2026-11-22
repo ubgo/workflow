@@ -1,0 +1,16 @@
+func (r *run) statusLocked() workflow.Status {
+	if r.status.IsTerminal() || !r.admitted {
+		return r.status
+	}
+	switch {
+	case r.executing > 0:
+		return workflow.StatusRunning
+	case len(r.retrying) > 0:
+		return workflow.StatusRetrying
+	case r.queued > 0:
+		return workflow.StatusQueued
+	case r.suspended > 0:
+		return workflow.StatusWaiting
+	}
+	return workflow.StatusQueued
+}

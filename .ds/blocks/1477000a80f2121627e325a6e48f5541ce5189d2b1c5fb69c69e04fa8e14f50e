@@ -1,0 +1,86 @@
+func (e *CloudEvent) UnmarshalJSON(b []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return fmt.Errorf("%w: cloudevent: %v", workflow.ErrInvalid, err)
+	}
+	var out CloudEvent
+	strAttr := func(name string) (string, error) {
+		v, ok := raw[name]
+		if !ok || string(v) == "null" {
+			return "", nil
+		}
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			return "", fmt.Errorf("%w: cloudevent: attribute %q is not a string", workflow.ErrInvalid, name)
+		}
+		return s, nil
+	}
+	targets := []struct {
+		name string
+		dst  *string
+	}{
+		{"specversion", &out.SpecVersion}, {"id", &out.ID}, {"source", &out.Source}, {"type", &out.Type},
+		{"subject", &out.Subject}, {"datacontenttype", &out.DataContentType}, {"dataschema", &out.DataSchema},
+	}
+	for _, t := range targets {
+		s, err := strAttr(t.name)
+		if err != nil {
+			return err
+		}
+		*t.dst = s
+	}
+	ts, err := strAttr("time")
+	if err != nil {
+		return err
+	}
+	if ts != "" {
+		if out.Time, err = time.Parse(time.RFC3339Nano, ts); err != nil {
+			return fmt.Errorf("%w: cloudevent: time %q is not RFC 3339", workflow.ErrInvalid, ts)
+		}
+	}
+	data, hasData := raw["data"]
+	if hasData && string(data) == "null" {
+		hasData = false
+	}
+	data64, hasData64 := raw["data_base64"]
+	if hasData64 && string(data64) == "null" {
+		hasData64 = false
+	}
+	switch {
+	case hasData && hasData64:
+		return fmt.Errorf("%w: cloudevent: both data and data_base64 are set", workflow.ErrInvalid)
+	case hasData64:
+		var s string
+		if err := json.Unmarshal(data64, &s); err != nil {
+			return fmt.Errorf("%w: cloudevent: data_base64 is not a string", workflow.ErrInvalid)
+		}
+		if out.Data, err = base64.StdEncoding.DecodeString(s); err != nil {
+			return fmt.Errorf("%w: cloudevent: data_base64: %v", workflow.ErrInvalid, err)
+		}
+	case hasData:
+		var s string
+		if !isJSONType(out.DataContentType) && json.Unmarshal(data, &s) == nil {
+			out.Data = []byte(s)
+		} else {
+			out.Data = slices.Clone([]byte(data))
+		}
+	}
+	for name, v := range raw {
+		if coreAttributes[name] || string(v) == "null" {
+			continue
+		}
+		val, err := extensionValue(v)
+		if err != nil {
+			return fmt.Errorf("%w: cloudevent: extension %q: %v", workflow.ErrInvalid, name, err)
+		}
+		if out.Extensions == nil {
+			out.Extensions = map[string]string{}
+		}
+		out.Extensions[name] = val
+	}
+	if err := out.Validate(); err != nil {
+		return err
+	}
+	*e = out
+	return nil
+}

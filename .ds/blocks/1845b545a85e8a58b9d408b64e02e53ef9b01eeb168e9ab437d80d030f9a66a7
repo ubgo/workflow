@@ -1,0 +1,39 @@
+func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	h, err := c.rdb.HGetAll(ctx, c.base+":sched:"+string(id)).Result()
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: read schedule: %w", classify(err))
+	}
+	if len(h) == 0 {
+		return workflow.RunRef{}, fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	}
+	info, input, err := c.decodeSchedule(string(id), h)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	now := c.clk.Now()
+	runID := c.newID()
+	labels := workflow.TriggeredLabelsAt(info.Labels, id, info.Name, now)
+	job := workflow.Job{Workflow: info.Workflow, Payload: input, Labels: labels, Tenant: info.Tenant}
+	args, err := c.createArgs(runID, job, "", false, now)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	res, err := triggerScript.Run(ctx, c.rdb, c.keys(), append([]any{c.base, string(id), now.UnixMilli()}, args...)...).Slice()
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: trigger schedule: %w", classify(err))
+	}
+	switch str(res[0]) {
+	case "notfound":
+		return workflow.RunRef{}, fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	case "overlap":
+		return workflow.RunRef{}, workflow.OverlapRefusal(id, refOf(str(res[1]), workflow.Status(str(res[2])), str(res[3])), workflow.Status(str(res[2])))
+	}
+	c.wakeAll()
+	ref := workflow.RunRef{RunID: workflow.RunID(runID)}
+	c.emitTicks(ctx, []workflow.Tick{{ScheduleID: id, Name: info.Name, Workflow: info.Workflow, Declared: info.Declared,
+		At: now.In(info.Location), Location: info.Location, Outcome: workflow.TickFired, Run: ref, Labels: info.Labels, Manual: true}})
+	return ref, nil
+}

@@ -1,0 +1,3 @@
+func NewChainEdits(have Caps, chain []Job) *ChainEdits {
+	return &ChainEdits{have: have, base: chainLen(chain)}
+}

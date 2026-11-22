@@ -1,0 +1,15 @@
+func NewFake(opts ...FakeOption) *Fake {
+	f := &Fake{
+		caps:   fakeDefaultCaps,
+		parse:  cron.Parse,
+		wfs:    map[string]workflow.Workflow{},
+		byRef:  map[workflow.RunRef]*fakeRun{},
+		idem:   map[[2]string]*fakeRun{},
+		pwfs:   map[string]workflow.Workflow{},
+		paused: map[workflow.PauseTarget]bool{},
+	}
+	for _, o := range opts {
+		o(f)
+	}
+	return f
+}

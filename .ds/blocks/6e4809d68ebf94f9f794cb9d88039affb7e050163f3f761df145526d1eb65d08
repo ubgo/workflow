@@ -1,0 +1,7 @@
+func (b Builder) MustExpr() string {
+	expr, err := b.Expr()
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}

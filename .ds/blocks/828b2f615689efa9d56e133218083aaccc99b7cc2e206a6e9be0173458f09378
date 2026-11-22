@@ -1,0 +1,7 @@
+func WithNodeID(id string) Option {
+	return func(cl *Client) {
+		if id != "" {
+			cl.nodeID = id
+		}
+	}
+}

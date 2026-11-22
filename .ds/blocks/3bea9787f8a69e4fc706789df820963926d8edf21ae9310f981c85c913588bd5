@@ -1,0 +1,83 @@
+func JoinChildren(ctx context.Context, client Client, name string, jobs []Job, spec JoinSpec) (JoinResult, error) {
+	if err := checkJoin(client, name, len(jobs), spec); err != nil {
+		return JoinResult{}, err
+	}
+	j, err := journalFrom(ctx)
+	if err != nil {
+		return JoinResult{}, err
+	}
+	decisionKey := j.helperKey("join", name)
+	if raw, ok, err := j.store.Load(ctx, j.run, decisionKey); err != nil {
+		return JoinResult{}, fmt.Errorf("workflow: join %q: load decision: %w", name, err)
+	} else if ok {
+		var d joinDecision
+		if err := json.Unmarshal(raw, &d); err != nil {
+			return JoinResult{}, Permanent(fmt.Errorf("workflow: join %q: stored decision: %w", name, err))
+		}
+		return joinOutputs(ctx, client, name, d)
+	}
+	all, open := jobs, false
+	if spec.More != nil {
+		extra, closed, err := spec.More(ctx)
+		if err != nil {
+			return JoinResult{}, fmt.Errorf("workflow: join %q: more: %w", name, err)
+		}
+		all, open = append(append([]Job(nil), jobs...), extra...), !closed
+	}
+	if len(all) == 0 {
+		return JoinResult{}, Snooze(joinPoll(spec)) // More is open and has added nothing yet
+	}
+	refs, err := Spawn(ctx, client, name, all, spec.Spawn...)
+	if err != nil {
+		return JoinResult{}, err
+	}
+	need := spec.Need
+	if need <= 0 {
+		need = len(refs)
+	}
+	if need > len(refs) && !open {
+		return JoinResult{}, Permanent(invalidf("join %q: Need %d of %d children", name, need, len(refs)))
+	}
+	var succeeded []int
+	failed := map[int]*RunFailedError{}
+	var running []int
+	for i, ref := range refs {
+		st, err := client.Status(ctx, ref)
+		if err != nil {
+			return JoinResult{}, fmt.Errorf("workflow: join %q: child %d: %w", name, i, err)
+		}
+		switch {
+		case st == StatusSucceeded:
+			succeeded = append(succeeded, i)
+		case st.IsTerminal():
+			failed[i] = &RunFailedError{Ref: ref, Status: st, Err: runError(ctx, client, ref)}
+		default:
+			running = append(running, i)
+		}
+	}
+	if len(succeeded) >= need {
+		d := joinDecision{Refs: refs, Winners: succeeded[:need]}
+		if err := settleRest(ctx, client, name, spec.Rest, refs, running); err != nil {
+			return JoinResult{}, err
+		}
+		raw, err := encodeJSON("join "+name, d)
+		if err != nil {
+			return JoinResult{}, err
+		}
+		if err := j.store.Save(ctx, j.run, decisionKey, raw); err != nil {
+			return JoinResult{}, fmt.Errorf("workflow: join %q: save decision: %w", name, err)
+		}
+		return joinOutputs(ctx, client, name, d)
+	}
+	if len(succeeded)+len(running) < need && !open {
+		rest := spec.Rest
+		if rest == JoinCompleteRest {
+			rest = JoinCancelRest // a failed join completes nothing
+		}
+		if err := settleRest(ctx, client, name, rest, refs, running); err != nil {
+			return JoinResult{}, err
+		}
+		return JoinResult{}, Permanent(&JoinFailedError{Name: name, Need: need, Succeeded: len(succeeded), Failed: failed})
+	}
+	return JoinResult{}, Snooze(joinPoll(spec))
+}

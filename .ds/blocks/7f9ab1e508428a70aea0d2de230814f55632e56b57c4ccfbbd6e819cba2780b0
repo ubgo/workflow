@@ -1,0 +1,11 @@
+type PauseTarget struct {
+	// Workflow holds the runs of one workflow. Needs CapPauseWorkflow.
+	Workflow string
+
+	// Queue holds the runs on one queue (EffectiveQueue). Needs
+	// CapPauseQueue.
+	Queue string
+
+	// All holds every run. Needs CapPauseWorkflow.
+	All bool
+}

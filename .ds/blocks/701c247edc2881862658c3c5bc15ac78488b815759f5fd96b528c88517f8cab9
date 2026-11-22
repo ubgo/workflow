@@ -1,0 +1,1 @@
+	CapJobRetry = defineCap(18, "JobRetry")

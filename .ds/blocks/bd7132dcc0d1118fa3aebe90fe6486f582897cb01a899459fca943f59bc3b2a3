@@ -1,0 +1,77 @@
+func ExpireWaiting(ctx context.Context, c Client, q RunQuery, maxWait time.Duration, now time.Time) (ExpireResult, error) {
+	var res ExpireResult
+	if maxWait <= 0 {
+		return res, invalidf("ExpireWaiting needs a positive maxWait, got %s", maxWait)
+	}
+	caps := c.Capabilities()
+	if missing := caps.Missing(CapsOf(CapRunQuery, CapCancel)); !missing.IsZero() {
+		return res, &UnsupportedError{Field: "ExpireWaiting", Missing: missing}
+	}
+	rq, ok := c.(RunQuerier)
+	if !ok {
+		return res, &UnsupportedError{Field: "ExpireWaiting", Missing: CapRunQuery, Reason: "the client does not implement workflow.RunQuerier"}
+	}
+	var bulk BulkCanceller
+	if b, ok := c.(BulkCanceller); ok && caps.Has(CapCancelAll) {
+		bulk = b
+	}
+
+	if len(q.Statuses) == 0 {
+		q.Statuses = []Status{StatusQueued, StatusScheduled}
+	}
+	for _, s := range q.Statuses {
+		if s != StatusQueued && s != StatusScheduled {
+			return res, invalidf("ExpireWaiting: status %q has started; only %q and %q wait to start", s, StatusQueued, StatusScheduled)
+		}
+	}
+	cutoff := now.Add(-maxWait)
+	if q.To.IsZero() || q.To.After(cutoff) {
+		q.To = cutoff
+	}
+	if !q.From.IsZero() && !q.From.Before(q.To) {
+		return res, nil // the window holds no run old enough
+	}
+	if q.Limit == 0 {
+		q.Limit = MaxRunsLimit
+	}
+	if err := ValidateRunQuery(q); err != nil {
+		return res, err
+	}
+
+	var waiting []RunInfo
+	for {
+		page, err := rq.Runs(ctx, q)
+		if err != nil {
+			return res, fmt.Errorf("workflow: ExpireWaiting list: %w", err)
+		}
+		for _, info := range page.Runs {
+			res.Checked++
+			if overdue(info, maxWait, now) {
+				waiting = append(waiting, info)
+			}
+		}
+		if page.Next == "" {
+			break
+		}
+		q.Cursor = page.Next
+	}
+
+	var errs []error
+	for _, info := range waiting {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
+		cancelled, err := cancelWaiting(ctx, c, bulk, info)
+		switch {
+		case errors.Is(err, ErrNotFound):
+		case err != nil:
+			errs = append(errs, fmt.Errorf("workflow: ExpireWaiting cancel %+v: %w", info.Ref, err))
+		case cancelled:
+			res.Cancelled = append(res.Cancelled, info.Ref)
+		default:
+			res.Raced++
+		}
+	}
+	return res, errors.Join(errs...)
+}

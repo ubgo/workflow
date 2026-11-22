@@ -1,0 +1,36 @@
+func ValidateSchedule(s Schedule) error {
+	switch {
+	case s.Workflow == "":
+		return invalidf("schedule has no Workflow")
+	case s.Cron == "":
+		return invalidf("schedule for %q has no Cron", s.Workflow)
+	case s.Location == nil:
+		return invalidf("schedule for %q has no Location; use time.UTC for UTC", s.Workflow)
+	case s.Location == time.Local:
+		return invalidf("schedule for %q: Location is time.Local, which differs from machine to machine; name the zone", s.Workflow)
+	}
+	if err := validateWindows(s.Windows); err != nil {
+		return invalidf("schedule for %q: Windows: %v", s.Workflow, err)
+	}
+	if err := validateMisfire(s.Misfire); err != nil {
+		return invalidf("schedule for %q: %v", s.Workflow, err)
+	}
+	if !validOverlap(s.Overlap) {
+		return invalidf("schedule for %q: unknown Overlap %q", s.Workflow, s.Overlap)
+	}
+	if err := s.Active.validate(); err != nil {
+		return invalidf("schedule for %q: Active: %v", s.Workflow, err)
+	}
+	if s.KeepRuns < 0 {
+		return invalidf("schedule for %q: KeepRuns is negative", s.Workflow)
+	}
+	if s.Tenant != "" {
+		if err := ValidateTenant(s.Tenant); err != nil {
+			return fmt.Errorf("schedule for %q: %w", s.Workflow, err)
+		}
+	}
+	if err := ValidateLabels(s.Labels); err != nil {
+		return fmt.Errorf("schedule for %q: %w", s.Workflow, err)
+	}
+	return nil
+}

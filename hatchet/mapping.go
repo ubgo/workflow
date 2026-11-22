@@ -43,6 +43,7 @@ const (
 // Metadata keys the driver writes on every run. They share one prefix so a
 // label can never shadow them.
 const (
+	//ds:def id=hatchet-metadataprefix-2ytt6uuf owner=@khanakia stability=stable
 	metadataPrefix = "wf__"
 	// metaIdempotencyKey is the per-run value the workflow's idempotency
 	// expression reads (see idempotencyExpression).
@@ -70,14 +71,69 @@ const (
 	// the ScheduledID is rebuilt from it and must not change; RunInfo.RunAt
 	// reads metaRunAt first.
 	metaRunAt = metadataPrefix + "run_at"
+	// metaStartAt is when a delayed start with an idempotency key may run
+	// its first steps (Unix milliseconds): such a run starts at once, so
+	// the engine holds its key, and its start gate sleeps until then.
+	metaStartAt = metadataPrefix + "start_at"
 )
 
+// startGateTask names the durable task a workflow's delayed variant runs
+// before its first steps (declareDelayed). It sleeps on the engine until
+// the run's metaStartAt. A step may not take the name (checkSupported).
+//
+//ds:def id=hatchet-startgatetask-bpsdadyd owner=@khanakia stability=stable
+const startGateTask = "wf__start"
+
+// delayedSuffix ends the engine name of a workflow's delayed variant
+// (delayedName). A workflow may not take a name that ends with it
+// (checkSupported).
+//
+//ds:def id=hatchet-delayedsuffix-s4kw5cfy owner=@khanakia stability=stable
+const delayedSuffix = "__wf_delayed"
+
+// delayedName is the name the delayed variant of workflow name is
+// declared under: the workflow's own steps behind a start gate, with its
+// idempotency expression, rate limits and on-failure step, and no cron.
+func delayedName(name string) string { return name + delayedSuffix }
+
+// hasStartGate reports whether wf gets a delayed variant, which is what
+// lets a delayed start carry an idempotency key: the run starts at once as
+// a run of the variant (Hatchet's scheduled runs take no key) and the
+// variant's start gate sleeps until RunAt. The gate is not on the
+// workflow itself because the engine holds a run's key only until the
+// first of the tasks created with the run ends (ReleaseIdempotencyKeys in
+// the engine runs when a task reaches a terminal state): a gate in every
+// run would release every key a moment after the enqueue. A workflow with
+// IdempotencyOff never takes a key, so it needs no variant; a workflow
+// with a Concurrency gets none, because the engine holds a concurrency
+// slot for a whole run and a variant would not share the workflow's slots
+// (such a delayed key is refused instead).
+//
+//ds:def id=hatchet-hasstartgate-jam5t2ur owner=@khanakia stability=stable
+func hasStartGate(wf workflow.Workflow) bool {
+	return wf.Idempotency != workflow.IdempotencyOff && wf.Concurrency == nil
+}
+
+// startAtOf reads metaStartAt from a run's metadata.
+func startAtOf(md map[string]string) (time.Time, bool) {
+	ms, err := strconv.ParseInt(md[metaStartAt], 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(ms), true
+}
+
 // runAtOf is RunInfo.RunAt of a run or scheduled run with metadata md:
-// the time Reschedule last set, else the Job.RunAt Enqueue stamped, and
-// zero for a run enqueued without RunAt (it has no schedule token).
+// the time Reschedule last set, else the Job.RunAt Enqueue stamped (as
+// the start gate's time on a delayed start with a key, or with the
+// schedule token on any other), and zero for a run enqueued without
+// RunAt.
 func runAtOf(md map[string]string) time.Time {
 	if ms, err := strconv.ParseInt(md[metaRunAt], 10, 64); err == nil {
 		return time.UnixMilli(ms)
+	}
+	if at, ok := startAtOf(md); ok {
+		return at
 	}
 	if md[metaScheduleToken] == "" {
 		return time.Time{}
@@ -129,6 +185,8 @@ func parseScheduledID(id workflow.ScheduledID) (scheduledRef, bool) {
 // scheduledIDFromMetadata rebuilds the ScheduledID of a run a delayed
 // start fired, from the token and RunAt stamped on it; "" for any other
 // run.
+//
+//ds:def id=hatchet-scheduledidfrommetadata-qs7dg9ac owner=@khanakia stability=stable
 func scheduledIDFromMetadata(md map[string]string) workflow.ScheduledID {
 	token := md[metaScheduleToken]
 	at, ok := enqueuedAt(md)
@@ -168,8 +226,10 @@ func suspendedOn(wf workflow.Workflow, active []string, unstarted map[string]boo
 // Metadata keys Hatchet itself writes: its own prefix, and the trace
 // header its SDK injects on every trigger.
 const (
+	//ds:def id=hatchet-hatchetmetadataprefix-hsdu59q6 owner=@khanakia stability=stable
 	hatchetMetadataPrefix = "hatchet__"
-	traceparentKey        = "traceparent"
+	//ds:def id=hatchet-traceparentkey-646qsgud owner=@khanakia stability=stable
+	traceparentKey = "traceparent"
 )
 
 // Kinds of idempotency key. Hatchet stores keys per tenant, not per
@@ -205,6 +265,8 @@ const (
 )
 
 // rateLimitWindows are the only windows a Hatchet rate limit accepts.
+//
+//ds:def id=hatchet-ratelimitwindows-5mdddvs7 owner=@khanakia stability=stable
 var rateLimitWindows = map[time.Duration]hatchetsdk.RateLimitDuration{
 	time.Second:        hatchetsdk.Second,
 	time.Minute:        hatchetsdk.Minute,
@@ -215,6 +277,8 @@ var rateLimitWindows = map[time.Duration]hatchetsdk.RateLimitDuration{
 
 // engineName is the name the engine knows a workflow by: the SDK's
 // namespace prefix plus the workflow name.
+//
+//ds:def id=hatchet-enginename-q6x5kbtp owner=@khanakia stability=stable
 func engineName(namespace, name string) string {
 	if namespace == "" {
 		return name
@@ -226,7 +290,12 @@ func engineName(namespace, name string) string {
 // Hatchet driver cannot honour as written, and nil when it can honour all
 // of them. It runs in Start, after the capability check, so the error names
 // the exact field rather than a capability.
+//
+//ds:def id=hatchet-checksupported-733uwgsp owner=@khanakia stability=stable
 func checkSupported(wf workflow.Workflow) error {
+	if strings.HasSuffix(wf.Name, delayedSuffix) {
+		return fmt.Errorf("%w: workflow %q: a name ending in %q is reserved by the Hatchet driver (its delayed variants)", workflow.ErrInvalid, wf.Name, delayedSuffix)
+	}
 	if wf.ScheduleWhen != nil {
 		return unsupported("Workflow.ScheduleWhen", workflow.CapScheduleWhen, "workflow "+wf.Name+": the Hatchet engine fires crons itself and asks no worker code first")
 	}
@@ -276,6 +345,9 @@ func checkSupported(wf workflow.Workflow) error {
 		}
 	}
 	for _, s := range wf.Steps {
+		if s.Name == startGateTask {
+			return fmt.Errorf("%w: workflow %q: step name %q is reserved by the Hatchet driver (the start gate of its delayed variant)", workflow.ErrInvalid, wf.Name, startGateTask)
+		}
 		if s.Wait != nil && s.Wait.KeyFrom.Expr != "" {
 			return workflow.Unsupported("WaitSpec.KeyFrom.Expr", "workflow "+wf.Name+" step "+s.Name+": Hatchet has no API that evaluates a CEL expression to a string for the driver; use workflow.KeyFunc")
 		}
@@ -292,6 +364,8 @@ func checkSupported(wf workflow.Workflow) error {
 }
 
 // keepRunsReason is why a per-schedule run history limit is refused.
+//
+//ds:def id=hatchet-keeprunsreason-ethbbz58 owner=@khanakia stability=stable
 const keepRunsReason = "Hatchet keeps runs for the engine's retention and has no run delete, so the driver cannot keep only a schedule's newest runs"
 
 // heartbeatReason is why Step.HeartbeatTimeout is refused. The engine's
@@ -303,12 +377,16 @@ const heartbeatReason = "Hatchet has one execution deadline per task, extended b
 
 // misfireReason is why every explicit misfire policy is refused: the
 // engine's own behaviour is the driver default, and no policy can be set.
+//
+//ds:def id=hatchet-misfirereason-eythccvb owner=@khanakia stability=stable
 const misfireReason = "Hatchet never catches up a missed cron tick (no backfill) and has no setting for how late a tick may still fire, so only the driver default is honoured: a tick missed while the engine was down is dropped"
 
 // checkRetry refuses the parts of a retry policy Hatchet cannot express:
 // a backoff off its factor^n-seconds formula, jitter (the engine waits
 // exactly that long), and DelayFor (the engine sets a retry's delay from
 // the task's backoff only, never from the error).
+//
+//ds:def id=hatchet-checkretry-ccamdfbn owner=@khanakia stability=stable
 func checkRetry(p workflow.RetryPolicy) error {
 	if p.DelayFor != nil {
 		return unsupported("Retry.DelayFor", workflow.CapRetryDelay, "Hatchet sets a retry's delay from the backoff only, never from the error (RetryAfter)")
@@ -333,6 +411,8 @@ func checkRetry(p workflow.RetryPolicy) error {
 // and has no @every. The engine reads a six-field expression with seconds
 // first (internal/services/ticker in hatchet v0.110.5), the meaning cron.ParseSeconds gives it, so the flag
 // and the field count agree on the engine as in the core.
+//
+//ds:def id=hatchet-checkcron-s2s37tr5 owner=@khanakia stability=stable
 func checkCron(expr string, seconds bool) error {
 	if _, err := workflow.ParseCron(expr, seconds, nil); err != nil {
 		return fmt.Errorf("%w: %v", workflow.ErrInvalid, err)
@@ -390,6 +470,8 @@ func topoOrder(steps []workflow.Step) []workflow.Step {
 
 // concurrencyStrategy maps a strategy onto Hatchet's wire value. Empty
 // means ConcurrencyQueueNewest, the core default.
+//
+//ds:def id=hatchet-concurrencystrategy-hzvwerpw owner=@khanakia stability=stable
 func concurrencyStrategy(s workflow.ConcurrencyStrategy) (hatchetsdk.ConcurrencyLimitStrategy, error) {
 	switch s {
 	case "", workflow.ConcurrencyQueueNewest, workflow.ConcurrencyRoundRobin:
@@ -440,6 +522,8 @@ func workflowConcurrency(c workflow.Concurrency) (hatchetsdk.Concurrency, error)
 // share one bucket; the value is prefixed with the declaration's static
 // key, so each (workflow, limit) has its own buckets, as the RateLimit
 // contract and the other drivers have it.
+//
+//ds:def id=hatchet-ratelimit-mvwtadc2 owner=@khanakia stability=stable
 func rateLimit(r workflow.RateLimit, scope string, i int) (*hatchetsdk.RateLimit, error) {
 	field := "Workflow.RateLimits[" + strconv.Itoa(i) + "]"
 	window, ok := rateLimitWindows[r.Per]
@@ -476,6 +560,8 @@ func staticRateLimitKey(scope string, i int) string {
 // static and a separator, then the caller's expression's value as a
 // string (CEL string() accepts a string or a number), so its buckets are
 // this declaration's alone.
+//
+//ds:def id=hatchet-scopedratelimitexpr-7864cad6 owner=@khanakia stability=stable
 func scopedRateLimitExpr(static, expr string) string {
 	return strconv.Quote(static+idemKeySep) + " + string(" + expr + ")"
 }
@@ -490,6 +576,8 @@ type backoffSpec struct {
 // is exact only when Initial equals Factor seconds (Initial·Factor^(n-1) =
 // Factor^n), so any other shape is refused rather than silently changed.
 // A zero Backoff means "retry at once" and maps to no backoff (ok false).
+//
+//ds:def id=hatchet-retrybackoff-vrbwvu97 owner=@khanakia stability=stable
 func retryBackoff(b workflow.Backoff) (spec backoffSpec, ok bool, err error) {
 	if b.Initial <= 0 {
 		return backoffSpec{}, false, nil
@@ -521,6 +609,8 @@ func retryBackoff(b workflow.Backoff) (spec backoffSpec, ok bool, err error) {
 // stepTimeout resolves a step's execution timeout: its own, else the
 // workflow default, else fallback. Hatchet always applies a timeout (its
 // server default is short), so "none" becomes the driver's fallback.
+//
+//ds:def id=hatchet-steptimeout-jkmqcsw5 owner=@khanakia stability=stable
 func stepTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration) time.Duration {
 	switch {
 	case s.Timeout > 0:
@@ -531,10 +621,86 @@ func stepTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration) 
 	return fallback
 }
 
+// userTimeout is the timeout a run step's attempt is held to by the
+// worker: the step's own, else the workflow default, else zero (none;
+// the engine still applies the driver's fallback, see stepTimeout).
+func userTimeout(s workflow.Step, wf workflow.Workflow) time.Duration {
+	switch {
+	case s.Timeout > 0:
+		return s.Timeout
+	case wf.Timeout > 0:
+		return wf.Timeout
+	}
+	return 0
+}
+
+// engineTimeoutMargin is how much longer than a run step's own timeout
+// the engine's execution timeout is: the worker enforces the step's
+// timeout itself (Client.callTimed) so the attempt fails with
+// workflow.ErrStepTimeout, and the engine's deadline, which fails the task
+// with the engine's own text, only catches a handler that ignores its
+// context, or a worker that died. It covers the engine starting its clock
+// when it assigns the task, a moment before the handler starts.
+//
+//ds:def id=hatchet-enginetimeoutmargin-nwx47exf owner=@khanakia stability=stable
+const engineTimeoutMargin = 5 * time.Second
+
+// engineTimeout is the execution timeout a run step is declared with: the
+// fallback when the step has no timeout of its own (userTimeout zero),
+// else its timeout rounded up to whole seconds (the SDK sends whole
+// seconds, truncating) plus engineTimeoutMargin.
+//
+//ds:def id=hatchet-enginetimeout-cuw8khf9 owner=@khanakia stability=stable
+func engineTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration) time.Duration {
+	d := userTimeout(s, wf)
+	if d <= 0 {
+		return fallback
+	}
+	return wholeSeconds(d) + engineTimeoutMargin
+}
+
+// waitTimeout is the execution timeout a wait step is declared with. The
+// engine counts a durable task's wait against that timeout and ends the
+// task when it passes (seen live on hatchet-lite v0.110.5), so it is at
+// least as long as the wait can last, in whole seconds, plus
+// engineTimeoutMargin: the wait's Timeout, or the time left from now (the
+// declaration) to its Deadline, which bounds every wait that begins
+// later; a wait with neither (forever) gets the fallback,
+// Config.StepTimeout. Step.Timeout, else Workflow.Timeout, raises it and
+// never lowers it: on the other drivers a wait ends by its event, Timeout
+// or Deadline only, and Workflow.Timeout is meant for the run steps. Now
+// is the wall clock the engine shares, not Config.Clock: the engine
+// compares the Deadline with its own.
+//
+//ds:def id=hatchet-waittimeout-cwq36qj9 owner=@khanakia stability=stable
+func waitTimeout(s workflow.Step, wf workflow.Workflow, fallback time.Duration, now time.Time) time.Duration {
+	w := s.Wait
+	d := fallback
+	switch {
+	case w.Timeout > 0:
+		d = wholeSeconds(w.Timeout) + engineTimeoutMargin
+	case !w.Deadline.IsZero():
+		d = wholeSeconds(max(w.Deadline.Sub(now), 0)) + engineTimeoutMargin
+	}
+	return max(d, wholeSeconds(userTimeout(s, wf)))
+}
+
+// wholeSeconds rounds d up to whole seconds: the SDK sends an execution
+// timeout in seconds, truncating.
+func wholeSeconds(d time.Duration) time.Duration {
+	up := d.Truncate(time.Second)
+	if up < d {
+		up += time.Second
+	}
+	return up
+}
+
 // runPriority maps Job.Priority onto Hatchet's three levels. Zero keeps
 // the engine default (its lowest level), 1 is medium, 2 and above high.
 // Hatchet has nothing below its default, so a negative priority is
 // refused.
+//
+//ds:def id=hatchet-runpriority-3dcz9qpp owner=@khanakia stability=stable
 func runPriority(p int) (*hatchetsdk.RunPriority, error) {
 	var v hatchetsdk.RunPriority
 	switch {
@@ -553,6 +719,8 @@ func runPriority(p int) (*hatchetsdk.RunPriority, error) {
 // encodeInput builds the run input Hatchet stores for payload: the exact
 // bytes under payloadField and, for a JSON object, its top-level fields
 // beside them.
+//
+//ds:def id=hatchet-encodeinput-47cxpm7v owner=@khanakia stability=stable
 func encodeInput(payload []byte) (map[string]any, error) {
 	in := map[string]any{}
 	if len(payload) == 0 {
@@ -605,6 +773,8 @@ func encodeOutput(out []byte) map[string]any {
 // "waiting" and the engine registering the durable wait is then still
 // seen. The name's length prefix makes the encoding unambiguous whatever
 // either part contains.
+//
+//ds:def id=hatchet-eventkey-p3rh4yc7 owner=@khanakia stability=stable
 func eventKey(name, key string) string {
 	return "wf:" + strconv.Itoa(len(name)) + ":" + name + ":" + key
 }
@@ -669,6 +839,8 @@ func idempotencyExpression(scope string) string {
 
 // runMetadata merges the job's labels with the driver's own keys, refusing
 // a label that would shadow one of them.
+//
+//ds:def id=hatchet-runmetadata-hrnkbdru owner=@khanakia stability=stable
 func runMetadata(labels map[string]string, idemKey string) (map[string]string, error) {
 	md := make(map[string]string, len(labels)+1)
 	for k, v := range labels {
@@ -706,6 +878,8 @@ func jobLabels(md map[string]string) map[string]string {
 
 // isReservedLabel reports whether k belongs to the driver or Hatchet.
 // traceparent is the W3C trace header the SDK injects on every trigger.
+//
+//ds:def id=hatchet-isreservedlabel-s394qze6 owner=@khanakia stability=stable
 func isReservedLabel(k string) bool {
 	return strings.HasPrefix(k, metadataPrefix) || strings.HasPrefix(k, hatchetMetadataPrefix) || k == traceparentKey
 }
@@ -738,18 +912,37 @@ func runStatus(s rest.V1TaskStatus) (workflow.Status, error) {
 	return "", fmt.Errorf("hatchet driver: unknown run status %q", s)
 }
 
-// checkDelayedKey refuses an idempotency key on a delayed start: Hatchet
-// checks the key only when the scheduled run fires, so a duplicate could
-// not be refused at enqueue. key is the key after the workflow's policy.
-func checkDelayedKey(key string, runAt time.Time) error {
-	if key != "" && !runAt.IsZero() {
-		return workflow.Unsupported("Job.IdempotencyKey", "with Job.RunAt: Hatchet checks the key only when the scheduled run fires, so a duplicate could not be refused at enqueue")
+// checkDelayedKey checks a delayed start that carries an idempotency key
+// (key is the key after the workflow's policy, now the wall clock). Such a
+// run starts at once, so the engine holds its key, and the workflow's
+// start gate sleeps until RunAt (hasStartGate). It is refused, naming
+// Job.IdempotencyKey, when the workflow has no gate (it has a
+// Concurrency, whose slots its delayed variant would not share), when this client
+// did not register the workflow (an enqueue-only client cannot tell
+// whether the workers declared a gate), and when RunAt is further ahead
+// than maxHold (Config.IdempotencyMaxHold), the longest the engine holds
+// a key: the key would lapse before the run starts.
+//
+//ds:def id=hatchet-checkdelayedkey-8s6en9y6 owner=@khanakia stability=stable
+func checkDelayedKey(wf workflow.Workflow, registered bool, key string, runAt, now time.Time, maxHold time.Duration) error {
+	if key == "" || runAt.IsZero() {
+		return nil
+	}
+	switch {
+	case !registered:
+		return workflow.Unsupported("Job.IdempotencyKey", "with Job.RunAt on workflow "+wf.Name+", which this client did not register: a keyed delayed start runs on the workflow's delayed variant, and an enqueue-only client cannot tell whether the workers declared one; register the workflow on this client")
+	case wf.Concurrency != nil:
+		return workflow.Unsupported("Job.IdempotencyKey", "with Job.RunAt on workflow "+wf.Name+", which has a Concurrency: a keyed delayed start runs at once on a copy of the workflow that sleeps until RunAt, and Hatchet keeps concurrency slots per workflow and holds one for a whole run, so the copy could neither share the workflow's slots nor sleep without holding one")
+	case runAt.Sub(now) > maxHold:
+		return workflow.Unsupported("Job.IdempotencyKey", fmt.Sprintf("with Job.RunAt more than Config.IdempotencyMaxHold (%s) ahead: the engine holds a key at most that long from the enqueue, so it would lapse before the run starts", maxHold))
 	}
 	return nil
 }
 
 // checkScheduleMisfire refuses any explicit misfire policy (see
 // misfireReason).
+//
+//ds:def id=hatchet-checkschedulemisfire-ucbwxfy2 owner=@khanakia stability=stable
 func checkScheduleMisfire(m workflow.Misfire) error {
 	if !m.IsZero() {
 		return unsupported("Schedule.Misfire", caps.Missing(workflow.RequiresSchedule(workflow.Schedule{Misfire: m, Location: time.UTC})), misfireReason)
@@ -759,12 +952,16 @@ func checkScheduleMisfire(m workflow.Misfire) error {
 
 // unsupported is workflow.Unsupported that also names the capability the
 // driver lacks, so a caller (and the conformance suite) can match on it.
+//
+//ds:def id=hatchet-unsupported-z4dbbpq3 owner=@khanakia stability=stable
 func unsupported(field string, missing workflow.Caps, reason string) error {
 	return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: reason}
 }
 
 // checkScheduleZone refuses any zone but UTC: Hatchet evaluates crons in
 // UTC only, and shifting the expression would break across DST.
+//
+//ds:def id=hatchet-checkschedulezone-9z4wzpcs owner=@khanakia stability=stable
 func checkScheduleZone(loc *time.Location) error {
 	if !workflow.IsUTC(loc) {
 		return unsupported("Schedule.Location", workflow.CapCronZone, "Hatchet evaluates crons in UTC only, not "+loc.String())
@@ -784,6 +981,8 @@ const errNotFoundStatus = "got status 404"
 const errNoContentStatus = "got status 204"
 
 // isNoContent reports whether err is the SDK's 204 "error".
+//
+//ds:def id=hatchet-isnocontent-trj95gub owner=@khanakia stability=stable
 func isNoContent(err error) bool {
 	return err != nil && strings.Contains(err.Error(), errNoContentStatus)
 }

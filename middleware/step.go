@@ -13,6 +13,8 @@ import (
 )
 
 // ErrPanic is wrapped by the error Recover returns for a panicking step.
+//
+//ds:def id=mw-errpanic-363z3krr owner=@khanakia stability=stable
 var ErrPanic = errors.New("workflow/middleware: step panicked")
 
 // StepPhase names the line Logging is about to write.
@@ -21,14 +23,19 @@ type StepPhase string
 // The phases of one step attempt, as Logging reports them to a LogLevel
 // function.
 const (
-	StepStarted  StepPhase = "started"
+	//ds:def id=mw-stepstarted-hspsjmzj owner=@khanakia stability=stable
+	StepStarted StepPhase = "started"
+	//ds:def id=mw-stepfinished-qc8jaym4 owner=@khanakia stability=stable
 	StepFinished StepPhase = "finished"
-	StepFailed   StepPhase = "failed"
+	//ds:def id=mw-stepfailed-myghcstz owner=@khanakia stability=stable
+	StepFailed StepPhase = "failed"
 )
 
 // StepLogEvent is what a LogLevel function sees for each line Logging
 // writes. Err is set only for StepFailed. Info is the driver's StepInfo
 // and HasInfo is false when ctx carried none.
+//
+//ds:def id=mw-steplogevent-hpnm86wq owner=@khanakia stability=stable
 type StepLogEvent struct {
 	Phase   StepPhase
 	Err     error
@@ -45,6 +52,8 @@ type loggingConfig struct {
 
 // defaultLogLevel is Logging's level when no WithLogLevel is given: Debug
 // for start and finish, Error for every failed attempt.
+//
+//ds:def id=mw-defaultloglevel-djyuwq58 owner=@khanakia stability=stable
 func defaultLogLevel(_ context.Context, ev StepLogEvent) slog.Level {
 	if ev.Phase == StepFailed {
 		return slog.LevelError
@@ -69,6 +78,8 @@ func defaultLogLevel(_ context.Context, ev StepLogEvent) slog.Level {
 //	}))
 //
 // A nil fn keeps the default.
+//
+//ds:def id=mw-withloglevel-eva4tum6 owner=@khanakia stability=stable
 func WithLogLevel(fn func(ctx context.Context, ev StepLogEvent) slog.Level) LoggingOption {
 	return func(c *loggingConfig) {
 		if fn != nil {
@@ -84,6 +95,8 @@ func WithLogLevel(fn func(ctx context.Context, ev StepLogEvent) slog.Level) Logg
 // and attempt. It never logs payload bytes or labels: either can hold
 // personal data or secrets, and a codec may not have run yet. A nil
 // logger makes the middleware a no-op.
+//
+//ds:def id=mw-logging-zanq5b67 owner=@khanakia stability=stable
 func Logging(l *slog.Logger, clk clock.Clock, opts ...LoggingOption) workflow.Middleware {
 	if clk == nil {
 		clk = clock.Real{}
@@ -133,6 +146,8 @@ func Logging(l *slog.Logger, clk clock.Clock, opts ...LoggingOption) workflow.Mi
 // The error implements workflow.StackTracer, so a driver with
 // CapErrorHistory stores the stack in AttemptError.Stack, apart from the
 // message.
+//
+//ds:def id=mw-recover-a7qbjc9u owner=@khanakia stability=stable
 func Recover(l *slog.Logger) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) (out []byte, err error) {
@@ -156,6 +171,8 @@ func Recover(l *slog.Logger) workflow.Middleware {
 // that keeps running would leak it and let two attempts of one step
 // overlap. A d of zero or less is a no-op. Drivers already apply
 // Step.Timeout; this is for a cap set by the app across every workflow.
+//
+//ds:def id=mw-timeout-52xzkfgg owner=@khanakia stability=stable
 func Timeout(d time.Duration) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		if d <= 0 {
@@ -172,6 +189,8 @@ func Timeout(d time.Duration) workflow.Middleware {
 // FailOn marks an error permanent when match reports true, so the step
 // fails at once instead of spending its retries. An error already permanent stays so. A nil match is a
 // no-op.
+//
+//ds:def id=mw-failon-pnqdj4g7 owner=@khanakia stability=stable
 func FailOn(match func(error) bool) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		if match == nil {
@@ -190,6 +209,8 @@ func FailOn(match func(error) bool) workflow.Middleware {
 // Skip does not run the step when skip reports true, and returns a nil
 // output and a nil error: the step counts as done. Child steps then receive empty input, so a step whose
 // children need its output should not be skipped. A nil skip is a no-op.
+//
+//ds:def id=mw-skip-2qh78qjd owner=@khanakia stability=stable
 func Skip(skip func(ctx context.Context, in []byte) bool) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		if skip == nil {

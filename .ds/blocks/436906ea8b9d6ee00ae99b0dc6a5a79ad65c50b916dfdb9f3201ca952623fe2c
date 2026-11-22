@@ -1,0 +1,16 @@
+func newestRefused(e *env, s workflow.ConcurrencyStrategy) {
+	e.need(workflow.CapConcurrencyKey)
+	tr, g := newTracker(), newGate(e.t)
+	wf := concurrencyWorkflow(e, s, tr, g)
+	e.up(wf)
+	a := e.enqueue(job(wf.Name, "x", "a"))
+	e.eventually("run a to start", 0, func() bool { return tr.hasStarted("x:a") })
+	b := e.enqueue(job(wf.Name, "x", "b"))
+	e.waitStatus(b, workflow.StatusCancelled, 0)
+	g.open()
+	e.waitStatus(a, workflow.StatusSucceeded, 0)
+	e.quiet()
+	if tr.hasStarted("x:b") {
+		e.t.Fatalf("the newest run of a full bucket started under %s", s)
+	}
+}

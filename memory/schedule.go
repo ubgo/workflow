@@ -88,6 +88,8 @@ func bounded(s cron.Schedule, a workflow.Active) cron.Schedule {
 
 // keepLocked forgets the oldest finished runs s fired beyond its KeepRuns,
 // as Delete would. Callers hold Client.mu.
+//
+//ds:def id=memory-client-keeplocked-w39asqby owner=@khanakia stability=stable
 func (c *Client) keepLocked(s *schedule) {
 	if s.keep <= 0 {
 		return
@@ -129,6 +131,8 @@ func declaredID(wf string, i int) workflow.ScheduleID {
 // effectiveMisfire is the policy the loop applies: the schedule's own, or
 // for the zero policy this driver's default, fire the newest missed tick
 // once with no age limit.
+//
+//ds:def id=memory-effectivemisfire-cz2fnaea owner=@khanakia stability=stable
 func effectiveMisfire(m workflow.Misfire) workflow.Misfire {
 	if m.IsZero() {
 		return workflow.Misfire{Policy: workflow.MisfireFireOnce}
@@ -152,6 +156,8 @@ func (c *Client) schedPausedLocked(s *schedule) bool { return s.paused || c.sche
 // paused, each wake reports its tick skipped and moves caught past it, so
 // a tick that fell due during a pause never fires, not even on resume:
 // a pause means "not now", not "later".
+//
+//ds:def id=memory-client-startschedule-ppg5c9vm owner=@khanakia stability=stable
 func (c *Client) startSchedule(s *schedule) {
 	s.caught = c.clk.Now()
 	if c.schedHeap {
@@ -213,6 +219,8 @@ type wake struct {
 // policy (reporting the dropped ones), and moves caught to now. ok is
 // false when s was halted. Callers hold Client.mu; fire runs after they
 // release it.
+//
+//ds:def id=memory-client-wakeschedulelocked-sx48wwqs owner=@khanakia stability=stable
 func (c *Client) wakeScheduleLocked(s *schedule) (w wake, ok bool) {
 	if s.halted {
 		return wake{}, false
@@ -300,6 +308,8 @@ func (c *Client) fire(s *schedule, reg *registered, ticks []time.Time, windows w
 
 // askWhen calls a ScheduleWhen, treating a panic as "skip" so app code
 // cannot kill the schedule.
+//
+//ds:def id=memory-client-askwhen-w456jtt5 owner=@khanakia stability=stable
 func (c *Client) askWhen(when func(context.Context, workflow.Tick) bool, tk workflow.Tick) (ok bool) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -319,6 +329,8 @@ func (c *Client) askWhen(when func(context.Context, workflow.Tick) bool, tk work
 // Unschedule) instead of adding a second. A replaced schedule computes its
 // next tick from the moment of the call, so an unchanged schedule keeps
 // its next fire time. Without a Name every call adds a schedule.
+//
+//ds:def id=memory-client-schedule-vwvtn5w4 owner=@khanakia stability=stable
 func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -388,6 +400,8 @@ func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.Sc
 // no-op; an id this client never issued returns ErrNotFound. A declared
 // cron is part of its workflow and is refused (ErrInvalid): remove it from
 // Workflow.Cron instead, or pause it.
+//
+//ds:def id=memory-client-unschedule-x66n2ucj owner=@khanakia stability=stable
 func (c *Client) Unschedule(_ context.Context, id workflow.ScheduleID) error {
 	if id.IsZero() {
 		return nil
@@ -409,6 +423,8 @@ func (c *Client) Unschedule(_ context.Context, id workflow.ScheduleID) error {
 // Schedules lists the live schedules, declared and run-time, sorted by
 // workflow, name and ID, each with its next fire time in its zone (zero
 // while paused).
+//
+//ds:def id=memory-client-schedules-mbv79g96 owner=@khanakia stability=stable
 func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -497,6 +513,8 @@ func (c *Client) setSchedulePause(t workflow.ScheduleTarget, pause bool) error {
 // lastStatusLocked is the status of s's last run, or "" when s never
 // fired or the run has been forgotten (retention, Delete). Callers hold
 // Client.mu.
+//
+//ds:def id=memory-client-laststatuslocked-bpc4xqnx owner=@khanakia stability=stable
 func (c *Client) lastStatusLocked(s *schedule) workflow.Status {
 	if s.last.Run.IsZero() {
 		return ""
@@ -519,6 +537,8 @@ func (c *Client) lastLocked(s *schedule) workflow.ScheduleLast {
 // TriggerSchedule runs schedule id now with its input and labels (see
 // workflow.ScheduleTriggerer): it obeys the overlap policy, ignores
 // windows, ScheduleWhen and a pause, and becomes the schedule's last fire.
+//
+//ds:def id=memory-client-triggerschedule-mj54f7zj owner=@khanakia stability=stable
 func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

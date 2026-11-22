@@ -1,0 +1,10 @@
+type ResetOptions struct {
+	// Succeeded also accepts a run that ended StatusSucceeded: the
+	// explicit opt-in for redoing work that already succeeded. The run
+	// then gets LabelRedo. Its chain (Job.Chain) was handed on when it
+	// succeeded and is never handed on again: the jobs it started are
+	// runs of their own, reset those if they must run again. A driver
+	// that holds a chain handoff still pending refuses with
+	// ErrWrongState.
+	Succeeded bool `json:"succeeded,omitempty"`
+}

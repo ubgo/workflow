@@ -1,0 +1,7 @@
+func WithIDFunc(fn func() (ID, error)) Option {
+	return func(m *Manager) {
+		if fn != nil {
+			m.newID = fn
+		}
+	}
+}

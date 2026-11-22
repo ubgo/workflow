@@ -1,0 +1,8 @@
+type LaunchdOptions struct {
+	// Zone is the time zone of the Mac the plist is installed on.
+	// Required: launchd reads StartCalendarInterval on the machine's own
+	// clock and has no zone setting, so a schedule is exported only when
+	// its Location is this zone (the NextFire form converts its one
+	// instant into it instead).
+	Zone *time.Location
+}

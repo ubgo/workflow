@@ -1,0 +1,4 @@
+var notForwarded = workflow.CapsOf(
+	workflow.CapOverlapSkip, workflow.CapScheduleKeep, workflow.CapScheduleHistory,
+	workflow.CapScheduleTrigger, workflow.CapTickEvents,
+)

@@ -1,0 +1,5 @@
+var coreAttributes = map[string]bool{
+	"id": true, "source": true, "specversion": true, "type": true,
+	"datacontenttype": true, "dataschema": true, "subject": true, "time": true,
+	"data": true, "data_base64": true,
+}

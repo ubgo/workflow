@@ -11,16 +11,22 @@ import (
 // observer can tell which schedule a run came from (AttachScheduleHooks
 // relies on it). It is under the reserved LabelPrefixInternal, so an app
 // cannot set it by accident.
+//
+//ds:def id=labelschedule-89dq6u92 owner=@khanakia stability=stable
 const LabelSchedule = LabelPrefixInternal + "schedule"
 
 // LabelScheduleName is set beside LabelSchedule to the schedule's Name
 // (for a declared cron, its expression), so a run-finished observer on
 // any node can match a run to a named schedule without a lookup.
+//
+//ds:def id=labelschedulename-k9tveqtn owner=@khanakia stability=stable
 const LabelScheduleName = LabelPrefixInternal + "schedule-name"
 
 // FiredLabels returns the labels of a run a schedule fires: a copy of the
 // schedule's labels plus LabelSchedule and LabelScheduleName. Drivers with
 // CapTickEvents build every fired job's labels with it.
+//
+//ds:def id=firedlabels-jhhxe6ux owner=@khanakia stability=stable
 func FiredLabels(labels map[string]string, id ScheduleID, name string) map[string]string {
 	out := make(map[string]string, len(labels)+2)
 	for k, v := range labels {
@@ -35,12 +41,16 @@ func FiredLabels(labels map[string]string, id ScheduleID, name string) map[strin
 // "HH:MM" each (24-hour). From is inclusive and To exclusive; a To before
 // From wraps midnight ("22:00" to "06:00" is the night). From equal to To
 // is refused, because it would mean either nothing or the whole day.
+//
+//ds:def id=window-srw8hxfa owner=@khanakia stability=stable
 type Window struct {
 	From, To string
 }
 
 // Windows limits a schedule's ticks by time of day: a tick fires only inside at least one Between window
 // (no Between windows: at any time) and outside every Unless window.
+//
+//ds:def id=windows-69x7f7t3 owner=@khanakia stability=stable
 type Windows struct {
 	Between []Window
 	Unless  []Window
@@ -52,6 +62,8 @@ func (w Windows) IsZero() bool { return len(w.Between) == 0 && len(w.Unless) == 
 // Allows reports whether t, read on loc's wall clock (UTC when loc is
 // nil), passes w. Windows that fail validation never match. It is a pure
 // function, so every driver applies windows the same way.
+//
+//ds:def id=windows-allows-xr62c52g owner=@khanakia stability=stable
 func (w Windows) Allows(t time.Time, loc *time.Location) bool {
 	if loc == nil {
 		loc = time.UTC
@@ -79,6 +91,8 @@ func (w Windows) Allows(t time.Time, loc *time.Location) bool {
 }
 
 // contains reports whether minute-of-day m falls in the window.
+//
+//ds:def id=window-contains-adfcke6z owner=@khanakia stability=stable
 func (w Window) contains(m int) bool {
 	from, err1 := parseHHMM(w.From)
 	to, err2 := parseHHMM(w.To)
@@ -101,6 +115,8 @@ func parseHHMM(s string) (int, error) {
 }
 
 // validateWindows checks every window; the caller names where they sit.
+//
+//ds:def id=validatewindows-ymvv75xw owner=@khanakia stability=stable
 func validateWindows(w Windows) error {
 	for _, list := range [][]Window{w.Between, w.Unless} {
 		for _, win := range list {
@@ -121,34 +137,43 @@ func validateWindows(w Windows) error {
 }
 
 // TickOutcome is what happened to one schedule tick.
+//
+//ds:def id=tickoutcome-ezfy49wq owner=@khanakia stability=stable
 type TickOutcome string
 
 // The tick outcomes.
 const (
 	// TickFired: the tick enqueued a run (Tick.Run), or tried to and the
 	// enqueue failed (Tick.Err).
+	//ds:def id=tickfired-ggyzp7dm owner=@khanakia stability=stable
 	TickFired TickOutcome = "fired"
 
 	// TickSkipped: the tick was due and on time but did not fire;
 	// Tick.Reason says why.
+	//ds:def id=tickskipped-9qvjzprc owner=@khanakia stability=stable
 	TickSkipped TickOutcome = "skipped"
 
 	// TickMisfired: the scheduler woke late and its misfire policy
 	// dropped Tick.Missed ticks, which a scheduler that looks only at the
 	// current minute cannot even see.
+	//ds:def id=tickmisfired-gynura72 owner=@khanakia stability=stable
 	TickMisfired TickOutcome = "misfired"
 )
 
 // The reasons of a TickSkipped.
 const (
+	//ds:def id=tickreasonwhen-uv3qk2hy owner=@khanakia stability=stable
 	TickReasonWhen   = "when"   // Workflow.ScheduleWhen returned false
 	TickReasonWindow = "window" // the tick fell outside the schedule's Windows
+	//ds:def id=tickreasonpaused-mxj3utjy owner=@khanakia stability=stable
 	TickReasonPaused = "paused" // the schedule was paused (SchedulePauser)
 	// TickReasonOverlap (overlap.go): OverlapSkip held the tick back.
 )
 
 // Tick reports one tick of a schedule, or, for TickMisfired, one batch of
 // dropped ticks.
+//
+//ds:def id=tick-druqq94t owner=@khanakia stability=stable
 type Tick struct {
 	// ScheduleID is the schedule. For a declared Workflow.Cron entry it
 	// is the driver's stable id for that declaration, the same one
@@ -196,6 +221,8 @@ type Tick struct {
 
 // TickObserver observes ticks. It must be idempotent, because delivery is
 // at least once.
+//
+//ds:def id=tickobserver-qwq6qhkd owner=@khanakia stability=stable
 type TickObserver func(ctx context.Context, t Tick)
 
 // TickNotifier is an optional interface a client implements to report
@@ -205,6 +232,8 @@ type TickObserver func(ctx context.Context, t Tick)
 // registration order, panics are recovered, delivery is at least once and
 // may be lost on a crash. Ticks are reported only by the node that fired
 // or skipped them.
+//
+//ds:def id=ticknotifier-mmbkug5k owner=@khanakia stability=stable
 type TickNotifier interface {
 	OnTick(fn TickObserver) error
 }
@@ -214,6 +243,8 @@ type TickNotifier interface {
 // covers ticks in (last, now] the policy did not fire, scanning in chunks
 // so a long outage of a frequent cron costs bounded memory; it is capped
 // at maxCountedTicks. The zero policy returns nil and 0, as Due does.
+//
+//ds:def id=misfire-plan-knwft3x6 owner=@khanakia stability=stable
 func (m Misfire) Plan(src TickSource, last, now time.Time, loc *time.Location) (fire []time.Time, dropped int) {
 	fire = m.Due(src, last, now, loc)
 	if m.IsZero() || !now.After(last) {
@@ -246,6 +277,8 @@ func countTicks(src TickSource, from, to time.Time, loc *time.Location) int {
 
 // LastTick returns the newest tick of src in (from, to], or zero when
 // there is none. Drivers use it to fill Tick.At of a TickMisfired.
+//
+//ds:def id=lasttick-zzx4bpqn owner=@khanakia stability=stable
 func LastTick(src TickSource, from, to time.Time, loc *time.Location) time.Time {
 	t := newestTicks(src, from, to, loc, 1)
 	if len(t) == 0 {
@@ -255,6 +288,8 @@ func LastTick(src TickSource, from, to time.Time, loc *time.Location) time.Time 
 }
 
 // ScheduleInfo is one live schedule as ScheduleLister reports it.
+//
+//ds:def id=scheduleinfo-hudmtgvr owner=@khanakia stability=stable
 type ScheduleInfo struct {
 	// ID is the schedule. A declared cron has the driver's stable id for
 	// that declaration.
@@ -319,12 +354,16 @@ type ScheduleInfo struct {
 // declared and made at run time, sorted by Workflow, then Name, then ID.
 // Unscheduled ones are not listed. A client implements it when it
 // declares CapScheduleList.
+//
+//ds:def id=schedulelister-2vgjk9bh owner=@khanakia stability=stable
 type ScheduleLister interface {
 	Schedules(ctx context.Context) ([]ScheduleInfo, error)
 }
 
 // ScheduleTarget names a schedule for SchedulePauser, or all of them.
 // Exactly one field is set.
+//
+//ds:def id=scheduletarget-hnk6efmn owner=@khanakia stability=stable
 type ScheduleTarget struct {
 	ID  ScheduleID
 	All bool
@@ -332,6 +371,8 @@ type ScheduleTarget struct {
 
 // ValidateScheduleTarget refuses a target with neither or both fields
 // set. Errors wrap ErrInvalid.
+//
+//ds:def id=validatescheduletarget-tap9kqc5 owner=@khanakia stability=stable
 func ValidateScheduleTarget(t ScheduleTarget) error {
 	if t.ID.IsZero() == !t.All {
 		return invalidf("schedule target must set exactly one of ID and All")
@@ -353,6 +394,8 @@ func ValidateScheduleTarget(t ScheduleTarget) error {
 // the call; ResumeSchedule with All clears every pause. Pause and resume
 // are idempotent; an unknown ID returns ErrNotFound. On a durable driver
 // the pause is stored.
+//
+//ds:def id=schedulepauser-ed8jzah5 owner=@khanakia stability=stable
 type SchedulePauser interface {
 	PauseSchedule(ctx context.Context, t ScheduleTarget) error
 	ResumeSchedule(ctx context.Context, t ScheduleTarget) error

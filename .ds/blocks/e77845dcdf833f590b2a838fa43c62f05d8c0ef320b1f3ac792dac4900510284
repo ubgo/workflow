@@ -1,0 +1,34 @@
+type LifecycleEvent struct {
+	Kind     LifecycleKind
+	Ref      RunRef
+	Workflow string
+	Queue    string
+	Tenant   string
+
+	// Step and Attempt name the attempt for Started, Retrying, Snoozed
+	// and Progress. For Finished, Step is the step whose failure ended the
+	// run (RunEvent.Step) and Attempt is zero; for Inserted both are
+	// empty.
+	Step    string
+	Attempt int
+
+	// Status is the run's status after the event.
+	Status Status
+
+	// Err is the attempt's error (Retrying, Snoozed) or the run's
+	// (Finished, failed); nil otherwise.
+	Err error
+
+	// Progress is set for LifecycleProgress.
+	Progress *Progress
+
+	// Node is the node the event happened on (CapNodeIdentity); empty
+	// otherwise.
+	Node string
+
+	// Labels are the run's labels. Observers must not modify them.
+	Labels map[string]string
+
+	// At is when it happened, on the driver's clock.
+	At time.Time
+}

@@ -1,0 +1,21 @@
+func SignalWithStart(ctx context.Context, client Client, job Job, ev Event) (RunRef, error) {
+	if client == nil || ev.Name == "" {
+		return RunRef{}, invalidf("SignalWithStart needs a client and an event name")
+	}
+	if job.IdempotencyKey == "" {
+		return RunRef{}, invalidf("SignalWithStart needs Job.IdempotencyKey, so an existing run is reused")
+	}
+	for _, need := range []Caps{CapIdempotencyKey, CapWaitForEvent} {
+		if !client.Capabilities().Has(need) {
+			return RunRef{}, &UnsupportedError{Field: "SignalWithStart", Missing: need, Reason: "it reuses a run by key and resumes it with a wait step"}
+		}
+	}
+	ref, err := client.Enqueue(ctx, job)
+	if err != nil {
+		return RunRef{}, fmt.Errorf("workflow: signal with start: enqueue: %w", err)
+	}
+	if err := client.Signal(ctx, ev); err != nil {
+		return ref, fmt.Errorf("workflow: signal with start: signal: %w", err)
+	}
+	return ref, nil
+}

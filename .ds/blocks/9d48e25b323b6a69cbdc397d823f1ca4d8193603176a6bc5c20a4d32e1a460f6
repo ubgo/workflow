@@ -1,0 +1,19 @@
+func retryCaps(p RetryPolicy) Caps {
+	var c Caps
+	if p.Backoff.Jitter > 0 {
+		c = c.With(CapRetryJitter)
+	}
+	if p.DelayFor != nil {
+		c = c.With(CapRetryDelay)
+	}
+	if p.Until > 0 {
+		c = c.With(CapRetryUntil)
+	}
+	if p.MaxErrors > 0 {
+		c = c.With(CapRetryMaxErrors)
+	}
+	if p.DiscardOnExhaust {
+		c = c.With(CapDiscardExhausted, CapRunStates)
+	}
+	return c
+}

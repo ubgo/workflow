@@ -1,0 +1,1 @@
+func (c *Client) firesSchedules(leader bool) bool { return !c.noScheduler && leader }

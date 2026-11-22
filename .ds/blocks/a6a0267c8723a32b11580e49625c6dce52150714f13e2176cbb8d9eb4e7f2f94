@@ -1,0 +1,1 @@
+func ArgsKeyPrefix(p string) ArgsOption { return func(k *argsKey) { k.prefix = p } }

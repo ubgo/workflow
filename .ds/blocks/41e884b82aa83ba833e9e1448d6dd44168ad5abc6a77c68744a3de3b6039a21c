@@ -1,0 +1,36 @@
+func TestEffectiveRetriesForPrecedence(t *testing.T) {
+	job := &RetryPolicy{Max: 1}
+	step := &RetryPolicy{Max: 2}
+	wf := Workflow{Retry: RetryPolicy{Max: 3}}
+	cases := []struct {
+		name string
+		step *RetryPolicy
+		job  *RetryPolicy
+		wf   Workflow
+		want int
+	}{
+		{"job wins over step and workflow", step, job, wf, 1},
+		{"step wins over workflow", step, nil, wf, 2},
+		{"workflow when step and job are unset", nil, nil, wf, 3},
+		{"default when nothing is set", nil, nil, Workflow{}, DefaultRetryMax},
+		{"RetriesNone on a step beats the workflow", RetriesNone(), nil, wf, 0},
+		{"job beats RetriesNone", RetriesNone(), job, wf, 1},
+	}
+	for _, c := range cases {
+		got := EffectiveRetriesFor(Step{Retry: c.step}, c.wf, Job{Retry: c.job}).Max
+		if got != c.want {
+			t.Errorf("%s: Max %d, want %d", c.name, got, c.want)
+		}
+		if c.job == nil {
+			if got := EffectiveRetries(Step{Retry: c.step}, c.wf).Max; got != c.want {
+				t.Errorf("%s: EffectiveRetries Max %d, want %d", c.name, got, c.want)
+			}
+		}
+	}
+	// A winning policy is whole: the step's zero DiscardOnExhaust does not
+	// inherit the workflow's.
+	wf.Retry.DiscardOnExhaust = true
+	if EffectiveRetriesFor(Step{Retry: step}, wf, Job{}).DiscardOnExhaust {
+		t.Error("policies must not merge field by field")
+	}
+}

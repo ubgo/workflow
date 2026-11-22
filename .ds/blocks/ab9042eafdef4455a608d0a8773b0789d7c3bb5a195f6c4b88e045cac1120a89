@@ -1,0 +1,6 @@
+func (s *store) lockingRead() string {
+	if s.engine == engineSQLite {
+		return ""
+	}
+	return " FOR SHARE"
+}

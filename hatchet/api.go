@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -37,6 +38,8 @@ type API struct {
 // the SDK itself does; pass serverURL when the engine is reached at
 // another address (HATCHET_CLIENT_SERVER_URL). The token is only decoded,
 // not verified: the engine verifies it on every call.
+//
+//ds:def id=hatchet-newapi-ngnn5g33 owner=@khanakia stability=stable
 func NewAPI(token, serverURL string) (*API, error) {
 	claims, err := tokenClaims(token)
 	if err != nil {
@@ -92,6 +95,8 @@ func tokenClaims(token string) (jwtClaims, error) {
 // a pause into a delayed cancel. The workflow.Pauser contract is "hold,
 // never cancel", so the driver sends a hundred years, in the "<n>y" form
 // the engine parses exactly (up to 8 digits, then d, w or y).
+//
+//ds:def id=hatchet-pausequeuettl-gmqt4v6r owner=@khanakia stability=stable
 const pauseQueueTTL = "100y"
 
 // pauseRequest is the engine's pause request: hold queued runs for ttl,
@@ -117,6 +122,8 @@ func unpauseRequest() (rest.WorkflowUpdateRequest, error) {
 
 // capabilities is what this client declares: the fixed set, plus pause
 // when Config.API is set.
+//
+//ds:def id=hatchet-client-capabilities-3ms5edtr owner=@khanakia stability=stable
 func (c *Client) capabilities() workflow.Caps {
 	if c.cfg.API != nil {
 		return workflow.CapsOf(caps, workflow.CapPauseWorkflow, workflow.CapSchedulePause)
@@ -130,15 +137,20 @@ var (
 )
 
 // errPauseAll is why PauseAll and PauseSchedule(All) are refused.
+//
+//ds:def id=hatchet-errpauseall-z8c4b762 owner=@khanakia stability=stable
 const errPauseAll = "the Hatchet engine stores a pause per workflow (and per cron trigger), with no pause of everything that would also hold workflows and triggers made later; pause each one"
 
 // Pause holds the runs of one workflow (workflow.Pauser) through the
 // engine's workflow pause: queued steps move aside and are not assigned,
 // running steps finish, Enqueue still works, and crons and delayed starts
-// that come due are queued and held too. The pause is stored on the
+// that come due are queued and held too (a keyed delayed start's steps as
+// well: its delayed variant is paused with it). The pause is stored on the
 // engine, so every worker obeys it. Needs Config.API. PauseQueue and
 // PauseAll are refused: a queue is not a thing the engine pauses, and
 // the engine has no pause of everything (see errPauseAll).
+//
+//ds:def id=hatchet-client-pause-g7q4ssw8 owner=@khanakia stability=stable
 func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	if err := workflow.CheckPause(c.capabilities(), t); err != nil {
 		return err
@@ -150,13 +162,15 @@ func (c *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
 	if err != nil {
 		return fmt.Errorf("hatchet driver: pause request: %w", err)
 	}
-	return c.updateWorkflow(ctx, t.Workflow, req)
+	return c.updateWithVariant(ctx, t.Workflow, req)
 }
 
 // Resume releases a paused workflow (workflow.Pauser); the engine queues
 // its held steps again. Resume(PauseAll()) resumes every paused workflow
 // of this client's namespace. Resuming a workflow that is not paused is a
 // no-op.
+//
+//ds:def id=hatchet-client-resume-3tkbjrce owner=@khanakia stability=stable
 func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
 	if err := workflow.CheckPause(c.capabilities(), t); err != nil {
 		return err
@@ -166,16 +180,30 @@ func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
 		return fmt.Errorf("hatchet driver: resume request: %w", err)
 	}
 	if !t.All {
-		return c.updateWorkflow(ctx, t.Workflow, req)
+		return c.updateWithVariant(ctx, t.Workflow, req)
 	}
 	paused, err := c.Paused(ctx)
 	if err != nil {
 		return err
 	}
 	for _, p := range paused {
-		if err := c.updateWorkflow(ctx, p.Workflow, req); err != nil {
+		if err := c.updateWithVariant(ctx, p.Workflow, req); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// updateWithVariant sends req for workflow name and then for its delayed
+// variant (delayedName), so a pause holds the keyed delayed starts too and
+// a resume releases them. A variant the engine does not know (a workflow
+// with a Concurrency or IdempotencyOff has none) is skipped.
+func (c *Client) updateWithVariant(ctx context.Context, name string, req rest.WorkflowUpdateRequest) error {
+	if err := c.updateWorkflow(ctx, name, req); err != nil {
+		return err
+	}
+	if err := c.updateWorkflow(ctx, delayedName(name), req); err != nil && !errors.Is(err, workflow.ErrNotFound) {
+		return err
 	}
 	return nil
 }
@@ -183,6 +211,8 @@ func (c *Client) Resume(ctx context.Context, t workflow.PauseTarget) error {
 // Paused lists the paused workflows of this client's namespace, by name
 // (workflow.Pauser). It reads the engine, so it sees pauses made by any
 // process or in the dashboard.
+//
+//ds:def id=hatchet-client-paused-c4qesxnc owner=@khanakia stability=stable
 func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 	api, err := c.api()
 	if err != nil {
@@ -207,7 +237,8 @@ func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
 			if w.IsPaused == nil || !*w.IsPaused {
 				continue
 			}
-			if name, ok := c.localName(w.Name); ok {
+			// A delayed variant is paused with its workflow, not listed.
+			if name, ok := c.localName(w.Name); ok && !strings.HasSuffix(name, delayedSuffix) {
 				out = append(out, workflow.PauseWorkflow(name))
 			}
 		}
@@ -278,6 +309,8 @@ func (c *Client) workflowID(ctx context.Context, api *API, name string) (openapi
 // never fired, whatever the misfire policy: the engine does not catch up
 // (Hatchet accepts no misfire policy). PauseSchedule(All) is refused (see
 // errPauseAll). An unknown ID returns ErrNotFound. Needs Config.API.
+//
+//ds:def id=hatchet-client-pauseschedule-m3skypt5 owner=@khanakia stability=stable
 func (c *Client) PauseSchedule(ctx context.Context, t workflow.ScheduleTarget) error {
 	if err := c.checkSchedulePause(t); err != nil {
 		return err

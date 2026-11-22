@@ -1,0 +1,47 @@
+func (c *Client) Register(wf workflow.Workflow) error {
+	if err := workflow.Validate(wf); err != nil {
+		return err
+	}
+	if err := workflow.CheckSlots(wf, c.workers); err != nil {
+		return err
+	}
+	reg := &registered{
+		wf:       wf,
+		handlers: map[string]workflow.Handler{},
+		children: map[string][]string{},
+		steps:    map[string]workflow.Step{},
+	}
+	for i, expr := range wf.Cron {
+		if _, err := c.parseFor(expr, declaredSpec(wf)); err != nil {
+			return fmt.Errorf("%w: workflow %q: Cron[%d]: %w", workflow.ErrInvalid, wf.Name, i, err)
+		}
+		reg.crons = append(reg.crons, expr)
+	}
+	if len(wf.Cron) > 0 {
+		if _, err := encodeLocation(cronLocation(wf)); err != nil {
+			return err
+		}
+	}
+	for _, s := range wf.Steps {
+		reg.steps[s.Name] = s
+		if s.Run != nil {
+			reg.handlers[s.Name] = c.wrap(s.Run)
+		}
+		for _, p := range s.After {
+			reg.children[p] = append(reg.children[p], s.Name)
+		}
+	}
+	if wf.OnFailure != nil {
+		reg.onFailure = c.wrap(wf.OnFailure)
+	}
+	if wf.OnTimeout != nil {
+		reg.onTimeout = c.wrap(wf.OnTimeout)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return workflow.ErrAlreadyStarted
+	}
+	c.wfs[wf.Name] = reg
+	return nil
+}

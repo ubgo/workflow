@@ -44,6 +44,8 @@ func queueLimits(qs []workflow.QueueConfig) []queueLimit {
 // slot, and no separate counter exists to drift. The count is only safe
 // under the queue's lock row (lockLimits), which makes the check and the
 // claim one serialised step across clients.
+//
+//ds:def id=sql-client-limitsql-ncv3ctgs owner=@khanakia stability=stable
 func (c *Client) limitSQL() string {
 	out := ""
 	for range c.limits {

@@ -1,0 +1,7 @@
+func NewPromiseStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*PromiseStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.PromiseStore(), nil
+}

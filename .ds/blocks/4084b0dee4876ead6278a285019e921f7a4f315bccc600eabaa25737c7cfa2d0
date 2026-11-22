@@ -1,0 +1,3 @@
+func InlineEvents(events ...Event) InlineOption {
+	return func(c *inlineConfig) { c.events = append(c.events, events...) }
+}

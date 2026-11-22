@@ -1,0 +1,9 @@
+func FiredLabels(labels map[string]string, id ScheduleID, name string) map[string]string {
+	out := make(map[string]string, len(labels)+2)
+	for k, v := range labels {
+		out[k] = v
+	}
+	out[LabelSchedule] = string(id)
+	out[LabelScheduleName] = name
+	return out
+}

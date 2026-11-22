@@ -1,0 +1,1 @@
+	DefaultVisibilityLag = 5 * time.Second

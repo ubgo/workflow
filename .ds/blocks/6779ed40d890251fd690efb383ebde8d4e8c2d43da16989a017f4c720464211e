@@ -1,0 +1,29 @@
+func ParseYear(expr string) (Schedule, error) {
+	trimmed := strings.TrimSpace(expr)
+	if strings.HasPrefix(trimmed, "@") || trimmed == "" {
+		return ParseSeconds(expr)
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != len(fields)+2 {
+		return nil, &ParseError{Expr: expr, Field: "expression", Reason: fmt.Sprintf("want 7 fields (second minute hour day-of-month month day-of-week year), got %d", len(parts))}
+	}
+	for _, i := range []int{3, 5} {
+		if strings.Contains(parts[i], "?") {
+			return nil, &ParseError{Expr: expr, Field: fields[i-1].name, Value: parts[i], Reason: `"?" is not part of this dialect; write "*" (and day-of-week numbers as 0-6, Sunday 0)`}
+		}
+	}
+	years, perr := parseYearField(parts[6])
+	if perr != nil {
+		perr.Expr = expr
+		return nil, perr
+	}
+	inner, err := ParseSeconds(strings.Join(parts[:6], " "))
+	if err != nil {
+		var pe *ParseError
+		if errors.As(err, &pe) {
+			pe.Expr = expr
+		}
+		return nil, err
+	}
+	return &yearSpec{expr: trimmed, years: years, inner: inner.(*secSpec)}, nil
+}

@@ -1,0 +1,21 @@
+func (p progressReporter) ReportProgress(_ context.Context, pr workflow.Progress) error {
+	c, h := p.c, p.h
+	pr = pr.Clone()
+	pr.Step, pr.At = p.step, c.clk.Now()
+	b, err := json.Marshal(pr)
+	if err != nil {
+		return fmt.Errorf("redis: encode progress: %w", err)
+	}
+	ctx, cancel := c.writeCtx()
+	defer cancel()
+	ok, err := fieldScript.Run(ctx, c.rdb, c.keys(), c.base, h.id, h.token, "prog", string(b)).Int()
+	if err != nil {
+		return fmt.Errorf("redis: store progress: %w", classify(err))
+	}
+	if ok == 0 {
+		return fmt.Errorf("%w: the run is no longer held by this worker", workflow.ErrCancelled)
+	}
+	c.emit(workflow.LifecycleEvent{Kind: workflow.LifecycleProgress, Ref: refOf(h.id, workflow.StatusRunning, h.sid), Workflow: h.wf,
+		Queue: h.queue, Tenant: h.tenant, Step: p.step, Attempt: p.attempt, Status: workflow.StatusRunning, Progress: &pr, Labels: h.labels, At: pr.At})
+	return nil
+}

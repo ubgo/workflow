@@ -24,6 +24,8 @@ import (
 // an insert when no row was there; a concurrent first Save of one key is
 // decided by the primary key and the loser's transaction is tried again,
 // up to WithTxAttempts).
+//
+//ds:def id=sql-journalstore-tsrb65bx owner=@khanakia stability=stable
 type JournalStore struct {
 	st *store
 }
@@ -33,10 +35,14 @@ var _ workflow.JournalStore = (*JournalStore)(nil)
 // JournalMigrationOwner is the ledger owner of JournalStore's migrations:
 // a list of its own, so NewJournalStore(...).Migrate creates only the
 // journal table, while Client.Migrate applies it too.
+//
+//ds:def id=sql-journalmigrationowner-2yavjbps owner=@khanakia stability=stable
 const JournalMigrationOwner = "ubgo/workflow/sqlstore/journal"
 
 // journalMigrations is every JournalStore schema change, in order, under
 // the same rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-journalmigrations-qu36ngwz owner=@khanakia stability=stable
 func (s *store) journalMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(JournalMigrationOwner), Name: "001_journal", Script: s.script(s.render(journalDefs(typesFor(s.engine))))},
@@ -65,6 +71,8 @@ func journalDefs(t sqlTypes) []tableDef {
 // Options, WithTablePrefix, WithSchema, WithTxAttempts and
 // WithErrorClassifier apply; the others configure a Client and are
 // ignored. Call Migrate before the first Save.
+//
+//ds:def id=sql-newjournalstore-f8patmxf owner=@khanakia stability=stable
 func NewJournalStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*JournalStore, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -75,10 +83,14 @@ func NewJournalStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*JournalStore,
 
 // JournalStore returns the journal store in this client's database and
 // prefix. Client.Migrate creates its table.
+//
+//ds:def id=sql-client-journalstore-wdbnns8s owner=@khanakia stability=stable
 func (c *Client) JournalStore() *JournalStore { return &JournalStore{st: c.st} }
 
 // Migrate creates the journal table (its own migration list, under the same
 // ledger and lock as Client.Migrate), and nothing else.
+//
+//ds:def id=sql-journalstore-migrate-g46s2pj7 owner=@khanakia stability=stable
 func (s *JournalStore) Migrate(ctx context.Context) error {
 	return s.st.migrate(ctx, s.st.journalMigrations())
 }

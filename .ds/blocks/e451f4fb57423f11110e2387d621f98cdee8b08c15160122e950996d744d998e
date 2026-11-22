@@ -1,0 +1,7 @@
+func LoadMachine[D any](data []byte, reg *MachineRegistry[D], env MachineEnv) (workflow.Workflow, error) {
+	def, err := ParseMachine(data)
+	if err != nil {
+		return workflow.Workflow{}, err
+	}
+	return BuildMachine(def, reg, env)
+}

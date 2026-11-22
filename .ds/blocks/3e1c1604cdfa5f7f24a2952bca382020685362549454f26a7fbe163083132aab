@@ -1,0 +1,8 @@
+func (f *Fake) Promises() *workflow.MemoryPromises {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.promises == nil {
+		f.promises = workflow.NewMemoryPromises()
+	}
+	return f.promises
+}

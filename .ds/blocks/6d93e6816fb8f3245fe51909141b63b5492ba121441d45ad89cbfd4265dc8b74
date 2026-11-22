@@ -1,0 +1,45 @@
+func TestMetricLabels(t *testing.T) {
+	h := newHarness(t, wfotel.WithMetricLabels("tier"))
+	h.run(t, noopWF, workflow.Job{Workflow: "w", Labels: map[string]string{"tier": "gold", "user": "u1"}})
+	var rm metricdata.ResourceMetrics
+	if err := h.reader.Collect(context.Background(), &rm); err != nil {
+		t.Fatal(err)
+	}
+	tierKey := attribute.Key(wfotel.LabelAttributePrefix + "tier")
+	userKey := attribute.Key(wfotel.LabelAttributePrefix + "user")
+	seen := map[string]bool{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			var sets []attribute.Set
+			switch d := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				for _, p := range d.DataPoints {
+					sets = append(sets, p.Attributes)
+				}
+			case metricdata.Histogram[float64]:
+				for _, p := range d.DataPoints {
+					sets = append(sets, p.Attributes)
+				}
+			}
+			for _, set := range sets {
+				if v, ok := set.Value(tierKey); !ok || v.AsString() != "gold" {
+					t.Fatalf("%s lacks the tier attribute: %v", m.Name, set)
+				}
+				if set.HasValue(userKey) {
+					t.Fatalf("%s recorded a label not asked for", m.Name)
+				}
+				seen[m.Name] = true
+			}
+		}
+	}
+	for _, name := range []string{wfotel.MetricStepDuration, wfotel.MetricStepOutcomes, wfotel.MetricEnqueueCount} {
+		if !seen[name] {
+			t.Fatalf("no data point for %s", name)
+		}
+	}
+	for _, bad := range []string{"", wfotel.LabelPrefix + "traceparent"} {
+		if _, err := wfotel.New(wfotel.WithMetricLabels(bad)); !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("key %q accepted: %v", bad, err)
+		}
+	}
+}

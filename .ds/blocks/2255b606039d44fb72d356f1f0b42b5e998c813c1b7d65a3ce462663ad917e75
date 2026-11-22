@@ -1,0 +1,27 @@
+func (d Definition) Validate() error {
+	if d.Name == "" {
+		return fieldErr("name", "is empty")
+	}
+	for _, f := range []struct{ path, value string }{{"timeout", d.Timeout}, {"run_timeout", d.RunTimeout}} {
+		if _, err := duration(f.path, f.value); err != nil {
+			return err
+		}
+	}
+	if d.Retry != nil {
+		if _, err := d.Retry.policy("retry"); err != nil {
+			return err
+		}
+	}
+	if len(d.Steps) == 0 {
+		return fieldErr("steps", "a definition needs at least one step")
+	}
+	for i, s := range d.Steps {
+		if err := s.validate(index("steps", i)); err != nil {
+			return err
+		}
+	}
+	if _, err := location(d.CronLocation); err != nil {
+		return err
+	}
+	return nil
+}

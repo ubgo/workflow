@@ -1,0 +1,29 @@
+func resolve(y int, mo time.Month, d, h, mi int, loc *time.Location, periodic bool) []time.Time {
+	wall := time.Date(y, mo, d, h, mi, 0, 0, time.UTC).Unix()
+	// The offsets in force a day either side cover any transition near this
+	// wall time (offsets never exceed a day, and zones change at most once
+	// within a couple of days).
+	before := offsetAt(wall-86400, loc)
+	after := offsetAt(wall+86400, loc)
+	var out []time.Time
+	for _, off := range uniqueOffsets(before, offsetAt(wall, loc), after) {
+		t := wall - int64(off)
+		if offsetAt(t, loc) == off {
+			out = append(out, time.Unix(t, 0))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
+	switch {
+	case len(out) == 0:
+		if periodic {
+			return nil
+		}
+		// Applying the pre-gap offset lands inside the post-gap period;
+		// that period's start is the first valid instant after the gap.
+		start, _ := time.Unix(wall-int64(before), 0).In(loc).ZoneBounds()
+		return []time.Time{start}
+	case len(out) > 1 && !periodic:
+		return out[:1]
+	}
+	return out
+}

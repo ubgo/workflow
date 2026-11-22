@@ -1,0 +1,12 @@
+func (c *Client) gone(h *held) bool {
+	if c.isCrashed() {
+		return true
+	}
+	if cause := context.Cause(h.ctx); cause != nil {
+		if c.ctx.Err() != nil && !errors.Is(cause, workflow.ErrCancelled) && !errors.Is(cause, workflow.ErrForced) && !errors.Is(cause, errLost) {
+			c.release(h, time.Time{}, "queued")
+		}
+		return true
+	}
+	return false
+}

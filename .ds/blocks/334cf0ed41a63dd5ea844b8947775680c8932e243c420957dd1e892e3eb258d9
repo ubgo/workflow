@@ -1,0 +1,9 @@
+func (h *handler[P]) identify(r *http.Request) (who P, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			h.cfg.logger.Error("admin: Identify panicked", "panic", fmt.Sprint(p))
+			err = errors.New("admin: Identify panicked")
+		}
+	}()
+	return h.auth.Identify(r)
+}

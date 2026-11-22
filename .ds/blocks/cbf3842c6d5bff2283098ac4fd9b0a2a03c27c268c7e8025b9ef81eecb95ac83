@@ -1,0 +1,11 @@
+func validateChain(job Job) error {
+	if n := chainLen(job.Chain); n > MaxChainJobs {
+		return invalidf("job for %q: Job.Chain holds %d jobs, more than %d", job.Workflow, n, MaxChainJobs)
+	}
+	for i, next := range job.Chain {
+		if err := ValidateJob(next); err != nil {
+			return fmt.Errorf("job for %q: Job.Chain[%d]: %w", job.Workflow, i, err)
+		}
+	}
+	return nil
+}

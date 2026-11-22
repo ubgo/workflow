@@ -1,0 +1,3 @@
+type EscalationHarness struct {
+	Start func(t *testing.T, plugins []workflow.Plugin, wfs ...workflow.Workflow) workflow.Client
+}

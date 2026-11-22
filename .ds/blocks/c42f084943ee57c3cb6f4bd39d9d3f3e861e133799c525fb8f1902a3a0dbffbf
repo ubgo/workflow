@@ -1,0 +1,21 @@
+func UniqueByArgs(opts ...ArgsOption) func(workflow.Job) string {
+	k := argsKey{prefix: DefaultArgsKeyPrefix}
+	for _, o := range opts {
+		o(&k)
+	}
+	return func(job workflow.Job) string {
+		h := sha256.New()
+		h.Write(k.canonical(job.Payload))
+		if k.queue {
+			h.Write([]byte("\x00queue\x00" + job.Queue))
+		}
+		for _, l := range k.labels {
+			v, ok := job.Labels[l]
+			h.Write([]byte("\x00label\x00" + l + "\x00"))
+			if ok {
+				h.Write([]byte("=" + v))
+			}
+		}
+		return k.prefix + job.Workflow + ":" + hex.EncodeToString(h.Sum(nil))
+	}
+}

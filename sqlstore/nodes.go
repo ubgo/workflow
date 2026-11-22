@@ -13,6 +13,8 @@ import (
 // WithNodeID names this client in the cluster (StepInfo.Node, the error
 // history, RunInfo.AttemptedBy, Nodes). The default is
 // workflow.DefaultNodeID(), "host:pid". Empty is ignored.
+//
+//ds:def id=sql-withnodeid-hrqyznwf owner=@khanakia stability=stable
 func WithNodeID(id string) Option {
 	return func(cl *Client) {
 		if id != "" {
@@ -25,17 +27,26 @@ func WithNodeID(id string) Option {
 // time-driven work forward (admissions, delayed starts, sleeps, waits) but
 // runs no step (workflow.NodeScheduler): a small scheduler process beside
 // worker processes started WithoutScheduler. It overrides WithWorkers.
+//
+//ds:def id=sql-withscheduleronly-af8r5q7m owner=@khanakia stability=stable
 func WithSchedulerOnly() Option { return func(cl *Client) { cl.schedulerOnly = true } }
 
 // WithoutScheduler makes a client that runs steps but never fires cron
 // ticks (workflow.NodeWorker); some other client of the tables must fire
-// them (WithSchedulerOnly, or a full client).
+// them (WithSchedulerOnly, or a full client). Given WithLeaderElection
+// too, it never campaigns for the role, so it cannot take leadership away
+// from a client that fires; given a custom WithElector, it never asks it
+// and IsLeader is false (no leader housekeeping).
+//
+//ds:def id=sql-withoutscheduler-nbbxc2s8 owner=@khanakia stability=stable
 func WithoutScheduler() Option { return func(cl *Client) { cl.noScheduler = true } }
 
 // WithPayloadLimit refuses, at Enqueue, EnqueueTx and EnqueueMany, a job
 // whose payload (or that of any job in its Chain) is over n bytes, with a
 // *workflow.PayloadTooLargeError; the database has no limit of its own
 // worth enforcing. Zero or less (the default) sets none.
+//
+//ds:def id=sql-withpayloadlimit-vufzfrhq owner=@khanakia stability=stable
 func WithPayloadLimit(n int) Option {
 	return func(cl *Client) { cl.payloadLimit = max(n, 0) }
 }
@@ -59,10 +70,14 @@ func (c *Client) mode() workflow.NodeMode {
 
 // firesSchedules reports whether this client's dispatcher fires cron
 // ticks: not WithoutScheduler, and the leader when an elector is set.
+//
+//ds:def id=sql-client-firesschedules-hxyv964c owner=@khanakia stability=stable
 func (c *Client) firesSchedules(leader bool) bool { return !c.noScheduler && leader }
 
 // touchNode writes this client's nodes row when a third of the lease has
 // passed since the last write (dispatcher goroutine only).
+//
+//ds:def id=sql-client-touchnode-284yxqyc owner=@khanakia stability=stable
 func (c *Client) touchNode(ctx context.Context) error {
 	now := c.leaseNanos()
 	if c.nodeSeen != 0 && now-c.nodeSeen < int64(c.lease/3) {
@@ -102,6 +117,8 @@ func (c *Client) touchNode(ctx context.Context) error {
 }
 
 // forgetNode removes this client's nodes row on a clean stop.
+//
+//ds:def id=sql-client-forgetnode-uaa5fsbe owner=@khanakia stability=stable
 func (c *Client) forgetNode() {
 	if c.crashed.Load() {
 		return
@@ -123,6 +140,8 @@ func (c *Client) pruneNodes(ctx context.Context) error {
 // hour (workflow.NodeLister), by ID. A client reports every third of its
 // lease while it runs and leaves the list when it stops cleanly; a crashed
 // one stays until it ages out, so read LastSeen for liveness.
+//
+//ds:def id=sql-client-nodes-dxn6cc8q owner=@khanakia stability=stable
 func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 	var out []workflow.NodeInfo
 	var id, mode, queues string
@@ -151,6 +170,8 @@ func (c *Client) Nodes(ctx context.Context) ([]workflow.NodeInfo, error) {
 // (workflow.HealthChecker): live unless it has stopped, ready when it has
 // started (an enqueue-only client: at once) and the database answers a
 // ping within ctx.
+//
+//ds:def id=sql-client-health-jj2wte95 owner=@khanakia stability=stable
 func (c *Client) Health(ctx context.Context) workflow.HealthReport {
 	c.mu.Lock()
 	started, stopped := c.started || c.enqueueOnly, c.stopped

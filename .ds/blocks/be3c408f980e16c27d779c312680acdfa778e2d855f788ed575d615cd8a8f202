@@ -1,0 +1,11 @@
+type TriggerSQL struct {
+	// Create installs the trigger, in order. Running it again replaces the
+	// trigger with this definition (each CREATE is preceded by a DROP ...
+	// IF EXISTS, and the Postgres function is CREATE OR REPLACE), so it is
+	// safe in a migration that may re-run. Apply it in the app's own
+	// migrations, after the outbox table exists.
+	Create []string
+	// Drop removes what Create installed. Dropping the table also drops
+	// its triggers, but not the Postgres function.
+	Drop []string
+}

@@ -1,0 +1,7 @@
+func WithJitterSource(rnd func() float64) Option {
+	return func(m *Client) {
+		if rnd != nil {
+			m.rnd = rnd
+		}
+	}
+}

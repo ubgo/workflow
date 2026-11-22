@@ -1,0 +1,8 @@
+func (m *Monitor) send(ctx context.Context, a Alert) {
+	defer func() {
+		if r := recover(); r != nil {
+			m.report(fmt.Errorf("admin: Alerter panicked: %v", r))
+		}
+	}()
+	m.alerter.Alert(ctx, a)
+}

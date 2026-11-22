@@ -1,0 +1,10 @@
+func (e *UnsupportedError) Error() string {
+	msg := "workflow: " + e.Field + " unsupported by this driver"
+	if !e.Missing.IsZero() {
+		msg += " (missing " + e.Missing.String() + ")"
+	}
+	if e.Reason != "" {
+		msg += ": " + e.Reason
+	}
+	return msg
+}

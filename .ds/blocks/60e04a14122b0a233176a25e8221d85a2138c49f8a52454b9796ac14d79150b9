@@ -1,0 +1,7 @@
+func Load(data []byte, reg *Registry) (workflow.Workflow, error) {
+	def, err := Parse(data)
+	if err != nil {
+		return workflow.Workflow{}, err
+	}
+	return Build(def, reg)
+}

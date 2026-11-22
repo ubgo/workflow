@@ -1,0 +1,59 @@
+func hashField(text string, f field, index int, seed string) (string, *ParseError) {
+	if !strings.Contains(strings.ToUpper(text), "H") {
+		return text, nil
+	}
+	lo, hi := f.min, f.max
+	switch f.name {
+	case "day-of-month":
+		hi = hashDOMMax
+	case "day-of-week":
+		hi = 6
+	}
+	items := strings.Split(text, ",")
+	for n, item := range items {
+		if !strings.HasPrefix(strings.ToUpper(item), "H") {
+			continue
+		}
+		fail := func(reason string) *ParseError {
+			return &ParseError{Field: f.name, Value: item, Reason: reason}
+		}
+		rest := item[1:]
+		a, b := lo, hi
+		if strings.HasPrefix(rest, "(") {
+			end := strings.Index(rest, ")")
+			if end < 0 {
+				return "", fail("H( has no closing )")
+			}
+			ra, rb, ok := strings.Cut(rest[1:end], "-")
+			if !ok {
+				return "", fail("want H(a-b)")
+			}
+			var err error
+			if a, err = parseValue(ra, f); err != nil {
+				return "", fail(err.Error())
+			}
+			if b, err = parseValue(rb, f); err != nil {
+				return "", fail(err.Error())
+			}
+			if a > b {
+				return "", fail("range start " + ra + " is after end " + rb)
+			}
+			rest = rest[end+1:]
+		}
+		h := hashValue(seed, index, n)
+		switch {
+		case rest == "":
+			items[n] = strconv.Itoa(a + int(h%uint64(b-a+1)))
+		case strings.HasPrefix(rest, "/"):
+			step, err := strconv.Atoi(rest[1:])
+			if err != nil || step < 1 {
+				return "", fail("step must be a positive integer")
+			}
+			start := a + int(h%uint64(min(step, b-a+1)))
+			items[n] = strconv.Itoa(start) + "-" + strconv.Itoa(b) + "/" + strconv.Itoa(step)
+		default:
+			return "", fail("want H, H(a-b), H/n or H(a-b)/n")
+		}
+	}
+	return strings.Join(items, ","), nil
+}

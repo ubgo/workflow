@@ -1,0 +1,5 @@
+func (m *MachineCtx[D]) Raise(event string, payload []byte) {
+	if m.run != nil && !m.run.inGuard && event != "" {
+		m.run.internal = append(m.run.internal, MachineEvent{Name: event, Payload: payload})
+	}
+}

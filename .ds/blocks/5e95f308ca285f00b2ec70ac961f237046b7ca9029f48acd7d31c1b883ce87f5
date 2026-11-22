@@ -1,0 +1,7 @@
+func DecisionOf(in []byte) (Decision, error) {
+	var d Decision
+	if err := json.Unmarshal(in, &d); err != nil {
+		return Decision{}, Permanent(fmt.Errorf("workflow: approval decision does not decode: %w", err))
+	}
+	return d, nil
+}

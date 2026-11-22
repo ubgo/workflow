@@ -1,0 +1,1 @@
+type BalancerFunc func(loads []QueueLoad) map[string]int

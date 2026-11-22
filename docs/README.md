@@ -361,7 +361,7 @@ Past step 13, [Extending](#extending) shows how to write a plugin, middleware, a
 
 | Page | What it covers | Examples |
 |---|---|---|
-| [Write a driver](extending/writing-a-driver.md) | A complete driver under 300 lines, held to the conformance suite run in shares, and the shared helpers for the capabilities it adds | [custom-driver](../examples/custom-driver/), [driver-conformance](../examples/driver-conformance/) |
+| [Write a driver](extending/writing-a-driver.md) | A complete driver of about 300 lines, held to the conformance suite run in shares, and the shared helpers for the capabilities it adds | [custom-driver](../examples/custom-driver/), [driver-conformance](../examples/driver-conformance/) |
 | [Write a plugin](extending/writing-a-plugin.md) | What a plugin can provide, and a tenancy plugin | [custom-plugin](../examples/custom-plugin/) |
 | [Write middleware](extending/writing-middleware.md) | Step and enqueue middleware of your own | [custom-plugin](../examples/custom-plugin/) |
 | [Custom stores](extending/custom-stores.md) | Your own store for unique locks, debounce, circuits, blobs or batches | [custom-plugin](../examples/custom-plugin/) |

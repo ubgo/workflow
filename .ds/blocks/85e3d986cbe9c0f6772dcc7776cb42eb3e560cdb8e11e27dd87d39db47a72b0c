@@ -1,0 +1,17 @@
+func Upcast(raw []byte, from, to int, ups map[int]Upcaster) ([]byte, error) {
+	if from > to {
+		return nil, Permanent(invalidf("payload version %d is newer than this code's %d", from, to))
+	}
+	for v := from; v < to; v++ {
+		up, ok := ups[v]
+		if !ok {
+			return nil, Permanent(invalidf("no upcaster from payload version %d to %d", v, v+1))
+		}
+		out, err := up(raw)
+		if err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: upcast payload version %d to %d: %w", v, v+1, err))
+		}
+		raw = out
+	}
+	return raw, nil
+}

@@ -1,0 +1,10 @@
+type ForkOptions struct {
+	// IdempotencyKey is the fork's own key; empty means none. The
+	// original's key is never copied: it belongs to the original.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
+	// Labels are added to the fork's labels, over the ones it keeps from
+	// the original. They are app labels: a reserved prefix is refused
+	// (ValidateLabels).
+	Labels map[string]string `json:"labels,omitempty"`
+}

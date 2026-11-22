@@ -1,0 +1,7 @@
+func (f *Client) Pause(ctx context.Context, t workflow.PauseTarget) error {
+	pp, sp, err := f.pausers(t)
+	if err != nil {
+		return err
+	}
+	return joinSides("Pause", pp.Pause(ctx, t), sp.Pause(ctx, t))
+}

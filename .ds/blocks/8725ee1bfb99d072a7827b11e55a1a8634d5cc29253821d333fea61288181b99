@@ -1,0 +1,24 @@
+func NewAPI(token, serverURL string) (*API, error) {
+	claims, err := tokenClaims(token)
+	if err != nil {
+		return nil, err
+	}
+	if serverURL == "" {
+		serverURL = claims.ServerURL
+	}
+	if serverURL == "" {
+		return nil, fmt.Errorf("%w: hatchet driver: NewAPI: no server URL given and none in the token", workflow.ErrInvalid)
+	}
+	if _, err := uuid.Parse(claims.Sub); err != nil {
+		return nil, fmt.Errorf("%w: hatchet driver: NewAPI: the token names no tenant", workflow.ErrInvalid)
+	}
+	auth := func(_ context.Context, req *http.Request) error {
+		req.Header.Set("Authorization", "Bearer "+token)
+		return nil
+	}
+	client, err := rest.NewClientWithResponses(serverURL, rest.WithRequestEditorFn(auth))
+	if err != nil {
+		return nil, fmt.Errorf("hatchet driver: NewAPI: %w", err)
+	}
+	return &API{Client: client, TenantID: claims.Sub}, nil
+}

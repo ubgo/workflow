@@ -24,10 +24,14 @@ import (
 // does.
 
 // tblRunVersion is migration 010's table.
+//
+//ds:def id=sql-tblrunversion-snc77g9q owner=@khanakia stability=stable
 const tblRunVersion = "run_version"
 
 // runVersionDefs is migration 010's table. Its rendered text is frozen
 // once released, like ddl.
+//
+//ds:def id=sql-runversiondefs-nmhgsrjq owner=@khanakia stability=stable
 func runVersionDefs(t sqlTypes) []tableDef {
 	return []tableDef{{stem: tblRunVersion, lines: []string{
 		"run_id " + t.id + " NOT NULL PRIMARY KEY",

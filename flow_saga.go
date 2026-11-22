@@ -10,11 +10,15 @@ import (
 
 // ErrSagaAborted is returned by Saga.Do once the saga started compensating
 // (in this attempt or an earlier one): no new action runs after an abort.
+//
+//ds:def id=errsagaaborted-c3s8tp6k owner=@khanakia stability=stable
 var ErrSagaAborted = errors.New("workflow: saga aborted")
 
 // ErrCompensated matches the error Saga.Abort ends with after every
 // compensation ran: the step's work was rolled back, so the error is
 // Permanent and the step is not retried.
+//
+//ds:def id=errcompensated-4d6vb255 owner=@khanakia stability=stable
 var ErrCompensated = errors.New("workflow: saga compensated")
 
 // Saga is a sequence of actions inside one step, each with a compensation
@@ -38,6 +42,8 @@ var ErrCompensated = errors.New("workflow: saga compensated")
 //
 // A Saga value belongs to one attempt of one step; build a new one in each
 // call of the handler.
+//
+//ds:def id=saga-pk2fwf5w owner=@khanakia stability=stable
 type Saga struct {
 	name string
 
@@ -56,6 +62,8 @@ type sagaAction struct {
 func sagaAbortData(saga string) string { return "ubgo.workflow/saga/" + saga + "/aborted" }
 
 // NewSaga returns a saga named name, unique within the step.
+//
+//ds:def id=newsaga-a6nhw8hx owner=@khanakia stability=stable
 func NewSaga(name string) *Saga { return &Saga{name: name} }
 
 // Do runs do once per run under action (memoised) and remembers undo as
@@ -64,6 +72,8 @@ func NewSaga(name string) *Saga { return &Saga{name: name} }
 // the first one that had not returns ErrSagaAborted (Permanent), so the
 // step reaches its Abort call with every finished action known. A nil undo means the
 // action needs no compensation.
+//
+//ds:def id=saga-do-h2g7bwvx owner=@khanakia stability=stable
 func (s *Saga) Do(ctx context.Context, action string, do, undo func(ctx context.Context) error) error {
 	if s.name == "" || action == "" || do == nil {
 		return Permanent(invalidf("saga: a name, an action name and a do function are required"))
@@ -129,6 +139,8 @@ func (s *Saga) Done() []string {
 // matching ErrCompensated and cause. The cause given on the first abort is
 // the one kept; a later attempt's cause (usually ErrSagaAborted) is
 // replaced by it.
+//
+//ds:def id=saga-abort-uj8tk5xq owner=@khanakia stability=stable
 func (s *Saga) Abort(ctx context.Context, cause error) error {
 	if cause == nil {
 		cause = errors.New("aborted")

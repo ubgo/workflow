@@ -1,0 +1,23 @@
+func (m *MemoryLineage) Find(ctx context.Context, q LineageQuery) ([]Lineage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if q.Limit < 0 {
+		return nil, fmt.Errorf("%w: events: lineage query Limit %d is negative", workflow.ErrInvalid, q.Limit)
+	}
+	m.mu.Lock()
+	var out []Lineage
+	for i := len(m.recs) - 1; i >= 0; i-- { // reverse order of recording
+		if q.match(m.recs[i]) {
+			l := m.recs[i]
+			l.Meta = maps.Clone(l.Meta)
+			out = append(out, l)
+		}
+	}
+	m.mu.Unlock()
+	slices.SortStableFunc(out, func(a, b Lineage) int { return b.At.Compare(a.At) })
+	if q.Limit > 0 && len(out) > q.Limit {
+		out = out[:q.Limit]
+	}
+	return out, nil
+}

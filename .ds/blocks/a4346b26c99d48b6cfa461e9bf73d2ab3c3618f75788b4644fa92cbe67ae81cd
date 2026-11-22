@@ -1,0 +1,1 @@
+	ErrTimeout = errors.New("workflow: deadline missed")

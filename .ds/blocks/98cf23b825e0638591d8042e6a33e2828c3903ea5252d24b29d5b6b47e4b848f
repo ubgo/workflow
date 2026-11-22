@@ -1,0 +1,3 @@
+type AlertLimiter interface {
+	Allow(ctx context.Context, key string, at time.Time) (ok bool, suppressed int, err error)
+}

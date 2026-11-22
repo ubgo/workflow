@@ -16,17 +16,22 @@ const (
 	// label. Its value is "true". The Then plugin skips the ends of such
 	// runs (ThenAfterRedo turns that off), so a next job that already
 	// started once for the first success is not started a second time.
+	//ds:def id=labelredo-7f5kcp9k owner=@khanakia stability=stable
 	LabelRedo = LabelPrefixInternal + "redo"
 
 	// LabelForkOf is the RunID of the run a fork was made from.
+	//ds:def id=labelforkof-xac2k37t owner=@khanakia stability=stable
 	LabelForkOf = LabelPrefixInternal + "fork-of"
 
 	// LabelForkStep is the step a fork starts from.
+	//ds:def id=labelforkstep-6p5fzb5h owner=@khanakia stability=stable
 	LabelForkStep = LabelPrefixInternal + "fork-step"
 )
 
 // ResetOptions widen ResetRunWith beyond what ResetRun accepts. The zero
 // value is ResetRun exactly.
+//
+//ds:def id=resetoptions-fgtq654p owner=@khanakia stability=stable
 type ResetOptions struct {
 	// Succeeded also accepts a run that ended StatusSucceeded: the
 	// explicit opt-in for redoing work that already succeeded. The run
@@ -51,11 +56,15 @@ type ResetOptions struct {
 // replaced by its next end. Run-finished observers see that end, as after
 // Retry; the batch package ignores a repeated end, and the Then plugin
 // skips runs carrying LabelRedo. The chain is not handed on again.
+//
+//ds:def id=runresetterwith-792722gn owner=@khanakia stability=stable
 type RunResetterWith interface {
 	ResetRunWith(ctx context.Context, ref RunRef, step string, opts ResetOptions) (RunRef, error)
 }
 
 // ForkOptions tune ForkRun.
+//
+//ds:def id=forkoptions-6g2ac7wq owner=@khanakia stability=stable
 type ForkOptions struct {
 	// IdempotencyKey is the fork's own key; empty means none. The
 	// original's key is never copied: it belongs to the original.
@@ -87,6 +96,8 @@ type ForkOptions struct {
 // children (its RunID is new), and its wait steps wait for events sent
 // after the fork. A client implements it when its driver can; the call
 // answers for itself, so there is no capability bit.
+//
+//ds:def id=runforker-9cpe2f7f owner=@khanakia stability=stable
 type RunForker interface {
 	ForkRun(ctx context.Context, ref RunRef, step string, opts ForkOptions) (RunRef, error)
 }
@@ -95,6 +106,8 @@ type RunForker interface {
 // something (a batch, a parent's children, a schedule's ticks, a
 // partition set, an object's calls, a backfill, a Then or continue-as-new
 // lineage). A fork is a member of none of them.
+//
+//ds:def id=forkdrops-k5wk4h5m owner=@khanakia stability=stable
 var forkDrops = []string{LabelParentRun, LabelParentStep, LabelSchedule, LabelTickAt, LabelTrigger,
 	LabelPartitionSet, LabelPartitionKey, LabelObjectKey, LabelThenFrom, LabelContinuedFrom, LabelRunKey,
 	LabelForkOf, LabelForkStep, LabelRedo}
@@ -108,6 +121,8 @@ var forkDrops = []string{LabelParentRun, LabelParentStep, LabelSchedule, LabelTi
 // kept outputs may be references under the original's claim token.
 // Drivers call it; it is exported so a driver outside this module builds
 // the same labels.
+//
+//ds:def id=forklabels-479w9npr owner=@khanakia stability=stable
 func ForkLabels(labels map[string]string, extra map[string]string, of RunID, step string, redo bool) map[string]string {
 	out := make(map[string]string, len(labels)+len(extra)+3)
 	for k, v := range labels {
@@ -127,12 +142,16 @@ func ForkLabels(labels map[string]string, extra map[string]string, of RunID, ste
 
 // ForkRedo reports whether a fork of a run with this status and these
 // labels redoes work that already succeeded (LabelRedo).
+//
+//ds:def id=forkredo-k36kx3xp owner=@khanakia stability=stable
 func ForkRedo(st Status, labels map[string]string) bool {
 	return st == StatusSucceeded || labels[LabelRedo] == "true"
 }
 
 // CheckFork validates a ForkRun call before a driver looks the run up:
 // a step is needed and opts.Labels must be app labels.
+//
+//ds:def id=checkfork-a9wp7kp8 owner=@khanakia stability=stable
 func CheckFork(step string, opts ForkOptions) error {
 	if step == "" {
 		return invalidf("ForkRun needs a step")
@@ -142,10 +161,14 @@ func CheckFork(step string, opts ForkOptions) error {
 
 // ForkStatusOK reports whether a run in st may be forked: it has
 // finished.
+//
+//ds:def id=forkstatusok-x544ybnq owner=@khanakia stability=stable
 func ForkStatusOK(st Status) bool { return st.IsTerminal() }
 
 // ResetStatusOK reports whether a run in st may be reset with opts:
 // failed always, succeeded with opts.Succeeded.
+//
+//ds:def id=resetstatusok-pdwz2avg owner=@khanakia stability=stable
 func ResetStatusOK(st Status, opts ResetOptions) bool {
 	return st == StatusFailed || (opts.Succeeded && st == StatusSucceeded)
 }

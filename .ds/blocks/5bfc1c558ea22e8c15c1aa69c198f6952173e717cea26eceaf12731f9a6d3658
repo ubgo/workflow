@@ -1,0 +1,1 @@
+var ErrAbandoned = errors.New("redis: run abandoned by its workers")

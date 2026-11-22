@@ -1,0 +1,19 @@
+func coordinatorRetry(p workflow.RetryPolicy) ([]hatchetsdk.TaskOption, error) {
+	if p.Max < 0 {
+		return nil, fmt.Errorf("%w: Max %d is negative", workflow.ErrInvalid, p.Max)
+	}
+	if p.NoRetryOn != nil {
+		return nil, workflow.Unsupported("BatchCoordinatorRetry.NoRetryOn", "the coordinator retries engine errors only")
+	}
+	if err := checkRetry(p); err != nil {
+		return nil, err
+	}
+	if p.Max == 0 {
+		return nil, nil
+	}
+	opts := []hatchetsdk.TaskOption{hatchetsdk.WithRetries(p.Max)}
+	if b, ok, _ := retryBackoff(p.Backoff); ok { // checked by checkRetry
+		opts = append(opts, hatchetsdk.WithRetryBackoff(b.factor, b.maxSeconds))
+	}
+	return opts, nil
+}

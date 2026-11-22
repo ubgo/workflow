@@ -1,0 +1,1 @@
+func coordinatorSettle(lag time.Duration) time.Duration { return 2 * lag }

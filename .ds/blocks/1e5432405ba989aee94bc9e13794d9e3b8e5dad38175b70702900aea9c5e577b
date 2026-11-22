@@ -1,0 +1,21 @@
+func (c *Client) forward(name string) workflow.Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		info, _ := workflow.StepInfoFrom(ctx)
+		job := workflow.Job{Workflow: name, Payload: in, Labels: maps.Clone(info.Labels), Tenant: info.Tenant}
+		if c.jobs.Capabilities().Has(workflow.CapIdempotencyKey) {
+			job.IdempotencyKey = forwardKey(info)
+		}
+		// The labels were stamped by the scheduler client (schedule ID,
+		// tick time), so they pass on as the library's own.
+		var reserved []string
+		for k := range job.Labels {
+			if _, ok := workflow.ReservedLabel(k); ok {
+				reserved = append(reserved, k)
+			}
+		}
+		if _, err := c.jobs.Enqueue(workflow.AllowReservedLabels(ctx, reserved...), job); err != nil {
+			return nil, fmt.Errorf("hybrid: enqueue %s on the jobs client: %w", name, err)
+		}
+		return nil, nil
+	}
+}

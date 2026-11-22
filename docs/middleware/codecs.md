@@ -5,18 +5,18 @@ A codec turns the bytes your app hands the library into the bytes an engine stor
 ## Before you start
 
 - Any driver and the `middleware` package (core module, standard library crypto).
-- A key of 16, 24 or 32 bytes (AES-128, -192 or -256), loaded from your secret store. The key belongs to the app; the library never stores it.
+- A key of 16, 24 or 32 bytes (AES-128, -192 or -256) for [`Encrypt`](ds:block?id=mw-encrypt-m3ndvkk8), loaded from your secret store. The key belongs to the app; the library never stores it.
 - The same codec on both sides: the client that enqueues and every worker that runs steps.
 - The runnable program for this page is [examples/encrypted-payloads](../../examples/encrypted-payloads/).
 
 ## Transform payloads
 
-A `middleware.Codec` has `Encode(plain) ([]byte, error)` and `Decode(encoded) ([]byte, error)`, and `Decode(Encode(b))` must equal `b`. The middleware wraps the codec's output in an envelope, a JSON string `"wfenc1:<base64>"`, so the sealed value survives every place a driver moves it, including the JSON object a step with several parents receives. An empty payload or output is never sealed, so a job with no input needs no key.
+A [`middleware.Codec`](ds:block?id=mw-codec-zax9ezsu) has `Encode(plain) ([]byte, error)` and `Decode(encoded) ([]byte, error)`, and `Decode(Encode(b))` must equal `b`. The middleware wraps the codec's output in an envelope ([`seal`](ds:block?id=mw-seal-h64dfv4p)), a JSON string `"wfenc1:<base64>"` ([`envelopePrefix`](ds:block?id=mw-envelopeprefix-dfncnahu)), so the sealed value survives every place a driver moves it, including the JSON object a step with several parents receives. An empty payload or output is never sealed, so a job with no input needs no key.
 
 There are two halves, and both are needed:
 
-- The client half seals. `middleware.WithCodec(c, codec, mws...)` returns a `Client` that seals `Job.Payload` on `Enqueue`, `Event.Payload` on `Signal` (it becomes a wait step's output, which a child step decodes) and `Schedule.Input` on `Schedule` (each fired run's payload). `middleware.EncodeEnqueue(codec)` is the enqueue middleware alone, for an app that only ever enqueues; prefer `WithCodec`.
-- The worker half opens. `middleware.DecodeStep(codec)` is step middleware: it opens each step's input before the handler sees it, whether that is the job payload, one parent's output or the object of several parents, and seals the step's output afterwards, so a child step's input is sealed like a payload and every byte the engine stores stays sealed.
+- The client half seals. [`middleware.WithCodec(c, codec, mws...)`](ds:block?id=mw-withcodec-4aa2ymdy) returns a `Client` that seals `Job.Payload` on `Enqueue`, `Event.Payload` on `Signal` (it becomes a wait step's output, which a child step decodes) and `Schedule.Input` on `Schedule` (each fired run's payload). [`middleware.EncodeEnqueue(codec)`](ds:block?id=mw-encodeenqueue-77qfefr6) is the enqueue middleware alone, for an app that only ever enqueues; prefer `WithCodec`.
+- The worker half opens. [`middleware.DecodeStep(codec)`](ds:block?id=mw-decodestep-kartthuw) is step middleware: it opens each step's input before the handler sees it, whether that is the job payload, one parent's output or the object of several parents, and seals the step's output afterwards, so a child step's input is sealed like a payload and every byte the engine stores stays sealed.
 
 On the worker, `DecodeStep` goes in the driver's middleware; here a two-step workflow whose first output travels sealed to the second step:
 
@@ -59,7 +59,7 @@ if err != nil {
 }
 ```
 
-The codec is closed by default. Input that does not open, or that was never sealed, fails the step with a permanent error wrapping `middleware.ErrDecode`: retrying the same bytes with the same key cannot succeed, and accepting plaintext would make the codec optional without anyone noticing. A job enqueued on the bare client, past `WithCodec`, fails that way:
+The codec is closed by default. Input that does not open, or that was never sealed, fails the step ([`DecodeStep`](ds:block?id=mw-decodestep-kartthuw), [`open`](ds:block?id=mw-open-7vdaas86)) with a permanent error wrapping [`middleware.ErrDecode`](ds:block?id=mw-errdecode-4bvj8hk4): retrying the same bytes with the same key cannot succeed, and accepting plaintext would make the codec optional without anyone noticing. A job enqueued on the bare client, past `WithCodec`, fails that way:
 
 <!-- snippet: examples/encrypted-payloads/main.go#plaintext -->
 ```go
@@ -73,9 +73,9 @@ The error never carries the bytes themselves.
 
 ## Encrypt payloads
 
-`middleware.Encrypt(key, oldKeys...)` returns an AES-GCM `Codec`. Each `Encode` draws a fresh random nonce and writes nonce, ciphertext and tag, so equal payloads never encrypt to equal bytes; `Decode` authenticates before returning anything, so a wrong key or a changed byte is an error, never garbage. A key of the wrong length fails with an error wrapping `workflow.ErrInvalid`.
+[`middleware.Encrypt(key, oldKeys...)`](ds:block?id=mw-encrypt-m3ndvkk8) returns an AES-GCM `Codec`. Each [`Encode`](ds:block?id=mw-gcmcodec-encode-dbsedhq3) draws a fresh random nonce and writes nonce, ciphertext and tag, so equal payloads never encrypt to equal bytes; `Decode` authenticates before returning anything, so a wrong key or a changed byte is an error, never garbage. A key of the wrong length fails with an error wrapping `workflow.ErrInvalid` ([the key check](ds:block?id=mw-newgcm-mvjkj92k)).
 
-`oldKeys` rotate the key: `Encode` always uses `key`, while `Decode` tries `key` first and then each old key in order, so payloads sealed before the rotation still open. The sealed format is the same for every key (no key ID is written), so rotating needs no change to stored runs.
+`oldKeys` rotate the key: `Encode` always uses `key`, while [`Decode`](ds:block?id=mw-gcmcodec-decode-hgxs36dg) tries `key` first and then each old key in order, so payloads sealed before the rotation still open. The sealed format is the same for every key (no key ID is written), so rotating needs no change to stored runs.
 
 <!-- snippet: examples/encrypted-payloads/main.go#codec -->
 ```go
@@ -113,12 +113,12 @@ old key dropped: failed, decode error: true, permanent: true
 
 ## Pitfalls
 
-- **Both halves, every time, and no plaintext in flight.** `WithCodec` without `DecodeStep` on the workers hands handlers sealed bytes; `DecodeStep` refuses every payload that was never sealed, including runs enqueued before the codec was turned on. Turn a codec on with no runs in flight (drain the queue first), or those runs fail with `ErrDecode`.
-- **`Signal` must go through `WithCodec` too.** A wait step's output is the event payload, and `DecodeStep` on its child refuses one that was never sealed.
-- **Schedules keep the input they were sealed with.** `Schedule.Input` is sealed once, when `Schedule` is called, and every fire reuses it; keep an old key until every schedule sealed with it has been re-declared, or its fires fail with `ErrDecode`.
-- **Payload-keyed middleware belongs outside the codec.** Sealed payloads differ on every enqueue (fresh nonce), so `Unique`, `Debounce` or `Route` keyed on payload content must sit in a `WrapClient` around the `WithCodec` client, not in its extra middleware.
-- **A decode failure is permanent.** Retries are not spent on it, so a missing key shows up as failed runs at once; watch for `ErrDecode` after a deploy.
-- **Labels are not sealed.** A codec covers payloads, outputs, event payloads and schedule inputs; job labels travel in the clear and should not hold secrets.
+- **Both halves, every time, and no plaintext in flight.** `WithCodec` without `DecodeStep` on the workers hands handlers sealed bytes; [`DecodeStep`](ds:block?id=mw-decodestep-kartthuw) refuses every payload that was never sealed, including runs enqueued before the codec was turned on. Turn a codec on with no runs in flight (drain the queue first), or those runs fail with `ErrDecode`.
+- **`Signal` must go through `WithCodec` too.** A wait step's output is the event payload ([`Signal`](ds:block?id=mw-codecclient-signal-7hgxdfqq) seals it), and `DecodeStep` on its child refuses one that was never sealed.
+- **Schedules keep the input they were sealed with.** `Schedule.Input` is sealed once, when [`Schedule`](ds:block?id=mw-codecclient-schedule-sdcyjckh) is called, and every fire reuses it; keep an old key until every schedule sealed with it has been re-declared, or its fires fail with `ErrDecode`.
+- **Payload-keyed middleware belongs outside the codec.** Sealed payloads differ on every enqueue (a fresh nonce in [`Encrypt`](ds:block?id=mw-gcmcodec-encode-dbsedhq3)), so `Unique`, `Debounce` or `Route` keyed on payload content must sit in a `WrapClient` around the `WithCodec` client, not in its extra middleware.
+- **A decode failure is permanent.** [`DecodeStep`](ds:block?id=mw-decodestep-kartthuw) marks it `Permanent`, so retries are not spent on it, so a missing key shows up as failed runs at once; watch for `ErrDecode` after a deploy.
+- **Labels are not sealed.** A codec covers payloads, outputs, event payloads and schedule inputs ([`EncodeEnqueue`](ds:block?id=mw-encodeenqueue-77qfefr6) seals the job's payload and its chained jobs' payloads, never labels); job labels travel in the clear and should not hold secrets.
 
 ## Related
 

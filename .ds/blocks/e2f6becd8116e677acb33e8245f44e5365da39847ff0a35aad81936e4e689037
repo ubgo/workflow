@@ -1,0 +1,13 @@
+func (f *Fake) NewTimer(d time.Duration) Timer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := &fakeTimer{f: f, at: f.now.Add(d), c: make(chan time.Time, 1)}
+	if d <= 0 {
+		t.c <- f.now
+		return t
+	}
+	f.timers = append(f.timers, t)
+	close(f.armed)
+	f.armed = make(chan struct{})
+	return t
+}

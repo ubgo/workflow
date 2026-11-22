@@ -1,0 +1,3 @@
+type Elector interface {
+	IsLeader() bool
+}

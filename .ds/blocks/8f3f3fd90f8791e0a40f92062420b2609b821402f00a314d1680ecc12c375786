@@ -1,0 +1,7 @@
+func WithIDGenerator(g IDGenerator) Option {
+	return func(cl *Client) {
+		if g != nil {
+			cl.ids = g
+		}
+	}
+}

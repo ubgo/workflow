@@ -1,0 +1,33 @@
+func Hash(expr, seed string) (string, error) {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return "", &ParseError{Expr: expr, Field: "expression", Reason: "empty expression"}
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		if _, err := Parse(trimmed); err != nil {
+			return "", err
+		}
+		return trimmed, nil
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != len(fields) {
+		_, err := Parse(expr)
+		return "", err
+	}
+	for i, f := range fields {
+		out, err := hashField(parts[i], f, i, seed)
+		if err != nil {
+			err.Expr = expr
+			return "", err
+		}
+		parts[i] = out
+	}
+	result := strings.Join(parts, " ")
+	if _, err := Parse(result); err != nil {
+		if pe, ok := err.(*ParseError); ok {
+			pe.Expr = expr // name what the caller wrote, not the rewrite
+		}
+		return "", err
+	}
+	return result, nil
+}

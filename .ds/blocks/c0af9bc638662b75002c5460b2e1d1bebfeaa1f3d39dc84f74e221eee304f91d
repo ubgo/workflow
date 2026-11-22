@@ -1,0 +1,13 @@
+func (f *follower[P]) chunk(c workflow.StreamChunk) {
+	if c.Pos <= f.last {
+		return // already sent (seen by both Read and Subscribe)
+	}
+	f.last = c.Pos
+	out := chunkJSON{Pos: c.Pos, Step: c.Step, Attempt: c.Attempt, Seq: c.Seq}
+	if utf8.Valid(c.Data) {
+		out.Text = string(c.Data)
+	} else {
+		out.Base64 = c.Data
+	}
+	f.send(strconv.FormatInt(c.Pos, 10), EventChunk, out)
+}

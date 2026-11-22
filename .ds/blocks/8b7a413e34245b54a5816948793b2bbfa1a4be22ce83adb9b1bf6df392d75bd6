@@ -1,0 +1,59 @@
+func (c *Client) pruneRules(ctx context.Context) ([]pruneRule, error) {
+	r := c.retention
+	now := c.nowNanos()
+	var out []pruneRule
+	add := func(scope string, scopeArgs []any, keep Retention) {
+		for _, s := range []struct {
+			status string
+			keep   time.Duration
+		}{{runSucceeded, keep.Succeeded}, {runFailed, keep.Failed}, {runCancelled, keep.Cancelled}, {runDiscarded, keep.Cancelled}} {
+			if s.keep <= 0 {
+				continue
+			}
+			args := append(append([]any(nil), scopeArgs...), s.status, now-int64(s.keep))
+			out = append(out, pruneRule{where: scope + " status = ? AND finished_at <= ?", args: args})
+		}
+	}
+	var listed []any
+	for name, keep := range r.PerWorkflow {
+		add("workflow = ? AND", []any{name}, keep)
+		listed = append(listed, name)
+		if keep.KeepLast > 0 {
+			rule, ok, err := c.keepLastRule(ctx, name, keep.KeepLast)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				out = append(out, rule)
+			}
+		}
+	}
+	if len(listed) == 0 {
+		add("", nil, *r)
+	} else {
+		add("workflow NOT IN ("+inList(len(listed))+") AND", listed, *r)
+	}
+	if r.KeepLast > 0 {
+		q := "SELECT DISTINCT workflow FROM {runs} WHERE " + terminalIn
+		args := terminalArgs()
+		if len(listed) > 0 {
+			q += " AND workflow NOT IN (" + inList(len(listed)) + ")"
+			args = append(args, listed...)
+		}
+		var names []string
+		var name string
+		if err := c.st.each(ctx, c.st.db, q, args, func() error { names = append(names, name); return nil }, &name); err != nil {
+			return nil, fmt.Errorf("sqlstore: read workflows with finished runs: %w", err)
+		}
+		for _, name := range names {
+			rule, ok, err := c.keepLastRule(ctx, name, r.KeepLast)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				out = append(out, rule)
+			}
+		}
+	}
+	return out, nil
+}

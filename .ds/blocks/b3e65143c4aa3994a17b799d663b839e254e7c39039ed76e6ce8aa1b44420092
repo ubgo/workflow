@@ -1,0 +1,10 @@
+func (a *Admin) Runs(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	if err := a.check(OpRuns); err != nil {
+		return workflow.RunPage{}, err
+	}
+	if err := a.validateQuery(q); err != nil {
+		return workflow.RunPage{}, err
+	}
+	rq, _ := a.reader()
+	return rq.Runs(ctx, q)
+}

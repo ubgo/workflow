@@ -1,0 +1,3 @@
+type RunRescheduler interface {
+	Reschedule(ctx context.Context, ref RunRef, at time.Time) (RunRef, error)
+}

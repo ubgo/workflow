@@ -126,6 +126,8 @@ func splitList(m multiFlag) []string {
 // check validates the parts the CLI can check before asking: label shape
 // and time format. Everything else (status names, queue names) is the
 // server's to refuse.
+//
+//ds:def id=cli-filter-check-nupj5n5u owner=@khanakia stability=stable
 func (f *filter) check() error {
 	for _, l := range f.labels {
 		if k, _, ok := strings.Cut(l, "="); !ok || k == "" {
@@ -219,6 +221,8 @@ func (e *env) printJSON(raw []byte) error {
 }
 
 // fmtTime is a time for a table: local, to the second, "-" when unset.
+//
+//ds:def id=cli-fmttime-vjzz9jsx owner=@khanakia stability=stable
 func fmtTime(t time.Time) string {
 	if t.IsZero() {
 		return "-"
@@ -242,6 +246,8 @@ func oneLine(s string, n int) string {
 
 // runPath is the API path of one run; scheduled picks the ScheduledID
 // form (?scheduled=1).
+//
+//ds:def id=cli-runpath-qnjfehgw owner=@khanakia stability=stable
 func runPath(id string, scheduled bool, suffix string) string {
 	p := "runs/" + url.PathEscape(id) + suffix
 	if scheduled {
@@ -471,6 +477,8 @@ func deleteCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 
 // actionCmd is retry, cancel or delete: one run by ID, or --all over a
 // filter; --dry-run reads and changes nothing.
+//
+//ds:def id=cli-actioncmd-sp9ck7m4 owner=@khanakia stability=stable
 func actionCmd(fs *flag.FlagSet, sp actionSpec) func(context.Context, *env, []string) error {
 	all := fs.Bool("all", false, "act on every run the filter flags match instead of one run")
 	dry := fs.Bool("dry-run", false, "show what would be "+sp.past+" and change nothing")
@@ -576,6 +584,8 @@ func printBulk(e *env, sp actionSpec, r bulkJSON) error {
 
 // pauseCmd is pause and resume: exactly one of --workflow, --queue and
 // --everything.
+//
+//ds:def id=cli-pausecmd-5yqn838t owner=@khanakia stability=stable
 func pauseCmd(verb string) func(*flag.FlagSet) func(context.Context, *env, []string) error {
 	return func(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 		wf := fs.String("workflow", "", verb+" one workflow")
@@ -864,6 +874,7 @@ func printSchedule(e *env, s scheduleJSON) {
 	_ = kv.flush()
 }
 
+//ds:def id=cli-triggercmd-shrcf6wu owner=@khanakia stability=stable
 func triggerCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	dry := fs.Bool("dry-run", false, "show the schedule that would run and enqueue nothing")
 	return func(ctx context.Context, e *env, args []string) error {
@@ -904,8 +915,11 @@ func triggerCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 // drainStatuses are the statuses drain waits out: runs a worker holds or
 // is about to take. Delayed runs (scheduled) and runs waiting for an event
 // are not waited for, since either can wait for days.
+//
+//ds:def id=cli-drainstatuses-ta2zcy96 owner=@khanakia stability=stable
 const drainStatuses = "queued,running,retrying"
 
+//ds:def id=cli-draincmd-mzyve365 owner=@khanakia stability=stable
 func drainCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	var queues multiFlag
 	fs.Var(&queues, "queue", "queue to wait for, comma-separated or repeated (default: every queue)")
@@ -1014,6 +1028,7 @@ func metricsCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 
 func i64(n int64) string { return strconv.FormatInt(n, 10) }
 
+//ds:def id=cli-healthcmd-kn9vahyu owner=@khanakia stability=stable
 func healthCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 	return func(ctx context.Context, e *env, args []string) error {
 		if len(args) > 0 {
@@ -1092,6 +1107,7 @@ func nodesCmd(*flag.FlagSet) func(context.Context, *env, []string) error {
 	}
 }
 
+//ds:def id=cli-reschedulecmd-6aee8q3p owner=@khanakia stability=stable
 func rescheduleCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	at := fs.String("at", "", "the new due time, RFC 3339 (e.g. 2026-10-15T09:00:00Z)")
 	scheduled := fs.Bool("scheduled", false, "RUN is a ScheduledID")
@@ -1136,6 +1152,7 @@ func rescheduleCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error
 	}
 }
 
+//ds:def id=cli-cancelstepcmd-5c773ctq owner=@khanakia stability=stable
 func cancelStepCmd(fs *flag.FlagSet) func(context.Context, *env, []string) error {
 	scheduled := fs.Bool("scheduled", false, "RUN is a ScheduledID")
 	dry := fs.Bool("dry-run", false, "check the run is unfinished and change nothing")

@@ -1,0 +1,29 @@
+func (f *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
+	pp, sp, err := both[workflow.Pauser](f, "Paused", workflow.CapPauseWorkflow)
+	if err != nil {
+		return nil, err
+	}
+	pt, perr := pp.Paused(ctx)
+	st, serr := sp.Paused(ctx)
+	if err := joinSides("Paused", perr, serr); err != nil {
+		return nil, err
+	}
+	set := map[workflow.PauseTarget]struct{}{}
+	for _, t := range append(pt, st...) {
+		set[t] = struct{}{}
+	}
+	out := slices.Collect(maps.Keys(set))
+	rank := func(t workflow.PauseTarget) int {
+		switch {
+		case t.All:
+			return 0
+		case t.Workflow != "":
+			return 1
+		}
+		return 2
+	}
+	slices.SortFunc(out, func(a, b workflow.PauseTarget) int {
+		return cmp.Or(cmp.Compare(rank(a), rank(b)), cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Queue, b.Queue))
+	})
+	return out, nil
+}

@@ -1,0 +1,7 @@
+func NewDebounceStore(rdb goredis.UniversalClient, prefix string) (*DebounceStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &DebounceStore{rdb: rdb, base: base}, nil
+}

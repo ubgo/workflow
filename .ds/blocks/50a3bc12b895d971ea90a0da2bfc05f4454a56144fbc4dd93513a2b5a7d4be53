@@ -1,0 +1,4 @@
+func (b *BucketStore) Observe(ctx context.Context, key string, spec workflow.BucketSpec, level float64, now time.Time) error {
+	_, err := b.run(ctx, key, spec, level, now, "set")
+	return err
+}

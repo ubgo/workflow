@@ -1,0 +1,4 @@
+type OutputStore struct {
+	st  *store
+	lim OutputLimits
+}

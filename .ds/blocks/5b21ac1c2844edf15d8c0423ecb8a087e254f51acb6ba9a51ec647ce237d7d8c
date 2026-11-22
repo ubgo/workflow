@@ -1,0 +1,17 @@
+func (f *Client) onRef(ref workflow.RunRef, fn func(workflow.Client, workflow.RunRef) error) error {
+	s, inner, ok := decodeRef(ref)
+	if !ok {
+		return fmt.Errorf("%w: failover: run ref %+v names two backends", workflow.ErrNotFound, ref)
+	}
+	if s != unknownSide {
+		return fn(f.backend(s), inner)
+	}
+	perr := fn(f.primary, inner)
+	if perr == nil || (!errors.Is(perr, workflow.ErrNotFound) && !f.classify(perr)) {
+		return perr
+	}
+	if serr := fn(f.secondary, inner); !errors.Is(serr, workflow.ErrNotFound) {
+		return serr
+	}
+	return perr
+}

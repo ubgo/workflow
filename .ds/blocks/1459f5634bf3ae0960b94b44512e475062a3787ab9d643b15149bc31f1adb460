@@ -1,0 +1,4 @@
+func (rc *ReplayCtx) fail(err error) error {
+	rc.fault = err
+	return err
+}

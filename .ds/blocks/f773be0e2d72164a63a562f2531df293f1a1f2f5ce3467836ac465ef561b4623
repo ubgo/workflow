@@ -1,0 +1,7 @@
+type BulkOptions struct {
+	// DryRun lists what the call would act on and changes nothing.
+	DryRun bool
+	// Max lowers the Admin's bound (WithMaxBulk) for this call; zero, or a
+	// value above that bound, keeps the bound.
+	Max int
+}

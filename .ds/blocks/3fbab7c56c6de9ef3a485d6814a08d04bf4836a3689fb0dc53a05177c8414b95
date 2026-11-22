@@ -1,0 +1,20 @@
+func (f Func[In]) Workflow() Workflow {
+	wf := Workflow{Name: f.name, Queue: f.cfg.Queue}
+	if f.fn != nil {
+		fn := f.fn
+		wf.Steps = []Step{{
+			Name:    FuncStep,
+			Retry:   f.cfg.Retry,
+			Timeout: f.cfg.Timeout,
+			Run: Define(func(ctx context.Context, in In) (struct{}, error) {
+				return struct{}{}, fn(ctx, in)
+			}),
+		}}
+	}
+	if catch := f.cfg.Catch; catch != nil {
+		wf.OnFailure = func(ctx context.Context, in []byte) ([]byte, error) {
+			return nil, catch(ctx, in)
+		}
+	}
+	return wf
+}

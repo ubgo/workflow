@@ -17,6 +17,8 @@ import (
 
 // TestUI_FilesEmbedded: every UI file is served with its type and the
 // page's security headers, and a name outside the set is a 404.
+//
+//ds:def id=admin-testui-filesembedded-zh3z2hw8 owner=@khanakia stability=stable
 func TestUI_FilesEmbedded(t *testing.T) {
 	h := NewHandler(New(seeded()), bearerAuth())
 	for name, ctype := range uiTypes {
@@ -50,6 +52,8 @@ func TestUI_FilesEmbedded(t *testing.T) {
 
 // TestUI_RedirectKeepsPrefix: GET / and GET /ui answer a relative
 // Location, so under a mount prefix the browser stays under it.
+//
+//ds:def id=admin-testui-redirectkeepsprefix-wunj6kcr owner=@khanakia stability=stable
 func TestUI_RedirectKeepsPrefix(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("/ops/admin/", http.StripPrefix("/ops/admin", NewHandler(New(seeded()), bearerAuth())))
@@ -78,6 +82,8 @@ func TestUI_RedirectKeepsPrefix(t *testing.T) {
 // inline script or style the CSP would refuse, and no HTML built from
 // strings in the script, since run errors and labels are app-written
 // text that must only ever reach the page as text.
+//
+//ds:def id=admin-testui-nothirdpartyorinlinecode-gqz4ejqd owner=@khanakia stability=stable
 func TestUI_NoThirdPartyOrInlineCode(t *testing.T) {
 	remote := regexp.MustCompile(`(?i)(https?:)?//[a-z0-9.-]+\.[a-z]{2,}`)
 	for name := range uiTypes {
@@ -148,6 +154,7 @@ func TestHandler_RunCount(t *testing.T) {
 	}
 }
 
+//ds:def id=admin-testadmin-countrunsbounded-vrdk95qe owner=@khanakia stability=stable
 func TestAdmin_CountRunsBounded(t *testing.T) {
 	a := New(seeded(), WithMaxScan(2))
 	c, err := a.CountRuns(t.Context(), workflow.RunQuery{Limit: 1})
@@ -195,6 +202,8 @@ func TestHandler_SchedulePause(t *testing.T) {
 // TestHandler_LabelPrefix: label=key=prefix* searches by prefix on a
 // client with CapLabelPrefix and is refused (501, no driver call) on one
 // without it, on lists, counts and bulk cancel alike.
+//
+//ds:def id=admin-testhandler-labelprefix-qhvc6pdb owner=@khanakia stability=stable
 func TestHandler_LabelPrefix(t *testing.T) {
 	f := seeded()
 	f.runs[0].Labels = map[string]string{"tenant": "acme"}

@@ -1,0 +1,18 @@
+func (c Caps) String() string {
+	if c.IsZero() {
+		return "none"
+	}
+	var sb strings.Builder
+	c.each(func(n int) {
+		if sb.Len() > 0 {
+			sb.WriteByte('|')
+		}
+		if name := capNames[n]; name != "" {
+			sb.WriteString(name)
+		} else {
+			sb.WriteByte('#')
+			sb.WriteString(strconv.Itoa(n))
+		}
+	})
+	return sb.String()
+}

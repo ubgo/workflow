@@ -1,0 +1,4 @@
+func ParentFailures(ctx context.Context) []StepFailure {
+	f, _ := ctx.Value(parentFailuresKey{}).([]StepFailure)
+	return f
+}

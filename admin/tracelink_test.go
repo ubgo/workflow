@@ -28,6 +28,8 @@ func serve(h http.Handler, req *http.Request) *httptest.ResponseRecorder {
 // TestTraceLink: the run detail carries the link fn builds; only an
 // absolute http or https URL is shown, a panic means no link, lists never
 // carry it, and without the option there is none.
+//
+//ds:def id=admin-testtracelink-nqdpbxrk owner=@khanakia stability=stable
 func TestTraceLink(t *testing.T) {
 	cases := []struct {
 		name string

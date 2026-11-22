@@ -1,0 +1,24 @@
+func (c *Client) Schedules(ctx context.Context) ([]workflow.ScheduleInfo, error) {
+	ls, err := every[workflow.ScheduleLister](c, "Schedules", workflow.CapScheduleList)
+	if err != nil {
+		return nil, err
+	}
+	var out []workflow.ScheduleInfo
+	for _, name := range c.names {
+		infos, err := ls[name].Schedules(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("regional: %s: %w", name, err)
+		}
+		for _, info := range infos {
+			info.ID = encodeScheduleID(name, info.ID)
+			if !info.Last.Run.IsZero() {
+				info.Last.Run = encodeRef(name, info.Last.Run)
+			}
+			out = append(out, info)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b workflow.ScheduleInfo) int {
+		return cmp.Or(cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
+	})
+	return out, nil
+}

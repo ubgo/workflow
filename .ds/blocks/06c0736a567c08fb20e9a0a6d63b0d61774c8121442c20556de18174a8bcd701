@@ -1,0 +1,64 @@
+func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	sdk, err := c.ready()
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if ref.ScheduledID.IsZero() {
+		if ref.RunID.IsZero() {
+			return workflow.RunRef{}, fmt.Errorf("%w: empty RunRef", workflow.ErrNotFound)
+		}
+		// A delayed start with an idempotency key is a run whose start
+		// gate sleeps until RunAt; the engine cannot move a durable sleep.
+		if d, err := runDetailsLagged(ctx, sdk, ref.RunID.String(), c.cfg.VisibilityLag); err == nil {
+			if st, _ := c.endStatus(d); st == workflow.StatusScheduled {
+				return workflow.RunRef{}, errRescheduleGated
+			}
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s has started", workflow.ErrWrongState, ref.RunID)
+	}
+	sid, ok := parseScheduledID(ref.ScheduledID)
+	if !ok {
+		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %q", workflow.ErrNotFound, ref.ScheduledID)
+	}
+	old, err := findSchedule(ctx, sdk, sid.token)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if old == nil || old.WorkflowRunId != nil {
+		runID, state, err := c.resolve(ctx, sdk, ref)
+		switch {
+		case err != nil:
+			return workflow.RunRef{}, err
+		case state == stateRun:
+			return workflow.RunRef{}, fmt.Errorf("%w: run %s has started", workflow.ErrWrongState, runID)
+		}
+		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %q was cancelled", workflow.ErrNotFound, ref.ScheduledID)
+	}
+	now := time.Now() // compared with the engine's due time: wall clock
+	if old.TriggerAt.Sub(now) < dueGuard {
+		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %s is due within %s and may already be firing", workflow.ErrWrongState, ref.ScheduledID, dueGuard)
+	}
+	if at.Before(now) {
+		at = now
+	}
+	md := metadataStrings(old.AdditionalMetadata)
+	md[metaRunAt] = strconv.FormatInt(at.UnixMilli(), 10)
+	trigger := features.CreateScheduledRunTrigger{
+		TriggerAt:          at.UTC(), // the engine stores triggerAt without a zone (Enqueue)
+		AdditionalMetadata: labelsAny(md),
+	}
+	if old.Input != nil {
+		trigger.Input = map[string]any(*old.Input)
+	}
+	if old.Priority != nil {
+		p := features.RunPriority(*old.Priority)
+		trigger.Priority = &p
+	}
+	if _, err := sdk.Schedules().Create(ctx, old.WorkflowName, trigger); err != nil {
+		return workflow.RunRef{}, engineErr(err, "reschedule: create the run at the new time")
+	}
+	if err := deleteScheduled(ctx, sdk, old.Metadata.Id); err != nil {
+		return workflow.RunRef{}, c.undoReschedule(ctx, sdk, sid.token, old.Metadata.Id, err)
+	}
+	return ref, nil
+}

@@ -13,6 +13,8 @@ import (
 )
 
 // Clock is a source of the current time and of timers.
+//
+//ds:def id=clock-clock-mw5ene3w owner=@khanakia stability=api
 type Clock interface {
 	// Now returns the current time.
 	Now() time.Time
@@ -22,6 +24,8 @@ type Clock interface {
 }
 
 // Timer is a one-shot timer.
+//
+//ds:def id=clock-timer-h7br8pye owner=@khanakia stability=api
 type Timer interface {
 	// C delivers the fire time once. Its buffer holds one value, so a
 	// timer never blocks the clock that fires it.
@@ -33,12 +37,16 @@ type Timer interface {
 
 // Real is the wall clock. It is the one place in this module that reads
 // time.Now.
+//
+//ds:def id=clock-real-4mnh8435 owner=@khanakia stability=stable
 type Real struct{}
 
 // Now returns time.Now.
 func (Real) Now() time.Time { return time.Now() }
 
 // NewTimer wraps time.NewTimer.
+//
+//ds:def id=clock-real-newtimer-tha74sh9 owner=@khanakia stability=stable
 func (Real) NewTimer(d time.Duration) Timer { return realTimer{time.NewTimer(d)} }
 
 type realTimer struct{ t *time.Timer }
@@ -57,6 +65,8 @@ type Fake struct {
 }
 
 // NewFake returns a Fake set to start.
+//
+//ds:def id=clock-newfake-3fjcs7pm owner=@khanakia stability=stable
 func NewFake(start time.Time) *Fake {
 	return &Fake{now: start, armed: make(chan struct{})}
 }
@@ -70,6 +80,8 @@ func (f *Fake) Now() time.Time {
 
 // NewTimer returns a timer due at Now()+d. A d of zero or less fires at
 // once, as time.NewTimer does.
+//
+//ds:def id=clock-fake-newtimer-czeubckk owner=@khanakia stability=stable
 func (f *Fake) NewTimer(d time.Duration) Timer {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -86,6 +98,8 @@ func (f *Fake) NewTimer(d time.Duration) Timer {
 
 // Advance moves the clock forward by d and fires every timer now due.
 // A negative d is ignored: the fake clock never goes back.
+//
+//ds:def id=clock-fake-advance-r72nbpb5 owner=@khanakia stability=stable
 func (f *Fake) Advance(d time.Duration) {
 	if d < 0 {
 		return
@@ -96,6 +110,8 @@ func (f *Fake) Advance(d time.Duration) {
 }
 
 // Set moves the clock to t, if t is later, and fires every timer now due.
+//
+//ds:def id=clock-fake-set-dtnyakc2 owner=@khanakia stability=stable
 func (f *Fake) Set(t time.Time) {
 	f.mu.Lock()
 	if t.After(f.now) {
@@ -104,6 +120,7 @@ func (f *Fake) Set(t time.Time) {
 	f.mu.Unlock()
 }
 
+//ds:def id=clock-fake-setlocked-wzzuc4u9 owner=@khanakia stability=stable
 func (f *Fake) setLocked(t time.Time) {
 	f.now = t
 	sort.SliceStable(f.timers, func(i, j int) bool { return f.timers[i].at.Before(f.timers[j].at) })
@@ -120,6 +137,8 @@ func (f *Fake) setLocked(t time.Time) {
 
 // Pending returns the number of timers that have not fired or been
 // stopped.
+//
+//ds:def id=clock-fake-pending-agw73umv owner=@khanakia stability=stable
 func (f *Fake) Pending() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -129,6 +148,8 @@ func (f *Fake) Pending() int {
 // BlockUntil waits until at least n timers are pending, so a test can
 // Advance only after the goroutine under test has armed its timer. It
 // returns ctx.Err() if ctx ends first.
+//
+//ds:def id=clock-fake-blockuntil-mabgbssy owner=@khanakia stability=stable
 func (f *Fake) BlockUntil(ctx context.Context, n int) error {
 	for {
 		f.mu.Lock()

@@ -30,6 +30,8 @@ func startCutover(t *testing.T, wfs ...workflow.Workflow) workflow.Client {
 
 // TestResetAndSignalFlows runs the shared ResetRun and signal suites
 // through a cutover client.
+//
+//ds:def id=cutover-testresetandsignalflows-f438f95p owner=@khanakia stability=stable
 func TestResetAndSignalFlows(t *testing.T) {
 	workflowtest.RunResetFlows(t, workflowtest.FlowHarness{Start: startCutover})
 	workflowtest.RunSignalFlows(t, workflowtest.SignalHarness{Start: startCutover,

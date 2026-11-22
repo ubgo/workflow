@@ -12,6 +12,8 @@ import (
 // promise the run answers through. A wait step's output is the signal's
 // payload, so the step after it decodes this with DecodeUpdate (or wraps
 // its body in UpdateHandler).
+//
+//ds:def id=updaterequest-amk77jum owner=@khanakia stability=stable
 type UpdateRequest struct {
 	// Reply is the promise id the run settles with its answer.
 	Reply string `json:"reply"`
@@ -42,6 +44,8 @@ type updateEnvelope struct {
 // and key; the first answer wins and later ones are ignored. Give the
 // caller a ctx with a deadline: a run that never reaches the wait step
 // never answers. The promise is deleted once read.
+//
+//ds:def id=update-qj6esyyk owner=@khanakia stability=stable
 func Update(ctx context.Context, client Client, store PromiseStore, ev Event, opts AwaitOptions) ([]byte, error) {
 	if client == nil || store == nil || ev.Name == "" {
 		return nil, invalidf("Update needs a client, a promise store and an event name")
@@ -52,6 +56,8 @@ func Update(ctx context.Context, client Client, store PromiseStore, ev Event, op
 // UpdateRun is Update addressed to one run by its ID: the wait step
 // that takes it has WaitSpec.OwnRun (CapWaitOwnRun), and the request
 // goes through SignalRun, so only the run ref names answers.
+//
+//ds:def id=updaterun-gu9rgx9r owner=@khanakia stability=stable
 func UpdateRun(ctx context.Context, client Client, store PromiseStore, ref RunRef, name string, payload []byte, opts AwaitOptions) ([]byte, error) {
 	if client == nil || store == nil || name == "" || ref.RunID.IsZero() {
 		return nil, invalidf("UpdateRun needs a client, a promise store, a run ID and a signal name")
@@ -63,6 +69,8 @@ func UpdateRun(ctx context.Context, client Client, store PromiseStore, ref RunRe
 
 // update sends ev's payload wrapped in an UpdateRequest through send and
 // waits for the reply promise.
+//
+//ds:def id=update-khsw5ev5 owner=@khanakia stability=stable
 func update(ctx context.Context, client Client, store PromiseStore, ev Event, opts AwaitOptions, send func(Event) error) ([]byte, error) {
 	if !client.Capabilities().Has(CapWaitForEvent) {
 		return nil, &UnsupportedError{Field: "Update", Missing: CapWaitForEvent, Reason: "the run receives an update through a wait step"}
@@ -119,6 +127,8 @@ func ReplyUpdate(ctx context.Context, store PromiseStore, req UpdateRequest, out
 // any other error is returned for the step's retry policy while the
 // caller keeps waiting, so a step that exhausts its retries leaves the
 // caller to its ctx deadline. The step's own output is fn's output.
+//
+//ds:def id=updatehandler-cegfe95e owner=@khanakia stability=stable
 func UpdateHandler(store PromiseStore, fn Handler) Handler {
 	return func(ctx context.Context, in []byte) ([]byte, error) {
 		if store == nil || fn == nil {
@@ -148,6 +158,8 @@ func UpdateHandler(store PromiseStore, fn Handler) Handler {
 // CapWaitForEvent. The signal goes to every run waiting on ev's name and
 // key, as Signal does; give each run its own key (WaitSpec.KeyFrom) to
 // reach only the one started.
+//
+//ds:def id=signalwithstart-hk5sr9sg owner=@khanakia stability=stable
 func SignalWithStart(ctx context.Context, client Client, job Job, ev Event) (RunRef, error) {
 	if client == nil || ev.Name == "" {
 		return RunRef{}, invalidf("SignalWithStart needs a client and an event name")
@@ -174,6 +186,8 @@ func SignalWithStart(ctx context.Context, client Client, job Job, ev Event) (Run
 // the RunID of the run it continues. It is under the reserved internal
 // prefix, set through AllowReservedLabels like the parent labels of
 // Spawn.
+//
+//ds:def id=labelcontinuedfrom-njsmcapf owner=@khanakia stability=stable
 const LabelContinuedFrom = LabelPrefixInternal + "continued-from"
 
 // ContinueAsNew starts the next run of the calling step's workflow with
@@ -188,6 +202,8 @@ const LabelContinuedFrom = LabelPrefixInternal + "continued-from"
 // a reserved prefix (schedule, tick, parent) are not carried, since the
 // new run was not fired by a schedule or spawned by a parent. client is
 // the client the workflow is registered on.
+//
+//ds:def id=continueasnew-9dkhw3cb owner=@khanakia stability=stable
 func ContinueAsNew(ctx context.Context, client Client, payload []byte) (RunRef, error) {
 	if client == nil {
 		return RunRef{}, Permanent(invalidf("ContinueAsNew: client is nil"))
@@ -222,6 +238,8 @@ func ContinueAsNew(ctx context.Context, client Client, payload []byte) (RunRef, 
 
 // ContinuedFrom returns the run the calling step's run continues
 // (LabelContinuedFrom), and false for a run not started by ContinueAsNew.
+//
+//ds:def id=continuedfrom-uw5kcqu4 owner=@khanakia stability=stable
 func ContinuedFrom(ctx context.Context) (RunID, bool) {
 	info, ok := StepInfoFrom(ctx)
 	if !ok {
@@ -238,6 +256,8 @@ func ContinuedFrom(ctx context.Context) (RunID, bool) {
 // finished or not started is the driver's answer for that step (see
 // StepCanceller). A client without StepCanceller is refused with an
 // UnsupportedError.
+//
+//ds:def id=cancelsteps-9p2f2na7 owner=@khanakia stability=stable
 func CancelSteps(ctx context.Context, client Client, ref RunRef, steps ...string) error {
 	sc, ok := client.(StepCanceller)
 	if client == nil || !ok {

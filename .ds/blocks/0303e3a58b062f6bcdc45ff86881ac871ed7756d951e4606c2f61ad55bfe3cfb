@@ -1,0 +1,17 @@
+func open(c Codec, in []byte) ([]byte, error) {
+	trimmed := bytes.TrimSpace(in)
+	if len(trimmed) == 0 {
+		return in, nil
+	}
+	if trimmed[0] != '{' {
+		plain, ok, err := openValue(c, trimmed)
+		switch {
+		case err != nil:
+			return nil, err
+		case !ok:
+			return nil, errNotSealed
+		}
+		return plain, nil
+	}
+	return openObject(c, trimmed)
+}

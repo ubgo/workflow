@@ -1,0 +1,11 @@
+func (h *webhook) enqueue(ctx context.Context, id string, body []byte, labels map[string]string) error {
+	if h.cfg.Bus != nil {
+		_, err := h.cfg.Bus.Publish(ctx, Message{ID: id, Name: h.cfg.Event, Payload: body, Labels: labels})
+		return err
+	}
+	_, err := h.cfg.Client.Enqueue(ctx, workflow.Job{
+		Workflow: h.cfg.Workflow, Payload: body, Labels: labels,
+		IdempotencyKey: "webhook/" + h.cfg.Workflow + "/" + id,
+	})
+	return err
+}

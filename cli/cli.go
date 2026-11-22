@@ -14,6 +14,8 @@ import (
 )
 
 // The environment variables Run reads through Options.Getenv.
+//
+//ds:def id=cli-envvars-43gx5upd owner=@khanakia stability=stable
 const (
 	// EnvURL is the admin API's mount point, the default of --url.
 	EnvURL = "WORKFLOW_ADMIN_URL"
@@ -25,6 +27,8 @@ const (
 )
 
 // The exit codes Run returns.
+//
+//ds:def id=cli-exitcodes-ppkys34b owner=@khanakia stability=stable
 const (
 	ExitOK    = 0 // the command did what it was asked
 	ExitError = 1 // the API refused or failed, or drain timed out
@@ -32,11 +36,15 @@ const (
 )
 
 // DefaultTimeout bounds one HTTP request when Options.HTTPClient is nil.
+//
+//ds:def id=cli-defaulttimeout-whu8gewm owner=@khanakia stability=stable
 const DefaultTimeout = 30 * time.Second
 
 // Options are what Run takes from the process around it, so an app can
 // embed the CLI and a test can drive it without a real terminal, network
 // or clock.
+//
+//ds:def id=cli-options-h563nup5 owner=@khanakia stability=stable
 type Options struct {
 	// Stdout gets results; Stderr gets errors and usage. Nil discards.
 	Stdout, Stderr io.Writer
@@ -98,6 +106,8 @@ func (g *global) register(fs *flag.FlagSet, def global) {
 }
 
 // envDefaults is the global flags' defaults from the environment.
+//
+//ds:def id=cli-envdefaults-53ht2asz owner=@khanakia stability=stable
 func envDefaults(getenv func(string) string) global {
 	return global{url: getenv(EnvURL), token: getenv(EnvToken)}
 }
@@ -113,6 +123,8 @@ type command struct {
 }
 
 // commands is every subcommand, in usage order.
+//
+//ds:def id=cli-commands-swdmb7e8 owner=@khanakia stability=stable
 func commands() []command {
 	return []command{
 		{"caps", "", "operations the server's driver supports", capsCmd},
@@ -144,6 +156,8 @@ func commands() []command {
 
 // Run runs the CLI with args (without the program name) and returns the
 // exit code: ExitOK, ExitError or ExitUsage.
+//
+//ds:def id=cli-run-f8y65pmf owner=@khanakia stability=stable
 func Run(ctx context.Context, args []string, opts Options) int {
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
@@ -253,6 +267,8 @@ func run(ctx context.Context, args []string, opts Options) error {
 // buildHeaders turns --token, EnvHeader and --header into request
 // headers. Header values are checked for a colon only; the server decides
 // what it accepts.
+//
+//ds:def id=cli-buildheaders-6k6b5vfc owner=@khanakia stability=stable
 func buildHeaders(g global, getenv func(string) string) (http.Header, error) {
 	h := http.Header{}
 	if g.token != "" {
@@ -277,6 +293,8 @@ func buildHeaders(g global, getenv func(string) string) (http.Header, error) {
 // parseInterleaved parses fs over args, allowing flags after positional
 // arguments ("retry r1 --dry-run"), which flag.Parse stops at. "--" ends
 // the flags.
+//
+//ds:def id=cli-parseinterleaved-fcu64w2p owner=@khanakia stability=stable
 func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 	var pos []string
 	for {
@@ -365,6 +383,8 @@ func printCommandUsage(w io.Writer, opts Options, c command, fs *flag.FlagSet) {
 // Main is the stand-alone binary's body: Run over the process's
 // arguments, standard streams and environment, cancelled by an interrupt,
 // then exit with its code.
+//
+//ds:def id=cli-main-sd4j6jfm owner=@khanakia stability=stable
 func Main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	code := Run(ctx, os.Args[1:], Options{Stdout: os.Stdout, Stderr: os.Stderr, Getenv: os.Getenv})

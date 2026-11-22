@@ -1,0 +1,9 @@
+func (f *Fake) AssertForced(t testing.TB, ref workflow.RunRef, complete bool) {
+	t.Helper()
+	for _, got := range f.Forced() {
+		if got.Ref == ref && got.Complete == complete {
+			return
+		}
+	}
+	t.Errorf("run %+v was not forced (complete=%v); forced: %+v", ref, complete, f.Forced())
+}

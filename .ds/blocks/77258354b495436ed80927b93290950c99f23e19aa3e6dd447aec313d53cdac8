@@ -1,0 +1,8 @@
+func (c Caps) HasAny(o Caps) bool {
+	for i := range c.w {
+		if c.w[i]&o.w[i] != 0 {
+			return true
+		}
+	}
+	return false
+}

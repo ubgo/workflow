@@ -1,0 +1,77 @@
+func ReadHTTP(r *http.Request) (CloudEvent, error) {
+	ct := r.Header.Get("Content-Type")
+	mt := ""
+	if ct != "" {
+		var err error
+		if mt, _, err = mime.ParseMediaType(ct); err != nil {
+			return CloudEvent{}, fmt.Errorf("%w: cloudevent: Content-Type %q: %v", workflow.ErrInvalid, ct, err)
+		}
+	}
+	switch {
+	case mt == ContentTypeCloudEventsJSON:
+		body, err := readBody(r)
+		if err != nil {
+			return CloudEvent{}, err
+		}
+		var e CloudEvent
+		if err := e.UnmarshalJSON(body); err != nil {
+			return CloudEvent{}, err
+		}
+		return e, nil
+	case mt == contentTypeCloudEventsBatchJSON:
+		return CloudEvent{}, fmt.Errorf("%w: cloudevent: batch mode is not supported", workflow.ErrInvalid)
+	case strings.HasPrefix(mt, "application/cloudevents"):
+		return CloudEvent{}, fmt.Errorf("%w: cloudevent: event format %q is not supported (only %s)", workflow.ErrInvalid, mt, ContentTypeCloudEventsJSON)
+	case r.Header.Get(ceHeaderPrefix+"specversion") == "":
+		return CloudEvent{}, fmt.Errorf("%w: cloudevent: request is in neither binary mode (no ce-specversion header) nor structured mode", workflow.ErrInvalid)
+	}
+	e := CloudEvent{DataContentType: ct}
+	for key, vals := range r.Header {
+		lk := strings.ToLower(key)
+		if !strings.HasPrefix(lk, ceHeaderPrefix) || len(vals) == 0 {
+			continue
+		}
+		name := strings.TrimPrefix(lk, ceHeaderPrefix)
+		v, err := percentDecode(vals[0])
+		if err != nil {
+			return CloudEvent{}, fmt.Errorf("%w: cloudevent: header %s: %v", workflow.ErrInvalid, key, err)
+		}
+		switch name {
+		case "specversion":
+			e.SpecVersion = v
+		case "id":
+			e.ID = v
+		case "source":
+			e.Source = v
+		case "type":
+			e.Type = v
+		case "subject":
+			e.Subject = v
+		case "dataschema":
+			e.DataSchema = v
+		case "time":
+			if e.Time, err = time.Parse(time.RFC3339Nano, v); err != nil {
+				return CloudEvent{}, fmt.Errorf("%w: cloudevent: time %q is not RFC 3339", workflow.ErrInvalid, v)
+			}
+		case "datacontenttype":
+			// Content-Type carries it in binary mode; a header of this
+			// name is not an extension either.
+		default:
+			if e.Extensions == nil {
+				e.Extensions = map[string]string{}
+			}
+			e.Extensions[name] = v
+		}
+	}
+	body, err := readBody(r)
+	if err != nil {
+		return CloudEvent{}, err
+	}
+	if len(body) > 0 {
+		e.Data = body
+	}
+	if err := e.Validate(); err != nil {
+		return CloudEvent{}, err
+	}
+	return e, nil
+}

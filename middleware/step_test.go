@@ -60,6 +60,7 @@ func TestChainEnqueue_OrderAndWrapClient(t *testing.T) {
 	}
 }
 
+//ds:def id=mw-testlogging-nopayloadinlog-ycd9gmsu owner=@khanakia stability=stable
 func TestLogging_NoPayloadInLog(t *testing.T) {
 	var buf bytes.Buffer
 	l := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))

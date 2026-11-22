@@ -1,0 +1,15 @@
+func NewMemoryMetrics(cfg MemoryMetricsConfig) *MemoryMetrics {
+	if cfg.Bucket <= 0 {
+		cfg.Bucket = DefaultMetricsBucket
+	}
+	if cfg.Keep <= 0 {
+		cfg.Keep = DefaultMetricsKeep
+	}
+	if cfg.Dedupe <= 0 {
+		cfg.Dedupe = DefaultMetricsDedupe
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = clock.Real{}
+	}
+	return &MemoryMetrics{cfg: cfg, buckets: map[int64]map[string]*counts{}, since: cfg.Clock.Now(), seen: map[dedupeKey]struct{}{}}
+}

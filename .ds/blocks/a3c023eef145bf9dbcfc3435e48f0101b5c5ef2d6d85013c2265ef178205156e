@@ -1,0 +1,7 @@
+const (
+	DefaultMetricsBucket = time.Minute
+	DefaultMetricsKeep   = 24 * time.Hour
+	// DefaultMetricsDedupe is how many recent run ends MemoryMetrics
+	// remembers to drop a repeated delivery (delivery is at least once).
+	DefaultMetricsDedupe = 4096
+)

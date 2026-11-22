@@ -1,6 +1,6 @@
 # Write a driver
 
-A driver is any type that implements `workflow.Client`: a queue in Redis, a cloud service, an in-house engine, or a narrower in-process runner. This guide builds `Tiny`, a complete driver of under 300 lines that runs steps as a DAG with retries, timeouts and failure handlers, declares no capability beyond the core contract and refuses everything else, then holds it to the conformance suite every shipped driver runs. The core gives a driver the shared rules as functions (validation, capability checks, step inputs, retry delays, misfire maths), so two drivers cannot disagree on what a spec means.
+A driver is any type that implements `workflow.Client`: a queue in Redis, a cloud service, an in-house engine, or a narrower in-process runner. This guide builds `Tiny`, a complete driver of about 300 lines that runs steps as a DAG with retries, timeouts and failure handlers, declares no capability beyond the core contract and refuses everything else, then holds it to the conformance suite every shipped driver runs ([`workflowtest.Run`](ds:block?id=workflowtest-run-2dxkjk9h)). The core gives a driver the shared rules as functions (validation with [`Validate`](ds:block?id=validate-mnthpzkp), capability checks with [`CheckCaps`](ds:block?id=checkcaps-eg44ezuh), step inputs with [`StepInput`](ds:block?id=stepinput-ykz7ud5d), retry delays with [`NextDelay`](ds:block?id=retrypolicy-nextdelay-94cqz66r), misfire maths with [`Misfire.Due`](ds:block?id=misfire-due-5butt4h7)), so two drivers cannot disagree on what a spec means.
 
 ## Before you start
 
@@ -11,7 +11,7 @@ A driver is any type that implements `workflow.Client`: a queue in Redis, a clou
 
 ### Step 1 — Declare what it can really do
 
-A capability is a promise the conformance suite will test against your real backend. Declare only what you have proven; the empty set is honest and still runs every plain workflow.
+A capability is a promise the conformance suite will test against your real backend. Declare only what you have proven; the empty set is honest and still runs every plain workflow, since [`workflow.Requires`](ds:block?id=requires-6tcjbcfj) asks nothing of a workflow that uses no optional field.
 
 <!-- snippet: examples/custom-driver/driver.go#caps -->
 ```go
@@ -25,7 +25,7 @@ var tinyCaps workflow.Caps
 
 ### Step 2 — Hold state in the value, take a clock
 
-No package-level state: everything hangs off the value the app constructs, so two clients in one process never share anything. Every timer comes from an injected `clock.Clock` ([Time](../concepts/time.md#the-clock-interface)), and the constructor opens nothing.
+No package-level state: everything hangs off the value the app constructs, so two clients in one process never share anything. Every timer comes from an injected [`clock.Clock`](ds:block?id=clock-clock-mw5ene3w) ([Time](../concepts/time.md#the-clock-interface)), and the constructor opens nothing.
 
 <!-- snippet: examples/custom-driver/driver.go#type -->
 ```go
@@ -58,7 +58,7 @@ func (t *Tiny) Capabilities() workflow.Caps { return tinyCaps }
 
 ### Step 3 — Register and Start
 
-`Register` calls `workflow.Validate`, the one shape check, and refuses after `Start`. `Start` calls `workflow.CheckCaps` for every registered workflow, so a workflow that needs a capability you lack fails at start-up with an `UnsupportedError` naming it. The `Start` context is the client's lifetime: cancelling it stops everything. A driver that must refuse a field its backend cannot express (an expression language it does not have, a window size it cannot do) returns `workflow.Unsupported(field, reason)` from `Register` or `Start` too.
+`Register` calls [`workflow.Validate`](ds:block?id=validate-mnthpzkp), the one shape check, and refuses after `Start` with [`ErrAlreadyStarted`](ds:block?id=erralreadystarted-prauyy24). `Start` calls [`workflow.CheckCaps`](ds:block?id=checkcaps-eg44ezuh) for every registered workflow, so a workflow that needs a capability you lack fails at start-up with an [`UnsupportedError`](ds:block?id=unsupportederror-46jkqrxt) naming it. The `Start` context is the client's lifetime: cancelling it stops everything. A driver that must refuse a field its backend cannot express (an expression language it does not have, a window size it cannot do) returns [`workflow.Unsupported(field, reason)`](ds:block?id=unsupported-4r9efjk8) from `Register` or `Start` too.
 
 <!-- snippet: examples/custom-driver/driver.go#lifecycle -->
 ```go
@@ -97,7 +97,7 @@ func (t *Tiny) Start(ctx context.Context) error {
 
 ### Step 4 — Enqueue, refusing what it cannot honour
 
-`workflow.ValidateJob` checks the job's shape, and `workflow.CheckJob` compares what it asks for (`workflow.RequiresJob`: a delayed start, an idempotency key, a queue, a per-job retry policy) with the driver's capabilities. A driver without one returns an `UnsupportedError` naming the field; it never drops the field and runs the job anyway, which is the bug that makes a fake pass while production misbehaves. `workflow.CheckJobLabels` refuses a label under a reserved prefix that the caller's context does not allow; every driver calls it in its public `Enqueue`, and the conformance group `reservedlabels` fails a driver that does not.
+[`workflow.ValidateJob`](ds:block?id=validatejob-a7nq3u2t) checks the job's shape, and [`workflow.CheckJob`](ds:block?id=checkjob-2rsfu9ma) compares what it asks for ([`workflow.RequiresJob`](ds:block?id=requiresjob-mrfs7vqd): a delayed start, an idempotency key, a queue, a per-job retry policy, a tenant, a chain) with the driver's capabilities. A driver without one returns an `UnsupportedError` naming the field; it never drops the field and runs the job anyway, which is the bug that makes a fake pass while production misbehaves. [`workflow.CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h) refuses a label under a reserved prefix that the caller's context does not allow; every driver calls it in its public `Enqueue`, and the conformance group `reservedlabels` ([`reservedLabelCases`](ds:block?id=workflowtest-reservedlabelcases-m7p7wb5d)) fails a driver that does not.
 
 <!-- snippet: examples/custom-driver/driver.go#enqueue -->
 ```go
@@ -136,7 +136,7 @@ func (t *Tiny) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, 
 
 ### Step 5 — Refuse the methods it has no capability for
 
-`Cancel` without `CapCancel` and `Schedule` without `CapCron` return an `UnsupportedError`; `workflow.CheckScheduleCaps` builds the schedule one, naming `Schedule`, `Schedule.Location` or `Schedule.Misfire`. `Unschedule` of an empty ID is a no-op. A `Signal` nobody waits for is not an error.
+`Cancel` without `CapCancel` and `Schedule` without `CapCron` return an `UnsupportedError`; [`workflow.CheckScheduleCaps`](ds:block?id=checkschedulecaps-45emsz38) builds the schedule one, naming the field responsible (`Schedule`, `Schedule.Location`, `Schedule.Misfire`, `Schedule.Windows`, `Schedule.Overlap` and so on). [`Unschedule`](ds:block?id=client-unschedule-2eju3acd) of an empty ID is a no-op. A [`Signal`](ds:block?id=client-signal-2sdhmcdy) nobody waits for is not an error.
 
 <!-- snippet: examples/custom-driver/driver.go#refuse -->
 ```go
@@ -183,7 +183,7 @@ func (t *Tiny) started() error {
 
 ### Step 6 — Run the steps by the shared rules
 
-A step starts once all its `After` parents have succeeded, and its input is `workflow.StepInput(payload, parents, outputs)`: the payload, one parent's output, or an object keyed by parent name. When a step fails for good, `OnFailure` runs once with that step's input and the run fails.
+A step starts once all its `After` parents have succeeded, and its input is [`workflow.StepInput(payload, parents, outputs)`](ds:block?id=stepinput-ykz7ud5d): the payload, one parent's output, or an object keyed by parent name. When a step fails for good, `OnFailure` runs once with that step's input and the run fails.
 
 <!-- snippet: examples/custom-driver/driver.go#execute -->
 ```go
@@ -230,25 +230,25 @@ func parentsDone(s workflow.Step, outs map[string][]byte) bool {
 }
 ```
 
-Each attempt runs with `workflow.WithStepInfo` on its context (so middleware and handlers know the workflow, step, run, attempt and labels), under the step's timeout or the workflow's. Retries follow `workflow.EffectiveRetries(step, wf)` (the step's policy, else the workflow's), `RetryPolicy.Retryable` (not permanent, not cancelled, not excluded by `NoRetryOn`, within `Max`) and `RetryPolicy.NextDelay` (the `DelayFor` answer, else the backoff with its jitter). The loop is in [Time](../concepts/time.md#the-clock-interface), where it serves as the clock example.
+Each attempt runs with [`workflow.WithStepInfo`](ds:block?id=withstepinfo-t26f3eu3) on its context (so middleware and handlers know the workflow, step, run, attempt and labels), under the step's timeout or the workflow's. Retries follow [`workflow.EffectiveRetries(step, wf)`](ds:block?id=effectiveretries-52e5k4q9) (the step's policy, else the workflow's), [`RetryPolicy.Retryable`](ds:block?id=retrypolicy-retryable-ve8muksd) (not permanent, not cancelled, not excluded by `NoRetryOn`, within `Max`) and [`RetryPolicy.NextDelay`](ds:block?id=retrypolicy-nextdelay-94cqz66r) (the `DelayFor` answer, else the backoff with its jitter). The loop is in [Time](../concepts/time.md#the-clock-interface), where it serves as the clock example.
 
 The rest of the shared rules, for the capabilities `Tiny` does not have:
 
 | Capability you add | Core helper to call |
 |---|---|
-| `CapWaitForEvent` | `WaitSpec.ResolveKey(job)` for a run's wait key; keep the `Signal` contract in the `Client` doc (an event sent after the run's enqueue is kept, one run never takes one event twice, one event resumes every matching run) |
-| `CapCron`, misfire policies, `CapCronZone` | `cron.Parse` (or a `cron.Parser` option), `Misfire.Due(src, last, now, loc)` for which missed ticks fire, `workflow.IsUTC` |
-| `CapRetryJitter`, `CapRetryDelay` | `RetryPolicy.NextDelay`, with a jitter source the app can pin in tests |
-| `CapRunFinished` | implement `workflow.RunNotifier`, keeping its delivery contract (before `Start` only, after `Status` shows the end, panics recovered, at least once, every terminal run) |
-| batches as one native call | implement `batch.GroupRunner` |
+| `CapWaitForEvent` | [`WaitSpec.ResolveKey(job)`](ds:block?id=waitspec-resolvekey-ey3s9dka) for a run's wait key; keep the [`Signal`](ds:block?id=client-signal-2sdhmcdy) contract in the `Client` doc (an event sent after the run's enqueue is kept, one run never takes one event twice, one event resumes every matching run) |
+| `CapCron`, misfire policies, `CapCronZone` | [`cron.Parse`](ds:block?id=cron-parse-85dsvh6b) (or a `cron.Parser` option), [`Misfire.Due(src, last, now, loc)`](ds:block?id=misfire-due-5butt4h7) for which missed ticks fire, [`workflow.IsUTC`](ds:block?id=isutc-aj4baxqq) |
+| `CapRetryJitter`, `CapRetryDelay` | [`RetryPolicy.NextDelay`](ds:block?id=retrypolicy-nextdelay-94cqz66r), with a jitter source the app can pin in tests |
+| `CapRunFinished` | implement [`workflow.RunNotifier`](ds:block?id=runnotifier-tbkv69uz), keeping its delivery contract (before `Start` only, after `Status` shows the end, panics recovered, at least once, every terminal run) |
+| batches as one native call | implement [`batch.GroupRunner`](ds:block?id=batch-grouprunner-v7nf5w8m) |
 
-Mark errors from an unreachable backend with `workflow.Unavailable(err)`, so a failover client can tell an outage from a refusal ([Backend outages](../concepts/errors.md#backend-outages)). Accept step middleware with a `WithMiddleware` option and apply it around every step and `OnFailure`, as the shipped drivers do.
+Mark errors from an unreachable backend with [`workflow.Unavailable(err)`](ds:block?id=unavailable-wpp9cehg), so a failover client can tell an outage from a refusal ([Backend outages](../concepts/errors.md#backend-outages)). Accept step middleware with a `WithMiddleware` option and apply it around every step and `OnFailure`, as the shipped drivers do ([`memory.WithMiddleware`](ds:block?id=memory-withmiddleware-yea2tnqr)).
 
 ### Step 7 — Call the shared helper for each capability you add
 
-Every optional operation and capability has a helper in the core that decides it the way every shipped driver does. Call it at the same point a shipped driver does, rather than writing the rule again: the conformance cases are written against these answers. [examples/custom-driver](../../examples/custom-driver/) calls each one in `helpers.go` and prints what it decides; `Tiny` itself needs none of them, because it declares none of these capabilities.
+Every optional operation and capability has a helper in the core that decides it the way every shipped driver does. Call it at the same point a shipped driver does, rather than writing the rule again: the conformance cases are written against these answers. [examples/custom-driver](../../examples/custom-driver/) calls each one in `helpers.go` and prints what it decides; `Tiny` itself declares none of these capabilities and uses only the step-timeout handshake, the last one below.
 
-Resets and forks (`workflow.RunResetter`, `RunResetterWith`, `RunForker`). `ResetStatusOK(status, opts)` says whether a run may be reset (failed always, succeeded only with `ResetOptions.Succeeded`), `ForkStatusOK(status)` whether it may be forked (it has finished), `ForkRedo(status, labels)` whether the fork redoes work that already succeeded (so it gets `LabelRedo`), and `CheckFork(step, opts)` refuses an empty step or a reserved label before the driver looks the run up. Build the fork's labels with `ForkLabels`, which drops the membership labels (batch, parent, schedule, object key...) a fork must not inherit:
+Resets and forks (`workflow.RunResetter`, `RunResetterWith`, `RunForker`). [`ResetStatusOK(status, opts)`](ds:block?id=resetstatusok-pdwz2avg) says whether a run may be reset (failed always, succeeded only with `ResetOptions.Succeeded`), [`ForkStatusOK(status)`](ds:block?id=forkstatusok-x544ybnq) whether it may be forked (it has finished), [`ForkRedo(status, labels)`](ds:block?id=forkredo-k36kx3xp) whether the fork redoes work that already succeeded (so it gets `LabelRedo`), and [`CheckFork(step, opts)`](ds:block?id=checkfork-a9wp7kp8) refuses an empty step or a reserved label before the driver looks the run up. Build the fork's labels with [`ForkLabels`](ds:block?id=forklabels-479w9npr), which drops the membership labels (batch, parent, schedule, object key...) a fork must not inherit:
 
 <!-- snippet: examples/custom-driver/helpers.go#reset-fork -->
 ```go
@@ -264,7 +264,7 @@ fmt.Fprintln(w, "fork running:", workflow.ForkStatusOK(workflow.StatusRunning),
 fmt.Fprintln(w, "fork without a step:", workflow.CheckFork("", workflow.ForkOptions{}))
 ```
 
-Chain edits (`workflow.ChainEditor`, from a running step). Make one `NewChainEdits(caps, storedChain)` per attempt and put it on the step's context with `WithChainEditor`; it checks each edit with `ValidateJob` and `CheckJob` against your capabilities and the `MaxChainJobs` cap, and buffers it. Call `Apply(storedChain)` and store the result only when the attempt succeeds, so a failed attempt that edited the chain leaves no trace:
+Chain edits (`workflow.ChainEditor`, from a running step). Make one [`NewChainEdits(caps, storedChain)`](ds:block?id=newchainedits-5sfrvcrs) per attempt and put it on the step's context with [`WithChainEditor`](ds:block?id=withchaineditor-7k4ssxr9); it checks each edit with `ValidateJob` and `CheckJob` against your capabilities and the [`MaxChainJobs`](ds:block?id=maxchainjobs-sg4br535) cap, and buffers it. Call [`Apply(storedChain)`](ds:block?id=chainedits-apply-chcyg7d7) and store the result only when the attempt succeeds, so a failed attempt that edited the chain leaves no trace:
 
 <!-- snippet: examples/custom-driver/helpers.go#chain-edits -->
 ```go
@@ -285,7 +285,7 @@ fmt.Fprintln(w, "chain after the attempt:", chain, "changed:", edits.Changed())
 fmt.Fprintln(w, "delayed chain job:", refused)
 ```
 
-Schedules. `LastTick(src, from, to, loc)` is the newest tick in `(from, to]`, which a driver reports as `Tick.At` of a `TickMisfired` outcome; `TriggeredLabelsAt(labels, id, name, at)` is the label set of a run `TriggerSchedule` starts on a driver with `CapTickTime` (the schedule labels, the tick time and `LabelTrigger`; `TriggeredLabels` without the tick time):
+Schedules. [`LastTick(src, from, to, loc)`](ds:block?id=lasttick-zzx4bpqn) is the newest tick in `(from, to]`, which a driver reports as `Tick.At` of a `TickMisfired` outcome; [`TriggeredLabelsAt(labels, id, name, at)`](ds:block?id=triggeredlabelsat-6b93e4q3) is the label set of a run `TriggerSchedule` starts on a driver with `CapTickTime` (the schedule labels, the tick time and `LabelTrigger`; [`TriggeredLabels`](ds:block?id=triggeredlabels-xgkux53f) without the tick time):
 
 <!-- snippet: examples/custom-driver/helpers.go#ticks -->
 ```go
@@ -302,7 +302,7 @@ labels := workflow.TriggeredLabelsAt(map[string]string{"team": "core"}, "sched-1
 fmt.Fprintln(w, "trigger labels:", len(labels), "tick at", labels[workflow.LabelTickAt], "trigger", labels[workflow.LabelTrigger])
 ```
 
-Weighted round-robin concurrency (`ConcurrencyRoundRobin`, `CapKeyWeights`). `FairWeight(concurrency, key)` is the key's weight, clamped to `1..MaxKeyWeight` (1 without a `Weight` function), and `FairStride(weight)` the virtual time one turn of that key costs; `FairTurn(pass, now, weight)` combines them into the run's start tag, and the driver serves waiting runs in start tag order:
+Weighted round-robin concurrency (`ConcurrencyRoundRobin`, `CapKeyWeights`). [`FairWeight(concurrency, key)`](ds:block?id=fairweight-a77ybjht) is the key's weight, clamped to `1..MaxKeyWeight` ([`MaxKeyWeight`](ds:block?id=maxkeyweight-wvwmrvcb); 1 without a `Weight` function), and [`FairStride(weight)`](ds:block?id=fairstride-zq442xay) the virtual time one turn of that key costs; [`FairTurn(pass, now, weight)`](ds:block?id=fairturn-usczqc7a) combines them into the run's start tag, and the driver serves waiting runs in start tag order:
 
 <!-- snippet: examples/custom-driver/helpers.go#fair -->
 ```go
@@ -315,7 +315,7 @@ for _, key := range []string{"enterprise", "free"} {
 }
 ```
 
-Bulk cancel and pauses. `CancelStatuses(query)` is what `CancelAll` cancels: the query's statuses, or, when it names none, only runs that have not started. `RequiresPause(target)` is the capability a pause target needs (`CheckPause` calls it and refuses with an `UnsupportedError`):
+Bulk cancel and pauses. [`CancelStatuses(query)`](ds:block?id=cancelstatuses-8fnq9hyv) is what `CancelAll` cancels: the query's statuses, or, when it names none, only runs that have not started. [`RequiresPause(target)`](ds:block?id=requirespause-bpxg35v9) is the capability a pause target needs ([`CheckPause`](ds:block?id=checkpause-9fyvd7wv) calls it and refuses with an `UnsupportedError`):
 
 <!-- snippet: examples/custom-driver/helpers.go#cancel-pause -->
 ```go
@@ -326,7 +326,7 @@ fmt.Fprintln(w, "pause a queue needs:", workflow.RequiresPause(workflow.PauseQue
 	"a workflow needs:", workflow.RequiresPause(workflow.PauseWorkflow("report")))
 ```
 
-Worker slots (`Step.Slots`, `CapSlotCost`). Call `CheckSlots(wf, poolSize)` at `Register`, then take each attempt's `StepSlots(step)` from one `NewSlotPool(size)` between claiming the attempt and running it, and `Release` them after. The pool serves waiters first come, first served, so a heavy step is not starved by a stream of light ones:
+Worker slots (`Step.Slots`, `CapSlotCost`). Call [`CheckSlots(wf, poolSize)`](ds:block?id=checkslots-3nwgkqa3) at `Register`, then take each attempt's [`StepSlots(step)`](ds:block?id=stepslots-am5mgsbq) from one [`NewSlotPool(size)`](ds:block?id=newslotpool-5td9h9hg) between claiming the attempt and running it, and `Release` them after. The pool serves waiters first come, first served, so a heavy step is not starved by a stream of light ones:
 
 <!-- snippet: examples/custom-driver/helpers.go#slots -->
 ```go
@@ -343,7 +343,7 @@ pool.Release(workflow.StepSlots(heavy))
 fmt.Fprintln(w, "too many slots:", pool.Acquire(ctx, 5)) // more than the pool holds: refused, never waited for
 ```
 
-Heartbeats and progress (`CapHeartbeat`, `CapProgress`). A handler calls `workflow.Heartbeat` and `workflow.ReportProgress`; they reach your driver only through what you put on the attempt's context before the middleware chain runs. `WithHeartbeater` carries a `Heartbeater` (adapt a function with `HeartbeatFunc`), which resets the attempt's `HeartbeatTimeout` and, on a durable driver, renews its lease. `WithProgressReporter` carries a `ProgressReporter` (adapt a function with `ProgressFunc`), which fills `Step` and `At` on the driver's clock and stores the report as `RunInfo.Progress`:
+Heartbeats and progress (`CapHeartbeat`, `CapProgress`). A handler calls [`workflow.Heartbeat`](ds:block?id=heartbeat-jrq6m57p) and [`workflow.ReportProgress`](ds:block?id=reportprogress-qtz35tuj); they reach your driver only through what you put on the attempt's context before the middleware chain runs. [`WithHeartbeater`](ds:block?id=withheartbeater-rku3vrw5) carries a `Heartbeater` (adapt a function with [`HeartbeatFunc`](ds:block?id=heartbeatfunc-45wm6xnt)), which resets the attempt's `HeartbeatTimeout` and, on a durable driver, renews its lease. [`WithProgressReporter`](ds:block?id=withprogressreporter-7zw9jr7b) carries a `ProgressReporter` (adapt a function with [`ProgressFunc`](ds:block?id=progressfunc-mgqzzz6x)), which fills `Step` and `At` on the driver's clock and stores the report as `RunInfo.Progress`:
 
 <!-- snippet: examples/custom-driver/helpers.go#reporters -->
 ```go
@@ -364,11 +364,73 @@ func stepContext(ctx context.Context, step string, now func() time.Time, log *[]
 }
 ```
 
-Without them `Heartbeat` returns nil and does nothing, since liveness is only a hint, while `ReportProgress` returns an `UnsupportedError`: the caller asked for data to be kept, and dropping it silently would be a lie.
+Without them [`Heartbeat`](ds:block?id=heartbeat-jrq6m57p) returns nil and does nothing, since liveness is only a hint, while [`ReportProgress`](ds:block?id=reportprogress-qtz35tuj) returns an `UnsupportedError`: the caller asked for data to be kept, and dropping it silently would be a lie.
+
+Step timeouts (`CapRunTimeout`, `CapHeartbeat`). When an attempt runs past `Step.Timeout` (or the workflow's `Timeout`) or misses its `HeartbeatTimeout`, cancel its context with the exact error [`workflow.TimeoutError(kind, detail)`](ds:block?id=timeouterror-nqztem89) returns for [`ErrStepTimeout`](ds:block?id=errsteptimeout-6b727264) or [`ErrHeartbeatTimeout`](ds:block?id=errheartbeattimeout-t75kucja), not wrapped, so `context.Cause(ctx)` inside the handler matches the sentinel and `ErrTimeout`. Run the handler under `ctx, claimed := workflow.WithTimeoutClaim(ctx)` ([`WithTimeoutClaim`](ds:block?id=withtimeoutclaim-qeyxp3kw)). When the attempt's cause is your own timeout error (compare by identity, since a failing run may cancel its other steps with a `*RunError` that wraps a sibling's timeout), fail the attempt with that timeout whatever the handler returned, unless `claimed()` reports true: then step middleware called [`workflow.ClaimTimeout`](ds:block?id=claimtimeout-62xdkgef) and turned the timeout into its result (a step tolerated by `WithRules` records it as `FailureTimeout`), so keep the handler's result. `Tiny` keeps the handshake for `Step.Timeout` in its `attempt`, although it declares no capability, so its handlers see the same cause they would on a shipped driver:
+
+<!-- snippet: examples/custom-driver/driver.go#timeout-handshake -->
+```go
+// attempt runs h once. When timeout passes on the injected clock it
+// cancels h's ctx with a workflow.TimeoutError, not wrapped, so the
+// handler's context.Cause matches workflow.ErrStepTimeout, and fails the
+// attempt with it whatever h returned, unless the handler chain claimed
+// it (workflow.ClaimTimeout: a step WithRules tolerates keeps its record).
+func (t *Tiny) attempt(ctx context.Context, h workflow.Handler, in []byte, timeout time.Duration) ([]byte, error) {
+	if timeout <= 0 {
+		return h(ctx, in)
+	}
+	info, _ := workflow.StepInfoFrom(ctx)
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("tiny: step %q attempt %d after %s", info.Step, info.Attempt, timeout))
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	timer := t.clk.NewTimer(timeout)
+	defer timer.Stop()
+	go func() {
+		select {
+		case <-timer.C():
+			cancel(errStep)
+		case <-ctx.Done():
+		}
+	}()
+	hctx, claimed := workflow.WithTimeoutClaim(ctx)
+	out, err := h(hctx, in)
+	// Compare by identity: any other cause (the client stopping) is not
+	// this attempt's timeout. A late success is never a success.
+	switch cause := context.Cause(ctx); {
+	case cause == errStep && !claimed():
+		return nil, errStep
+	case cause != errStep && err == nil && ctx.Err() != nil:
+		return nil, cause
+	}
+	return out, err
+}
+```
+
+The conformance groups `attemptcause`, `toleratedtimeout` and `storedtimeout` ([`attemptCauseCases`](ds:block?id=workflowtest-attemptcausecases-mcq8ppjn), [`toleratedTimeoutCases`](ds:block?id=workflowtest-toleratedtimeoutcases-8wwwvbmn), [`storedTimeoutCases`](ds:block?id=workflowtest-storedtimeoutcases-b3qx5qe4)) check all of this, and the last one also checks that the run error still matches the sentinel after the run ended (a wait timeout's [`ErrWaitTimeout`](ds:block?id=errwaittimeout-vvzd9zgy) too). A driver without `CapRunTimeout` that keeps this handshake sets `StepTimeoutHandshake` on its [`workflowtest.Harness`](ds:block?id=workflowtest-harness-7uqe9srm), so the step-timeout cases of `attemptcause` and `toleratedtimeout` run on it; the Hatchet driver does, and so does the example's second suite run, limited to those two groups:
+
+<!-- snippet: examples/custom-driver/main_test.go#handshake-suite -->
+```go
+// TestStepTimeoutHandshake runs the step-timeout cases on Tiny. Tiny
+// claims no CapRunTimeout, so TestConformance skips them, but its attempts
+// keep the handshake (attempt in driver.go): the harness says so, and the
+// cases of attemptcause and toleratedtimeout that need it run.
+func TestStepTimeoutHandshake(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	workflowtest.Run(t, workflowtest.Harness{
+		StepTimeoutHandshake: true,
+		Groups:               func(group string) bool { return group == "attemptcause" || group == "toleratedtimeout" },
+		New: func(t *testing.T) workflowtest.Instance {
+			clk := clock.NewFake(start)
+			return workflowtest.Instance{Client: NewTiny(clk), Clock: clk}
+		},
+	})
+}
+```
 
 ## Run the conformance suite
 
-`workflowtest.Run(t, h)` runs every assertion of the contract against your driver, each as a subtest on a fresh client. Subtests whose capabilities the driver lacks are skipped with the missing capability named, so one suite serves every driver honestly. A `workflowtest.Harness` needs only `New`, which returns a `workflowtest.Instance`: a fresh, unstarted `Client`, and the `*clock.Fake` it reads (or nil for a driver on real time, such as an engine).
+[`workflowtest.Run(t, h)`](ds:block?id=workflowtest-run-2dxkjk9h) runs every assertion of the contract against your driver, each as a subtest on a fresh client. Subtests whose capabilities the driver lacks are skipped with the missing capability named, so one suite serves every driver honestly. A [`workflowtest.Harness`](ds:block?id=workflowtest-harness-7uqe9srm) needs only `New`, which returns a [`workflowtest.Instance`](ds:block?id=workflowtest-instance-hareevvd): a fresh, unstarted `Client`, and the `*clock.Fake` it reads (or nil for a driver on real time, such as an engine).
 
 <!-- snippet: examples/custom-driver/main_test.go#conformance -->
 ```go
@@ -384,11 +446,11 @@ func TestConformance(t *testing.T) {
 }
 ```
 
-The other `Harness` fields tune the suite for a real backend: `Unit`, `Wait`, `Quiet` and `Poll` scale its durations (defaults differ for a fake clock and for real time); `KeyFromLabel` and `WaitKeyFromLabel` supply keys in the engine's expression language; `RateLimitPer` sets a window the engine accepts; `RealCron` runs the cron cases on real time (each waits up to two minutes for a minute boundary); `Prefix` names the suite's workflows on a shared engine. A durable driver sets `Instance.Restart` (a new client over the same storage, after the old one's `Start` context is cancelled) and `Instance.Crash` (the same without a clean stop, as a killed process), which turn on the survives-a-restart and step-runs-again cases; `Restart` also drives the `shutdownrequeue` group, which checks that a step cut short by a clean stop runs again as the same attempt. A driver with an enqueue-only mode sets `Instance.EnqueueOnly` (an enqueue-only client over the same storage, never started) for the `enqueueonly` group. The groups for this batch's capabilities are `overlap`, `trigger`, `schedhistory`, `enqueueonly`, `errorhistory`, `shutdownrequeue` and `force`, each skipped when the driver lacks the capability.
+The other [`Harness`](ds:block?id=workflowtest-harness-7uqe9srm) fields tune the suite for a real backend: `Unit`, `Wait`, `Quiet` and `Poll` scale its durations (defaults differ for a fake clock and for real time); `KeyFromLabel` and `WaitKeyFromLabel` supply keys in the engine's expression language; `RateLimitPer` sets a window the engine accepts; `RealCron` runs the cron cases on real time (each waits up to two minutes for a minute boundary); `Prefix` names the suite's workflows on a shared engine; `NewWithQueues` builds clients with a `QueueConfig` list for the queue-limit cases. A durable driver sets [`Instance.Restart`](ds:block?id=workflowtest-instance-hareevvd) (a new client over the same storage, after the old one's `Start` context is cancelled) and `Instance.Crash` (the same without a clean stop, as a killed process), which turn on the survives-a-restart and step-runs-again cases; `Restart` also drives the `shutdownrequeue` group, which checks that a step cut short by a clean stop runs again as the same attempt. A driver with an enqueue-only mode sets `Instance.EnqueueOnly` (an enqueue-only client over the same storage, never started) for the `enqueueonly` group. The groups for these capabilities are `overlap`, `trigger`, `schedhistory`, `enqueueonly`, `errorhistory`, `shutdownrequeue` and `force` (all in [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p)), each skipped when the driver lacks the capability.
 
 ### Run the suite in shares
 
-The suite runs its groups one after another in one test binary. To split it across several binaries, which `go test ./...` runs as parallel processes, set `Harness.Groups` to a filter of group names and call `Run` from one small test package per share. `workflowtest.GroupNames()` lists every group in run order: check your share table against it, since a misspelt group name matches nothing and runs nothing. Give the last share every group the others do not name, so a group added to the suite later still runs. sqlstore does this for SQLite (`sqlstore/enginetest/shards/`): its SQLite engine is pure Go, and it takes process-wide locks on every allocation, so parallel subtests inside one binary waited on each other until lease renewals stalled, while separate processes keep each case as it always was.
+The suite runs its groups one after another in one test binary. To split it across several binaries, which `go test ./...` runs as parallel processes, set `Groups` on the [`Harness`](ds:block?id=workflowtest-harness-7uqe9srm) to a filter of group names and call `Run` from one small test package per share. [`workflowtest.GroupNames()`](ds:block?id=workflowtest-groupnames-7jhfskgz) lists every group in run order: check your share table against it, since a misspelt group name matches nothing and runs nothing. Give the last share every group the others do not name, so a group added to the suite later still runs. sqlstore does this for SQLite (`sqlstore/enginetest/shards/`): its SQLite engine is pure Go, and it takes process-wide locks on every allocation, so parallel subtests inside one binary waited on each other until lease renewals stalled, while separate processes keep each case as it always was.
 
 The plan and its check, from [examples/driver-conformance](../../examples/driver-conformance/):
 
@@ -461,24 +523,24 @@ func TestConformance(t *testing.T) {
 
 ### Prove the core helpers on your driver
 
-`Run` covers the `Client` contract. The core's higher-level helpers (child runs and joins, signals and promises, virtual objects, reset, redo and fork, state machines, replay, worker slots) are built on top of a driver, and each has a case function of its own that proves the helper works there. Every one skips the cases that need a capability or operation your driver lacks, naming it, so call them all:
+[`Run`](ds:block?id=workflowtest-run-2dxkjk9h) covers the `Client` contract. The core's higher-level helpers (child runs and joins, signals and promises, virtual objects, reset, redo and fork, state machines, replay, worker slots) are built on top of a driver, and each has a case function of its own that proves the helper works there. Every one skips the cases that need a capability or operation your driver lacks, naming it, so call them all:
 
 | Case function | Harness | What it proves | Needs |
 |---|---|---|---|
-| `RunChildFlows` | `FlowHarness` | `JoinChildren` (discriminator, cancelling and completing partial joins, a failed join), `CancelChildren`, `MapRuns` | `CapSnooze`, `CapIdempotencyKey`, `CapResult`, `CapCancel`, `CapCancelAll`, `CapForceRun`, `CapRunQuery` |
-| `RunResetFlows` | `FlowHarness` | `RunResetter`: a failed run re-runs from a step and keeps the outputs before it; an unknown step and a run that is not failed are refused | `RunResetter` |
-| `RunRedoFlows` | `FlowHarness` | `RunResetterWith`: a succeeded run reset with `Succeeded` keeps its `RunRef`, carries `LabelRedo` and does not hand its chain on again | the `OpResetSucceeded` operation |
-| `RunForkFlows` | `FlowHarness` | `RunForker`: a fork starts from the step under a new `RunID` with the outputs before it, gets `LabelForkOf`, `LabelForkStep` (and `LabelRedo` from a succeeded run), and every refusal | the `OpForkRun` operation |
-| `RunSignalFlows` | `SignalHarness` | broadcast to several waiting runs, `SignalWithStart`, `Update` with `UpdateHandler`, a promise resolved from outside, `ContinueAsNew`, `CancelSteps` | per case |
-| `RunPromiseStore` | a `PromiseStore` | the store contract: the first `Settle` wins for every later or concurrent one, `Get` and `Delete`, ids independent | a store of your own |
-| `RunReplayFlows` | `ReplayHarness` | `NewReplay`: locals kept across a sleep and a promise wait, each recorded call run once, a diverging history fails the run | `CapSnooze` |
-| `RunObjectFlows` | `ObjectHarness` | `DefineObject` and `CallObject`: one call per key at a time, each applied once, keys independent, an unknown method fails its call | `CapConcurrencyKey` |
-| `RunMachineFlows` | `MachineHarness` | `DefineMachine`: guarded transitions and actions in order, hierarchy and parallel states, history, timers per state, events of one key one at a time | `CapConcurrencyKey` with Go key functions; `CapDelayedStart` and `CapIdempotencyKey` for timers |
-| `RunSlotFlows` | `SlotHarness` | `Step.Slots`: running attempts never hold more than the pool, a heavy step still runs, a step bigger than the pool is refused at `Register` | `CapSlotCost` |
+| [`RunChildFlows`](ds:block?id=workflowtest-runchildflows-26d5egbe) | [`FlowHarness`](ds:block?id=workflowtest-flowharness-d56mnkx2) | `JoinChildren` (discriminator, cancelling and completing partial joins, a failed join), `CancelChildren` (running and scheduled children), `MapRuns` | `CapSnooze`, `CapIdempotencyKey`, `CapResult`, `CapCancel`, `CapCancelAll`, `CapForceRun`, `CapRunQuery`, `CapDelayedStart` |
+| [`RunResetFlows`](ds:block?id=workflowtest-runresetflows-gdes24ha) | `FlowHarness` | `RunResetter`: a failed run re-runs from a step and keeps the outputs before it; an unknown step and a run that is not failed are refused | `RunResetter` |
+| [`RunRedoFlows`](ds:block?id=workflowtest-runredoflows-su2chss2) | `FlowHarness` | `RunResetterWith`: a succeeded run reset with `Succeeded` keeps its `RunRef`, carries `LabelRedo` and does not hand its chain on again | the `OpResetSucceeded` operation |
+| [`RunForkFlows`](ds:block?id=workflowtest-runforkflows-jm77mfu2) | `FlowHarness` | `RunForker`: a fork starts from the step under a new `RunID` with the outputs before it, gets `LabelForkOf`, `LabelForkStep` (and `LabelRedo` from a succeeded run), and every refusal | the `OpForkRun` operation |
+| [`RunSignalFlows`](ds:block?id=workflowtest-runsignalflows-x6z59d2p) | [`SignalHarness`](ds:block?id=workflowtest-signalharness-59st97g3) | broadcast to several waiting runs, `SignalWithStart`, `Update` with `UpdateHandler`, a promise resolved from outside, `ContinueAsNew`, `CancelSteps` | per case |
+| [`RunPromiseStore`](ds:block?id=workflowtest-runpromisestore-tgdywy8m) | a `PromiseStore` | the store contract: the first `Settle` wins for every later or concurrent one, `Get` and `Delete`, ids independent | a store of your own |
+| [`RunReplayFlows`](ds:block?id=workflowtest-runreplayflows-yjyr3ayu) | [`ReplayHarness`](ds:block?id=workflowtest-replayharness-mqdacwgd) | `NewReplay`: locals kept across a sleep and a promise wait, each recorded call run once, a diverging history fails the run | `CapSnooze` |
+| [`RunObjectFlows`](ds:block?id=workflowtest-runobjectflows-86ussnuu) | [`ObjectHarness`](ds:block?id=workflowtest-objectharness-hkns6ws6) | `DefineObject` and `CallObject`: one call per key at a time, each applied once, keys independent, an unknown method fails its call | `CapConcurrencyKey` |
+| [`RunMachineFlows`](ds:block?id=workflowtest-runmachineflows-6a9ymgxa) | [`MachineHarness`](ds:block?id=workflowtest-machineharness-aghhe7m6) | `DefineMachine`: guarded transitions and actions in order, hierarchy and parallel states, history, timers per state, events of one key one at a time | `CapConcurrencyKey` with Go key functions; `CapDelayedStart` and `CapIdempotencyKey` for timers |
+| [`RunSlotFlows`](ds:block?id=workflowtest-runslotflows-bndr8cke) | [`SlotHarness`](ds:block?id=workflowtest-slotharness-zawhxbmb) | `Step.Slots`: running attempts never hold more than the pool, a heavy step still runs, a step bigger than the pool is refused at `Register` | `CapSlotCost` |
 
-`RunEscalationFlows` with an `EscalationHarness` does the same for signals handled between steps ([escalation](../workflows/escalation.md)).
+[`RunEscalationFlows`](ds:block?id=workflowtest-runescalationflows-nfcxu96e) with an `EscalationHarness` does the same for signals handled between steps ([escalation](../workflows/escalation.md)).
 
-`FlowHarness.Start`, `SignalHarness.Start` and `ReplayHarness.Start` build a fresh started client with the workflows registered; it should be your driver behind `workflow.Use` with the `Journal` plugin over the driver's durable `JournalStore`, where it has one. `Promises` returns the `PromiseStore` the run and the caller share:
+[`FlowHarness.Start`](ds:block?id=workflowtest-flowharness-d56mnkx2), [`SignalHarness.Start`](ds:block?id=workflowtest-signalharness-59st97g3) and [`ReplayHarness.Start`](ds:block?id=workflowtest-replayharness-mqdacwgd) build a fresh started client with the workflows registered; it should be your driver behind `workflow.Use` with the `Journal` plugin over the driver's durable `JournalStore`, where it has one. `Promises` returns the `PromiseStore` the run and the caller share:
 
 <!-- snippet: examples/driver-conformance/main_test.go#start -->
 ```go
@@ -516,7 +578,7 @@ func promises(*testing.T, workflow.Client) workflow.PromiseStore {
 }
 ```
 
-`ObjectHarness` and `MachineHarness` take the `JournalStore` the state lives in instead (`Store`), and `MachineHarness.Client` returns the client before `Start`, so a machine with timers can be defined against it. `SlotHarness.Start` builds a client with a pool of the size the case asks for and returns `Register`'s error, since one case expects a refusal:
+[`ObjectHarness`](ds:block?id=workflowtest-objectharness-hkns6ws6) and [`MachineHarness`](ds:block?id=workflowtest-machineharness-aghhe7m6) take the `JournalStore` the state lives in instead (`Store`), and `MachineHarness.Client` returns the client before `Start`, so a machine with timers can be defined against it. [`SlotHarness.Start`](ds:block?id=workflowtest-slotharness-zawhxbmb) builds a client with a pool of the size the case asks for and returns `Register`'s error, since one case expects a refusal:
 
 <!-- snippet: examples/driver-conformance/main_test.go#flows -->
 ```go
@@ -613,12 +675,25 @@ without a reporter: workflow: ReportProgress unsupported by this driver: the dri
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 188 are skipped, each naming why:
+43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 195 are skipped, each naming why, across the 70 groups of [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p) ([`p5Groups`](ds:block?id=workflowtest-p5groups-svs5kb3f), [`p3Groups`](ds:block?id=workflowtest-p3groups-hzv36c8h), [`attemptErrorGroups`](ds:block?id=workflowtest-attempterrorgroups-pckw5r63)):
 
 ```text
     cases_basic.go:164: driver lacks IdempotencyKey
-    cases_flow.go:14: driver lacks Cancel
-    cases_hook.go:135: driver does not implement workflow.RunNotifier
+    cases_flow.go:15: driver lacks Cancel
+    cases_hook.go:136: driver does not implement workflow.RunNotifier
+```
+
+The second suite run, with the handshake declared:
+
+```sh
+go test ./custom-driver -run TestStepTimeoutHandshake -v | grep -E '^(--- |    --- |ok)'
+```
+
+```text
+--- PASS: TestStepTimeoutHandshake (0.01s)
+    --- PASS: TestStepTimeoutHandshake/attemptcause (0.00s)
+    --- PASS: TestStepTimeoutHandshake/toleratedtimeout (0.01s)
+ok  	github.com/ubgo/workflow/examples/custom-driver	0.017s
 ```
 
 The share plan and the core-helper cases on the memory driver:
@@ -630,8 +705,10 @@ go run ./driver-conformance
 ```text
 share 1: lifecycle run retry timeout onfailure
 share 2: cron misfire schedule overlap trigger
-share 3: every other group (57 of 67)
+share 3: every other group (60 of 70)
 ```
+
+The last share's count follows the suite: 70 groups in [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p) today, 10 of them named by the first two shares.
 
 ```sh
 go test ./driver-conformance -run 'TestConformance|TestCoreHelperFlows' -v | grep -E '^(--- |    --- |ok)'
@@ -661,15 +738,15 @@ ok  	github.com/ubgo/workflow/examples/driver-conformance	3.249s
 ## Pitfalls
 
 - Declaring a capability you emulate badly is the failure this library exists to prevent. A fake that honoured idempotency keys while the real driver dropped them kept every test green in a production app; the suite catches that only if the capability is declared and the suite runs against the real backend.
-- `Capabilities` must not change after construction; the suite checks it across `Start`.
+- `Capabilities` must not change after construction; the suite checks it across `Start` ([`lifecycleCases`](ds:block?id=workflowtest-lifecyclecases-24esa2ph)).
 - Refuse in `Register` or `Start`, not on the first run: a refusal at start-up fails the deploy, a refusal at run time fails a customer's job.
-- `Enqueue` with an idempotency key held by an unfinished run returns that run's `RunRef` and a nil error, not `ErrDuplicate`. The suite accepts either, but apps expect the first.
+- [`Enqueue`](ds:block?id=client-enqueue-mafr75se) with an idempotency key held by an unfinished run returns that run's `RunRef` and a nil error, not `ErrDuplicate`. The suite accepts either, but apps expect the first.
 - A skipped subtest is not a passed one. Read the skip lines: each is a capability you have not declared, and therefore a field your driver refuses.
 - Never read `time.Now` in driver logic; the suite on a fake clock will hang or fail the timing cases.
-- Apply a step's chain edits only after the attempt succeeds. A retried attempt makes a new `ChainEdits`; applying the edits of a failed attempt would add its jobs once per try.
-- A share filter that names a group the suite does not have runs nothing for that name and still passes. Check the table against `workflowtest.GroupNames()`, and let the last share take every group the others do not name.
-- The core-helper cases are not part of `workflowtest.Run`. A driver that runs only `Run` has not proved joins, objects, machines, replay, reset or fork on its backend; call every `Run*Flows` function too.
-- `Heartbeat` without a `Heartbeater` on the context is a silent no-op, so a driver that claims `CapHeartbeat` but forgets `WithHeartbeater` passes a handler's own tests while its long steps time out. The `heartbeat` and `progress` conformance groups catch it.
+- Apply a step's chain edits only after the attempt succeeds. A retried attempt makes a new `ChainEdits` ([`NewChainEdits`](ds:block?id=newchainedits-5sfrvcrs)); applying the edits of a failed attempt would add its jobs once per try.
+- A share filter that names a group the suite does not have runs nothing for that name and still passes. Check the table against [`workflowtest.GroupNames()`](ds:block?id=workflowtest-groupnames-7jhfskgz), and let the last share take every group the others do not name.
+- The core-helper cases are not part of [`workflowtest.Run`](ds:block?id=workflowtest-run-2dxkjk9h). A driver that runs only `Run` has not proved joins, objects, machines, replay, reset or fork on its backend; call every `Run*Flows` function too.
+- [`Heartbeat`](ds:block?id=heartbeat-jrq6m57p) without a `Heartbeater` on the context is a silent no-op, so a driver that claims `CapHeartbeat` but forgets `WithHeartbeater` passes a handler's own tests while its long steps time out. The `heartbeat` and `progress` conformance groups ([`heartbeatCases`](ds:block?id=workflowtest-heartbeatcases-gas246d5), [`progressCases`](ds:block?id=workflowtest-progresscases-4vv5huqs)) catch it.
 
 ## Related
 

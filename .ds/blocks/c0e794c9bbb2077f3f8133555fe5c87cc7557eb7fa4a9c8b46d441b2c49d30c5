@@ -1,0 +1,1 @@
+var ErrInboxBusy = errors.New("workflow: message is being processed by another worker")

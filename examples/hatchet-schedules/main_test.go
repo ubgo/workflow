@@ -22,6 +22,8 @@ OnRunFinished on a web node: ErrUnsupported = true
 Start on a web node starts nothing: true
 OverlapSkip: ErrUnsupported = true
 export registered with a 2m0s step timeout: true
+a name ending in __wf_delayed: ErrInvalid = true
+a step named wf__start: ErrInvalid = true
 `
 
 // TestOffline runs the program without an engine: nothing connects.
@@ -49,6 +51,9 @@ func TestLive(t *testing.T) {
 	}
 	want := offlineOut + `schedule nightly: last run succeeded, next fire 02:00 UTC
 enqueued from the web node: succeeded
+keyed delayed start has a RunID: true same run for the key: true
+Reschedule of a keyed start: ErrUnsupported = true
+RunAt past IdempotencyMaxHold: ErrUnsupported = true
 delayed start cancelled before it fired
 `
 	if got := out.String(); got != want {

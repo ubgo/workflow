@@ -1,0 +1,22 @@
+func (r *machineRun[D]) domain(t *mtrans) *mnode {
+	if t.dst == nil || t.selfOnly() {
+		return nil
+	}
+	if !t.reenter && t.dst.descendantOf(t.src) && len(t.src.children) > 0 {
+		return t.src
+	}
+	// The least common compound ancestor: the nearest proper ancestor
+	// of the source that is the root or a compound state containing the
+	// target.
+	for a := t.src.parent; ; a = a.parent {
+		if a == r.m.root || (!a.parallel && (t.dst == a || t.dst.descendantOf(a))) {
+			if t.dst == a { // a target that is an ancestor of the source is left and entered again
+				if a == r.m.root {
+					return a
+				}
+				continue
+			}
+			return a
+		}
+	}
+}

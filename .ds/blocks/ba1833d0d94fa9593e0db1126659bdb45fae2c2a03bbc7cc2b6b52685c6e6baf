@@ -1,0 +1,9 @@
+func retryable(s State) []int {
+	var out []int
+	for i, j := range s.Jobs {
+		if st := s.counted(j.Status); st == workflow.StatusFailed || (s.FailCancelled && st == workflow.StatusCancelled) {
+			out = append(out, i)
+		}
+	}
+	return out
+}

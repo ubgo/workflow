@@ -1,0 +1,22 @@
+func NewWebhook(cfg WebhookConfig) (http.Handler, error) {
+	byBus, byClient := cfg.Bus != nil || cfg.Event != "", cfg.Client != nil || cfg.Workflow != ""
+	switch {
+	case byBus == byClient:
+		return nil, fmt.Errorf("%w: webhook needs exactly one target: Bus and Event, or Client and Workflow", workflow.ErrInvalid)
+	case byBus && (cfg.Bus == nil || cfg.Event == ""):
+		return nil, fmt.Errorf("%w: webhook needs both Bus and Event", workflow.ErrInvalid)
+	case byClient && (cfg.Client == nil || cfg.Workflow == ""):
+		return nil, fmt.Errorf("%w: webhook needs both Client and Workflow", workflow.ErrInvalid)
+	case cfg.Verifier == nil && !cfg.Unsigned:
+		return nil, fmt.Errorf("%w: webhook has no Verifier; set Unsigned to accept unverified requests", workflow.ErrInvalid)
+	case cfg.Inbox != nil && (cfg.Inbox.Inbox == nil || cfg.Inbox.Consumer == ""):
+		return nil, fmt.Errorf("%w: webhook Inbox needs an Inbox and a Consumer", workflow.ErrInvalid)
+	}
+	if cfg.MaxBody <= 0 {
+		cfg.MaxBody = DefaultWebhookMaxBody
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+	return &webhook{cfg: cfg}, nil
+}

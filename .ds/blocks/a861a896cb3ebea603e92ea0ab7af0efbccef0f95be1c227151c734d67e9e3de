@@ -1,0 +1,6 @@
+func (r *Relay) Notify() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	close(r.wake)
+	r.wake = make(chan struct{})
+}

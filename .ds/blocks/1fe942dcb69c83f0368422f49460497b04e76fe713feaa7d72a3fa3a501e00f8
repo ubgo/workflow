@@ -1,0 +1,7 @@
+func DefaultNodeID() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown"
+	}
+	return host + ":" + strconv.Itoa(os.Getpid())
+}

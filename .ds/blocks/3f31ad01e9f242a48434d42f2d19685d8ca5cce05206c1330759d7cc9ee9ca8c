@@ -1,0 +1,27 @@
+func latestNewer(ctx context.Context, cfg LatestOnlyConfig, info workflow.StepInfo, tick, now time.Time) (time.Time, bool, error) {
+	if cfg.Next != nil {
+		return cfg.Next(ctx, info, tick)
+	}
+	id := info.Labels[workflow.LabelSchedule]
+	if id == "" {
+		return time.Time{}, false, nil
+	}
+	list, err := cfg.Schedules.Schedules(ctx)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	for _, s := range list {
+		if string(s.ID) != id {
+			continue
+		}
+		next, ok, err := nextFire(ctx, cfg, s, tick, now)
+		if err != nil || ok {
+			return next, ok, err
+		}
+		if last := s.Last; last.Fire.After(tick) && last.Run.RunID != info.RunID {
+			return last.Fire, true, nil // a newer run exists, whatever the rules say
+		}
+		return time.Time{}, false, nil
+	}
+	return time.Time{}, false, nil
+}

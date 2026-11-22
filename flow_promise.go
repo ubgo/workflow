@@ -15,11 +15,15 @@ import (
 // PromiseEvent is the event name ResolvePromise and RejectPromise signal,
 // with the promise's id as the event key, so a wait step
 // (WaitSpec{Event: PromiseEvent, Key: id}) resumes when a promise settles.
+//
+//ds:def id=promiseevent-9gzm4g33 owner=@khanakia stability=stable
 const PromiseEvent = "ubgo.workflow.promise"
 
 // ErrPromiseSettled matches the error of a ResolvePromise or RejectPromise
 // on a promise that was already settled with a different outcome: the
 // first settlement wins.
+//
+//ds:def id=errpromisesettled-cbm2esnm owner=@khanakia stability=stable
 var ErrPromiseSettled = errors.New("workflow: promise already settled")
 
 // PromiseStore keeps settled promises: a value stored once under an id
@@ -28,6 +32,8 @@ var ErrPromiseSettled = errors.New("workflow: promise already settled")
 // both learn the stored value; that is what makes a promise resolve once
 // across a fleet. MemoryPromises is the in-process store; sqlstore and
 // redis ship durable ones.
+//
+//ds:def id=promisestore-fpf8x3m4 owner=@khanakia stability=stable
 type PromiseStore interface {
 	// Settle stores val under id unless a value is stored already. It
 	// returns the value stored after the call and whether this call
@@ -48,6 +54,8 @@ type MemoryPromises struct {
 }
 
 // NewMemoryPromises returns an empty MemoryPromises.
+//
+//ds:def id=newmemorypromises-capatjkk owner=@khanakia stability=stable
 func NewMemoryPromises() *MemoryPromises { return &MemoryPromises{} }
 
 // Settle implements PromiseStore.
@@ -89,6 +97,8 @@ type settlement struct {
 
 // PromiseRejectedError is the error of a promise settled by
 // RejectPromise.
+//
+//ds:def id=promiserejectederror-t8d9km2g owner=@khanakia stability=stable
 type PromiseRejectedError struct {
 	ID     string
 	Reason string
@@ -101,6 +111,8 @@ func (e *PromiseRejectedError) Error() string {
 
 // NewPromiseID returns a random promise id (128 bits, hex), for a caller
 // that has no natural id such as an approval request's own key.
+//
+//ds:def id=newpromiseid-gs7uukr4 owner=@khanakia stability=stable
 func NewPromiseID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -119,6 +131,8 @@ func NewPromiseID() (string, error) {
 // The signal is sent even when the promise was settled already (by this
 // value), so a signal lost to a crash after the store write is sent again
 // by a retried call.
+//
+//ds:def id=resolvepromise-ej2zjk37 owner=@khanakia stability=stable
 func ResolvePromise(ctx context.Context, client Client, store PromiseStore, id string, value []byte) error {
 	return settlePromise(ctx, client, store, id, settlement{OK: true, Value: value})
 }
@@ -126,10 +140,13 @@ func ResolvePromise(ctx context.Context, client Client, store PromiseStore, id s
 // RejectPromise settles promise id as failed with reason, as
 // ResolvePromise does for a value; AwaitPromise returns a Permanent
 // *PromiseRejectedError for it.
+//
+//ds:def id=rejectpromise-e6uyyurn owner=@khanakia stability=stable
 func RejectPromise(ctx context.Context, client Client, store PromiseStore, id string, reason string) error {
 	return settlePromise(ctx, client, store, id, settlement{Reason: reason})
 }
 
+//ds:def id=settlepromise-e3d6pbhr owner=@khanakia stability=stable
 func settlePromise(ctx context.Context, client Client, store PromiseStore, id string, s settlement) error {
 	if store == nil || id == "" {
 		return invalidf("settle promise: needs a store and an id")
@@ -160,6 +177,8 @@ func settlePromise(ctx context.Context, client Client, store PromiseStore, id st
 
 // PromiseResult returns promise id's value once it is settled: settled
 // false while it is not, a *PromiseRejectedError when it was rejected.
+//
+//ds:def id=promiseresult-f3bszagg owner=@khanakia stability=stable
 func PromiseResult(ctx context.Context, store PromiseStore, id string) (value []byte, settled bool, err error) {
 	if store == nil || id == "" {
 		return nil, false, invalidf("promise result: needs a store and an id")
@@ -182,6 +201,8 @@ func PromiseResult(ctx context.Context, store PromiseStore, id string) (value []
 }
 
 // DefaultPromisePoll is how long AwaitPromise snoozes between looks.
+//
+//ds:def id=defaultpromisepoll-2vu4hbw2 owner=@khanakia stability=stable
 const DefaultPromisePoll = 5 * time.Second
 
 // AwaitPromise returns promise id's value from inside a step, waiting
@@ -191,6 +212,8 @@ const DefaultPromisePoll = 5 * time.Second
 // CapSnooze. A rejected promise fails the step with a Permanent
 // *PromiseRejectedError. A wait step on PromiseEvent with key id is the
 // other way to wait, woken by the settlement's signal instead of a poll.
+//
+//ds:def id=awaitpromise-338jz9js owner=@khanakia stability=stable
 func AwaitPromise(ctx context.Context, store PromiseStore, id string, poll time.Duration) ([]byte, error) {
 	v, settled, err := PromiseResult(ctx, store, id)
 	var rej *PromiseRejectedError
@@ -211,6 +234,8 @@ func AwaitPromise(ctx context.Context, store PromiseStore, id string, poll time.
 // WaitPromise blocks outside a step (an HTTP handler, a CLI) until promise
 // id settles or ctx ends, asking the store every opts.Poll, and returns
 // its value or its *PromiseRejectedError.
+//
+//ds:def id=waitpromise-4tdkst6u owner=@khanakia stability=stable
 func WaitPromise(ctx context.Context, store PromiseStore, id string, opts AwaitOptions) ([]byte, error) {
 	for {
 		v, settled, err := PromiseResult(ctx, store, id)

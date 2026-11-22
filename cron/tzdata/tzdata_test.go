@@ -12,6 +12,8 @@ import (
 // a host with a zoneinfo database Go reads the host's copy first, so this
 // proves the import builds and leaves loading intact; the embedded copy
 // is the standard library's time/tzdata, whose fallback Go itself tests.
+//
+//ds:def id=tzdata-testzoneloadswithpackagelinked-rcgguwdm owner=@khanakia stability=stable
 func TestZoneLoadsWithPackageLinked(t *testing.T) {
 	loc, err := cron.LoadZone("Europe/Berlin")
 	if err != nil {

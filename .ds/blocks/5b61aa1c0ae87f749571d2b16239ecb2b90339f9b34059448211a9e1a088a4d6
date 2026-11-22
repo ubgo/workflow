@@ -1,0 +1,1 @@
+func WithScheduleHeap() Option { return func(m *Client) { m.schedHeap = true } }

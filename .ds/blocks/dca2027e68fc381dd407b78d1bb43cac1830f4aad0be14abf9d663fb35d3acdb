@@ -1,0 +1,7 @@
+func (rc *ReplayCtx) Replaying() bool {
+	if rc.peeked != rc.pos+1 {
+		_, ok, err := rc.load(rc.pos)
+		rc.peeked, rc.peekOK = rc.pos+1, ok && err == nil
+	}
+	return rc.peekOK
+}

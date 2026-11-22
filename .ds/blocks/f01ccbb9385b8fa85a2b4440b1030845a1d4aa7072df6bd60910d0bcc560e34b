@@ -1,0 +1,22 @@
+func (c *Client) replaceNamedCron(ctx context.Context, sdk *hatchetsdk.Client, s workflow.Schedule) (replacedCron, bool, error) {
+	var out replacedCron
+	rows, err := c.listCrons(ctx, sdk, rest.CronWorkflowListParams{CronName: &s.Name})
+	if err != nil {
+		return out, false, err
+	}
+	found := false
+	for _, row := range rows {
+		if row.WorkflowName != engineName(c.cfg.Namespace, s.Workflow) || row.Name == nil || *row.Name != s.Name {
+			continue
+		}
+		if !found && sameCron(row, s) {
+			found = true
+			continue
+		}
+		out.disabled = out.disabled || !row.Enabled
+		if err := c.deleteCron(ctx, sdk, row.Metadata.Id); err != nil {
+			return out, false, err
+		}
+	}
+	return out, found, nil
+}

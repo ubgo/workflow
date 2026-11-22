@@ -1,0 +1,3 @@
+func (c *Client) Signal(ctx context.Context, ev workflow.Event) error {
+	return joinSides("Signal", c.old.Signal(ctx, ev), c.new.Signal(ctx, ev))
+}

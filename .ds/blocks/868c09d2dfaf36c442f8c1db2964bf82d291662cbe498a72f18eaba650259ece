@@ -1,0 +1,18 @@
+func (a *Admin) Schedule(ctx context.Context, id workflow.ScheduleID) (workflow.ScheduleInfo, error) {
+	if err := a.check(OpSchedules); err != nil {
+		return workflow.ScheduleInfo{}, err
+	}
+	if err := workflow.ValidateScheduleTarget(workflow.ScheduleTarget{ID: id}); err != nil {
+		return workflow.ScheduleInfo{}, err
+	}
+	all, err := a.c.(workflow.ScheduleLister).Schedules(ctx)
+	if err != nil {
+		return workflow.ScheduleInfo{}, err
+	}
+	for _, s := range all {
+		if s.ID == id {
+			return s, nil
+		}
+	}
+	return workflow.ScheduleInfo{}, fmt.Errorf("%w: admin: schedule %s", workflow.ErrNotFound, id)
+}

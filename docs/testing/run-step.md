@@ -1,10 +1,10 @@
 # Test one step
 
-A step handler decides how its attempt ends: success, an ordinary failure the retry policy retries, a release that asks for a retry after a set delay (`workflow.RetryAfter`), a permanent failure that is never retried (`workflow.Permanent`), or a discard that drops the run (`workflow.Discard`). `workflowtest.RunStep` calls a handler once, with no client and no driver, and returns that outcome with checks for each case.
+A step handler decides how its attempt ends: success, an ordinary failure the retry policy retries, a release that asks for a retry after a set delay ([`workflow.RetryAfter`](ds:block?id=retryafter-xck6cdyv)), a permanent failure that is never retried ([`workflow.Permanent`](ds:block?id=permanent-9e6vjm6s)), or a discard that drops the run (`workflow.Discard`). [`workflowtest.RunStep`](ds:block?id=workflowtest-runstep-zsng78k5) calls a handler once, with no client and no driver, and returns that outcome with checks for each case.
 
 ## Before you start
 
-- A step handler you can build without a client, such as a function that returns a `workflow.Handler` from its dependencies.
+- A step handler you can build without a client, such as a function that returns a [`workflow.Handler`](ds:block?id=handler-82jhj4f7) from its dependencies.
 - The runnable program for this page is [examples/batch-tests](../../examples/batch-tests/).
 
 The handler under test calls an image service; a 429 releases the job for 30 seconds and a file that is not an image fails it for good:
@@ -30,7 +30,7 @@ func ResizeStep(resize func(ctx context.Context, file string) error) workflow.Ha
 
 ## Step 1: run the handler and check the outcome
 
-`RunStep(handler, input, opts...)` returns a `workflowtest.StepOutcome` with the handler's `Output` and `Err`:
+`RunStep(handler, input, opts...)` returns a [`workflowtest.StepOutcome`](ds:block?id=workflowtest-stepoutcome-753swc5f) with the handler's `Output` and `Err`:
 
 <!-- snippet: examples/batch-tests/main_test.go#runstep -->
 ```go
@@ -47,23 +47,23 @@ func TestResizeStepOutcomes(t *testing.T) {
 
 | Check | Passes when the attempt |
 |---|---|
-| `AssertSucceeded(t)` | returned no error |
-| `AssertFailed(t)` | returned an error that is neither permanent nor a release: one the retry policy retries |
-| `AssertPermanent(t)` | returned `workflow.Permanent(err)`: no retry |
-| `AssertDiscarded(t)` | returned `workflow.Discard(err)`: drop the run, which ends discarded (cancelled without `CapRunStates`) rather than failed on a driver with `CapDiscard` |
-| `AssertReleased(t, d)` | returned `workflow.RetryAfter(err, d)` with exactly d |
+| [`AssertSucceeded(t)`](ds:block?id=workflowtest-stepoutcome-assertsucceeded-u77vv7gv) | returned no error |
+| [`AssertFailed(t)`](ds:block?id=workflowtest-stepoutcome-assertfailed-73snx492) | returned an error that is neither permanent nor a release: one the retry policy retries |
+| [`AssertPermanent(t)`](ds:block?id=workflowtest-stepoutcome-assertpermanent-kj8e4262) | returned `workflow.Permanent(err)`: no retry |
+| [`AssertDiscarded(t)`](ds:block?id=workflowtest-stepoutcome-assertdiscarded-kqacfetq) | returned `workflow.Discard(err)`: drop the run, which ends discarded (cancelled without `CapRunStates`) rather than failed on a driver with `CapDiscard` ([`workflow.EndStatus`](ds:block?id=endstatus-d3uc8s8n)) |
+| [`AssertReleased(t, d)`](ds:block?id=workflowtest-stepoutcome-assertreleased-nzcxqexr) | returned `workflow.RetryAfter(err, d)` with exactly d |
 
-The same questions answer without failing the test: `Succeeded()`, `Failed()` (any error), `Permanent()`, `Discarded()` and `Released()`, which returns the delay and whether there was one. `Permanent` and `Discard` win over `RetryAfter`, as on every driver: `RetryAfter(Permanent(err), d)` is permanent, not released.
+The same questions answer without failing the test: `Succeeded()`, [`Failed()`](ds:block?id=workflowtest-stepoutcome-failed-jd76dhf7) (any error), `Permanent()`, `Discarded()` and [`Released()`](ds:block?id=workflowtest-stepoutcome-released-zjsf6mru), which returns the delay and whether there was one. `Permanent` and `Discard` win over [`RetryAfter`](ds:block?id=retryafter-xck6cdyv), as on every driver: `RetryAfter(Permanent(err), d)` is permanent, not released.
 
 ## Step 2: give the handler its context
 
-The handler runs on a ctx carrying `workflow.StepInfo`: by default workflow `test`, step `step`, run `runstep`, attempt 1. `StepInfoOf(info)` sets it, for a handler that reads its attempt, run or labels; `StepContext(ctx)` sets the parent ctx; and `StepMiddleware(mw...)` wraps the handler in the middleware a driver would, outermost first.
+The handler runs on a ctx carrying `workflow.StepInfo`: by default ([`RunStep`](ds:block?id=workflowtest-runstep-zsng78k5)) workflow `test`, step `step`, run `runstep`, attempt 1. [`StepInfoOf(info)`](ds:block?id=workflowtest-stepinfoof-ex2r47gt) sets it, for a handler that reads its attempt, run or labels; [`StepContext(ctx)`](ds:block?id=workflowtest-stepcontext-qvktt9hm) sets the parent ctx; and [`StepMiddleware(mw...)`](ds:block?id=workflowtest-stepmiddleware-3gea9j4h) wraps the handler in the middleware a driver would, outermost first.
 
 ```go
 workflowtest.RunStep(h, nil, workflowtest.StepInfoOf(workflow.StepInfo{Workflow: "resize", Step: "run", RunID: "r1", Attempt: 3}))
 ```
 
-A handler that edits its [chain](../workflows/chains.md) with `PrependToChain` or `AppendToChain` gets an editor on its ctx. `StepChain(jobs...)` sets the chain the run already holds, `StepCaps(caps)` sets the capabilities the edits are checked against (the default includes `CapChain`; leave it out to see the refusal a driver without chains gives), and the outcome reports the chain after the attempt in `StepOutcome.Chain`, with `ChainNames()` listing the workflows in the order they would run. A failed attempt leaves the chain unchanged, as a driver drops a failed attempt's edits.
+A handler that edits its [chain](../workflows/chains.md) with `PrependToChain` or `AppendToChain` gets an editor on its ctx. [`StepChain(jobs...)`](ds:block?id=workflowtest-stepchain-b2p6dt3z) sets the chain the run already holds, [`StepCaps(caps)`](ds:block?id=workflowtest-stepcaps-4qqyy6u2) sets the capabilities the edits are checked against (the default includes `CapChain`; leave it out to see the refusal a driver without chains gives), and the outcome reports the chain after the attempt in `StepOutcome.Chain`, with [`ChainNames()`](ds:block?id=workflowtest-stepoutcome-chainnames-7zn22fv7) listing the workflows in the order they would run. A failed attempt leaves the chain unchanged, as a driver drops a failed attempt's edits: [`RunStep`](ds:block?id=workflowtest-runstep-zsng78k5) applies them only when the attempt succeeds.
 
 <!-- snippet: examples/chain-edits/main_test.go#runstep-chain -->
 ```go
@@ -100,9 +100,9 @@ ok  	github.com/ubgo/workflow/examples/batch-tests	0.030s
 
 ## Pitfalls
 
-- **A release is honoured only under a policy that reads it.** A workflow's retry policy must set `DelayFor: workflow.RetryAfterDelay` (and the driver must have `CapRetryDelay`) for the delay to apply; under any other policy the release retries on the normal backoff. `RunStep` checks what the handler asked for, not what a driver will do.
-- **One attempt, no retries.** `RunStep` never retries; to test a whole workflow with its retries, run it on the memory driver.
-- **Panics are not recovered.** A panic in the handler fails the test with its stack, so add the recovery middleware with `StepMiddleware` to test what a driver with it would do.
+- **A release is honoured only under a policy that reads it.** A workflow's retry policy must set `DelayFor:` [`workflow.RetryAfterDelay`](ds:block?id=retryafterdelay-pgsc6bvn) (and the driver must have `CapRetryDelay`) for the delay to apply; under any other policy the release retries on the normal backoff ([`workflow.RetryAfter`](ds:block?id=retryafter-xck6cdyv)). `RunStep` checks what the handler asked for, not what a driver will do.
+- **One attempt, no retries.** [`RunStep`](ds:block?id=workflowtest-runstep-zsng78k5) never retries; to test a whole workflow with its retries, run it on the memory driver.
+- **Panics are not recovered.** A panic in the handler fails the test with its stack ([`RunStep`](ds:block?id=workflowtest-runstep-zsng78k5)), so add the recovery middleware ([`middleware.Recover`](ds:block?id=mw-recover-a7qbjc9u)) with `StepMiddleware` to test what a driver with it would do.
 
 ## Related
 

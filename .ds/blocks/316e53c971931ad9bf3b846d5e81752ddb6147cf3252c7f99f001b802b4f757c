@@ -1,0 +1,19 @@
+func (p *signalsPlugin) BindClient(c Client) error {
+	if len(p.h.On) == 0 {
+		return invalidf("OnSignals: no handlers")
+	}
+	for name, fn := range p.h.On {
+		if name == "" || fn == nil {
+			return invalidf("OnSignals: a handler with an empty name or a nil func")
+		}
+	}
+	if p.h.Batch < 0 {
+		return invalidf("OnSignals: Batch %d is negative", p.h.Batch)
+	}
+	r, ok := c.(RunSignalReader)
+	if !ok || !Supports(c, OpRunSignals) {
+		return &UnsupportedError{Field: "OnSignals", Reason: "the driver cannot read a run's signals between steps (no RunSignalReader)"}
+	}
+	p.reader = r
+	return nil
+}

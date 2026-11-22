@@ -1,0 +1,1 @@
+func DeferSucceeded(status int) bool { return status < http.StatusBadRequest }

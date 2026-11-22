@@ -9,6 +9,8 @@ import (
 // app-side code react to a run's end without polling Status: an enqueue
 // middleware releasing a uniqueness key, a batch counting finished
 // members, an audit log.
+//
+//ds:def id=runevent-upvhdx59 owner=@khanakia stability=api
 type RunEvent struct {
 	// Ref is the run. ScheduledID is set too when the run was enqueued
 	// with RunAt, so a caller that stored the RunRef Enqueue returned
@@ -79,6 +81,8 @@ type RunFinishedFunc func(ctx context.Context, ev RunEvent)
 //     happened while no client was running. Without CapRunFinished,
 //     delivery is best-effort: an event may be lost (for example on a
 //     crash), so a consumer must keep a fallback.
+//
+//ds:def id=runnotifier-tbkv69uz owner=@khanakia stability=stable
 type RunNotifier interface {
 	// OnRunFinished registers fn. It returns ErrAlreadyStarted after
 	// Start.

@@ -1,0 +1,1 @@
+var ErrLeaseLost = errors.New("sqlstore: step lease lost")

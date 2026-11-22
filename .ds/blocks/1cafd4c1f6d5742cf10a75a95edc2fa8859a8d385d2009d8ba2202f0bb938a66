@@ -1,0 +1,11 @@
+type MemoryOutputLimits struct {
+	// Runs is how many runs' output is kept; past it the run whose output
+	// arrived first is forgotten. Default DefaultOutputRuns.
+	Runs int
+	// PerRun is how many attempts are kept per run, the newest. Default
+	// DefaultOutputPerRun.
+	PerRun int
+	// Bytes bounds one attempt's Text; past it the text is cut and marked
+	// Truncated. Default DefaultOutputBytes.
+	Bytes int
+}

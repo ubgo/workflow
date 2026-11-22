@@ -40,6 +40,8 @@ var _ workflow.Inbox = (*Inbox)(nil)
 // InboxMigrationOwner is the ledger owner of Inbox's migrations: a list of
 // its own, so NewInbox(...).Migrate creates only the inbox table, while
 // Client.Migrate applies it too.
+//
+//ds:def id=sql-inboxmigrationowner-t7bmxnmy owner=@khanakia stability=stable
 const InboxMigrationOwner = "ubgo/workflow/sqlstore/inbox"
 
 // inboxSavepoint is the savepoint MarkTx sets around its insert, so a
@@ -55,6 +57,8 @@ const (
 
 // inboxMigrations is every Inbox schema change, in order, under the same
 // rules as migrations: never edit a released one, append a new one.
+//
+//ds:def id=sql-store-inboxmigrations-gb5pjrwy owner=@khanakia stability=stable
 func (s *store) inboxMigrations() []migrate.Migration {
 	return []migrate.Migration{
 		{Owner: s.owner(InboxMigrationOwner), Name: "001_inbox", Script: s.script(s.render(inboxDefs(typesFor(s.engine))))},
@@ -89,6 +93,8 @@ func inboxDefs(t sqlTypes) []tableDef {
 // WithTablePrefix, WithSchema, WithTxAttempts and WithErrorClassifier
 // apply; the others configure a Client and are
 // ignored. Call Migrate before the first Claim.
+//
+//ds:def id=sql-newinbox-rz7tpwct owner=@khanakia stability=stable
 func NewInbox(db *sql.DB, d sqlb.Dialect, opts ...Option) (*Inbox, error) {
 	c, err := New(db, d, opts...)
 	if err != nil {
@@ -201,6 +207,8 @@ func (s *Inbox) Release(ctx context.Context, key workflow.InboxKey, token string
 // and finds the record (Postgres, MySQL), or fails to begin writing until
 // the first ends (SQLite). The insert runs under a savepoint, so a
 // duplicate never aborts tx. tx must be on this inbox's database.
+//
+//ds:def id=sql-inbox-marktx-s8saadjk owner=@khanakia stability=stable
 func (s *Inbox) MarkTx(ctx context.Context, tx *sql.Tx, key workflow.InboxKey, keep time.Duration, now time.Time) (bool, error) {
 	if tx == nil {
 		return false, fmt.Errorf("%w: sqlstore: inbox MarkTx needs a transaction", workflow.ErrInvalid)
@@ -241,6 +249,8 @@ func (s *Inbox) MarkTx(ctx context.Context, tx *sql.Tx, key workflow.InboxKey, k
 // now and returns how many. Such rows never change a decision (an expired
 // row is taken over), so this only bounds the table's size; a running
 // Client does it on its dispatcher's housekeeping with its own clock.
+//
+//ds:def id=sql-inbox-pruneexpired-s434c38w owner=@khanakia stability=stable
 func (s *Inbox) PruneExpired(ctx context.Context, now time.Time) (int64, error) {
 	return s.st.execN(ctx, s.st.db, "DELETE FROM {inbox} WHERE until_ns <= ?", now.UnixNano())
 }

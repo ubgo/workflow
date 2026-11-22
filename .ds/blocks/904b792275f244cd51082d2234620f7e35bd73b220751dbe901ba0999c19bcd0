@@ -1,0 +1,62 @@
+func (s *Store) ArchivedRuns(ctx context.Context, aq ArchiveQuery) (ArchivePage, error) {
+	if aq.Limit < 0 || aq.Limit > workflow.MaxRunsLimit {
+		return ArchivePage{}, fmt.Errorf("%w: sqlrecorder: ArchiveQuery.Limit %d is outside [0, %d]", workflow.ErrInvalid, aq.Limit, workflow.MaxRunsLimit)
+	}
+	limit := aq.Limit
+	if limit == 0 {
+		limit = workflow.DefaultRunsLimit
+	}
+	q := s.d.quote
+	a := &args{d: s.d}
+	var conds []string
+	if aq.Workflow != "" {
+		conds = append(conds, q("workflow")+" = "+a.add(aq.Workflow))
+	}
+	if aq.Tenant != "" {
+		conds = append(conds, q("tenant")+" = "+a.add(aq.Tenant))
+	}
+	if aq.Cursor != "" {
+		fin, key, err := decodeArchiveCursor(aq.Cursor)
+		if err != nil {
+			return ArchivePage{}, err
+		}
+		conds = append(conds, "("+q("finished_at")+" > "+a.add(fin)+" OR ("+q("finished_at")+" = "+a.add(fin)+" AND "+q("run_key")+" > "+a.add(key)+"))")
+	}
+	stmt := "SELECT " + q("run_key") + ", " + q("finished_at") + ", " + q("record") + " FROM " + s.table(tableArchive)
+	if len(conds) > 0 {
+		stmt += " WHERE " + strings.Join(conds, " AND ")
+	}
+	stmt += " ORDER BY " + q("finished_at") + ", " + q("run_key") + " LIMIT " + strconv.Itoa(limit+1)
+	rows, err := s.db.QueryContext(ctx, stmt, a.vals...)
+	if err != nil {
+		return ArchivePage{}, fmt.Errorf("sqlrecorder: list archived runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var (
+		page ArchivePage
+		keys []string
+		fins []int64
+	)
+	for rows.Next() {
+		var (
+			key, body string
+			fin       int64
+			rec       recorder.RunRecord
+		)
+		if err := rows.Scan(&key, &fin, &body); err != nil {
+			return ArchivePage{}, fmt.Errorf("sqlrecorder: list archived runs: %w", err)
+		}
+		if err := decodeJSON(body, &rec); err != nil {
+			return ArchivePage{}, fmt.Errorf("sqlrecorder: archived run %s: %w", key, err)
+		}
+		page.Runs, keys, fins = append(page.Runs, rec), append(keys, key), append(fins, fin)
+	}
+	if err := rows.Err(); err != nil {
+		return ArchivePage{}, fmt.Errorf("sqlrecorder: list archived runs: %w", err)
+	}
+	if len(page.Runs) > limit {
+		page.Runs = page.Runs[:limit]
+		page.Next = encodeArchiveCursor(fins[limit-1], keys[limit-1])
+	}
+	return page, nil
+}

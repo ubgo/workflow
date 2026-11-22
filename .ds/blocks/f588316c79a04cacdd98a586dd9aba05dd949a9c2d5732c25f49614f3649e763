@@ -1,0 +1,15 @@
+func (r *MachineRegistry[D]) Guard(name string, g workflow.MachineGuard[D]) error {
+	if name == "" || g == nil {
+		return fieldErr("", "a guard needs a name and a function")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, dup := r.guards[name]; dup {
+		return fieldErr("", "guard %q is registered twice", name)
+	}
+	if r.guards == nil {
+		r.guards = map[string]workflow.MachineGuard[D]{}
+	}
+	r.guards[name] = g
+	return nil
+}

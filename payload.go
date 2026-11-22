@@ -11,6 +11,8 @@ import (
 // JobOf builds a Job for workflow whose Payload is v encoded as JSON, the
 // typed counterpart of filling Job.Payload by hand. Labels, RunAt and the
 // rest are set on the returned Job as usual.
+//
+//ds:def id=jobof-qahauajj owner=@khanakia stability=stable
 func JobOf[T any](workflow string, v T) (Job, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -22,6 +24,8 @@ func JobOf[T any](workflow string, v T) (Job, error) {
 // DecodePayload decodes a JSON payload (a step input, RunInfo.Payload, a
 // result) into a T. Empty input decodes to the zero T. A decode failure
 // is Permanent: retrying the same bytes cannot succeed.
+//
+//ds:def id=decodepayload-jb5dssxx owner=@khanakia stability=stable
 func DecodePayload[T any](raw []byte) (T, error) {
 	var v T
 	if len(raw) == 0 {
@@ -34,12 +38,16 @@ func DecodePayload[T any](raw []byte) (T, error) {
 }
 
 // ErrPayloadTooLarge matches PayloadTooLargeError.
+//
+//ds:def id=errpayloadtoolarge-etx7f76y owner=@khanakia stability=stable
 var ErrPayloadTooLarge = errors.New("workflow: payload too large")
 
 // PayloadTooLargeError says a payload is over a limit: the driver's hard
 // cap (PayloadLimiter) or one the app set (middleware.MaxPayload). It
 // matches ErrPayloadTooLarge and ErrInvalid, since the same bytes will
 // never fit.
+//
+//ds:def id=payloadtoolargeerror-snhqhgrw owner=@khanakia stability=stable
 type PayloadTooLargeError struct {
 	Workflow string
 	Size     int
@@ -56,6 +64,8 @@ func (e *PayloadTooLargeError) Error() string {
 }
 
 // Is matches ErrPayloadTooLarge and ErrInvalid.
+//
+//ds:def id=payloadtoolargeerror-is-vpg5cufg owner=@khanakia stability=stable
 func (e *PayloadTooLargeError) Is(target error) bool {
 	return target == ErrPayloadTooLarge || target == ErrInvalid
 }
@@ -64,6 +74,8 @@ func (e *PayloadTooLargeError) Is(target error) bool {
 // declare its hard payload cap in bytes (an engine's gRPC message limit,
 // a broker's message size), so code above it (the claim check, a batch
 // splitter) can size against the real number. Zero means no cap.
+//
+//ds:def id=payloadlimiter-kd98a4vg owner=@khanakia stability=stable
 type PayloadLimiter interface {
 	PayloadLimit() int
 }
@@ -72,6 +84,8 @@ type PayloadLimiter interface {
 // payload of any job in its Chain, is over limit bytes, and nil
 // otherwise or when limit <= 0. Drivers with a hard cap call it from
 // Enqueue, before anything is stored.
+//
+//ds:def id=checkpayload-wbnxx6kr owner=@khanakia stability=stable
 func CheckPayload(job Job, limit int, source string) error {
 	if limit <= 0 {
 		return nil
@@ -90,15 +104,21 @@ func CheckPayload(job Job, limit int, source string) error {
 // LabelPayloadVersion carries the version of a job's payload shape, set
 // at enqueue by middleware.PayloadVersion, so a step can upcast a payload
 // written by older code (Upcast).
+//
+//ds:def id=labelpayloadversion-3y2pqkmn owner=@khanakia stability=stable
 const LabelPayloadVersion = LabelPrefixInternal + "payload-version"
 
 // Upcaster turns a payload of one version into the next version's shape
 // (version n to n+1): rename a field, fill a default, split a value.
+//
+//ds:def id=upcaster-bvd4j4zw owner=@khanakia stability=stable
 type Upcaster func(raw []byte) ([]byte, error)
 
 // PayloadVersionOf returns the payload version a run's labels carry, and
 // 0 when none is set (a job enqueued before versioning, which counts as
 // the oldest version).
+//
+//ds:def id=payloadversionof-fc4ycshp owner=@khanakia stability=stable
 func PayloadVersionOf(labels map[string]string) (int, error) {
 	v, ok := labels[LabelPayloadVersion]
 	if !ok {
@@ -116,6 +136,8 @@ func PayloadVersionOf(labels map[string]string) (int, error) {
 // version n into n+1. A missing step in the chain, a from above to, or an
 // upcaster's error is Permanent, since retrying the same bytes cannot
 // help.
+//
+//ds:def id=upcast-ukqxx7qq owner=@khanakia stability=stable
 func Upcast(raw []byte, from, to int, ups map[int]Upcaster) ([]byte, error) {
 	if from > to {
 		return nil, Permanent(invalidf("payload version %d is newer than this code's %d", from, to))
@@ -141,6 +163,8 @@ func Upcast(raw []byte, from, to int, ups map[int]Upcaster) ([]byte, error) {
 // stamps new jobs. Use it on steps that receive the run's payload (no
 // After); a later step's input is a parent's output, which has no
 // version.
+//
+//ds:def id=defineversioned-fwn7jqm8 owner=@khanakia stability=stable
 func DefineVersioned[In, Out any](current int, ups map[int]Upcaster, fn func(ctx context.Context, in In) (Out, error)) Handler {
 	typed := Define(fn)
 	return func(ctx context.Context, raw []byte) ([]byte, error) {

@@ -1,0 +1,10 @@
+func (u *UpstreamLimit) Take(ctx context.Context, key string, cost float64) error {
+	wait, err := u.Wait(ctx, key, cost)
+	if err != nil {
+		return err
+	}
+	if wait > 0 {
+		return RetryAfter(fmt.Errorf("%w: key %q, room in %s", ErrThrottled, key, wait), wait)
+	}
+	return nil
+}

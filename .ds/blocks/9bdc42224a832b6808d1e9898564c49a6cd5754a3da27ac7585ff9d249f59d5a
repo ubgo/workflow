@@ -1,0 +1,6 @@
+func (a Active) validate() error {
+	if !a.From.IsZero() && !a.Until.IsZero() && !a.Until.After(a.From) {
+		return fmt.Errorf("active period: Until %s is not after From %s", a.Until.Format(time.RFC3339), a.From.Format(time.RFC3339))
+	}
+	return nil
+}

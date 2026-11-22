@@ -1,0 +1,10 @@
+func (a *aggregator) trigger(count int, first time.Time) (runAt time.Time, ok bool) {
+	m := a.cfg.MaxItems
+	switch {
+	case m > 0 && count%m == 0:
+		return time.Time{}, true
+	case m == 0 && count == 1, m > 0 && count%m == 1:
+		return first.Add(a.cfg.Window), true
+	}
+	return time.Time{}, false
+}

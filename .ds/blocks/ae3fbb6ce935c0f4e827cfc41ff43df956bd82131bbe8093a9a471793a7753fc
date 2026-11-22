@@ -1,0 +1,15 @@
+func DefineVersioned[In, Out any](current int, ups map[int]Upcaster, fn func(ctx context.Context, in In) (Out, error)) Handler {
+	typed := Define(fn)
+	return func(ctx context.Context, raw []byte) ([]byte, error) {
+		info, _ := StepInfoFrom(ctx)
+		from, err := PayloadVersionOf(info.Labels)
+		if err != nil {
+			return nil, Permanent(err)
+		}
+		up, err := Upcast(raw, from, current, ups)
+		if err != nil {
+			return nil, err
+		}
+		return typed(ctx, up)
+	}
+}

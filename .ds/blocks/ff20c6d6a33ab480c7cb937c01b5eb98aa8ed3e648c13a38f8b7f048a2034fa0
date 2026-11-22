@@ -1,0 +1,1 @@
+type Handler func(ctx context.Context, in []byte) (out []byte, err error)

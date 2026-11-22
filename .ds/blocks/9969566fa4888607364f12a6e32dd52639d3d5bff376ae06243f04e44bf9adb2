@@ -1,0 +1,8 @@
+func DrainContext(ctx context.Context, grace time.Duration) (context.Context, context.CancelFunc) {
+	if grace <= 0 {
+		c, cancel := context.WithCancel(ctx)
+		cancel()
+		return c, cancel
+	}
+	return context.WithTimeout(ctx, grace)
+}

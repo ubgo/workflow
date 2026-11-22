@@ -1,0 +1,16 @@
+func (c *Client) progressReporter(a *attempt) workflow.ProgressFunc {
+	return func(ctx context.Context, p workflow.Progress) error {
+		p.Step = a.name
+		p.At = c.clk.Now()
+		raw, err := json.Marshal(p)
+		if err != nil {
+			return fmt.Errorf("sqlstore: encode progress: %w", err)
+		}
+		if _, err := c.st.exec(ctx, c.st.db, "UPDATE {run_info} SET progress = ? WHERE run_id = ?", string(raw), a.runID); err != nil {
+			return err
+		}
+		c.emit(ctx, workflow.LifecycleEvent{Kind: workflow.LifecycleProgress, Ref: workflow.RunRef{RunID: workflow.RunID(a.runID)},
+			Workflow: a.workflow, Queue: a.queue, Tenant: a.tenant, Step: a.name, Attempt: int(a.attempts), Progress: &p})
+		return nil
+	}
+}

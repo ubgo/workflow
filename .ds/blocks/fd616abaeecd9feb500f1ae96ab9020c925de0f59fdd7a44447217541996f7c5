@@ -1,0 +1,7 @@
+const (
+	// AlertQueueDepth: more runs wait in a queue than Threshold.MaxDepth.
+	AlertQueueDepth AlertKind = "queue_depth"
+	// AlertQueueWait: the oldest queued run has waited longer than
+	// Threshold.MaxWait.
+	AlertQueueWait AlertKind = "queue_wait"
+)

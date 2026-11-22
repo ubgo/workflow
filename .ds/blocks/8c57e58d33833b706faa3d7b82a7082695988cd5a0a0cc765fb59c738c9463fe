@@ -1,0 +1,33 @@
+func (u uniqueWith) duplicate(ctx context.Context, key string, job workflow.Job) (workflow.RunRef, error) {
+	if u.cfg.Replace {
+		_, ref, found, err := u.holders.Holder(ctx, key)
+		if err != nil {
+			return workflow.RunRef{}, wrapAcquire(err)
+		}
+		if found {
+			edit := workflow.JobEdit{Payload: &job.Payload, Priority: &job.Priority}
+			if !job.RunAt.IsZero() {
+				edit.RunAt = &job.RunAt
+			}
+			got, err := u.cfg.Client.(workflow.RunEditor).EditRun(ctx, ref, edit)
+			switch {
+			case err == nil:
+				workflow.MarkDuplicate(ctx)
+				return got, nil
+			case !errors.Is(err, workflow.ErrWrongState) && !errors.Is(err, workflow.ErrNotFound):
+				return workflow.RunRef{}, fmt.Errorf("workflow/middleware: unique replace: %w", err)
+			}
+		}
+	}
+	if u.cfg.ReturnExisting {
+		_, ref, found, err := u.holders.Holder(ctx, key)
+		if err != nil {
+			return workflow.RunRef{}, wrapAcquire(err)
+		}
+		if found {
+			workflow.MarkDuplicate(ctx)
+			return ref, nil
+		}
+	}
+	return workflow.RunRef{}, fmt.Errorf("%w: unique key %q is held", workflow.ErrDuplicate, key)
+}

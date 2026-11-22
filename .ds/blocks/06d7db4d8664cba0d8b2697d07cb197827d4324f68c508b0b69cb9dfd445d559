@@ -1,0 +1,1 @@
+const LabelClosure = LabelPrefixInternal + "closure"

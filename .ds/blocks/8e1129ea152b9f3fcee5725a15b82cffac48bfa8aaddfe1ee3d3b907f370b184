@@ -1,0 +1,13 @@
+type SignalHandlers struct {
+	// Workflow names the workflow whose runs these handlers serve; empty
+	// serves every workflow registered through the client Use returns.
+	Workflow string
+
+	// On maps a signal name to its handler. Signals of other names are
+	// left for wait steps (WaitSpec.OwnRun) or other handlers.
+	On map[string]SignalHandler
+
+	// Batch is the most signals handled before one step; the rest wait
+	// for the next step. Zero means DefaultSignalBatch.
+	Batch int
+}

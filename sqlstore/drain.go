@@ -17,6 +17,8 @@ import (
 // ctx's error otherwise. Calling it again, or after the Start ctx ended,
 // waits for the same shutdown; before Start it returns ErrNotStarted. It is
 // DrainWithReport without the report.
+//
+//ds:def id=sql-client-drain-r7gfg6uq owner=@khanakia stability=stable
 func (c *Client) Drain(ctx context.Context) error {
 	_, err := c.DrainWithReport(ctx)
 	return err
@@ -27,6 +29,8 @@ func (c *Client) Drain(ctx context.Context) error {
 // disposition DrainRequeued. The report is fixed when the deadline ends,
 // before the client's context is cancelled. A second call returns the first
 // call's report.
+//
+//ds:def id=sql-client-drainwithreport-dvhyw82q owner=@khanakia stability=stable
 func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
 	c.mu.Lock()
 	if !c.started || c.cancel == nil {

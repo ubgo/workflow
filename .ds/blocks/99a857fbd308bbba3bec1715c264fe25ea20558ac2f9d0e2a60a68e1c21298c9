@@ -1,0 +1,9 @@
+func (c *Client) SignalRun(ctx context.Context, ref workflow.RunRef, ev workflow.Event) error {
+	if name, inner, ok := decodeRef(ref); ok {
+		if rc, known := c.regions[name]; known {
+			return workflow.SignalRun(ctx, rc, inner, ev.Name, ev.Payload)
+		}
+	}
+	ev.Key = workflow.RunKey(ref.RunID)
+	return c.Signal(ctx, ev)
+}

@@ -1,0 +1,17 @@
+func CriticalSection(store UniqueStore, section string, ttl time.Duration, steps ...string) workflow.Middleware {
+	cfg := poolConfig{retry: DefaultPoolRetry, steps: steps}
+	var bad error
+	switch {
+	case store == nil || section == "":
+		bad = fmt.Errorf("%w: CriticalSection needs a store and a section name", workflow.ErrInvalid)
+	case ttl <= 0:
+		bad = fmt.Errorf("%w: CriticalSection %q needs a positive ttl", workflow.ErrInvalid, section)
+	}
+	keys := func(info workflow.StepInfo) ([]string, error) {
+		if bad != nil {
+			return nil, workflow.Permanent(bad)
+		}
+		return []string{"section/" + section + "/" + info.RunID.String()}, nil
+	}
+	return slotGate(store, ttl, cfg, true, keys)
+}

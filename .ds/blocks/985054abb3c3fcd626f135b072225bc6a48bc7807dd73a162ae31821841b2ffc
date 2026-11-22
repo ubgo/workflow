@@ -1,0 +1,53 @@
+func EnqueueChunked(ctx context.Context, c workflow.Client, name string, opts ChunkedOptions, page func(ctx context.Context, offset, size int64) ([]workflow.Job, error)) (int64, error) {
+	if c == nil || page == nil || name == "" {
+		return 0, workflow.Permanent(fmt.Errorf("%w: batch: EnqueueChunked needs a client, a name and a page func", workflow.ErrInvalid))
+	}
+	if missing := c.Capabilities().Missing(workflow.CapIdempotencyKey); !missing.IsZero() {
+		return 0, workflow.Permanent(&workflow.UnsupportedError{Field: "EnqueueChunked", Missing: missing,
+			Reason: "each job needs an idempotency key so a resumed chunk does not start its jobs twice"})
+	}
+	key := opts.Key
+	if key == nil {
+		info, ok := workflow.StepInfoFrom(ctx)
+		if !ok || info.RunID.IsZero() {
+			return 0, workflow.Permanent(fmt.Errorf("%w: batch: EnqueueChunked runs inside a step (no StepInfo on ctx); pass ChunkedOptions.Key to call it elsewhere", workflow.ErrInvalid))
+		}
+		key = chunkKey(info.RunID, name)
+	}
+	limitKey := opts.LimitKey
+	if limitKey == "" {
+		limitKey = name
+	}
+	return workflow.ProcessChunks(ctx, name, opts.ChunkOptions, func(ctx context.Context, offset, size int64) (int64, error) {
+		jobs, err := page(ctx, offset, size)
+		if err != nil {
+			return 0, err
+		}
+		if int64(len(jobs)) > size {
+			return 0, workflow.Permanent(fmt.Errorf("%w: batch: EnqueueChunked %q: page returned %d jobs for a chunk of %d", workflow.ErrInvalid, name, len(jobs), size))
+		}
+		if len(jobs) == 0 {
+			return 0, nil
+		}
+		keyed := make([]workflow.Job, len(jobs))
+		for i, job := range jobs {
+			if job.IdempotencyKey == "" {
+				job.IdempotencyKey = key(offset+int64(i), job)
+			}
+			keyed[i] = job
+		}
+		if opts.Limit != nil {
+			take := opts.Limit.Take
+			if opts.Snooze {
+				take = opts.Limit.TakeOrSnooze
+			}
+			if err := take(ctx, limitKey, float64(len(keyed))); err != nil {
+				return 0, err
+			}
+		}
+		if _, err := EnqueueMany(ctx, c, keyed); err != nil {
+			return 0, fmt.Errorf("batch: EnqueueChunked %q: chunk at %d: %w", name, offset, err)
+		}
+		return int64(len(keyed)), nil
+	})
+}

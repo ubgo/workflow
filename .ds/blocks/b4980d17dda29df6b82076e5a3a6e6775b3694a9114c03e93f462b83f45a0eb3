@@ -1,0 +1,48 @@
+func Build(def Definition, reg *Registry) (workflow.Workflow, error) {
+	if err := def.Validate(); err != nil {
+		return workflow.Workflow{}, err
+	}
+	wf := workflow.Workflow{
+		Name:       def.Name,
+		Version:    def.Version,
+		MinVersion: def.MinVersion,
+		Queue:      def.Queue,
+		Cron:       slices.Clone(def.Cron), // the Workflow never aliases the Definition
+	}
+	// Validate has parsed every duration and the zone, so these cannot fail.
+	wf.Timeout, _ = duration("timeout", def.Timeout)
+	wf.RunTimeout, _ = duration("run_timeout", def.RunTimeout)
+	wf.CronLocation, _ = location(def.CronLocation)
+	if def.Retry != nil {
+		wf.Retry, _ = def.Retry.policy("retry")
+	}
+	if c := def.Concurrency; c != nil {
+		wf.Concurrency = &workflow.Concurrency{
+			MaxRuns:  c.MaxRuns,
+			Strategy: workflow.ConcurrencyStrategy(c.Strategy),
+			FIFO:     c.FIFO,
+		}
+		if c.KeyLabel != "" {
+			wf.Concurrency.Key = labelKey(c.KeyLabel)
+		}
+	}
+	if def.OnFailure != "" {
+		h, err := resolve(reg, "on_failure", def.OnFailure)
+		if err != nil {
+			return workflow.Workflow{}, err
+		}
+		wf.OnFailure = h
+	}
+	wf.Steps = make([]workflow.Step, len(def.Steps))
+	for i, s := range def.Steps {
+		step, err := s.build(index("steps", i), reg)
+		if err != nil {
+			return workflow.Workflow{}, err
+		}
+		wf.Steps[i] = step
+	}
+	if err := workflow.Validate(wf); err != nil {
+		return workflow.Workflow{}, err
+	}
+	return wf, nil
+}

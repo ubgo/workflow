@@ -1,0 +1,3 @@
+func (a *Admin) Failures(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	return a.listStatus(ctx, OpFailures, workflow.StatusFailed, q)
+}

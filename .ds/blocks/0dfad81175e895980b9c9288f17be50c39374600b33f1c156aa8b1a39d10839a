@@ -1,0 +1,29 @@
+func TestRefusesWhatOneBackendLacks(t *testing.T) {
+	ctx := t.Context()
+	cases := []struct {
+		hide workflow.Caps
+		call func(c *failover.Client) error
+	}{
+		{workflow.CapRunQuery, func(c *failover.Client) error { _, err := c.Runs(ctx, workflow.RunQuery{}); return err }},
+		{workflow.CapRetryRun, func(c *failover.Client) error {
+			_, err := c.Retry(ctx, workflow.RunRef{RunID: "primary:1"})
+			return err
+		}},
+		{workflow.CapDeleteRun, func(c *failover.Client) error { return c.Delete(ctx, workflow.RunRef{RunID: "primary:1"}) }},
+		{workflow.CapCancelAll, func(c *failover.Client) error { _, err := c.CancelAll(ctx, workflow.RunQuery{}); return err }},
+		{workflow.CapPauseWorkflow, func(c *failover.Client) error { return c.Pause(ctx, workflow.PauseAll()) }},
+		{workflow.CapPauseQueue, func(c *failover.Client) error { return c.Pause(ctx, workflow.PauseQueue("q")) }},
+		{workflow.CapDrain, func(c *failover.Client) error { return c.Drain(ctx) }},
+	}
+	for _, tc := range cases {
+		fx := newFixture(t)
+		c := failover.New(fx.p, noCaps{Client: fx.s.Client, hidden: tc.hide})
+		var ue *workflow.UnsupportedError
+		if err := tc.call(c); !errors.As(err, &ue) || !ue.Missing.HasAny(tc.hide) {
+			t.Errorf("hiding %s: err = %v, want an UnsupportedError naming it", tc.hide, err)
+		}
+		if c.Capabilities().Has(tc.hide) {
+			t.Errorf("hiding %s: still claimed", tc.hide)
+		}
+	}
+}

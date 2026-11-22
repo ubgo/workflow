@@ -1,0 +1,18 @@
+func labelFilter(labels, prefixes map[string]string) (string, []any) {
+	var where string
+	var args []any
+	for _, p := range labelPairs(labels) {
+		where += " AND r.id IN (SELECT lb.run_id FROM {run_labels} lb WHERE lb.lkey = ? AND lb.lval = ?)"
+		args = append(args, p[0], p[1])
+	}
+	for _, p := range labelPairs(prefixes) {
+		if p[1] == "" {
+			where += " AND r.id IN (SELECT lb.run_id FROM {run_labels} lb WHERE lb.lkey = ?)"
+			args = append(args, p[0])
+			continue
+		}
+		where += " AND r.id IN (SELECT lb.run_id FROM {run_labels} lb WHERE lb.lkey = ? AND lb.lval LIKE ? ESCAPE '" + likeEscape + "')"
+		args = append(args, p[0], likePrefix(p[1]))
+	}
+	return where, args
+}

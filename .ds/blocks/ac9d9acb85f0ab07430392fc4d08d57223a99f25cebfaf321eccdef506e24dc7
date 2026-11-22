@@ -1,0 +1,7 @@
+func (a Attempts) Count(err error) Attempts {
+	a.N++
+	if !IsRelease(err) {
+		a.Errors++
+	}
+	return a
+}

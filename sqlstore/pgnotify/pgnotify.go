@@ -34,6 +34,8 @@ import (
 
 // ErrDriver is returned by Listen when the pool's driver is not the pgx
 // stdlib driver, which is the only one that exposes notifications.
+//
+//ds:def id=pgnotify-errdriver-uyq2k4ce owner=@khanakia stability=stable
 var ErrDriver = errors.New("pgnotify: Listen needs a pool opened with the pgx stdlib driver")
 
 // Notifier sends and receives wake-ups over one Postgres pool. Build it with
@@ -44,6 +46,8 @@ type Notifier struct {
 
 // New returns a Notifier over db, the same pool the sqlstore client uses
 // (or any pool on the same Postgres database).
+//
+//ds:def id=pgnotify-new-ubnvrfme owner=@khanakia stability=stable
 func New(db *sql.DB) *Notifier { return &Notifier{db: db} }
 
 // Notify sends an empty notification on channel. Postgres delivers it to
@@ -58,6 +62,8 @@ func (n *Notifier) Notify(ctx context.Context, channel string) error {
 // Listen takes a pool connection, runs LISTEN on channel, calls wake once
 // (to cover anything sent before the subscription) and then once per
 // notification, until ctx ends (it returns nil) or the connection fails.
+//
+//ds:def id=pgnotify-notifier-listen-sc6f8es4 owner=@khanakia stability=stable
 func (n *Notifier) Listen(ctx context.Context, channel string, wake func()) error {
 	conn, err := n.db.Conn(ctx)
 	if err != nil {

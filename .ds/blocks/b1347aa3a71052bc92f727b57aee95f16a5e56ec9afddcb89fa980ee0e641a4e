@@ -1,0 +1,3 @@
+func (s *JournalStore) Migrate(ctx context.Context) error {
+	return s.st.migrate(ctx, s.st.journalMigrations())
+}

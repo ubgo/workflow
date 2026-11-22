@@ -1,0 +1,8 @@
+func (c *Client) limitSQL() string {
+	out := ""
+	for range c.limits {
+		out += " AND (" + queueOf + " <> ? OR (SELECT COUNT(*) FROM {steps} sl WHERE sl.status = ? AND sl.lease_until >= ? AND " +
+			queueOfAs("sl") + " = ?) < ?)"
+	}
+	return out
+}

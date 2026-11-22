@@ -1,0 +1,12 @@
+func (a *Admin) ForceFail(ctx context.Context, ref workflow.RunRef, reason string) error {
+	if err := a.check(OpForce); err != nil {
+		return err
+	}
+	if ref.IsZero() {
+		return fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if len(reason) > MaxForceReason {
+		return fmt.Errorf("%w: admin: force reason is %d bytes, at most %d", workflow.ErrInvalid, len(reason), MaxForceReason)
+	}
+	return a.c.(workflow.RunForcer).ForceFail(ctx, ref, reason)
+}

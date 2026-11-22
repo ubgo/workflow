@@ -1,0 +1,44 @@
+func UnmarshalSchedule(data []byte, loadZone func(name string) (*time.Location, error)) (Schedule, error) {
+	if loadZone == nil {
+		loadZone = cron.LoadZone
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	var in scheduleJSON
+	if err := dec.Decode(&in); err != nil {
+		return Schedule{}, fmt.Errorf("%w: %w", ErrScheduleJSON, err)
+	}
+	if in.V != ScheduleJSONVersion {
+		return Schedule{}, fmt.Errorf("%w: version %d, this release reads %d", ErrScheduleJSON, in.V, ScheduleJSONVersion)
+	}
+	s := Schedule{Name: in.Name, Workflow: in.Workflow, Cron: in.Cron, Input: in.Input, Labels: in.Labels, Overlap: in.Overlap, Seconds: in.Seconds, KeepRuns: in.KeepRuns, Tenant: in.Tenant}
+	if in.Active != nil {
+		if in.Active.From != nil {
+			s.Active.From = *in.Active.From
+		}
+		if in.Active.Until != nil {
+			s.Active.Until = *in.Active.Until
+		}
+	}
+	if in.Location != "" {
+		loc, err := loadZone(in.Location)
+		if err != nil {
+			return Schedule{}, fmt.Errorf("%w: %w", ErrScheduleJSON, err)
+		}
+		s.Location = loc
+	}
+	if in.Misfire != nil {
+		s.Misfire = Misfire{Policy: in.Misfire.Policy, Max: in.Misfire.Max}
+		if in.Misfire.Within != "" {
+			d, err := time.ParseDuration(in.Misfire.Within)
+			if err != nil {
+				return Schedule{}, fmt.Errorf("%w: misfire within: %w", ErrScheduleJSON, err)
+			}
+			s.Misfire.Within = d
+		}
+	}
+	if in.Windows != nil {
+		s.Windows = Windows{Between: windowsIn(in.Windows.Between), Unless: windowsIn(in.Windows.Unless)}
+	}
+	return s, nil
+}

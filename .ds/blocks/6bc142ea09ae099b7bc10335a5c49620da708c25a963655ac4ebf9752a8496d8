@@ -1,0 +1,11 @@
+func both[I any](c *Client, field string, caps workflow.Caps) (o, n I, err error) {
+	if err := c.need(field, caps); err != nil {
+		return o, n, err
+	}
+	o, ook := c.old.(I)
+	n, nok := c.new.(I)
+	if !ook || !nok {
+		return o, n, &workflow.UnsupportedError{Field: field, Missing: caps, Reason: "a cutover backend does not implement it"}
+	}
+	return o, n, nil
+}

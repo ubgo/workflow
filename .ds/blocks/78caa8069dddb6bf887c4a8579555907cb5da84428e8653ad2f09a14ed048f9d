@@ -1,0 +1,3 @@
+func WithStepInfo(ctx context.Context, info StepInfo) context.Context {
+	return context.WithValue(ctx, stepInfoKey{}, info)
+}

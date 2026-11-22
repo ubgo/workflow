@@ -1,0 +1,33 @@
+func LatestOnly(cfg LatestOnlyConfig) workflow.Middleware {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if cfg.Schedules == nil && cfg.Next == nil {
+				return nil, workflow.Permanent(fmt.Errorf("%w: LatestOnly needs Schedules or Next", workflow.ErrInvalid))
+			}
+			info, ok := workflow.StepInfoFrom(ctx)
+			if !ok || info.Labels[workflow.LabelTrigger] != "" {
+				return next(ctx, in)
+			}
+			tick, ok := info.TickAt()
+			if !ok {
+				return next(ctx, in)
+			}
+			now := clk.Now()
+			newer, ok, err := latestNewer(ctx, cfg, info, tick, now)
+			if err != nil {
+				return nil, fmt.Errorf("middleware: latest only: %w", err)
+			}
+			if !ok || newer.IsZero() || newer.After(now) {
+				return next(ctx, in)
+			}
+			if cfg.OnSkip != nil {
+				cfg.OnSkip(ctx, info, tick, newer)
+			}
+			return in, nil
+		}
+	}
+}

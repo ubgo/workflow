@@ -1,0 +1,36 @@
+func (r *Relay) deliver(ctx context.Context, batch []*entry, token string) (int, error) {
+	o := r.o
+	leaseEnd := o.clk.Now().Add(r.lease)
+	sent := 0
+	for i, e := range batch {
+		if ctx.Err() != nil || o.clk.Now().Add(r.timeout).After(leaseEnd) {
+			return sent, r.release(batch[i:], token)
+		}
+		job, jerr := e.job(r.entryKey)
+		if jerr != nil {
+			// Written by this package from a map, so a bad value means the row
+			// was edited by hand; the job goes on without labels.
+			o.log.Error("outbox: entry relayed without labels", "entry", e.id, "error", jerr)
+		}
+		ectx, cancel := context.WithTimeout(ctx, r.timeout)
+		_, err := r.target.Enqueue(ectx, job)
+		cancel()
+		if err != nil && ctx.Err() != nil {
+			// Stopping: the failure is the relay's, not the entry's.
+			return sent, r.release(batch[i:], token)
+		}
+		if err != nil {
+			if ferr := r.fail(ctx, e, token, err); ferr != nil {
+				return sent, ferr
+			}
+			continue
+		}
+		if _, err := o.db.ExecContext(context.WithoutCancel(ctx), o.sql("DELETE FROM {t} WHERE id = ? AND lease_token = ?"), e.id, token); err != nil {
+			// The target has it; the entry stays and is sent again after the
+			// lease: the at-least-once the package documents.
+			return sent, fmt.Errorf("outbox: mark entry %s sent: %w", e.id, err)
+		}
+		sent++
+	}
+	return sent, nil
+}

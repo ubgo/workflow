@@ -1,0 +1,16 @@
+func TestAdmin_CountRunsBounded(t *testing.T) {
+	a := New(seeded(), WithMaxScan(2))
+	c, err := a.CountRuns(t.Context(), workflow.RunQuery{Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Total != 2 || !c.Truncated || !slices.Equal(c.Cursors, []string{"", "1"}) {
+		t.Errorf("bounded count = %+v", c)
+	}
+	if _, err := a.CountRuns(t.Context(), workflow.RunQuery{Cursor: "1"}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Errorf("count with a cursor: %v", err)
+	}
+	if _, err := New(&fakeClient{}).CountRuns(t.Context(), workflow.RunQuery{}); !errors.Is(err, workflow.ErrUnsupported) {
+		t.Errorf("count without RunQuery: %v", err)
+	}
+}

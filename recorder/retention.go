@@ -32,7 +32,16 @@ type Retention struct {
 	// Archive, when set, is handed every record before stage two deletes
 	// it (with its steps, when stage one left any). An error stops the
 	// prune and deletes nothing of that batch, so nothing is lost when an
-	// archive is down; the next prune tries again.
+	// archive is down; the next prune tries again. A batch Archive
+	// accepted is deleted even when the prune's ctx is cancelled after
+	// that point, so it is not handed over again. Delivery is at least
+	// once on stores that cannot commit the archive and the delete
+	// together (sqlrecorder, after a crash or a failed delete between
+	// them): a repeat hands over the same records, so key what Archive
+	// writes by run ID. MemoryStore delivers each run once. For an
+	// exactly-once archive in the same database, use sqlrecorder's
+	// WithArchiveTable, which moves each run in the transaction that
+	// deletes it; Archive may be set beside it and keeps this contract.
 	Archive func(ctx context.Context, runs []RunRecord) error
 
 	// Batch is how many runs one prune step handles at a time, so a big
@@ -130,7 +139,8 @@ type PruneResult struct {
 	RunsDeleted int
 
 	// Archived counts runs handed to Archive (equal to RunsDeleted when
-	// Archive is set).
+	// Archive is set), or, without Archive, runs a store moved to an
+	// archive table of its own (sqlrecorder's WithArchiveTable).
 	Archived int
 }
 

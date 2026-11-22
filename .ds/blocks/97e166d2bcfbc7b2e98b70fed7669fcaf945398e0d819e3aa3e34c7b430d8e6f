@@ -1,0 +1,1 @@
+var batch2Caps = workflow.CapsOf(workflow.CapRunStates, workflow.CapChain, workflow.CapWorkerScale, p4Caps)

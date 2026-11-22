@@ -1,0 +1,39 @@
+type UniqueConfig struct {
+	// By derives the key; "" passes the job through. Required.
+	By func(workflow.Job) string
+
+	// Store holds the locks. Required. States and ReturnExisting need it
+	// to implement UniqueHolders.
+	Store UniqueStore
+
+	// TTL bounds every lock, whatever the holder's state. Required.
+	TTL time.Duration
+
+	// States are the holder statuses that make a new job a duplicate. A
+	// held key whose run is in none of them (or is gone) is taken over by
+	// the new job: States{StatusScheduled, StatusQueued} lets a job in
+	// once the holder started; adding StatusSucceeded keeps a key closed
+	// after success until TTL. Empty means every status counts (plain
+	// Unique). Needs Client to look the holder up.
+	States []workflow.Status
+
+	// Client answers Status for the holder's run; required with States.
+	Client workflow.Client
+
+	// ReturnExisting answers a duplicate with the holder's RunRef and a
+	// nil error, marking the EnqueueOutcome a duplicate
+	// (workflow.MarkDuplicate), instead of an error wrapping ErrDuplicate.
+	// When the holder's run is not known yet (a race with its enqueue),
+	// it still returns ErrDuplicate.
+	ReturnExisting bool
+
+	// Replace makes a duplicate update the holder instead (UQ-08, conflict
+	// replaces): while the holder's run is still scheduled, its payload,
+	// priority and, when the new job sets one, RunAt become the new job's
+	// (workflow.RunEditor), and the holder's RunRef is returned marked a
+	// duplicate. A holder that has left the scheduled state is not
+	// touched: the enqueue is answered as without Replace (ReturnExisting
+	// or ErrDuplicate). Needs Client implementing workflow.RunEditor
+	// (memory, sqlstore, Redis) and a store implementing UniqueHolders.
+	Replace bool
+}

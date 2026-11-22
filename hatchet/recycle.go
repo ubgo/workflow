@@ -39,6 +39,8 @@ func (c *Client) jobDone() {
 // It runs in a goroutine because the handler that crossed MaxJobs is
 // itself in flight, and Drain waits for it. A stop already requested (the
 // Start ctx ended, or Drain was called) wins: the cause stays nil.
+//
+//ds:def id=hatchet-client-recycle-v94a4x8t owner=@khanakia stability=stable
 func (c *Client) recycle(e *workflow.RecycleError) {
 	c.mu.Lock()
 	if c.draining || c.stopCause != nil || c.runCtx == nil || c.runCtx.Err() != nil {

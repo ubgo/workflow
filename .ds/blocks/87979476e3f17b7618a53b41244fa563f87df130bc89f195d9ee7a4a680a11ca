@@ -1,0 +1,34 @@
+type Failure struct {
+	// Ref is the run.
+	Ref RunRef
+
+	// Workflow is the workflow name.
+	Workflow string
+
+	// Status is the run's end status for a final failure (StatusFailed,
+	// or StatusDiscarded/StatusCancelled when the caller asked for
+	// those); StatusRetrying for an attempt failure.
+	Status Status
+
+	// Step is the failed step when known; empty for a run-level report
+	// from a driver that does not say which step failed.
+	Step string
+
+	// Attempt is the attempt number for an attempt failure; zero for a
+	// final failure.
+	Attempt int
+
+	// Err is the error.
+	Err error
+
+	// Final is true when the run has ended, false for an attempt that
+	// will be retried.
+	Final bool
+
+	// Labels are the run's labels. Receivers must not modify them; an
+	// integration forwards them only on the caller's opt-in.
+	Labels map[string]string
+
+	// At is when it happened, on the observing process's clock.
+	At time.Time
+}

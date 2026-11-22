@@ -34,6 +34,8 @@ type versionPolicy struct {
 // The run that a subscription starts gets the upcast payload; the bus
 // does not stamp workflow.LabelPayloadVersion on it, since a workflow's
 // payload version is the workflow's own (middleware.PayloadVersion).
+//
+//ds:def id=events-withupcasters-8cbvm79u owner=@khanakia stability=stable
 func WithUpcasters(event string, current int, ups map[int]workflow.Upcaster) Option {
 	return func(b *Bus) {
 		if b.optErr != nil {
@@ -66,6 +68,8 @@ func WithUpcasters(event string, current int, ups map[int]workflow.Upcaster) Opt
 
 // CurrentVersion returns the current payload version of event and
 // whether the bus has upcasters for it (WithUpcasters).
+//
+//ds:def id=events-bus-currentversion-b6kdjxdp owner=@khanakia stability=stable
 func (b *Bus) CurrentVersion(event string) (int, bool) {
 	p, ok := b.versions[event]
 	return p.current, ok
@@ -74,6 +78,8 @@ func (b *Bus) CurrentVersion(event string) (int, bool) {
 // checkVersion refuses a negative version, and a version newer than the
 // event's current one. It runs before the log, so a refused message is
 // never logged.
+//
+//ds:def id=events-bus-checkversion-3gk75nfb owner=@khanakia stability=stable
 func (b *Bus) checkVersion(m Message) error {
 	if m.Version < 0 {
 		return fmt.Errorf("%w: events: message %q has negative version %d", workflow.ErrInvalid, m.Name, m.Version)
@@ -88,6 +94,8 @@ func (b *Bus) checkVersion(m Message) error {
 // upcast brings m's payload to its event's current version and sets
 // m.Version to it. On error it returns m unchanged and an error wrapping
 // ErrInvalid.
+//
+//ds:def id=events-bus-upcast-rwukhj2a owner=@khanakia stability=stable
 func (b *Bus) upcast(m Message) (Message, error) {
 	if err := b.checkVersion(m); err != nil {
 		return m, err

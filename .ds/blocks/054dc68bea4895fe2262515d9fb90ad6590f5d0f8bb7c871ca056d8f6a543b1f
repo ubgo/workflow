@@ -1,0 +1,1 @@
+var ErrDispatching = errors.New("batch: a dispatch of this batch is in progress")

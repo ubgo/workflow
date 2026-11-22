@@ -1,0 +1,31 @@
+type MachineTransition[D any] struct {
+	// From is the source state. A transition of an ancestor applies to
+	// every descendant; the innermost active source with an enabled
+	// transition wins.
+	From string
+
+	// Event is the event name that triggers it.
+	Event string
+
+	// To is the target state; empty makes a targetless transition, which
+	// runs Actions without leaving or entering any state.
+	To string
+
+	// Guard, when set, must return true for the transition to be taken;
+	// otherwise the next transition (in this slice's order, then the
+	// source's ancestors) is tried.
+	Guard MachineGuard[D]
+
+	// Actions run after the exit actions and before the entry actions.
+	Actions []MachineAction[D]
+
+	// History enters a compound or parallel To where it was last left.
+	History HistoryMode
+
+	// Reenter makes a transition to From itself, or to one of its
+	// descendants, leave and enter From again (running its exit and
+	// entry actions and restarting its timers). Without it a
+	// self-transition only runs Actions, and a transition to a
+	// descendant leaves only From's active descendants.
+	Reenter bool
+}

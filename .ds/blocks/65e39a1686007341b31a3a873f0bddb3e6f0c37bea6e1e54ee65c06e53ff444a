@@ -1,0 +1,10 @@
+func ChainEnqueue(mws ...workflow.EnqueueMiddleware) workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		for i := len(mws) - 1; i >= 0; i-- {
+			if mws[i] != nil {
+				next = mws[i](next)
+			}
+		}
+		return next
+	}
+}

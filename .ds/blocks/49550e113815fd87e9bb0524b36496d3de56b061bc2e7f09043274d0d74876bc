@@ -1,0 +1,23 @@
+func (c *Client) fail(r *run, step string, attempt int, in []byte, cause error) {
+	cause = &workflow.RunError{RunID: r.id, Workflow: r.reg.wf.Name, Step: step, Attempt: attempt, Err: cause}
+	r.cancel(cause)
+	c.mu.Lock()
+	ended := r.status.IsTerminal() // a Cancel or a force got there first
+	c.mu.Unlock()
+	h := r.reg.onFailure
+	if r.reg.onTimeout != nil && workflow.IsTimeout(cause) {
+		h = r.reg.onTimeout
+	}
+	if h != nil && !ended {
+		if _, err := safeCall(h, c.ctx, in); err != nil {
+			c.log.Error("memory: OnFailure handler failed", "workflow", r.reg.wf.Name, "run", r.id, "error", err)
+		}
+	}
+	c.mu.Lock()
+	if !r.status.IsTerminal() {
+		r.err = cause
+		r.failedStep = step
+	}
+	c.endLocked(r, workflow.StatusFailed)
+	c.mu.Unlock()
+}

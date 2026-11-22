@@ -1,0 +1,1 @@
+func (w Workflow) RunsVersion(v int) bool { return v >= w.MinVersion && v <= w.Version }

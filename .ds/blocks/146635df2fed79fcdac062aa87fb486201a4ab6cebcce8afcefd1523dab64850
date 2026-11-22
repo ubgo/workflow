@@ -1,0 +1,36 @@
+func TestClaimCheck_Threshold(t *testing.T) {
+	store := middleware.NewMemoryBlobStore()
+	cc := newClaimCheck(t, store)
+	var seen workflow.Job
+	enq := cc.Enqueue()(func(_ context.Context, job workflow.Job) (workflow.RunRef, error) {
+		seen = job
+		return workflow.RunRef{}, nil
+	})
+
+	inline := bytes.Repeat([]byte("x"), claimThreshold)
+	if _, err := enq(context.Background(), workflow.Job{Payload: inline}); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(seen.Payload, inline) || store.Len() != 0 {
+		t.Fatalf("payload of exactly threshold bytes was claimed (stored %d)", store.Len())
+	}
+	if seen.Labels[middleware.ClaimCheckLabel] == "" {
+		t.Fatal("small job not stamped with a token, so its outputs could never be claimed")
+	}
+
+	big := append(bytes.Clone(inline), 'x')
+	if _, err := enq(context.Background(), workflow.Job{Payload: big}); err != nil {
+		t.Fatal(err)
+	}
+	token := seen.Labels[middleware.ClaimCheckLabel]
+	if !bytes.Equal(seen.Payload, claimRef(token+"/payload")) || store.Len() != 1 {
+		t.Fatalf("threshold+1 bytes not claimed: payload %q, stored %d", seen.Payload, store.Len())
+	}
+
+	// The step side: an output of exactly threshold bytes stays inline.
+	step := cc.Step()(func(context.Context, []byte) ([]byte, error) { return inline, nil })
+	out, err := step(runCtx("tok"), nil)
+	if err != nil || !bytes.Equal(out, inline) {
+		t.Fatalf("output of threshold bytes changed: %q, %v", out, err)
+	}
+}

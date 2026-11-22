@@ -1,0 +1,16 @@
+func LimitRuns(s Schedule, n int, from time.Time, parser cron.Parser) (Schedule, error) {
+	if n < 1 {
+		return s, invalidf("LimitRuns: n is %d, want at least 1", n)
+	}
+	if from.IsZero() {
+		return s, invalidf("LimitRuns: from is zero")
+	}
+	if err := ValidateSchedule(s); err != nil {
+		return s, err
+	}
+	sched, err := ParseCron(s.Cron, s.Seconds, parser)
+	if err != nil {
+		return s, fmt.Errorf("%w: LimitRuns: %w", ErrInvalid, err)
+	}
+	return limitTicks(s, sched, n, from)
+}

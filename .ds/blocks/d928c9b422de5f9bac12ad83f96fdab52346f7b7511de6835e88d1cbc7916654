@@ -1,0 +1,22 @@
+func (cc *ClaimCheck) CleanupOnFinish(c workflow.Client) error {
+	n, ok := c.(workflow.RunNotifier)
+	if !ok {
+		return &workflow.UnsupportedError{Field: "ClaimCheck.CleanupOnFinish", Missing: workflow.CapRunFinished, Reason: "the client does not implement workflow.RunNotifier"}
+	}
+	err := n.OnRunFinished(func(ctx context.Context, ev workflow.RunEvent) {
+		token := ev.Labels[ClaimCheckLabel]
+		if validClaimKey(token) != nil {
+			return
+		}
+		ctx = context.WithoutCancel(ctx)
+		if pd, ok := cc.store.(BlobPrefixDeleter); ok {
+			_ = pd.DeletePrefix(ctx, token+claimKeySep)
+			return
+		}
+		_ = cc.store.Delete(ctx, token+claimKeySep+claimPayloadKey)
+	})
+	if err != nil {
+		return fmt.Errorf("workflow/middleware: register claim check cleanup: %w", err)
+	}
+	return nil
+}

@@ -1,0 +1,1 @@
+	HTTPHeaders = AttributeLimits{Name: "HTTP", ValidKey: keyChars("!#$%&'*+-.^_`|~"), ValidValue: noControl, CaseInsensitive: true}

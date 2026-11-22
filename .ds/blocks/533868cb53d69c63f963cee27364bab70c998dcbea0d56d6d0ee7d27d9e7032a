@@ -1,0 +1,4 @@
+func (c *Client) TriggerSchedule(context.Context, workflow.ScheduleID) (workflow.RunRef, error) {
+	return workflow.RunRef{}, &workflow.UnsupportedError{Field: "TriggerSchedule", Missing: workflow.CapScheduleTrigger,
+		Reason: "hybrid: a trigger would return the scheduler's forwarder run"}
+}

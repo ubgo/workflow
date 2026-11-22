@@ -1,0 +1,3 @@
+type ExclusionCalendar interface {
+	Excluded(t time.Time) bool
+}

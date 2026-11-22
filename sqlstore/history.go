@@ -60,6 +60,8 @@ func (c *Client) writeOverlap(ctx context.Context, tx *sql.Tx, id string, p work
 // enqueued run, in tx. Under OverlapSkip it is a compare-and-set on prev,
 // the last_run the overlap decision read, and returns errLastMoved when
 // another fire moved it first.
+//
+//ds:def id=sql-client-movelast-7qu5n2gh owner=@khanakia stability=stable
 func (c *Client) moveLast(ctx context.Context, tx *sql.Tx, d dueSchedule, fire int64, run string) error {
 	if err := c.ensureScheduleLast(ctx, tx, d.id); err != nil {
 		return err
@@ -114,6 +116,8 @@ func (c *Client) overlapBlocks(ctx context.Context, d dueSchedule) (bool, workfl
 // fire time as it was. An unknown or unscheduled id returns ErrNotFound,
 // and so does a schedule whose workflow is not registered on this client.
 // Tick observers hear a TickFired with Manual set.
+//
+//ds:def id=sql-client-triggerschedule-e2q224ze owner=@khanakia stability=stable
 func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

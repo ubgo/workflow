@@ -1,0 +1,25 @@
+func StepsFrom(wf Workflow, step string) []string {
+	if !slices.ContainsFunc(wf.Steps, func(s Step) bool { return s.Name == step }) {
+		return nil
+	}
+	reached := map[string]bool{step: true}
+	for changed := true; changed; {
+		changed = false
+		for _, s := range wf.Steps {
+			if reached[s.Name] {
+				continue
+			}
+			if slices.ContainsFunc(s.After, func(p string) bool { return reached[p] }) {
+				reached[s.Name] = true
+				changed = true
+			}
+		}
+	}
+	out := make([]string, 0, len(reached))
+	for _, s := range wf.Steps {
+		if reached[s.Name] {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}

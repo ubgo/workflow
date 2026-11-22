@@ -1,0 +1,34 @@
+type WaitSpec struct {
+	// Event is the event name to wait for.
+	Event string
+
+	// Key is a fixed key, the same for every run of the workflow. Empty
+	// matches an Event with an empty key. Use KeyFrom for a key that
+	// differs per run.
+	Key string
+
+	// KeyFrom derives the key per run, so many runs of one workflow can
+	// wait on the same event name for different things ("payment.succeeded
+	// for THIS order"). The driver evaluates it once, when the wait step
+	// begins, against the run's Job (its original Payload and Labels, not
+	// the step's input), and Signal matches Event.Key against the result.
+	// Func is evaluated in Go by any driver (ResolveKey does it); Expr is
+	// an expression in the engine's language over the run input (Hatchet's
+	// CEL), and a driver without one refuses it with an UnsupportedError.
+	// At most one of Key and KeyFrom is set.
+	KeyFrom ConcurrencyKey
+
+	// OwnRun makes the wait take the signals addressed to this run by its
+	// ID (SignalRun, SignalParent): the key is RunKey of the run's own
+	// RunID, which the driver resolves when the wait step begins, so a
+	// child, an operator or another service can signal one run without
+	// the app inventing a key. Key and KeyFrom stay empty. It needs
+	// CapWaitOwnRun (WP-22).
+	OwnRun bool
+
+	// Deadline is the absolute time the wait fails.
+	Deadline time.Time
+
+	// Timeout is how long the wait lasts from when it begins.
+	Timeout time.Duration
+}

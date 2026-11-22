@@ -1,0 +1,38 @@
+func AutoDisable(store DisableStore, key func(workflow.StepInfo, []byte) string, after int, onDisable func(ctx context.Context, key string), opts ...AutoDisableOption) workflow.Middleware {
+	var cfg autoDisableConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return func(next workflow.Handler) workflow.Handler {
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if store == nil || key == nil || after < 1 {
+				return nil, workflow.Permanent(fmt.Errorf("%w: AutoDisable needs a store, a key function and after of at least one", workflow.ErrInvalid))
+			}
+			info, _ := workflow.StepInfoFrom(ctx)
+			k := key(info, in)
+			if k == "" {
+				return next(ctx, in)
+			}
+			off, err := store.Disabled(ctx, k)
+			if err != nil {
+				return nil, fmt.Errorf("workflow/middleware: auto-disable read: %w", err)
+			}
+			if off {
+				return nil, workflow.Discard(fmt.Errorf("%w: %q", ErrEndpointDisabled, k))
+			}
+			out, err := next(ctx, in)
+			bg := context.WithoutCancel(ctx)
+			switch {
+			case err == nil:
+				_ = store.Succeed(bg, k)
+			case errors.Is(err, workflow.ErrSnoozed) || errors.Is(err, workflow.ErrCancelled):
+			case cfg.final != nil && cfg.final.Retryable(err, info.Attempt):
+			default:
+				if newly, ferr := store.Fail(bg, k, after); ferr == nil && newly && onDisable != nil {
+					onDisable(bg, k)
+				}
+			}
+			return out, err
+		}
+	}
+}

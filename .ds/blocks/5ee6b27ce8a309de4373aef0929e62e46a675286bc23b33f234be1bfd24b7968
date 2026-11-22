@@ -1,0 +1,29 @@
+func (r *machineRun[D]) addDescendants(s *mnode, set map[*mnode]bool, h HistoryMode) {
+	set[s] = true
+	if remembered, ok := r.rec.History[s.name]; ok && h != HistoryNone && len(remembered) > 0 {
+		for _, name := range remembered {
+			n := r.m.nodes[name]
+			if n == nil {
+				continue // removed from the machine since
+			}
+			if h == HistoryDeep {
+				set[n] = true
+			} else if n.parent == s {
+				r.addDescendants(n, set, HistoryNone)
+			}
+		}
+		if hasBelow(set, s) {
+			return
+		}
+	}
+	switch {
+	case s.parallel:
+		for _, c := range s.children {
+			if !hasInOrBelow(set, c) {
+				r.addDescendants(c, set, HistoryNone)
+			}
+		}
+	case s.compound():
+		r.addDescendants(s.initial, set, HistoryNone)
+	}
+}

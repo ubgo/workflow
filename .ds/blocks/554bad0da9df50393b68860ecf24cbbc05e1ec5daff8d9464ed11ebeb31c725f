@@ -1,0 +1,5 @@
+const (
+	DefaultOutputRuns   = 1000
+	DefaultOutputPerRun = 20
+	DefaultOutputBytes  = 64 << 10
+)

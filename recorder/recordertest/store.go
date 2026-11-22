@@ -55,7 +55,8 @@ type storeCase struct {
 // re-open, the join of a delayed run's two IDs, listings with every filter
 // and paging, Pending and MarkChecked, copies on read, concurrent writes,
 // the refusal of malformed writes, and, when the store is a Pruner, the two
-// retention stages with archive.
+// retention stages with archive, including that a prune cancelled right
+// after Archive accepted a batch does not hand that batch over again.
 //
 //ds:def id=rectest-runstore-w3fd43ef owner=@khanakia stability=stable
 func RunStore(t *testing.T, newStore NewStore) {
@@ -83,6 +84,7 @@ var storeCases = []storeCase{
 	{"concurrent_writes", caseConcurrent},
 	{"prune_two_stages", casePrune},
 	{"prune_archive_failure", casePruneArchiveFailure},
+	{"prune_cancelled_archives_once", casePruneCancelledArchivesOnce},
 }
 
 // fresh builds a store with no retention.
@@ -739,5 +741,48 @@ func casePruneArchiveFailure(t *testing.T, newStore NewStore) {
 	}
 	if r := get(t, s, rid("r1")); len(r.Steps) != 1 {
 		t.Fatalf("a failed archive lost data: %+v", r)
+	}
+}
+
+// casePruneCancelledArchivesOnce: a prune whose ctx is cancelled right after
+// Archive accepted a batch must not leave that batch to be archived again
+// by the next prune. Each run reaches Archive once and every old run is
+// gone after the second prune. (Only sequential prunes in one process are
+// asserted: a store that cannot commit the archive and the delete together
+// may repeat a batch after a crash, which no test here can state.)
+func casePruneCancelledArchivesOnce(t *testing.T, newStore NewStore) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var mu sync.Mutex
+	seen := map[string]int{}
+	ret := recorder.Retention{
+		RetentionRule: recorder.RetentionRule{Runs: time.Hour},
+		Archive: func(_ context.Context, runs []recorder.RunRecord) error {
+			mu.Lock()
+			defer mu.Unlock()
+			for _, r := range runs {
+				seen[string(r.Ref.RunID)]++
+			}
+			cancel() // the caller gives up just after the archive accepted
+			return nil
+		},
+		Batch: 1,
+	}
+	s, p, clk := prunable(t, newStore, ret)
+	finished(t, s, "a1", "w", at(10))
+	finished(t, s, "a2", "w", at(20))
+	clk.Set(at(20).Add(2 * time.Hour))
+	_, _ = p.Prune(ctx) // ends early with the cancel; its error is not the point
+	res, err := p.Prune(context.Background())
+	must(t, err)
+	mu.Lock()
+	defer mu.Unlock()
+	for _, id := range []string{"a1", "a2"} {
+		if seen[id] != 1 {
+			t.Errorf("run %s reached Archive %d times across a cancelled and a full prune, want once (second prune: %+v)", id, seen[id], res)
+		}
+		if _, err := s.Run(context.Background(), rid(id)); !errors.Is(err, workflow.ErrNotFound) {
+			t.Errorf("%s survived both prunes: %v", id, err)
+		}
 	}
 }

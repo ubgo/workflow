@@ -18,6 +18,8 @@ import (
 // attempts, the worker takes no further run (the rest stay queued on the
 // engine), and a fresh client, the restarted process, finishes every
 // remaining run, each exactly once.
+//
+//ds:def id=hatchet-testrecyclelive-dc5wbr5w owner=@khanakia stability=stable
 func TestRecycleLive(t *testing.T) {
 	skipWithoutEngine(t)
 	prefix := "wfrecycle_" + uuid.NewString()[:8]

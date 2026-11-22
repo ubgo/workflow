@@ -1,0 +1,6 @@
+func cancelledErr(err error) string {
+	if !errors.Is(err, workflow.ErrCancelled) {
+		return "want it to match workflow.ErrCancelled"
+	}
+	return ""
+}

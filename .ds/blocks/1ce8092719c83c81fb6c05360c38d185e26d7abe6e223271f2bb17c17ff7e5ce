@@ -1,0 +1,12 @@
+type Calendar struct {
+	// Minute lists minutes 0-59; empty means minute 0.
+	Minute []int
+	// Hour lists hours 0-23; empty means every hour.
+	Hour []int
+	// DayOfMonth lists days 1-31; empty means every day.
+	DayOfMonth []int
+	// Month lists months; empty means every month.
+	Month []time.Month
+	// DayOfWeek lists weekdays; empty means every day of the week.
+	DayOfWeek []time.Weekday
+}

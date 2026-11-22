@@ -1,0 +1,7 @@
+func WithLeaseClock(c clock.Clock) Option {
+	return func(cl *Client) {
+		if c != nil {
+			cl.leaseClk = c
+		}
+	}
+}

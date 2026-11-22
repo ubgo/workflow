@@ -1,0 +1,30 @@
+func ParseSeconds(expr string) (Schedule, error) {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return nil, &ParseError{Expr: expr, Field: "expression", Reason: "empty expression"}
+	}
+	if strings.HasPrefix(trimmed, "@") {
+		inner, err := parseMacro(expr, trimmed)
+		if err != nil {
+			return nil, err
+		}
+		if e, ok := inner.(*every); ok {
+			return e, nil
+		}
+		return &secSpec{expr: trimmed, second: 1, inner: inner.(*spec)}, nil
+	}
+	parts := strings.Fields(trimmed)
+	if len(parts) != len(fields)+1 {
+		return nil, &ParseError{Expr: expr, Field: "expression", Reason: fmt.Sprintf("want 6 fields (second minute hour day-of-month month day-of-week), got %d", len(parts))}
+	}
+	sec, perr := parseField(parts[0], secondField)
+	if perr != nil {
+		perr.Expr = expr
+		return nil, perr
+	}
+	inner, err := parseFields(expr, trimmed, strings.Join(parts[1:], " "))
+	if err != nil {
+		return nil, err
+	}
+	return &secSpec{expr: trimmed, second: sec, inner: inner.(*spec)}, nil
+}

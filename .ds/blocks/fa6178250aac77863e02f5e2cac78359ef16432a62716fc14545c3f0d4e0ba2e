@@ -1,0 +1,1 @@
+var ErrDuplicatePlugin = errors.New("workflow: duplicate plugin name")

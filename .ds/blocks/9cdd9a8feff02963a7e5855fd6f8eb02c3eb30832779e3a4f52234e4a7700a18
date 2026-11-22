@@ -1,0 +1,24 @@
+func (d *Datasets) Trigger(t DatasetTrigger) error {
+	if t.Name == "" {
+		return fmt.Errorf("%w: events: dataset trigger needs a Name", workflow.ErrInvalid)
+	}
+	if len(t.Datasets) == 0 {
+		return fmt.Errorf("%w: events: dataset trigger %q watches no dataset", workflow.ErrInvalid, t.Name)
+	}
+	for i, ds := range t.Datasets {
+		if ds == "" || slices.Contains(t.Datasets[:i], ds) {
+			return fmt.Errorf("%w: events: dataset trigger %q: dataset %q is empty or repeated", workflow.ErrInvalid, t.Name, ds)
+		}
+	}
+	if t.Workflow == "" && t.Job == nil {
+		return fmt.Errorf("%w: events: dataset trigger %q needs a Workflow or a Job", workflow.ErrInvalid, t.Name)
+	}
+	t.Datasets = slices.Clone(t.Datasets)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if slices.ContainsFunc(d.triggers, func(x DatasetTrigger) bool { return x.Name == t.Name }) {
+		return fmt.Errorf("%w: events: dataset trigger %q already exists", workflow.ErrInvalid, t.Name)
+	}
+	d.triggers = append(d.triggers, t)
+	return nil
+}

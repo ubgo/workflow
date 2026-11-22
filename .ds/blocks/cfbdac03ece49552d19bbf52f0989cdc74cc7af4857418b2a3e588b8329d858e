@@ -1,0 +1,9 @@
+func (a *Admin) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
+	if err := a.check(OpForce); err != nil {
+		return err
+	}
+	if ref.IsZero() {
+		return fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	return a.c.(workflow.RunForcer).ForceComplete(ctx, ref)
+}

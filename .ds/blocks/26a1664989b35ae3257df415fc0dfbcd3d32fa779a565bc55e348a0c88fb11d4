@@ -1,0 +1,19 @@
+func checkChain(wf workflow.Workflow, steps []string) string {
+	got := make([]string, len(wf.Steps))
+	for i, s := range wf.Steps {
+		got[i] = s.Name
+	}
+	if !slices.Equal(got, steps) {
+		return fmt.Sprintf("its steps are %v, want %v", got, steps)
+	}
+	for i, s := range wf.Steps {
+		var want []string
+		if i > 0 {
+			want = []string{steps[i-1]}
+		}
+		if !slices.Equal(s.After, want) {
+			return fmt.Sprintf("step %q runs after %v, want %v", s.Name, s.After, want)
+		}
+	}
+	return ""
+}

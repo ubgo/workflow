@@ -4,10 +4,12 @@ Small helpers that keep a growing workflow manageable: group steps under one nam
 
 ## Before you start
 
-- Every helper here runs on every driver. `EndRun` needs the Journal plugin and the `EndRuns` plugin; `RecursionLimit` and `ShapeGuard` are plugins passed to `workflow.Use`.
+- Every helper here runs on every driver: each is ordinary steps, a plugin or a function over a `Client`. [`EndRun`](ds:block?id=endrun-m4p8qurp) needs the Journal plugin and the [`EndRuns`](ds:block?id=endruns-yh863xn7) plugin; [`RecursionLimit`](ds:block?id=recursionlimit-3vtvbeup) and [`ShapeGuard`](ds:block?id=shapeguard-ddbqbabb) are plugins passed to [`workflow.Use`](ds:block?id=use-yq9nazws).
 - The example is [`examples/flow-patterns`](../../examples/flow-patterns). Run it with `go run ./flow-patterns` from `examples/`.
 
 ## Set up the client
+
+The example's client wraps the memory driver with [`workflow.Use`](ds:block?id=use-yq9nazws): the [`Journal`](ds:block?id=journal-pr52wnjp) plugin keeps the state `EndRun` writes, [`EndRuns`](ds:block?id=endruns-yh863xn7) skips the steps of an ended run, and [`RecursionLimit`](ds:block?id=recursionlimit-3vtvbeup) bounds nesting. Put `Journal` before `EndRuns`, so the journal is on the ctx when `EndRuns` looks.
 
 <!-- snippet: examples/flow-patterns/main.go#client -->
 ```go
@@ -39,7 +41,7 @@ report := workflow.Step{Name: "report", After: []string{"import"}, Run: func(ctx
 wf := workflow.Workflow{Name: "import", Steps: append(group, report)}
 ```
 
-`workflow.Group(name, after, steps)` renames each step `<name>/<step>`, rewires `After` inside the group, makes the steps with no parent inside the group wait on `after`, and adds a join named `name` that waits on the group's last steps and carries their output (one last step: its output; several: an object keyed by their names inside the group). Later steps put the group's name in `After`. A whole sub-workflow with its own run and retries is a [child run](children.md) instead.
+[`workflow.Group(name, after, steps)`](ds:block?id=group-3weve9ng) renames each step `<name>/<step>` ([`GroupSeparator`](ds:block?id=groupseparator-3b7ayafp)), rewires `After` inside the group, makes the steps with no parent inside the group wait on `after`, and adds a join named `name` that waits on the group's last steps and carries their output (one last step: its output; several: an object keyed by their names inside the group). Later steps put the group's name in `After`. A whole sub-workflow with its own run and retries is a [child run](children.md) instead.
 
 ## End a run early
 
@@ -56,7 +58,7 @@ lookup := step("lookup", nil, func(ctx context.Context, in []byte) ([]byte, erro
 })
 ```
 
-`workflow.EndRun(ctx)` ends the run early and successfully: every step that has not started is skipped, steps already running finish. It is a decision, not an abort; `Cancel` is the abort.
+[`workflow.EndRun(ctx)`](ds:block?id=endrun-m4p8qurp) ends the run early and successfully: every step that has not started is skipped ([`EndRuns`' middleware](ds:block?id=endrunsplugin-stepmiddleware-7fbyjspm) returns a nil output without running it), steps already running finish. It is a decision, not an abort; `Cancel` is the abort.
 
 ## Limit recursion
 
@@ -69,11 +71,11 @@ if errors.Is(err, workflow.ErrDepth) {
 }
 ```
 
-`workflow.RecursionLimit(max)` writes `LabelDepth` on every job enqueued from inside a step, one deeper than the run whose step enqueued it, and refuses a job past `max` with `ErrDepth` (it matches `ErrInvalid`). A job enqueued outside any step has depth 0.
+[`workflow.RecursionLimit(max)`](ds:block?id=recursionlimit-3vtvbeup) writes [`LabelDepth`](ds:block?id=labeldepth-8jqw8k4j) on every job enqueued from inside a step, one deeper than the run whose step enqueued it, and refuses a job past `max` with [`ErrDepth`](ds:block?id=errdepth-vpx26s3r) (it matches `ErrInvalid`). A job enqueued outside any step has depth 0 ([its enqueue middleware](ds:block?id=recursionplugin-enqueuemiddleware-j2fzv4hn)).
 
 ## Catch changed steps under running runs
 
-`workflow.ShapeGuard(wfs...)` stamps each job with `LabelShape`, the `Shape` of its workflow (a hash of every step's name, kind and `After`, independent of their order in `Steps`), and checks it at every step: a run enqueued under a different set of steps fails with `ErrShapeChanged` (`Permanent`) before its handler runs, instead of resuming against steps it was not written for. The example plays a rolling deploy in which `save` was renamed `store`: a worker on the new build runs v2, while an API server still on the old build enqueues under v1.
+[`workflow.ShapeGuard(wfs...)`](ds:block?id=shapeguard-ddbqbabb) stamps each job with [`LabelShape`](ds:block?id=labelshape-4ce874tz), the [`Shape`](ds:block?id=shape-qzfts778) of its workflow (a hash of every step's name, kind and `After`, independent of their order in `Steps`), and checks it at every step: a run enqueued under a different set of steps fails with [`ErrShapeChanged`](ds:block?id=errshapechanged-nukshgy3) (`Permanent`) before its handler runs ([its step middleware](ds:block?id=shapeplugin-stepmiddleware-37a566mw)), instead of resuming against steps it was not written for. The example plays a rolling deploy in which `save` was renamed `store`: a worker on the new build runs v2, while an API server still on the old build enqueues under v1.
 
 <!-- snippet: examples/flow-patterns/main.go#shape -->
 ```go
@@ -100,11 +102,11 @@ msg := fmt.Sprint(err) // ErrShapeChanged, Permanent, before any handler ran
 fmt.Println("  run from the old build failed:", msg[max(strings.Index(msg, "was enqueued"), 0):])
 ```
 
-Runs without the label (enqueued before the guard, or fired by a driver's own scheduler, which runs no enqueue middleware) pass, and so do workflows not passed to `ShapeGuard`. Handler code, retries and timeouts are not part of the shape, so a deploy that only changes code passes. Give a changed definition a new workflow name and drain the old one; the guard tells you when a deploy forgot to.
+Runs without the label (enqueued before the guard, or fired by a driver's own scheduler, which runs no enqueue middleware) pass, and so do workflows not passed to `ShapeGuard` ([step middleware](ds:block?id=shapeplugin-stepmiddleware-37a566mw)). Handler code, retries and timeouts are not part of the [shape](ds:block?id=shape-qzfts778), so a deploy that only changes code passes. Give a changed definition a new workflow name and drain the old one; the guard tells you when a deploy forgot to.
 
 ## Typed from enqueue to result
 
-`workflow.EnqueueOf(ctx, c, name, v, edit)` encodes `v` as the payload (`JobOf`), lets `edit` adjust the job (labels, key, `RunAt`, queue) and enqueues it; `workflow.AwaitResultOf[T](ctx, c, ref, opts)` waits for the run and decodes its result as `T`. With a [`Define`](steps.md#typed-handlers-with-define) handler on the other side, the workflow is typed end to end:
+[`workflow.EnqueueOf(ctx, c, name, v, edit)`](ds:block?id=enqueueof-4frkbajz) encodes `v` as the payload ([`JobOf`](ds:block?id=jobof-qahauajj)), lets `edit` adjust the job (labels, key, `RunAt`, queue) and enqueues it; [`workflow.AwaitResultOf[T](ctx, c, ref, opts)`](ds:block?id=awaitresultof-g3ndmqb7) waits for the run and decodes its result as `T`. With a [`Define`](steps.md#typed-handlers-with-define) handler on the other side, the workflow is typed end to end:
 
 <!-- snippet: examples/flow-patterns/main.go#typed -->
 ```go
@@ -121,7 +123,7 @@ if err != nil {
 fmt.Printf("  %s costs %.2f\n", p.SKU, p.Total)
 ```
 
-Results need `CapResult`, as `AwaitResult` does. A result that does not decode into `T` is an error naming the run; a run that did not succeed returns `AwaitResult`'s error.
+Results need [`CapResult`](ds:block?id=capresult-9dusbjaz), as `AwaitResult` does. A result that does not decode into `T` is an error naming the run; a run that did not succeed returns `AwaitResult`'s error ([`AwaitResultOf`](ds:block?id=awaitresultof-g3ndmqb7)).
 
 ## Try it
 
@@ -148,10 +150,10 @@ shape guard:
 
 ## Pitfalls
 
-- **A step skipped by `EndRun` gives its children empty input;** they are skipped too, since the run has ended. `EndRun` without the `EndRuns` plugin on the client records the end but skips nothing.
-- **`RecursionLimit` counts every enqueue made from inside a step,** follow-up jobs and `Spawn` children included, not only a workflow enqueuing itself. A job past the limit is refused with `ErrDepth`, which matches `ErrInvalid`; handle it in the step as the example does, or the step's attempt fails.
-- **`ShapeGuard` must know the definitions on both sides.** Pass every guarded workflow to it on the enqueuing side and the worker side; a workflow the guard does not know is neither stamped nor checked.
-- **Group step names change.** Steps inside a group are named `<group>/<step>`, so run history, `ResetRun` and step-level tools use the prefixed names.
+- **A step skipped by `EndRun` gives its children empty input;** they are skipped too, since the run has ended. `EndRun` without the `EndRuns` plugin on the client records the end but skips nothing ([`EndRun`](ds:block?id=endrun-m4p8qurp) only writes run data; [`EndRuns`' middleware](ds:block?id=endrunsplugin-stepmiddleware-7fbyjspm) does the skipping).
+- **`RecursionLimit` counts every enqueue made from inside a step,** follow-up jobs and `Spawn` children included, not only a workflow enqueuing itself ([its enqueue middleware](ds:block?id=recursionplugin-enqueuemiddleware-j2fzv4hn) keys on the step's `StepInfo`, not on the workflow name). A job past the limit is refused with `ErrDepth`, which matches `ErrInvalid`; handle it in the step as the example does, or the step's attempt fails.
+- **`ShapeGuard` must know the definitions on both sides.** Pass every guarded workflow to it on the enqueuing side and the worker side; a workflow the guard does not know is neither stamped nor checked ([stamp](ds:block?id=shapeplugin-enqueuemiddleware-u7nhh223), [check](ds:block?id=shapeplugin-stepmiddleware-37a566mw)).
+- **Group step names change.** Steps inside a group are named `<group>/<step>` ([`GroupSeparator`](ds:block?id=groupseparator-3b7ayafp)), so run history, `ResetRun` and step-level tools use the prefixed names.
 
 ## Related
 

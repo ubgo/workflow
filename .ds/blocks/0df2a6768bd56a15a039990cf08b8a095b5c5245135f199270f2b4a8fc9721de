@@ -1,0 +1,3 @@
+func WithHeartbeater(ctx context.Context, h Heartbeater) context.Context {
+	return context.WithValue(ctx, heartbeaterKey{}, h)
+}

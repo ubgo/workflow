@@ -1,0 +1,13 @@
+func Release(when func(ctx context.Context, in []byte) bool, delay time.Duration) workflow.Middleware {
+	return func(next workflow.Handler) workflow.Handler {
+		if when == nil {
+			return next
+		}
+		return func(ctx context.Context, in []byte) ([]byte, error) {
+			if when(ctx, in) {
+				return nil, workflow.RetryAfter(ErrReleased, delay)
+			}
+			return next(ctx, in)
+		}
+	}
+}

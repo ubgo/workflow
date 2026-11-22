@@ -1,0 +1,23 @@
+func (c *Client) Remaining(ctx context.Context) (int, error) {
+	q, ok := c.old.(workflow.RunQuerier)
+	if !ok || !c.old.Capabilities().Has(workflow.CapRunQuery) {
+		return 0, &workflow.UnsupportedError{Field: "Remaining", Missing: workflow.CapRunQuery, Reason: "the old backend lists no runs"}
+	}
+	statuses := unfinished
+	if !c.old.Capabilities().Has(workflow.CapRunStates) {
+		statuses = statuses[:len(statuses)-1]
+	}
+	n := 0
+	cursor := ""
+	for {
+		page, err := q.Runs(ctx, workflow.RunQuery{Statuses: statuses, Limit: workflow.MaxRunsLimit, Cursor: cursor})
+		if err != nil {
+			return n, fmt.Errorf("cutover: Remaining: %w", err)
+		}
+		n += len(page.Runs)
+		if page.Next == "" {
+			return n, nil
+		}
+		cursor = page.Next
+	}
+}

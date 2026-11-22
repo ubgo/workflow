@@ -1,0 +1,11 @@
+func AggregatePlugin(c workflow.Client, store AggregateStore, cfg AggregateConfig) (workflow.Plugin, error) {
+	mw, err := Aggregate(c, store, cfg)
+	if err != nil {
+		return nil, err
+	}
+	p := &aggregatePlugin{enqueue: mw}
+	if !cfg.RawItems {
+		p.step = AggregateInput(store)
+	}
+	return p, nil
+}

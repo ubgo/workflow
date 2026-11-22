@@ -8,6 +8,8 @@ import (
 
 // hashDOMMax is the top of a day-of-month "H": days 1-28 exist in every
 // month, so a hashed day never lands on a 30th that February lacks.
+//
+//ds:def id=cron-hashdommax-begnkwpt owner=@khanakia stability=stable
 const hashDOMMax = 28
 
 // Hash rewrites the hashed items of a five-field expression into fixed
@@ -34,6 +36,8 @@ const hashDOMMax = 28
 // expression without "H" comes back trimmed and otherwise unchanged.
 // Macros are returned as they are. Every error is a *ParseError naming
 // the field.
+//
+//ds:def id=cron-hash-xrapuzt3 owner=@khanakia stability=stable
 func Hash(expr, seed string) (string, error) {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {
@@ -69,6 +73,8 @@ func Hash(expr, seed string) (string, error) {
 }
 
 // hashField rewrites each hashed item of one field.
+//
+//ds:def id=cron-hashfield-fy2xgcma owner=@khanakia stability=stable
 func hashField(text string, f field, index int, seed string) (string, *ParseError) {
 	if !strings.Contains(strings.ToUpper(text), "H") {
 		return text, nil
@@ -130,6 +136,8 @@ func hashField(text string, f field, index int, seed string) (string, *ParseErro
 }
 
 // hashValue is FNV-1a of the seed, the field index and the item's position.
+//
+//ds:def id=cron-hashvalue-n5gtxsfn owner=@khanakia stability=stable
 func hashValue(seed string, field, item int) uint64 {
 	h := fnv.New64a()
 	h.Write([]byte(seed))

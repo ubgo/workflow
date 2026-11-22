@@ -1,0 +1,13 @@
+func NewClaimCheck(store BlobStore, threshold int, opts ...ClaimCheckOption) (*ClaimCheck, error) {
+	if store == nil {
+		return nil, fmt.Errorf("%w: NewClaimCheck needs a BlobStore", workflow.ErrInvalid)
+	}
+	if threshold <= 0 {
+		return nil, fmt.Errorf("%w: NewClaimCheck needs a positive threshold", workflow.ErrInvalid)
+	}
+	cc := &ClaimCheck{store: store, threshold: threshold, newKey: randomClaimKey}
+	for _, o := range opts {
+		o(cc)
+	}
+	return cc, nil
+}

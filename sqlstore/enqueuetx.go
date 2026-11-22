@@ -50,6 +50,8 @@ const idemSavepoint = "ubgo_workflow_enqueue"
 // relay enqueues on any client, middleware included, after the commit.
 //
 // An error leaves tx open; the caller decides whether to roll it back.
+//
+//ds:def id=sql-client-enqueuetx-8tdebvcq owner=@khanakia stability=stable
 func (c *Client) EnqueueTx(ctx context.Context, tx *sql.Tx, job workflow.Job) (workflow.RunRef, error) {
 	if tx == nil {
 		return workflow.RunRef{}, fmt.Errorf("%w: EnqueueTx needs a transaction", workflow.ErrInvalid)
@@ -95,6 +97,8 @@ func (c *Client) EnqueueTx(ctx context.Context, tx *sql.Tx, job workflow.Job) (w
 // insertKeyed is one attempt of a keyed EnqueueTx insert under the
 // savepoint. done is false only when the key's holder was gone by the time
 // it was read, so the caller tries the insert again.
+//
+//ds:def id=sql-client-insertkeyed-rgpk37df owner=@khanakia stability=stable
 func (c *Client) insertKeyed(ctx context.Context, tx *sql.Tx, reg *registered, job workflow.Job, key string) (ref workflow.RunRef, done bool, err error) {
 	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+idemSavepoint); err != nil {
 		return workflow.RunRef{}, false, fmt.Errorf("sqlstore: savepoint: %w", err)
@@ -130,6 +134,8 @@ func (c *Client) insertKeyed(ctx context.Context, tx *sql.Tx, reg *registered, j
 // transaction read the latest committed row rather than the transaction's
 // snapshot: FOR SHARE on Postgres and MySQL 8, nothing on SQLite, whose one
 // writer means a write transaction already sees every committed row.
+//
+//ds:def id=sql-store-lockingread-cpack28m owner=@khanakia stability=stable
 func (s *store) lockingRead() string {
 	if s.engine == engineSQLite {
 		return ""
@@ -143,4 +149,6 @@ func (s *store) lockingRead() string {
 // and is a no-op on a client that is not running. Other clients of the
 // cluster find the run at their next poll, or at once when the client has a
 // Notifier (WithNotifier), which Wake signals too.
+//
+//ds:def id=sql-client-wake-vdfsstn6 owner=@khanakia stability=stable
 func (c *Client) Wake() { c.nudge() }

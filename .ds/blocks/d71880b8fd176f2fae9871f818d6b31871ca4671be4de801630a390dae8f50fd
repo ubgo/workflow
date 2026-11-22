@@ -1,0 +1,1 @@
+	CapKeyFIFO = defineCap(51, "KeyFIFO")

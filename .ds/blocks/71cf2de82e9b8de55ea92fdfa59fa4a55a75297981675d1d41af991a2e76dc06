@@ -1,0 +1,68 @@
+func (c *Client) worker() {
+	defer c.wg.Done()
+	for {
+		c.mu.Lock()
+		var t *task
+		for !c.stopped {
+			if !c.draining {
+				if t = c.pickLocked(); t != nil {
+					break
+				}
+			}
+			c.taskCond.Wait()
+		}
+		if c.stopped {
+			c.mu.Unlock()
+			return
+		}
+		// Hold the attempt's worker slots (Step.Slots) before it counts as
+		// started; the pool serves waiters in order, so a heavy step is
+		// not starved by light ones.
+		// The queue's count is taken at the pick, so no other worker passes
+		// the queue's cap while this one waits for slots.
+		slots := workflow.StepSlots(t.step)
+		c.queueExec[t.r.queue]++
+		c.mu.Unlock()
+		if err := c.slots.Acquire(c.ctx, slots); err != nil {
+			c.mu.Lock()
+			c.queueExec[t.r.queue]--
+			c.mu.Unlock()
+			return // the client stopped; shutdown cancelled the runs
+		}
+		c.mu.Lock()
+		t.r.queued--
+		t.r.executing++
+		t.r.attempts++
+		started := c.clk.Now()
+		if t.r.startedAt.IsZero() {
+			t.r.startedAt = started
+		}
+		if node := c.nodeID(); !slices.Contains(t.r.attemptedBy, node) {
+			t.r.attemptedBy = append(t.r.attemptedBy, node)
+		}
+		c.executing++
+		c.emitLocked(t.r, workflow.LifecycleStarted, t.step.Name, t.attempt, nil)
+		c.mu.Unlock()
+		endTrack := c.drainTrack.Begin(workflow.DrainCut{RunID: t.r.id, Workflow: t.r.job.Workflow, Step: t.step.Name, Attempt: t.attempt})
+
+		out, edits, err := c.exec(t)
+
+		endTrack()
+		c.slots.Release(slots)
+		c.mu.Lock()
+		t.r.executing--
+		c.executing--
+		c.queueExec[t.r.queue]--
+		if !t.r.status.IsTerminal() {
+			t.r.resultsPending++
+			c.resultsPending++
+		}
+		c.maybeDrainedLocked()
+		if len(c.tasks) > 0 {
+			c.taskCond.Broadcast() // a queue slot freed
+		}
+		c.mu.Unlock()
+		c.send(t.r, runEvent{step: t.step.Name, kind: evResult, out: out, err: err, started: started, edits: edits})
+		c.recycleAfterAttempt()
+	}
+}

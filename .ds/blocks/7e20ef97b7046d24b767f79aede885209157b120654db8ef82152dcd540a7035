@@ -1,0 +1,17 @@
+func (f *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	pid, err := f.primary.Schedule(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	if !f.schedBoth {
+		return encodeScheduleID(primarySide, pid), nil
+	}
+	sid, err := f.secondary.Schedule(ctx, s)
+	if err != nil {
+		if uerr := f.primary.Unschedule(ctx, pid); uerr != nil {
+			return "", fmt.Errorf("failover: secondary: %w (and removing the primary's copy %s: %v)", err, pid, uerr)
+		}
+		return "", fmt.Errorf("failover: secondary: %w", err)
+	}
+	return encodeBothScheduleID(pid, sid), nil
+}

@@ -1,0 +1,8 @@
+type InlineResult struct {
+	// Outputs holds the output of every step that succeeded (a wait
+	// step's event payload, a sleep step's input), by step name.
+	Outputs map[string][]byte
+
+	// Attempts holds how many attempts each Run step made.
+	Attempts map[string]int
+}

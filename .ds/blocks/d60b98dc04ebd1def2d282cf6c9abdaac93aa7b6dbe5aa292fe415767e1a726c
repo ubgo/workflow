@@ -1,0 +1,32 @@
+func (b *Bus) deliver(ctx context.Context, s Subscription, m Message, replayID string) (workflow.RunRef, error) {
+	job := workflow.Job{Workflow: s.Workflow, Payload: m.Payload}
+	if s.Job != nil {
+		var err error
+		if job, err = s.Job(m); err != nil {
+			return workflow.RunRef{}, err
+		}
+		if err := workflow.ValidateLabels(job.Labels); err != nil {
+			return workflow.RunRef{}, err
+		}
+	}
+	labels := maps.Clone(job.Labels)
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	maps.Copy(labels, m.Labels)
+	labels[LabelEvent] = m.Name
+	labels[LabelEventID] = m.ID
+	labels[LabelSubscription] = s.Name
+	if replayID != "" {
+		labels[LabelReplay] = replayID
+	}
+	allow := append([]string{LabelEvent, LabelEventID, LabelSubscription, LabelReplay}, b.chainLabels(labels, m)...)
+	job.Labels = labels
+	if job.IdempotencyKey == "" {
+		job.IdempotencyKey = "event/" + s.Name + "/" + m.ID
+	}
+	if replayID != "" {
+		job.IdempotencyKey += "/replay/" + replayID
+	}
+	return b.client.Enqueue(workflow.AllowReservedLabels(ctx, allow...), job)
+}

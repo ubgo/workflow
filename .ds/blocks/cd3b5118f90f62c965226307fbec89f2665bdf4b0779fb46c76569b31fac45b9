@@ -1,0 +1,7 @@
+func NewUniqueStore(db *sql.DB, d sqlb.Dialect, opts ...Option) (*UniqueStore, error) {
+	c, err := New(db, d, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c.UniqueStore(), nil
+}

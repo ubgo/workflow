@@ -1,0 +1,71 @@
+func (c *Client) ArchivedRuns(ctx context.Context, q ArchiveQuery) ([]FinishedRun, error) {
+	where := "1 = 1"
+	var args []any
+	if q.Workflow != "" {
+		where += " AND workflow = ?"
+		args = append(args, q.Workflow)
+	}
+	if q.RunID != "" {
+		where += " AND id = ?"
+		args = append(args, string(q.RunID))
+	}
+	switch {
+	case q.FinishedBefore.IsZero():
+	case q.AfterRunID != "":
+		// Keyset paging on (finished_at DESC, id ASC), the ORDER BY below.
+		where += " AND (finished_at < ? OR (finished_at = ? AND id > ?))"
+		at := q.FinishedBefore.UnixNano()
+		args = append(args, at, at, string(q.AfterRunID))
+	default:
+		where += " AND finished_at < ?"
+		args = append(args, q.FinishedBefore.UnixNano())
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = defaultArchivePage
+	}
+	var out []FinishedRun
+	idx := map[string]int{}
+	var id, wf, status, labels string
+	var sid, errMsg sql.NullString
+	var payload []byte
+	var created, finished int64
+	err := c.st.each(ctx, c.st.db, "SELECT id, scheduled_id, workflow, status, labels, payload, err, created_at, finished_at FROM {runs_archive} WHERE "+
+		where+" ORDER BY finished_at DESC, id LIMIT ?", append(args, limit), func() error {
+		r := runRow{id: id, labels: labels}
+		lm, lerr := r.labelMap()
+		if lerr != nil {
+			c.log.Error("sqlstore: archived run without labels", "run", id, "error", lerr)
+		}
+		idx[id] = len(out)
+		out = append(out, FinishedRun{
+			Ref:        workflow.RunRef{RunID: workflow.RunID(id), ScheduledID: workflow.ScheduledID(sid.String)},
+			Workflow:   wf,
+			Status:     workflow.Status(status),
+			Labels:     lm,
+			Payload:    append([]byte(nil), payload...),
+			Err:        errMsg.String,
+			CreatedAt:  unixTime(created),
+			FinishedAt: unixTime(finished),
+		})
+		return nil
+	}, &id, &sid, &wf, &status, &labels, &payload, &errMsg, &created, &finished)
+	if err != nil || len(out) == 0 {
+		return out, err
+	}
+	ids := make([]any, len(out))
+	for i, fr := range out {
+		ids[i] = string(fr.Ref.RunID)
+	}
+	var runID, name string
+	var data []byte
+	err = c.st.each(ctx, c.st.db, "SELECT run_id, name, out_data FROM {steps_archive} WHERE run_id IN ("+inList(len(ids))+")", ids, func() error {
+		fr := &out[idx[runID]]
+		if fr.Outputs == nil {
+			fr.Outputs = map[string][]byte{}
+		}
+		fr.Outputs[name] = append([]byte(nil), data...)
+		return nil
+	}, &runID, &name, &data)
+	return out, err
+}

@@ -1,0 +1,6 @@
+func (a *Admin) Cancel(ctx context.Context, ref workflow.RunRef) error {
+	if err := a.check(OpCancel); err != nil {
+		return err
+	}
+	return a.c.Cancel(ctx, ref)
+}

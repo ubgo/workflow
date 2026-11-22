@@ -1,0 +1,14 @@
+func (m *Monitor) Run(ctx context.Context) error {
+	for {
+		t := m.a.clk.NewTimer(m.interval)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return ctx.Err()
+		case <-t.C():
+		}
+		if err := m.Check(ctx); err != nil && ctx.Err() == nil {
+			m.report(err)
+		}
+	}
+}

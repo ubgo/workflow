@@ -1,0 +1,26 @@
+func Route(rules ...RouteRule) workflow.EnqueueMiddleware {
+	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
+		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+			for _, r := range rules {
+				if r.Match != nil && !r.Match(job) {
+					continue
+				}
+				if r.Workflow != "" {
+					job.Workflow = r.Workflow
+				}
+				if len(r.Labels) > 0 {
+					labels := make(map[string]string, len(job.Labels)+len(r.Labels))
+					for k, v := range r.Labels {
+						labels[k] = v
+					}
+					for k, v := range job.Labels {
+						labels[k] = v
+					}
+					job.Labels = labels
+				}
+				break
+			}
+			return next(ctx, job)
+		}
+	}
+}

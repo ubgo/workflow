@@ -1,0 +1,7 @@
+func runPath(id string, scheduled bool, suffix string) string {
+	p := "runs/" + url.PathEscape(id) + suffix
+	if scheduled {
+		p += "?scheduled=1"
+	}
+	return p
+}

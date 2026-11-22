@@ -1,0 +1,60 @@
+func RunPromiseStore(t *testing.T, s workflow.PromiseStore) {
+	ctx := context.Background()
+	if _, ok, err := s.Get(ctx, "p-missing"); err != nil || ok {
+		t.Fatalf("Get of an unknown id: %v %v", ok, err)
+	}
+	const n = 16
+	var wg sync.WaitGroup
+	results := make([][]byte, n)
+	firsts := make([]bool, n)
+	errs := make([]error, n)
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			results[i], firsts[i], errs[i] = s.Settle(ctx, "p-race", fmt.Appendf(nil, "v%d", i))
+		}()
+	}
+	wg.Wait()
+	winners := 0
+	var won []byte
+	for i := range n {
+		if errs[i] != nil {
+			t.Fatalf("Settle %d: %v", i, errs[i])
+		}
+		if firsts[i] {
+			winners++
+			won = results[i]
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("%d settles won, want exactly 1", winners)
+	}
+	for i := range n {
+		if !bytes.Equal(results[i], won) {
+			t.Fatalf("Settle %d read %q, want the winner's %q", i, results[i], won)
+		}
+	}
+	got, ok, err := s.Get(ctx, "p-race")
+	if err != nil || !ok || !bytes.Equal(got, won) {
+		t.Fatalf("Get after the race: %q %v %v", got, ok, err)
+	}
+	if _, first, err := s.Settle(ctx, "p-other", []byte("x")); err != nil || !first {
+		t.Fatalf("another id: %v %v", first, err)
+	}
+	if err := s.Delete(ctx, "p-race"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := s.Get(ctx, "p-race"); ok {
+		t.Fatal("Get after Delete still finds the value")
+	}
+	if err := s.Delete(ctx, "p-race"); err != nil {
+		t.Fatalf("Delete of an unknown id: %v", err)
+	}
+	if v, first, err := s.Settle(ctx, "p-race", []byte("again")); err != nil || !first || string(v) != "again" {
+		t.Fatalf("Settle after Delete: %q %v %v", v, first, err)
+	}
+	if v, _, _ := s.Get(ctx, "p-other"); string(v) != "x" {
+		t.Fatalf("Delete touched another id: %q", v)
+	}
+}

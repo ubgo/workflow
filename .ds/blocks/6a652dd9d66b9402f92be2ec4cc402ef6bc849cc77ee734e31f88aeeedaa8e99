@@ -1,0 +1,33 @@
+func (l BalanceLoop) Run(ctx context.Context) error {
+	if l.Scaler == nil || l.Balancer == nil {
+		return invalidf("balance loop: Scaler and Balancer are required")
+	}
+	every := l.Every
+	if every <= 0 {
+		every = DefaultBalanceEvery
+	}
+	clk := l.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	onError := l.OnError
+	if onError == nil {
+		logger := l.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		onError = func(err error) { logger.ErrorContext(ctx, "workflow: balance round failed", "error", err) }
+	}
+	for {
+		t := clk.NewTimer(every)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil
+		case <-t.C():
+		}
+		if err := l.Once(ctx); err != nil && ctx.Err() == nil {
+			onError(err)
+		}
+	}
+}

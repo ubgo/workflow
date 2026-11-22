@@ -1,0 +1,7 @@
+func (u *UniqueStore) PruneExpired(ctx context.Context) (int64, error) {
+	n, err := u.st.execN(ctx, u.st.db, "DELETE FROM {unique_locks} WHERE expires <= ?", u.clk.Now().UnixNano())
+	if err != nil {
+		return n, err
+	}
+	return n, u.pruneHolders(ctx)
+}

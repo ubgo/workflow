@@ -1,0 +1,25 @@
+func UniqueWith(cfg UniqueConfig) (workflow.EnqueueMiddleware, error) {
+	if cfg.By == nil || cfg.Store == nil || cfg.TTL <= 0 {
+		return nil, fmt.Errorf("%w: UniqueWith needs By, Store and a positive TTL", workflow.ErrInvalid)
+	}
+	for _, s := range cfg.States {
+		if !s.Valid() {
+			return nil, fmt.Errorf("%w: UniqueWith: unknown status %q", workflow.ErrInvalid, s)
+		}
+	}
+	if len(cfg.States) > 0 && cfg.Client == nil {
+		return nil, fmt.Errorf("%w: UniqueWith: States needs a Client to look the holder up", workflow.ErrInvalid)
+	}
+	if cfg.Replace {
+		if _, ok := cfg.Client.(workflow.RunEditor); !ok {
+			return nil, fmt.Errorf("%w: UniqueWith: Replace needs a Client implementing workflow.RunEditor", workflow.ErrInvalid)
+		}
+	}
+	holders, ok := cfg.Store.(UniqueHolders)
+	track := len(cfg.States) > 0 || cfg.ReturnExisting || cfg.Replace
+	if track && !ok {
+		return nil, fmt.Errorf("%w: UniqueWith: States and ReturnExisting need a store implementing UniqueHolders", workflow.ErrInvalid)
+	}
+	u := uniqueWith{cfg: cfg, holders: holders, track: track}
+	return u.middleware, nil
+}

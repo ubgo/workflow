@@ -1,0 +1,12 @@
+type JoinResult struct {
+	// Refs are every child started, in job order (More's jobs after the
+	// first ones).
+	Refs []RunRef
+
+	// Winners are the indexes into Refs of the Need children that counted,
+	// in job order.
+	Winners []int
+
+	// Outputs are the winners' results, in the order of Winners.
+	Outputs [][]byte
+}

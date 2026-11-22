@@ -1,0 +1,3 @@
+func unsupported(field string, missing workflow.Caps, reason string) error {
+	return &workflow.UnsupportedError{Field: field, Missing: missing, Reason: reason}
+}

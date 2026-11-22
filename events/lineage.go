@@ -13,12 +13,15 @@ import (
 
 // LineageKind says which side of a dataset version a lineage record is
 // about.
+//
+//ds:def id=events-lineagekind-hbgttkgm owner=@khanakia stability=stable
 type LineageKind string
 
 // The lineage kinds.
 const (
 	// LineageProduced records that a run (or other code) wrote a
 	// dataset version: Datasets.Updated records one.
+	//ds:def id=events-lineageproduced-2b28qmej owner=@khanakia stability=stable
 	LineageProduced LineageKind = "produced"
 
 	// LineageConsumed records that a DatasetTrigger started a run for a
@@ -31,6 +34,8 @@ const (
 // produced a dataset version, or which run a trigger started for it, so
 // "where did this table's 09:00 version come from" and "what did this
 // run read" have answers after the fact.
+//
+//ds:def id=events-lineage-8pbujdxs owner=@khanakia stability=stable
 type Lineage struct {
 	// Kind is produced or consumed.
 	Kind LineageKind
@@ -67,6 +72,8 @@ type Lineage struct {
 // same reports whether l and o are the same fact (every identifying
 // field equal; Meta and At are not part of it), so a retried step that
 // records its output again changes nothing.
+//
+//ds:def id=events-lineage-same-qcx9fw9g owner=@khanakia stability=stable
 func (l Lineage) same(o Lineage) bool {
 	return l.Kind == o.Kind && l.Dataset == o.Dataset && l.Version == o.Version &&
 		l.Run == o.Run && l.Workflow == o.Workflow && l.Step == o.Step && l.Trigger == o.Trigger
@@ -74,6 +81,8 @@ func (l Lineage) same(o Lineage) bool {
 
 // LineageQuery filters lineage records for LineageStore.Find. Every field
 // that is set must match; the zero value matches every record.
+//
+//ds:def id=events-lineagequery-882s66be owner=@khanakia stability=stable
 type LineageQuery struct {
 	// Kind is produced or consumed; empty matches both.
 	Kind LineageKind
@@ -104,6 +113,8 @@ func (q LineageQuery) match(l Lineage) bool {
 // redis.LineageStore) makes triggers and lineage fleet-wide;
 // MemoryLineage, the default, is in-process. Implementations must be safe
 // for concurrent use; workflowtest.LineageStoreContract checks one.
+//
+//ds:def id=events-lineagestore-a6rq75kg owner=@khanakia stability=stable
 type LineageStore interface {
 	// Record saves l. A record equal to one already saved in Kind,
 	// Dataset, Version, Run, Workflow, Step and Trigger is ignored
@@ -117,17 +128,23 @@ type LineageStore interface {
 }
 
 // Producers returns who produced the versions of dataset, newest first.
+//
+//ds:def id=events-producers-c42vny76 owner=@khanakia stability=stable
 func Producers(ctx context.Context, store LineageStore, dataset string) ([]Lineage, error) {
 	return store.Find(ctx, LineageQuery{Kind: LineageProduced, Dataset: dataset})
 }
 
 // Consumers returns the runs triggers started for the versions of
 // dataset, newest first.
+//
+//ds:def id=events-consumers-fht6k354 owner=@khanakia stability=stable
 func Consumers(ctx context.Context, store LineageStore, dataset string) ([]Lineage, error) {
 	return store.Find(ctx, LineageQuery{Kind: LineageConsumed, Dataset: dataset})
 }
 
 // Outputs returns the dataset versions run produced, newest first.
+//
+//ds:def id=events-outputs-tspdery7 owner=@khanakia stability=stable
 func Outputs(ctx context.Context, store LineageStore, run workflow.RunID) ([]Lineage, error) {
 	if run.IsZero() {
 		return nil, fmt.Errorf("%w: events: lineage outputs of an empty run ID", workflow.ErrInvalid)
@@ -137,6 +154,8 @@ func Outputs(ctx context.Context, store LineageStore, run workflow.RunID) ([]Lin
 
 // Inputs returns the dataset versions a trigger started run for, newest
 // first.
+//
+//ds:def id=events-inputs-k8xvdg6g owner=@khanakia stability=stable
 func Inputs(ctx context.Context, store LineageStore, run workflow.RunID) ([]Lineage, error) {
 	if run.IsZero() {
 		return nil, fmt.Errorf("%w: events: lineage inputs of an empty run ID", workflow.ErrInvalid)
@@ -149,17 +168,23 @@ func Inputs(ctx context.Context, store LineageStore, run workflow.RunID) ([]Line
 // record per new version and per trigger run. Processes that each keep
 // their own cannot see each other's updates, so give every process one
 // shared store instead.
+//
+//ds:def id=events-memorylineage-pejxzqwg owner=@khanakia stability=stable
 type MemoryLineage struct {
 	mu   sync.Mutex
 	recs []Lineage
 }
 
 // NewMemoryLineage returns an empty MemoryLineage.
+//
+//ds:def id=events-newmemorylineage-4kykp7wd owner=@khanakia stability=stable
 func NewMemoryLineage() *MemoryLineage { return &MemoryLineage{} }
 
 var _ LineageStore = (*MemoryLineage)(nil)
 
 // Record saves a copy of l unless the same fact is already saved.
+//
+//ds:def id=events-memorylineage-record-65dqfum3 owner=@khanakia stability=stable
 func (m *MemoryLineage) Record(ctx context.Context, l Lineage) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -175,6 +200,8 @@ func (m *MemoryLineage) Record(ctx context.Context, l Lineage) error {
 }
 
 // Find returns copies of the matching records, newest first.
+//
+//ds:def id=events-memorylineage-find-t9jpuuez owner=@khanakia stability=stable
 func (m *MemoryLineage) Find(ctx context.Context, q LineageQuery) ([]Lineage, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

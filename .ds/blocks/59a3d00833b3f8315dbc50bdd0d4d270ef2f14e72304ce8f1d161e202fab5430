@@ -1,0 +1,26 @@
+func AggregatedItems(ctx context.Context, store AggregateStore) ([][]byte, error) {
+	group, ok := AggregateGroup(ctx)
+	if !ok {
+		return nil, workflow.Permanent(fmt.Errorf("%w: AggregatedItems: the run is not an aggregate flush run (no %s label)", workflow.ErrInvalid, AggregateGroupLabel))
+	}
+	info, _ := workflow.StepInfoFrom(ctx)
+	limit, err := strconv.Atoi(info.Labels[AggregateMaxLabel])
+	if err != nil || limit < 0 {
+		return nil, workflow.Permanent(fmt.Errorf("%w: AggregatedItems: label %s is %q", workflow.ErrInvalid, AggregateMaxLabel, info.Labels[AggregateMaxLabel]))
+	}
+	items, found, err := workflow.RunData[[][]byte](ctx, aggregateItemsData)
+	if err != nil || found {
+		return items, err
+	}
+	items, err = store.Take(ctx, group, limit)
+	if err != nil {
+		return nil, fmt.Errorf("workflow/middleware: aggregate store take: %w", err)
+	}
+	if items == nil {
+		items = [][]byte{}
+	}
+	if err := workflow.SetRunData(ctx, aggregateItemsData, items); err != nil {
+		return nil, fmt.Errorf("workflow/middleware: aggregate: keep the taken items: %w", err)
+	}
+	return items, nil
+}

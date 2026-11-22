@@ -1,0 +1,9 @@
+func AllCaps() Caps {
+	var c Caps
+	for n, name := range capNames {
+		if name != "" {
+			c.w[n/64] |= 1 << (n % 64)
+		}
+	}
+	return c
+}

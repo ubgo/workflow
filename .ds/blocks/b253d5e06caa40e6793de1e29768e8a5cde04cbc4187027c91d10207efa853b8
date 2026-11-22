@@ -1,0 +1,3 @@
+type ApprovalSigner struct {
+	Keys [][]byte
+}

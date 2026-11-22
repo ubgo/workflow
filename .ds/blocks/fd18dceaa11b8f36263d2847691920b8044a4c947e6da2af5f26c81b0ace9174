@@ -1,0 +1,36 @@
+func Alerts(a Alerter, cfg AlertConfig) workflow.RunFinishedFunc {
+	clk := cfg.Clock
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	lim := cfg.Limiter
+	if lim == nil {
+		lim = NewMemoryAlertLimiter(clk, AlertLimits{Dedup: DefaultAlertDedup})
+	}
+	key := cfg.Key
+	if key == nil {
+		key = defaultAlertKey
+	}
+	log := cfg.Logger
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return func(ctx context.Context, ev workflow.RunEvent) {
+		f, ok := workflow.FailureOf(ev, cfg.Discarded, clk.Now())
+		if !ok || (cfg.When != nil && !cfg.When(f)) {
+			return
+		}
+		k := key(f)
+		allow, suppressed, err := lim.Allow(ctx, k, f.At)
+		if err != nil {
+			log.Error("workflow/middleware: alert limiter failed; alerting anyway", "key", k, "error", err)
+			allow = true
+		}
+		if !allow {
+			return
+		}
+		if err := a.Alert(ctx, Alert{Failure: f, Key: k, Suppressed: suppressed}); err != nil {
+			log.Error("workflow/middleware: alert not sent", "key", k, "workflow", f.Workflow, "error", err)
+		}
+	}
+}

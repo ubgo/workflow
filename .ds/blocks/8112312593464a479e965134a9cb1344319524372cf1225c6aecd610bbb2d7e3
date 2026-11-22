@@ -1,0 +1,6 @@
+func (o StepOutcome) AssertDiscarded(t testing.TB) {
+	t.Helper()
+	if !o.Discarded() {
+		t.Errorf("step outcome is %s, want discarded", o.describe())
+	}
+}

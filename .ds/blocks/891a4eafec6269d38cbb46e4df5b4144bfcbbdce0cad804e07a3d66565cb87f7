@@ -1,0 +1,16 @@
+func taskBounds(s workflow.Schedule, fl cron.Fields, zone *time.Location) (from, until time.Time, err error) {
+	from, until = s.Active.From, s.Active.Until
+	if fl.Year != nil {
+		first, last := fl.Year[0], fl.Year[len(fl.Year)-1]
+		if last-first+1 != len(fl.Year) {
+			return from, until, refuse(FormatTaskScheduler, "year", "years %v have gaps; a task has one start and one end", fl.Year)
+		}
+		if y := time.Date(first, time.January, 1, 0, 0, 0, 0, zone); from.IsZero() || y.After(from) {
+			from = y
+		}
+		if y := time.Date(last+1, time.January, 1, 0, 0, 0, 0, zone); until.IsZero() || y.Before(until) {
+			until = y
+		}
+	}
+	return from, until, nil
+}

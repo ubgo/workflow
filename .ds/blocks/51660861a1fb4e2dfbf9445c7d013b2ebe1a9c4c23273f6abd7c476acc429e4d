@@ -1,0 +1,8 @@
+type UniqueStore interface {
+	// Acquire takes key for owner for ttl and reports true, or reports
+	// false when another holder has it and its ttl has not run out.
+	Acquire(ctx context.Context, key, owner string, ttl time.Duration) (bool, error)
+	// Release frees key if owner holds it. Releasing a free key, or one
+	// held by another owner, is a no-op, not an error.
+	Release(ctx context.Context, key, owner string) error
+}

@@ -1,0 +1,1 @@
+func MapConcurrency(n int) MapOption { return func(c *mapConfig) { c.concurrency = max(n, 1) } }

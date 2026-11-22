@@ -1,0 +1,17 @@
+func (j job) nextFire(clk clock.Clock) (time.Time, error) {
+	if clk == nil {
+		clk = clock.Real{}
+	}
+	after := clk.Now()
+	for range maxNextScan {
+		t := workflow.NextActive(j.sched, after, j.s.Location, j.s.Active)
+		if t.IsZero() {
+			return time.Time{}, fmt.Errorf("%w: %q after %s", ErrNoNextFire, j.s.Cron, after.Format(time.RFC3339))
+		}
+		if j.s.Windows.Allows(t, j.s.Location) {
+			return t.In(j.s.Location), nil
+		}
+		after = t
+	}
+	return time.Time{}, fmt.Errorf("%w: no tick of %q passes its windows in %d ticks", ErrNoNextFire, j.s.Cron, maxNextScan)
+}

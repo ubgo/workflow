@@ -1,0 +1,18 @@
+func (h *handler[P]) authorize(w http.ResponseWriter, r *http.Request, action Action, res Resource) (ok bool) {
+	who, _ := r.Context().Value(principalKey[P]{}).(P)
+	err := func() (err error) {
+		defer func() {
+			if p := recover(); p != nil {
+				h.cfg.logger.Error("admin: Authorize panicked", "action", string(action), "panic", fmt.Sprint(p))
+				err = errors.New("admin: Authorize panicked")
+			}
+		}()
+		return h.auth.Authorize(r.Context(), Request[P]{Who: who, Action: action, Resource: res, HTTP: r})
+	}()
+	noteAuthorize(r.Context(), action, res, err)
+	if err != nil {
+		writeError(w, http.StatusForbidden, CodeForbidden, "not allowed: "+string(action))
+		return false
+	}
+	return true
+}

@@ -1,0 +1,11 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	name, rc, err := c.route(ctx, job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	ref, err := rc.Enqueue(ctx, job)
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("regional: %s: %w", name, err)
+	}
+	return encodeRef(name, ref), nil
+}

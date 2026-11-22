@@ -1,0 +1,12 @@
+func regionHandler(h workflow.Handler, region string) workflow.Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		if info, ok := workflow.StepInfoFrom(ctx); ok {
+			if !info.RunID.IsZero() {
+				info.RunID = workflow.RunID(prefix(region) + string(info.RunID))
+			}
+			info.Labels = regionLabels(info.Labels, region)
+			ctx = workflow.WithStepInfo(ctx, info)
+		}
+		return h(ctx, in)
+	}
+}

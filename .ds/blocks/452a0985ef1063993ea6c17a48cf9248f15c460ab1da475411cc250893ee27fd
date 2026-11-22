@@ -1,0 +1,9 @@
+func TestResolveSecret(t *testing.T) {
+	v, err := workflow.ResolveSecret(context.Background(), mapResolver{"db": "pw"}, workflow.SecretRef{Ref: "db"})
+	if err != nil || string(v) != "pw" {
+		t.Fatalf("resolve = %q, %v", v, err)
+	}
+	if _, err := workflow.ResolveSecret(context.Background(), mapResolver{}, workflow.SecretRef{}); !errors.Is(err, workflow.ErrNoSecretRef) || !workflow.IsPermanent(err) {
+		t.Fatalf("empty ref = %v", err)
+	}
+}

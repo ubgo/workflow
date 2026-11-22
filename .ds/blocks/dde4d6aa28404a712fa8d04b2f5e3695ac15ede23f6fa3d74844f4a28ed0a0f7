@@ -1,0 +1,3 @@
+func (s DataScope) Key(name string) string {
+	return string(s.Kind) + ":" + strconv.Itoa(len(s.Name)) + ":" + s.Name + "/" + name
+}

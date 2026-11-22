@@ -16,6 +16,8 @@ import (
 // that returns it is retried once the bucket has room on a workflow whose
 // RetryPolicy.DelayFor is RetryAfterDelay, and on its normal backoff
 // otherwise.
+//
+//ds:def id=errthrottled-ys5p97sd owner=@khanakia stability=stable
 var ErrThrottled = errors.New("workflow: upstream rate limit reached")
 
 // BucketSpec is a leaky bucket: it holds at most Capacity units of cost
@@ -23,11 +25,14 @@ var ErrThrottled = errors.New("workflow: upstream rate limit reached")
 // the level plus c is at most Capacity. Shopify's REST limit is Capacity
 // 40, LeakPerSecond 2 with cost 1 per call; its GraphQL limit is cost
 // based (Capacity 1000, LeakPerSecond 50, cost per query).
+//
+//ds:def id=bucketspec-wgghvwb6 owner=@khanakia stability=stable
 type BucketSpec struct {
 	Capacity      float64
 	LeakPerSecond float64
 }
 
+//ds:def id=bucketspec-validate-59g43222 owner=@khanakia stability=stable
 func (s BucketSpec) validate() error {
 	if !(s.Capacity > 0) || !(s.LeakPerSecond > 0) || math.IsInf(s.Capacity, 0) || math.IsInf(s.LeakPerSecond, 0) {
 		return invalidf("bucket needs a positive, finite Capacity and LeakPerSecond (got %v, %v)", s.Capacity, s.LeakPerSecond)
@@ -42,6 +47,8 @@ func (s BucketSpec) validate() error {
 // it. Implementations apply the leak themselves, from the now they are
 // given, and must be safe for concurrent use; Take must check and add in
 // one atomic step.
+//
+//ds:def id=bucketstore-pphpjy7n owner=@khanakia stability=stable
 type BucketStore interface {
 	// Take adds cost to key's level and returns zero when it fits;
 	// otherwise it adds nothing and returns how long until it would fit.
@@ -56,6 +63,8 @@ type BucketStore interface {
 
 // MemoryBuckets is an in-process BucketStore. The zero value is ready to
 // use.
+//
+//ds:def id=memorybuckets-kmxbjjmg owner=@khanakia stability=stable
 type MemoryBuckets struct {
 	mu      sync.Mutex
 	buckets map[string]bucketLevel
@@ -75,6 +84,8 @@ func (b bucketLevel) drained(spec BucketSpec, now time.Time) float64 {
 }
 
 // Take implements BucketStore.
+//
+//ds:def id=memorybuckets-take-cb2xmqgu owner=@khanakia stability=stable
 func (m *MemoryBuckets) Take(_ context.Context, key string, spec BucketSpec, cost float64, now time.Time) (time.Duration, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -91,6 +102,8 @@ func (m *MemoryBuckets) Take(_ context.Context, key string, spec BucketSpec, cos
 }
 
 // Observe implements BucketStore.
+//
+//ds:def id=memorybuckets-observe-ykyktgtm owner=@khanakia stability=stable
 func (m *MemoryBuckets) Observe(_ context.Context, key string, spec BucketSpec, level float64, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -106,6 +119,8 @@ func (m *MemoryBuckets) Observe(_ context.Context, key string, spec BucketSpec, 
 // Workflow.RateLimits, which counts run starts, it counts what the
 // upstream counts: the cost of each call, against a bucket that drains
 // over time. Build it with NewUpstreamLimit.
+//
+//ds:def id=upstreamlimit-a7vr28ey owner=@khanakia stability=stable
 type UpstreamLimit struct {
 	store BucketStore
 	spec  BucketSpec
@@ -116,6 +131,8 @@ type UpstreamLimit struct {
 // from clk. A nil store means a new MemoryBuckets; a nil clk means
 // clock.Real. It returns an error wrapping ErrInvalid when spec is not
 // positive and finite.
+//
+//ds:def id=newupstreamlimit-gm36feys owner=@khanakia stability=stable
 func NewUpstreamLimit(store BucketStore, spec BucketSpec, clk clock.Clock) (*UpstreamLimit, error) {
 	if err := spec.validate(); err != nil {
 		return nil, err
@@ -134,6 +151,8 @@ func NewUpstreamLimit(store BucketStore, spec BucketSpec, clk clock.Clock) (*Ups
 // so the attempt is retried once the bucket has room (see ErrThrottled).
 // A cost above the bucket's capacity can never fit and is a Permanent
 // error wrapping ErrInvalid; a negative cost is refused the same way.
+//
+//ds:def id=upstreamlimit-take-gk7eushb owner=@khanakia stability=stable
 func (u *UpstreamLimit) Take(ctx context.Context, key string, cost float64) error {
 	wait, err := u.Wait(ctx, key, cost)
 	if err != nil {
@@ -150,6 +169,8 @@ func (u *UpstreamLimit) Take(ctx context.Context, key string, cost float64) erro
 // spending an attempt, since a spent upstream limit is "not yet", not a
 // failure. On a driver without CapSnooze a snooze is an ordinary error and
 // spends an attempt; use Take there.
+//
+//ds:def id=upstreamlimit-takeorsnooze-ftsxazjz owner=@khanakia stability=stable
 func (u *UpstreamLimit) TakeOrSnooze(ctx context.Context, key string, cost float64) error {
 	wait, err := u.Wait(ctx, key, cost)
 	if err != nil {
@@ -164,6 +185,8 @@ func (u *UpstreamLimit) TakeOrSnooze(ctx context.Context, key string, cost float
 // Wait is Take without the error: it reserves cost and returns zero, or
 // reserves nothing and returns how long until cost fits, for a caller
 // that would rather sleep in the step than retry it.
+//
+//ds:def id=upstreamlimit-wait-436yru9t owner=@khanakia stability=stable
 func (u *UpstreamLimit) Wait(ctx context.Context, key string, cost float64) (time.Duration, error) {
 	if cost < 0 || cost > u.spec.Capacity || math.IsNaN(cost) {
 		return 0, Permanent(invalidf("upstream limit: cost %v is outside 0..%v", cost, u.spec.Capacity))
@@ -174,6 +197,8 @@ func (u *UpstreamLimit) Wait(ctx context.Context, key string, cost float64) (tim
 // Observe records the level the upstream reported for key, so the next
 // Take decides from the upstream's count. Call it with each response's
 // rate-limit header.
+//
+//ds:def id=upstreamlimit-observe-qgmmcj65 owner=@khanakia stability=stable
 func (u *UpstreamLimit) Observe(ctx context.Context, key string, level float64) error {
 	return u.store.Observe(ctx, key, u.spec, level, u.clk.Now())
 }

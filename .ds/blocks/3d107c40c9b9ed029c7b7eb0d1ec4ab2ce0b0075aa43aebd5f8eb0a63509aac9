@@ -1,0 +1,6 @@
+func CancelStatuses(q RunQuery) []Status {
+	if len(q.Statuses) > 0 {
+		return q.Statuses
+	}
+	return []Status{StatusScheduled, StatusQueued}
+}

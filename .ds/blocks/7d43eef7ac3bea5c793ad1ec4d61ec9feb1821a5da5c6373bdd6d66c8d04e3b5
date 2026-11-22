@@ -1,0 +1,3 @@
+func EffectiveRetries(step Step, wf Workflow) RetryPolicy {
+	return EffectiveRetriesFor(step, wf, Job{})
+}

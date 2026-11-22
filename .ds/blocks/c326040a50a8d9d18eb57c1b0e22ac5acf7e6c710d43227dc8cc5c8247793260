@@ -1,0 +1,21 @@
+type Subscription struct {
+	// Name identifies the subscription; unique within a Bus and stable
+	// across deploys, because it is part of every run's idempotency key.
+	Name string
+
+	// Event is the message Name it matches.
+	Event string
+
+	// Workflow is the workflow to run. Ignored when Job is set.
+	Workflow string
+
+	// Filter, when set, must return true for the message to start a run.
+	Filter func(Message) bool
+
+	// Job, when set, builds the job from the message (a different payload,
+	// a queue, a priority, RunAt). Reserved label keys in it are refused
+	// (ErrInvalid). The bus still adds its labels and,
+	// when the job has none, its idempotency key. Nil means
+	// Job{Workflow: Workflow, Payload: m.Payload}.
+	Job func(Message) (workflow.Job, error)
+}

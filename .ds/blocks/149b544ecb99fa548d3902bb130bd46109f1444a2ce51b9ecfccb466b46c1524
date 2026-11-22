@@ -1,0 +1,1 @@
+var ErrLoopLimit = errors.New("workflow: loop reached its iteration limit")

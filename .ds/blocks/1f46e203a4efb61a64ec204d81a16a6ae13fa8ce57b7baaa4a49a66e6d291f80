@@ -1,0 +1,24 @@
+func EnqueueMany(ctx context.Context, c workflow.Client, jobs []workflow.Job) ([]workflow.RunRef, error) {
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+	if me, ok := c.(ManyEnqueuer); ok {
+		refs, err := me.EnqueueMany(ctx, jobs)
+		return placed(refs, len(jobs), err)
+	}
+	if gr, ok := c.(GroupRunner); ok && groupEligible(jobs) {
+		refs, err := gr.RunGroup(ctx, bulkGroup, jobs)
+		if !errors.Is(err, workflow.ErrUnsupported) {
+			return placed(refs, len(jobs), err)
+		}
+	}
+	refs := make([]workflow.RunRef, len(jobs))
+	for i, job := range jobs {
+		ref, err := c.Enqueue(ctx, job)
+		if err != nil {
+			return refs, fmt.Errorf("batch: EnqueueMany: job %d of %d (workflow %q): %w", i, len(jobs), job.Workflow, err)
+		}
+		refs[i] = ref
+	}
+	return refs, nil
+}

@@ -40,6 +40,8 @@ func (id ScheduleID) IsZero() bool { return id == "" }
 // started; RunID is set once it has. A driver that learns the RunID of a
 // delayed run resolves it itself, so callers keep passing the RunRef they
 // were given.
+//
+//ds:def id=runref-yjg7d4x5 owner=@khanakia stability=stable
 type RunRef struct {
 	RunID       RunID
 	ScheduledID ScheduledID
@@ -50,6 +52,8 @@ func (r RunRef) IsZero() bool { return r.RunID.IsZero() && r.ScheduledID.IsZero(
 
 // Workflow is a named graph of steps plus the policies that apply to every
 // run of it. A one-step workflow is a plain background job.
+//
+//ds:def id=workflow-48xg8mdj owner=@khanakia stability=stable
 type Workflow struct {
 	// Name is the key Job.Workflow and Schedule.Workflow refer to.
 	Name string
@@ -183,20 +187,29 @@ type Workflow struct {
 
 // RunsVersion reports whether a worker with this definition runs a run
 // of version v: MinVersion <= v <= Version.
+//
+//ds:def id=workflow-runsversion-r83ptyyz owner=@khanakia stability=stable
 func (w Workflow) RunsVersion(v int) bool { return v >= w.MinVersion && v <= w.Version }
 
 // StepKind is what a step does. Exactly one kind is set per step.
+//
+//ds:def id=stepkind-5k3zmmg5 owner=@khanakia stability=stable
 type StepKind string
 
 // The step kinds.
 const (
-	StepRun   StepKind = "run"   // calls Step.Run
-	StepWait  StepKind = "wait"  // suspends until an Event matches Step.Wait
+	//ds:def id=steprun-edqhadj2 owner=@khanakia stability=stable
+	StepRun StepKind = "run" // calls Step.Run
+	//ds:def id=stepwait-q3hc85tv owner=@khanakia stability=stable
+	StepWait StepKind = "wait" // suspends until an Event matches Step.Wait
+	//ds:def id=stepsleep-ny78cwqa owner=@khanakia stability=stable
 	StepSleep StepKind = "sleep" // suspends for Step.Sleep
 )
 
 // Step is one node of a workflow. Exactly one of Run, Wait and Sleep is
 // set; Validate rejects anything else.
+//
+//ds:def id=step-hwhpkdfd owner=@khanakia stability=stable
 type Step struct {
 	// Name is unique within the workflow; After refers to it.
 	Name string
@@ -241,6 +254,8 @@ type Step struct {
 
 // Kind reports which kind the step is, or "" when none or several are
 // set (an invalid step).
+//
+//ds:def id=step-kind-xew6agd5 owner=@khanakia stability=stable
 func (s Step) Kind() StepKind {
 	var kinds []StepKind
 	if s.Run != nil {
@@ -261,6 +276,8 @@ func (s Step) Kind() StepKind {
 // WaitSpec is a durable wait: the run releases its worker until Signal
 // delivers an Event with the same name and key, or the wait expires. At
 // most one of Deadline and Timeout is set; neither means wait forever.
+//
+//ds:def id=waitspec-9t4kcwbt owner=@khanakia stability=stable
 type WaitSpec struct {
 	// Event is the event name to wait for.
 	Event string
@@ -300,6 +317,8 @@ type WaitSpec struct {
 // when set, else the fixed Key. A KeyFrom.Expr is the engine's to
 // evaluate, so here it returns an UnsupportedError naming the field; a
 // driver that evaluates expressions handles that case before calling.
+//
+//ds:def id=waitspec-resolvekey-ey3s9dka owner=@khanakia stability=stable
 func (w WaitSpec) ResolveKey(job Job) (string, error) {
 	switch {
 	case w.OwnRun:
@@ -328,6 +347,8 @@ func (w WaitSpec) ResolveKeyFor(job Job, run RunID) (string, error) {
 
 // Event resumes runs waiting on a matching WaitSpec. Its Payload becomes
 // the wait step's output.
+//
+//ds:def id=event-vwnku48b owner=@khanakia stability=stable
 type Event struct {
 	Name    string
 	Key     string
@@ -335,6 +356,8 @@ type Event struct {
 }
 
 // Job is one request to run a workflow.
+//
+//ds:def id=job-j5g728nc owner=@khanakia stability=api
 type Job struct {
 	// Workflow is the registered workflow name.
 	Workflow string
@@ -460,6 +483,8 @@ type Schedule struct {
 
 // MisfirePolicy is what a scheduler does with cron ticks it missed: ticks
 // that fell due while nothing was running, or that it reached late.
+//
+//ds:def id=misfirepolicy-pupp8x7w owner=@khanakia stability=stable
 type MisfirePolicy string
 
 // The misfire policies. A driver declares the ones it honours through
@@ -481,10 +506,14 @@ const (
 // MisfireGrace is how late MisfireSkip still fires a tick: a scheduler
 // wakes a little after a tick's time even when nothing was missed, and a
 // tick reached within this window is on time, not missed.
+//
+//ds:def id=misfiregrace-ruw2h32f owner=@khanakia stability=stable
 const MisfireGrace = time.Minute
 
 // Misfire is a cron misfire policy. The zero value means the driver's
 // default.
+//
+//ds:def id=misfire-hwbgv2py owner=@khanakia stability=stable
 type Misfire struct {
 	// Policy is what happens to missed ticks. Empty is the driver default.
 	Policy MisfirePolicy
@@ -506,6 +535,8 @@ func (m Misfire) IsZero() bool { return m == Misfire{} }
 
 // IsUTC reports whether loc evaluates times as UTC: nil (which Workflow.
 // CronLocation treats as UTC), time.UTC, or a zone named "UTC".
+//
+//ds:def id=isutc-aj4baxqq owner=@khanakia stability=stable
 func IsUTC(loc *time.Location) bool {
 	return loc == nil || loc == time.UTC || loc.String() == "UTC"
 }
@@ -522,15 +553,22 @@ type ConcurrencyStrategy string
 // is StatusCancelled, and none of its steps runs. An enqueue is therefore
 // never an error because of concurrency, on any driver.
 const (
-	ConcurrencyQueueNewest      ConcurrencyStrategy = "queue_newest"       // the new run waits
-	ConcurrencyDropNewest       ConcurrencyStrategy = "drop_newest"        // the new run is dropped; see below
-	ConcurrencyCancelNewest     ConcurrencyStrategy = "cancel_newest"      // the new run is cancelled; see below
+	//ds:def id=concurrencyqueuenewest-ttfpmmum owner=@khanakia stability=stable
+	ConcurrencyQueueNewest ConcurrencyStrategy = "queue_newest" // the new run waits
+	//ds:def id=concurrencydropnewest-djnbu5nc owner=@khanakia stability=stable
+	ConcurrencyDropNewest ConcurrencyStrategy = "drop_newest" // the new run is dropped; see below
+	//ds:def id=concurrencycancelnewest-59va9tax owner=@khanakia stability=stable
+	ConcurrencyCancelNewest ConcurrencyStrategy = "cancel_newest" // the new run is cancelled; see below
+	//ds:def id=concurrencycancelinprogress-xwcnbcnw owner=@khanakia stability=stable
 	ConcurrencyCancelInProgress ConcurrencyStrategy = "cancel_in_progress" // the running one is cancelled
-	ConcurrencyRoundRobin       ConcurrencyStrategy = "round_robin"        // keys take turns (CapRoundRobin; weights: Concurrency.Weight)
+	//ds:def id=concurrencyroundrobin-rd8zthfc owner=@khanakia stability=stable
+	ConcurrencyRoundRobin ConcurrencyStrategy = "round_robin" // keys take turns (CapRoundRobin; weights: Concurrency.Weight)
 )
 
 // Concurrency caps simultaneous runs per key: each distinct key value is
 // its own bucket of MaxRuns.
+//
+//ds:def id=concurrency-h4md62gd owner=@khanakia stability=stable
 type Concurrency struct {
 	// Key derives the bucket. A zero Key puts every run in one bucket.
 	Key ConcurrencyKey
@@ -562,10 +600,14 @@ type Concurrency struct {
 
 // MaxKeyWeight is the largest Concurrency.Weight a driver honours; larger
 // weights count as MaxKeyWeight.
+//
+//ds:def id=maxkeyweight-wvwmrvcb owner=@khanakia stability=stable
 const MaxKeyWeight = 1 << 20
 
 // KeyWeights returns a Concurrency.Weight that reads weights from a map,
 // with def for a key the map does not list.
+//
+//ds:def id=keyweights-uwk8upj9 owner=@khanakia stability=stable
 func KeyWeights(weights map[string]int, def int) func(key string) int {
 	m := make(map[string]int, len(weights))
 	for k, v := range weights {
@@ -582,6 +624,8 @@ func KeyWeights(weights map[string]int, def int) func(key string) int {
 // FairStride is the virtual time one turn of a key of weight w costs
 // under ConcurrencyRoundRobin: MaxKeyWeight / w, with w clamped to
 // 1..MaxKeyWeight. See FairTurn.
+//
+//ds:def id=fairstride-zq442xay owner=@khanakia stability=stable
 func FairStride(w int) int64 {
 	w = min(max(w, 1), MaxKeyWeight)
 	return MaxKeyWeight / int64(w)
@@ -597,6 +641,8 @@ func FairStride(w int) int64 {
 // the current turn and gets no credit for the time it was idle, and the
 // key's pass moves to start + FairStride(w). The driver serves the
 // waiting runs of the workflow in start tag order (then arrival).
+//
+//ds:def id=fairturn-usczqc7a owner=@khanakia stability=stable
 func FairTurn(pass, now int64, w int) (start, next int64) {
 	start = max(pass, now)
 	return start, start + FairStride(w)
@@ -604,6 +650,8 @@ func FairTurn(pass, now int64, w int) (start, next int64) {
 
 // FairWeight returns c's weight for key: 1 when c or its Weight is nil.
 // Drivers call it when they admit a run.
+//
+//ds:def id=fairweight-a77ybjht owner=@khanakia stability=stable
 func FairWeight(c *Concurrency, key string) int {
 	if c == nil || c.Weight == nil {
 		return 1
@@ -617,16 +665,22 @@ func FairWeight(c *Concurrency, key string) int {
 // engine's own language (Hatchet's CEL). A driver that cannot evaluate the
 // form it is given returns an UnsupportedError naming the field. Build it
 // with KeyFunc or KeyExpr.
+//
+//ds:def id=concurrencykey-hp6bd4qc owner=@khanakia stability=stable
 type ConcurrencyKey struct {
 	Func func(Job) string
 	Expr string
 }
 
 // KeyFunc returns a ConcurrencyKey computed by a Go function.
+//
+//ds:def id=keyfunc-tcu6ntgg owner=@khanakia stability=stable
 func KeyFunc(f func(Job) string) ConcurrencyKey { return ConcurrencyKey{Func: f} }
 
 // KeyExpr returns a ConcurrencyKey written in the engine's expression
 // language.
+//
+//ds:def id=keyexpr-gvanv9aq owner=@khanakia stability=stable
 func KeyExpr(expr string) ConcurrencyKey { return ConcurrencyKey{Expr: expr} }
 
 // IsZero reports whether the key is unset (one bucket for the workflow).
@@ -649,6 +703,8 @@ func (k ConcurrencyKey) IsZero() bool { return k.Func == nil && k.Expr == "" }
 // A driver may be stricter (a sliding window keeps any span of length Per
 // to Limit starts) and documents which kind it is. A run held back by the
 // limit stays queued; it is delayed, never dropped.
+//
+//ds:def id=ratelimit-n8n9g5d8 owner=@khanakia stability=stable
 type RateLimit struct {
 	// Key derives the limited bucket. Zero means one bucket for the
 	// workflow.
@@ -666,7 +722,10 @@ type IdempotencyPolicy string
 
 // The idempotency policies.
 const (
+	//ds:def id=idempotencyoptional-4p96k58e owner=@khanakia stability=stable
 	IdempotencyOptional IdempotencyPolicy = "optional" // honoured when present (the default)
+	//ds:def id=idempotencyrequired-g889m7p8 owner=@khanakia stability=stable
 	IdempotencyRequired IdempotencyPolicy = "required" // an enqueue without a key fails
-	IdempotencyOff      IdempotencyPolicy = "off"      // keys are ignored
+	//ds:def id=idempotencyoff-n73f93jz owner=@khanakia stability=stable
+	IdempotencyOff IdempotencyPolicy = "off" // keys are ignored
 )

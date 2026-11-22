@@ -1,0 +1,6 @@
+func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
+	if step == "" {
+		return workflow.RunRef{}, fmt.Errorf("%w: ResetRun needs a step", workflow.ErrInvalid)
+	}
+	return c.retryFrom(ctx, ref, step, opts)
+}

@@ -1,0 +1,13 @@
+func (r *machineRun[D]) drain() error {
+	for len(r.internal) > 0 && !r.rec.Done {
+		ev := r.internal[0]
+		r.internal = r.internal[1:]
+		if ts := r.selectTransitions(ev); len(ts) > 0 {
+			if err := r.microstep(ts, ev); err != nil {
+				return err
+			}
+		}
+	}
+	r.internal = nil
+	return nil
+}

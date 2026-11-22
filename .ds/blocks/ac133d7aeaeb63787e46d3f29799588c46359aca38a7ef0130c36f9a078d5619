@@ -1,0 +1,6 @@
+type StepLogEvent struct {
+	Phase   StepPhase
+	Err     error
+	Info    workflow.StepInfo
+	HasInfo bool
+}

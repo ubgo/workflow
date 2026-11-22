@@ -1,0 +1,55 @@
+func Group(name string, after []string, steps []Step) ([]Step, error) {
+	if name == "" || strings.Contains(name, GroupSeparator) || len(steps) == 0 {
+		return nil, invalidf("group %q needs a name without %q and at least one step", name, GroupSeparator)
+	}
+	inner := map[string]bool{}
+	for _, s := range steps {
+		if s.Name == "" || inner[s.Name] {
+			return nil, invalidf("group %q: step name %q is empty or repeats", name, s.Name)
+		}
+		inner[s.Name] = true
+	}
+	hasChild := map[string]bool{}
+	out := make([]Step, 0, len(steps)+1)
+	for _, s := range steps {
+		s.Name = name + GroupSeparator + s.Name
+		if len(s.After) == 0 {
+			s.After = slices.Clone(after)
+		} else {
+			parents := make([]string, len(s.After))
+			for i, p := range s.After {
+				if !inner[p] {
+					return nil, invalidf("group %q: step %q waits on %q, which is not in the group", name, s.Name, p)
+				}
+				hasChild[p] = true
+				parents[i] = name + GroupSeparator + p
+			}
+			s.After = parents
+		}
+		out = append(out, s)
+	}
+	var last, lastInner []string
+	for _, s := range steps {
+		if !hasChild[s.Name] {
+			last = append(last, name+GroupSeparator+s.Name)
+			lastInner = append(lastInner, s.Name)
+		}
+	}
+	join := func(_ context.Context, in []byte) ([]byte, error) {
+		if len(last) == 1 {
+			return in, nil
+		}
+		raw := map[string]json.RawMessage{}
+		if err := json.Unmarshal(in, &raw); err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: group %q: join input does not decode: %w", name, err))
+		}
+		vals := make(map[string][]byte, len(raw))
+		for i, l := range last {
+			if v := raw[l]; string(v) != "null" {
+				vals[lastInner[i]] = v
+			}
+		}
+		return StepInput(nil, lastInner, vals), nil
+	}
+	return append(out, Step{Name: name, After: last, Run: join}), nil
+}

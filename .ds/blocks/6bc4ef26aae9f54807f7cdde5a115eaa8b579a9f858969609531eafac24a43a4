@@ -1,0 +1,16 @@
+var fakeDefaultCaps = workflow.CapsOf(
+	workflow.CapDelayedStart, workflow.CapWaitForEvent, workflow.CapDurableSleep,
+	workflow.CapConcurrencyKey, workflow.CapRateLimit, workflow.CapIdempotencyKey,
+	workflow.CapCron, workflow.CapCancel,
+	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
+	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
+	workflow.CapQueue, workflow.CapQueueOverride, workflow.CapJobRetry,
+	workflow.CapRetryUntil, workflow.CapRetryMaxErrors, workflow.CapDiscard,
+	workflow.CapRetryRun, workflow.CapDeleteRun, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
+	workflow.CapScheduleWhen, workflow.CapScheduleWindow,
+	workflow.CapRunStates, workflow.CapChain, workflow.CapClosure,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapForceRun,
+	workflow.CapTenant, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
+	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun, workflow.CapKeyWeights,
+)

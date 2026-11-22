@@ -1,0 +1,1 @@
+var ErrOverlap = errors.New("workflow: the schedule's previous run is unfinished")

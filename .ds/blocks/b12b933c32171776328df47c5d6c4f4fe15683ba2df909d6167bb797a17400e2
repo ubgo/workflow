@@ -1,0 +1,7 @@
+func engineErr(err error, format string, args ...any) error {
+	wrapped := fmt.Errorf("hatchet driver: "+format+": %w", append(args, err)...)
+	if isUnavailable(err) {
+		return workflow.Unavailable(wrapped)
+	}
+	return wrapped
+}

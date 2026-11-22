@@ -1,0 +1,17 @@
+func runDetailsLagged(ctx context.Context, sdk *hatchetsdk.Client, runID string, lag time.Duration) (*rest.V1WorkflowRunDetails, error) {
+	deadline := time.Now().Add(lag)
+	for {
+		d, err := sdk.Runs().Get(ctx, runID)
+		if err == nil && d == nil {
+			return nil, errors.New("hatchet driver: engine returned no run")
+		}
+		if !isNotFound(err) || time.Now().After(deadline) {
+			return d, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(registerPoll):
+		}
+	}
+}

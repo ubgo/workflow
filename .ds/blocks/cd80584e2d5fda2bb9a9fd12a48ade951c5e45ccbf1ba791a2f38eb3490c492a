@@ -1,0 +1,1 @@
+func (c *Client) BucketStore() *BucketStore { return &BucketStore{st: c.st} }

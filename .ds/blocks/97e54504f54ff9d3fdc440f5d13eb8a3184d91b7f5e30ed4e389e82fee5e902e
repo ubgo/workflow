@@ -1,0 +1,4 @@
+type BucketStore struct {
+	rdb  goredis.UniversalClient
+	base string
+}

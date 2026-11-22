@@ -1,0 +1,6 @@
+func (f Forward) Result(ctx context.Context, ref RunRef) ([]byte, error) {
+	if i, ok := f.Inner.(ResultReader); ok {
+		return i.Result(ctx, ref)
+	}
+	return nil, lacks("Result", CapResult)
+}

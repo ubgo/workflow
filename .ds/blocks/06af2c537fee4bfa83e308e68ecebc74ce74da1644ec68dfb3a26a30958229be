@@ -1,0 +1,30 @@
+func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	id, err := runID(ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	r, err := c.load(ctx, id, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	now := c.clk.Now()
+	if at.IsZero() || at.Before(now) {
+		at = now
+	}
+	res, err := rescheduleScript.Run(ctx, c.rdb, c.keys(), c.base, id, at.UnixMilli(), at.UnixNano(), now.UnixMilli()).Text()
+	if err != nil {
+		return workflow.RunRef{}, fmt.Errorf("redis: reschedule: %w", classify(err))
+	}
+	switch res {
+	case "ok":
+		c.wakeAll()
+		c.pokeDispatcher()
+		if at.After(now) {
+			return workflow.RunRef{ScheduledID: workflow.ScheduledID(r.sid)}, nil
+		}
+		return refOf(id, workflow.StatusQueued, r.sid), nil
+	case "notfound":
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+	}
+	return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not scheduled", workflow.ErrWrongState, ref, res)
+}

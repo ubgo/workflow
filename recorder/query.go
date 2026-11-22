@@ -82,6 +82,8 @@ func ValidateQuery(q Query) error {
 // Match reports whether r passes q's filters (everything but paging). The
 // in-memory store filters with it; a SQL store builds the same filters as
 // a WHERE clause.
+//
+//ds:def id=rec-query-match-hevjbnr4 owner=@khanakia stability=stable
 func (q Query) Match(r RunRecord) bool {
 	if !q.RunQuery.Match(r.RunInfo) {
 		return false
@@ -153,6 +155,8 @@ func (c Cursor) After(r RunRecord) bool {
 
 // SortRecords orders records the way Runs and Records list them: newest
 // enqueue first, ties broken by Key descending.
+//
+//ds:def id=rec-sortrecords-7cv25nfq owner=@khanakia stability=stable
 func SortRecords(rs []RunRecord) {
 	slices.SortFunc(rs, func(a, b RunRecord) int {
 		if c := b.EnqueuedAt.Compare(a.EnqueuedAt); c != 0 {
@@ -163,6 +167,8 @@ func SortRecords(rs []RunRecord) {
 }
 
 // InfoPage converts a page of records to the RunPage a RunQuerier returns.
+//
+//ds:def id=rec-infopage-zbeybkpx owner=@khanakia stability=stable
 func InfoPage(p RecordPage) workflow.RunPage {
 	out := workflow.RunPage{Next: p.Next, Runs: make([]workflow.RunInfo, len(p.Runs))}
 	for i, r := range p.Runs {

@@ -1,0 +1,46 @@
+func runInfoDefs(t sqlTypes) []tableDef {
+	return []tableDef{{stem: tblRunInfo, lines: []string{
+		// One row per run, written with it (backfilled by 008 for older
+		// runs), so later writes are updates.
+		"run_id " + t.id + " NOT NULL PRIMARY KEY",
+		// tenant is Job.Tenant; empty: none.
+		"tenant " + t.name + " NOT NULL",
+		// output is workflow.RunOutput, written when the run succeeds;
+		// has_output tells a stored empty output from none.
+		"output " + t.blob,
+		"has_output " + t.int + " NOT NULL",
+		// progress is the latest workflow.Progress as JSON; NULL: none.
+		"progress " + t.text,
+		// nodes is a JSON array of the node ids that claimed an attempt of
+		// the run, in first-claim order (RunInfo.AttemptedBy).
+		"nodes " + t.text + " NOT NULL",
+		// deadline is when Workflow.RunTimeout fails the run, Unix
+		// nanoseconds on the scheduling clock, set at admission; 0: none.
+		"deadline " + t.int + " NOT NULL",
+		// timeout names the deadline that failed the run (timeout.go);
+		// empty when it did not fail on one.
+		"timeout " + t.short + " NOT NULL",
+	}, indexes: []index{{"tenant", "tenant"}}}, {stem: tblAttemptNode, lines: []string{
+		// The node that ran each attempt recorded in attempt_errors.
+		"run_id " + t.id + " NOT NULL",
+		"step " + t.name + " NOT NULL",
+		"attempt " + t.int + " NOT NULL",
+		"node " + t.name + " NOT NULL",
+		"PRIMARY KEY (run_id, step, attempt)",
+	}}, {stem: tblStepCancel, lines: []string{
+		// One row per running step CancelStep asked to stop, deleted when
+		// the attempt's outcome is written.
+		"step_id " + t.id + " NOT NULL PRIMARY KEY",
+	}}, scheduleSpecDefs(t)[0], {stem: tblNodes, lines: []string{
+		// One row per running client (WithNodeID), refreshed by its
+		// dispatcher; rows silent for an hour are pruned.
+		"id " + t.name + " NOT NULL PRIMARY KEY",
+		"mode " + t.short + " NOT NULL",
+		// queues is a JSON array of the queue names served; empty: all.
+		"queues " + t.text + " NOT NULL",
+		"workers " + t.int + " NOT NULL",
+		"running " + t.int + " NOT NULL",
+		"started_at " + t.int + " NOT NULL",
+		"last_seen " + t.int + " NOT NULL",
+	}}}
+}

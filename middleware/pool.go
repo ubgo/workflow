@@ -15,10 +15,14 @@ import (
 // PoolRetryAfter when every slot of its pool is taken: a retryable error
 // marked with workflow.RetryAfter. Under the default the step snoozes
 // instead (workflow.ErrSnoozed), which is not a failure.
+//
+//ds:def id=mw-errpoolbusy-ze3z4uzz owner=@khanakia stability=stable
 var ErrPoolBusy = errors.New("workflow/middleware: no free slot in the pool")
 
 // DefaultPoolRetry is how long a step that found no free slot waits
 // before it tries again, unless PoolRetry says otherwise.
+//
+//ds:def id=mw-defaultpoolretry-u39sdeum owner=@khanakia stability=stable
 const DefaultPoolRetry = time.Second
 
 // PoolOption configures Pool and CriticalSection.
@@ -32,6 +36,8 @@ type poolConfig struct {
 
 // PoolRetry sets how long a step that found no free slot waits before
 // it tries again (default DefaultPoolRetry; zero or less keeps it).
+//
+//ds:def id=mw-poolretry-dhrt2eq3 owner=@khanakia stability=stable
 func PoolRetry(d time.Duration) PoolOption {
 	return func(c *poolConfig) {
 		if d > 0 {
@@ -47,10 +53,14 @@ func PoolRetry(d time.Duration) PoolOption {
 // honoured only under a policy whose DelayFor reads it
 // (workflow.RetryAfterDelay, needs CapRetryDelay); otherwise the
 // policy's Backoff applies.
+//
+//ds:def id=mw-poolretryafter-xtdeqgqp owner=@khanakia stability=stable
 func PoolRetryAfter() PoolOption { return func(c *poolConfig) { c.retryAfter = true } }
 
 // PoolSteps limits the pool to the named steps; other steps run without
 // a slot. With no names, every step the middleware wraps takes one.
+//
+//ds:def id=mw-poolsteps-x62avtgy owner=@khanakia stability=stable
 func PoolSteps(steps ...string) PoolOption {
 	return func(c *poolConfig) { c.steps = append(c.steps, steps...) }
 }
@@ -82,6 +92,8 @@ func PoolSteps(steps ...string) PoolOption {
 // without a slot. A slot that could not be released frees itself after
 // ttl. It runs on every driver; the snooze needs CapSnooze (memory,
 // sqlstore, Redis).
+//
+//ds:def id=mw-pool-qwknhvvp owner=@khanakia stability=stable
 func Pool(store UniqueStore, name string, slots int, ttl time.Duration, opts ...PoolOption) workflow.Middleware {
 	cfg := poolConfig{retry: DefaultPoolRetry}
 	for _, o := range opts {
@@ -117,6 +129,8 @@ func Pool(store UniqueStore, name string, slots int, ttl time.Duration, opts ...
 // are as for Pool. A ctx without a workflow.StepInfo (a handler called
 // outside a driver) fails with workflow.ErrUnsupported, since the run is
 // unknown and the section could not hold.
+//
+//ds:def id=mw-criticalsection-ubbt9gqr owner=@khanakia stability=stable
 func CriticalSection(store UniqueStore, section string, ttl time.Duration, steps ...string) workflow.Middleware {
 	cfg := poolConfig{retry: DefaultPoolRetry, steps: steps}
 	var bad error
@@ -136,6 +150,8 @@ func CriticalSection(store UniqueStore, section string, ttl time.Duration, steps
 }
 
 // slotGate runs a step while it holds one of the keys keys returns.
+//
+//ds:def id=mw-slotgate-4xxeqnkn owner=@khanakia stability=stable
 func slotGate(store UniqueStore, ttl time.Duration, cfg poolConfig, needInfo bool, keys func(workflow.StepInfo) ([]string, error)) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {

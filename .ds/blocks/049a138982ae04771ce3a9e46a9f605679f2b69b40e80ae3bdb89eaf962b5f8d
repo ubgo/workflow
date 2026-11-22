@@ -1,0 +1,15 @@
+var finishScript = goredis.NewScript(luaPrelude + `
+local b, id, tok = ARGV[1], ARGV[2], ARGV[3]
+local key = rk(b, id)
+local h = redis.call('HMGET', key, 'owner', 'status')
+if h[1] ~= tok or terminal(h[2]) then return 0 end
+redis.call('HSET', key, 'status', ARGV[4], 'finished', ARGV[5], 'err', ARGV[6],
+  'fstep', ARGV[7], 'steps', ARGV[8], 'attempts', ARGV[9], 'owner', '', 'errs', ARGV[11], 'out', ARGV[12])
+ended(b, id, ARGV[10])
+if #ARGV > 13 then
+  create_idem(b, ARGV[13], ARGV, 14)
+  redis.call('HSET', key, 'chain', '')
+  redis.call('PUBLISH', b .. ':wake', 'e')
+end
+return 1
+`)

@@ -1,0 +1,21 @@
+func (f *Client) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	pc, sc, err := both[workflow.BulkCanceller](f, "CancelAll", workflow.CapCancelAll)
+	if err != nil {
+		return 0, err
+	}
+	if err := workflow.ValidateCancelQuery(q); err != nil {
+		return 0, err
+	}
+	if err := workflow.CheckRunQuery(f.Capabilities(), q); err != nil {
+		return 0, err
+	}
+	var pn, sn int
+	var perr, serr error
+	if pq, ok := sideQuery(q, primarySide); ok {
+		pn, perr = pc.CancelAll(ctx, pq)
+	}
+	if sq, ok := sideQuery(q, secondarySide); ok {
+		sn, serr = sc.CancelAll(ctx, sq)
+	}
+	return pn + sn, joinSides("CancelAll", perr, serr)
+}

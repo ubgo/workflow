@@ -1,0 +1,7 @@
+func InfoPage(p RecordPage) workflow.RunPage {
+	out := workflow.RunPage{Next: p.Next, Runs: make([]workflow.RunInfo, len(p.Runs))}
+	for i, r := range p.Runs {
+		out.Runs[i] = r.RunInfo
+	}
+	return out
+}

@@ -45,6 +45,8 @@ import (
 )
 
 // Envelope is the JSON body of a delivery.
+//
+//ds:def id=push-envelope-53rwh3es owner=@khanakia stability=stable
 type Envelope struct {
 	// Workflow, Run and Step name the delivering step (StepInfo).
 	Workflow string `json:"workflow"`
@@ -60,20 +62,27 @@ type Envelope struct {
 // Signer signs an outgoing body: it returns the headers to send.
 // *events.StandardWebhooks is one. id is the delivery ID; it stays the
 // same across the retries of one step, so the endpoint can deduplicate.
+//
+//ds:def id=push-signer-46q9qw54 owner=@khanakia stability=stable
 type Signer interface {
 	Headers(id string, body []byte) http.Header
 }
 
 // The defaults.
 const (
-	DefaultTimeout     = 30 * time.Second
+	//ds:def id=push-defaulttimeout-85ebt6k7 owner=@khanakia stability=stable
+	DefaultTimeout = 30 * time.Second
+	//ds:def id=push-defaultmaxresponse-5fbhh25p owner=@khanakia stability=stable
 	DefaultMaxResponse = 1 << 20
-	DefaultMaxBody     = 1 << 20
+	//ds:def id=push-defaultmaxbody-rk3rgbcy owner=@khanakia stability=stable
+	DefaultMaxBody = 1 << 20
 )
 
 // ErrResponseTooLarge means the endpoint's 2xx body was larger than the
 // limit (WithMaxResponse). It is permanent: delivering again would get
 // the same answer.
+//
+//ds:def id=push-errresponsetoolarge-j8fkf2m6 owner=@khanakia stability=stable
 var ErrResponseTooLarge = errors.New("push: response body too large")
 
 // StatusError is a non-2xx answer from the endpoint.
@@ -109,29 +118,41 @@ type deliverConfig struct {
 // WithClient sets the HTTP client (transport, proxy, TLS). Nil means
 // http.DefaultClient. Deliver sets its own timeout per request through
 // the ctx; a client's Timeout applies too.
+//
+//ds:def id=push-withclient-3d86bh2a owner=@khanakia stability=stable
 func WithClient(c *http.Client) Option { return func(d *deliverConfig) { d.client = c } }
 
 // WithTimeout bounds one delivery (DefaultTimeout); a timeout is a network
 // error, so it is retried.
+//
+//ds:def id=push-withtimeout-7r4g988d owner=@khanakia stability=stable
 func WithTimeout(t time.Duration) Option { return func(d *deliverConfig) { d.timeout = t } }
 
 // WithMaxResponse bounds the 2xx body read as the step's output
 // (DefaultMaxResponse, 1 MiB). A larger body fails the step for good
 // (ErrResponseTooLarge) rather than being cut short silently.
+//
+//ds:def id=push-withmaxresponse-az87qpmk owner=@khanakia stability=stable
 func WithMaxResponse(n int64) Option { return func(d *deliverConfig) { d.max = n } }
 
 // WithClock is read for a Retry-After given as an HTTP date. Nil means
 // clock.Real.
+//
+//ds:def id=push-withclock-rbhnyx5d owner=@khanakia stability=stable
 func WithClock(c clock.Clock) Option { return func(d *deliverConfig) { d.clk = c } }
 
 // WithDeliveryID replaces how the delivery ID is made from the step. The
 // default is "<run>.<step>", the same for every attempt.
+//
+//ds:def id=push-withdeliveryid-u9vheqyc owner=@khanakia stability=stable
 func WithDeliveryID(fn func(workflow.StepInfo) string) Option {
 	return func(d *deliverConfig) { d.id = fn }
 }
 
 // WithHeader adds a header to every delivery (an API key the endpoint's
 // gateway wants). The signature headers win over one of the same name.
+//
+//ds:def id=push-withheader-w7tfu4ss owner=@khanakia stability=stable
 func WithHeader(key, value string) Option {
 	return func(d *deliverConfig) { d.header.Add(key, value) }
 }
@@ -145,6 +166,8 @@ func WithHeader(key, value string) Option {
 // when the step's retry policy reads it (RetryPolicy.DelayFor set to
 // workflow.RetryAfterDelay, which needs CapRetryDelay); under any other
 // policy the delivery retries on the normal backoff.
+//
+//ds:def id=push-deliver-n3r3thp8 owner=@khanakia stability=stable
 func Deliver(url string, signer Signer, opts ...Option) workflow.Handler {
 	cfg := deliverConfig{timeout: DefaultTimeout, max: DefaultMaxResponse, header: http.Header{}}
 	for _, o := range opts {
@@ -202,6 +225,8 @@ func Deliver(url string, signer Signer, opts ...Option) workflow.Handler {
 }
 
 // answer maps the endpoint's response to the step's result.
+//
+//ds:def id=push-deliverconfig-answer-t9wu9nmj owner=@khanakia stability=stable
 func (cfg *deliverConfig) answer(resp *http.Response) ([]byte, error) {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		out, err := io.ReadAll(io.LimitReader(resp.Body, cfg.max+1))
@@ -230,6 +255,8 @@ func (cfg *deliverConfig) answer(resp *http.Response) ([]byte, error) {
 
 // retryAfter parses a Retry-After value: seconds, or an HTTP date read
 // against now.
+//
+//ds:def id=push-retryafter-pnmntf8x owner=@khanakia stability=stable
 func retryAfter(v string, now time.Time) (time.Duration, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -257,6 +284,8 @@ type handlerConfig struct {
 
 // WithMaxBody bounds the delivery body Handler reads (DefaultMaxBody,
 // 1 MiB); a larger one answers 413.
+//
+//ds:def id=push-withmaxbody-v56e8b2s owner=@khanakia stability=stable
 func WithMaxBody(n int64) HandlerOption { return func(c *handlerConfig) { c.max = n } }
 
 // WithInline passes options to workflow.RunInline (middleware, a sleeper
@@ -282,6 +311,8 @@ func WithInline(opts ...workflow.InlineOption) HandlerOption {
 // so its steps must be idempotent (key them on the webhook-id header, the
 // same for every attempt of one step). A nil verifier refuses every
 // request with 401, so the zero configuration is closed.
+//
+//ds:def id=push-handler-g994qhc5 owner=@khanakia stability=stable
 func Handler(wf workflow.Workflow, verifier events.Verifier, opts ...HandlerOption) http.Handler {
 	cfg := handlerConfig{max: DefaultMaxBody}
 	for _, o := range opts {
@@ -335,6 +366,8 @@ func Handler(wf workflow.Workflow, verifier events.Verifier, opts ...HandlerOpti
 }
 
 // answerError maps a RunInline error to the status the sender reads.
+//
+//ds:def id=push-answererror-qvwz2cde owner=@khanakia stability=stable
 func answerError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, workflow.ErrInvalid):

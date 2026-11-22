@@ -1,0 +1,58 @@
+const (
+	ActionCapabilities  Action = "capabilities.read" // GET  /capabilities
+	ActionListRuns      Action = "runs.list"         // GET  /runs
+	ActionShowRun       Action = "runs.show"         // GET  /runs/{id}
+	ActionListFailures  Action = "failures.list"     // GET  /failures
+	ActionListDiscarded Action = "discarded.list"    // GET  /discarded
+	ActionRetryRun      Action = "runs.retry"        // POST /runs/{id}/retry
+	ActionCancelRun     Action = "runs.cancel"       // POST /runs/{id}/cancel
+	ActionDeleteRun     Action = "runs.delete"       // DELETE /runs/{id}
+	ActionCancelRuns    Action = "runs.cancel_all"   // POST /runs/cancel
+	ActionPause         Action = "pauses.create"     // POST /pause
+	ActionResume        Action = "pauses.delete"     // POST /resume
+	ActionListPauses    Action = "pauses.list"       // GET  /pauses
+	ActionListSchedules Action = "schedules.list"    // GET  /schedules
+	ActionQueueStats    Action = "queues.list"       // GET  /queues
+	// ActionPauseSchedule and ActionResumeSchedule pause and resume one
+	// schedule by ID.
+	ActionPauseSchedule  Action = "schedules.pause"  // POST /schedules/{id}/pause
+	ActionResumeSchedule Action = "schedules.resume" // POST /schedules/{id}/resume
+	// ActionShowSchedule reads one schedule with its last and next fire;
+	// ActionTriggerSchedule runs it now.
+	ActionShowSchedule    Action = "schedules.show"    // GET  /schedules/{id}
+	ActionTriggerSchedule Action = "schedules.trigger" // POST /schedules/{id}/trigger
+	// ActionForceComplete and ActionForceFail end a run from outside
+	// (workflow.RunForcer).
+	ActionForceComplete Action = "runs.force_complete" // POST /runs/{id}/complete
+	ActionForceFail     Action = "runs.force_fail"     // POST /runs/{id}/fail
+	// ActionShowOutput reads a run's captured step output (WithOutputs).
+	ActionShowOutput Action = "runs.output" // GET /runs/{id}/output
+	// ActionRetryRuns and ActionDeleteRuns retry or forget every run a
+	// filter matches (Admin.RetryAll, Admin.DeleteAll), dry runs included.
+	ActionRetryRuns  Action = "runs.retry_all"  // POST /runs/retry
+	ActionDeleteRuns Action = "runs.delete_all" // POST /runs/delete
+	// ActionMetrics reads run-end history for the charts (WithMetrics).
+	ActionMetrics Action = "metrics.read" // GET /metrics
+	// ActionListNodes lists the online nodes; ActionHealth reads the
+	// client's health report.
+	ActionListNodes Action = "nodes.list"  // GET /nodes
+	ActionHealth    Action = "health.read" // GET /health
+	// ActionRescheduleRun moves a delayed run; ActionCancelStep withdraws
+	// one step of a run.
+	ActionRescheduleRun Action = "runs.reschedule"  // POST /runs/{id}/reschedule
+	ActionCancelStep    Action = "runs.cancel_step" // POST /runs/{id}/steps/{step}/cancel
+	// ActionEditRun changes a scheduled run's payload, priority or start.
+	//ds:def id=admin-actioneditrun-rzvgr253 owner=@khanakia stability=stable
+	ActionEditRun Action = "runs.edit" // POST /runs/{id}/edit
+	// ActionResetRun re-runs a finished run in place from a step;
+	// ActionForkRun starts a new run from a finished one at a step.
+	ActionResetRun Action = "runs.reset" // POST /runs/{id}/reset
+	ActionForkRun  Action = "runs.fork"  // POST /runs/{id}/fork
+	// ActionSignalWaiting delivers an event only to the runs waiting for
+	// it now.
+	ActionSignalWaiting Action = "signals.waiting" // POST /signals/waiting
+	// ActionUI is loading the web UI's page and its files. The UI's data
+	// comes from the routes above, each authorized with its own action,
+	// so a caller allowed only ActionUI sees an empty screen.
+	ActionUI Action = "ui.read" // GET /, GET /ui, GET /ui/{file}
+)

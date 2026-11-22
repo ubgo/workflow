@@ -1,0 +1,1 @@
+func ThenErrors(fn func(error)) ThenOption { return func(p *thenPlugin) { p.errs = fn } }

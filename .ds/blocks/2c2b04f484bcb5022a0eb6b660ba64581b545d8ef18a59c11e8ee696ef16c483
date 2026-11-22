@@ -1,0 +1,73 @@
+func (b *Bus) Replay(ctx context.Context, o ReplayOptions) (ReplayResult, error) {
+	if b.log == nil {
+		return ReplayResult{}, fmt.Errorf("%w: events: Replay needs an EventLog (WithLog)", workflow.ErrInvalid)
+	}
+	if !o.From.IsZero() && !o.To.IsZero() && !o.From.Before(o.To) {
+		return ReplayResult{}, fmt.Errorf("%w: events: Replay From %s is not before To %s", workflow.ErrInvalid, o.From, o.To)
+	}
+	b.mu.RLock()
+	subs := slices.Clone(b.subs)
+	cancels := slices.Clone(b.cancels)
+	b.mu.RUnlock()
+	if len(o.Subscriptions) > 0 {
+		var picked []Subscription
+		for _, name := range o.Subscriptions {
+			i := slices.IndexFunc(subs, func(s Subscription) bool { return s.Name == name })
+			if i < 0 {
+				if slices.ContainsFunc(cancels, func(c CancelSubscription) bool { return c.Name == name }) {
+					return ReplayResult{}, fmt.Errorf("%w: events: Replay: %q is a cancel subscription; cancels are not replayed", workflow.ErrInvalid, name)
+				}
+				return ReplayResult{}, fmt.Errorf("%w: events: Replay: no subscription %q", workflow.ErrInvalid, name)
+			}
+			picked = append(picked, subs[i])
+		}
+		subs = picked
+	}
+	out := ReplayResult{ID: o.ID}
+	if out.ID == "" {
+		id, err := b.newID()
+		if err != nil {
+			return ReplayResult{}, fmt.Errorf("events: new replay ID: %w", err)
+		}
+		out.ID = id
+	}
+	querier, _ := b.client.(workflow.RunQuerier)
+	if !b.client.Capabilities().Has(workflow.CapRunQuery) {
+		querier = nil
+	}
+	seen := map[string]bool{}
+	var errs []error
+	err := b.log.Range(ctx, o.From, o.To, func(m Message, _ time.Time) error {
+		if seen[m.ID] || (o.Filter != nil && !o.Filter(m)) {
+			return nil
+		}
+		seen[m.ID] = true
+		out.Messages++
+		um, err := b.upcast(m)
+		for _, s := range subs {
+			if s.Event != m.Name {
+				continue
+			}
+			if err != nil {
+				// The upcast failed: the message cannot be offered to
+				// its subscriptions' Filters at all.
+				errs = append(errs, fmt.Errorf("events: replay of %q to %q: %w", m.ID, s.Name, err))
+				out.Deliveries = append(out.Deliveries, ReplayDelivery{MessageID: m.ID, Subscription: s.Name, Err: err})
+				continue
+			}
+			if s.Filter != nil && !s.Filter(um) {
+				continue
+			}
+			d := b.replayOne(ctx, querier, s, um, out.ID)
+			if d.Err != nil {
+				errs = append(errs, fmt.Errorf("events: replay of %q to %q: %w", m.ID, s.Name, d.Err))
+			}
+			out.Deliveries = append(out.Deliveries, d)
+		}
+		return nil
+	})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("events: replay: read log: %w", err))
+	}
+	return out, errors.Join(errs...)
+}

@@ -1,0 +1,23 @@
+func (w *RecycleWatch) checkLocked(now time.Time) *RecycleError {
+	if w.hit != nil {
+		return w.hit
+	}
+	elapsed := now.Sub(w.started)
+	var mem uint64
+	if w.r.MaxMemory > 0 {
+		mem = w.read()
+	}
+	var reason RecycleReason
+	switch {
+	case w.r.MaxJobs > 0 && w.jobs >= w.r.MaxJobs:
+		reason = RecycleMaxJobs
+	case w.r.MaxTime > 0 && elapsed >= w.r.MaxTime:
+		reason = RecycleMaxTime
+	case w.r.MaxMemory > 0 && mem > w.r.MaxMemory:
+		reason = RecycleMaxMemory
+	default:
+		return nil
+	}
+	w.hit = &RecycleError{Reason: reason, Jobs: w.jobs, Elapsed: elapsed, Memory: mem}
+	return w.hit
+}

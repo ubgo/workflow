@@ -1,0 +1,29 @@
+func (s *Store) ArchivedRun(ctx context.Context, ref workflow.RunRef) (recorder.RunRecord, error) {
+	if err := recorder.CheckRef("ArchivedRun", ref); err != nil {
+		return recorder.RunRecord{}, err
+	}
+	q := s.d.quote
+	a := &args{d: s.d}
+	var conds []string
+	if !ref.RunID.IsZero() {
+		conds = append(conds, q("run_key")+" = "+a.add(recorder.KeyOf(workflow.RunRef{RunID: ref.RunID})))
+	}
+	if !ref.ScheduledID.IsZero() {
+		conds = append(conds, q("run_key")+" = "+a.add(recorder.KeyOf(workflow.RunRef{ScheduledID: ref.ScheduledID})))
+	}
+	// A RunID row wins over a ScheduledID-only row, as in Run.
+	stmt := "SELECT " + q("record") + " FROM " + s.table(tableArchive) + " WHERE " + strings.Join(conds, " OR ") + " ORDER BY " + q("run_key") + " ASC LIMIT 1"
+	var body string
+	err := s.db.QueryRowContext(ctx, stmt, a.vals...).Scan(&body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return recorder.RunRecord{}, fmt.Errorf("sqlrecorder: archived run %s: %w", recorder.KeyOf(ref), workflow.ErrNotFound)
+	}
+	if err != nil {
+		return recorder.RunRecord{}, fmt.Errorf("sqlrecorder: read archived run: %w", err)
+	}
+	var rec recorder.RunRecord
+	if err := decodeJSON(body, &rec); err != nil {
+		return recorder.RunRecord{}, fmt.Errorf("sqlrecorder: archived run %s: %w", recorder.KeyOf(ref), err)
+	}
+	return rec, nil
+}

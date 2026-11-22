@@ -1,0 +1,6 @@
+func FairWeight(c *Concurrency, key string) int {
+	if c == nil || c.Weight == nil {
+		return 1
+	}
+	return min(max(c.Weight(key), 1), MaxKeyWeight)
+}

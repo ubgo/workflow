@@ -1,10 +1,10 @@
 # Run everything now in tests
 
-A test that enqueues a job delayed until tomorrow, retried after ten minutes or sleeping for a week has two bad options: wait, or drive a fake clock through every timer in the right order. `memory.Client.RunAll` is a third: it ends delays, backoffs, snoozes and sleeps at once and returns when no run can move any further, with a count of how each run ended. It is for tests on the memory driver; production code never calls it.
+A test that enqueues a job delayed until tomorrow, retried after ten minutes or sleeping for a week has two bad options: wait, or drive a fake clock through every timer in the right order. [`memory.Client.RunAll`](ds:block?id=memory-client-runall-zdkrjb96) is a third: it ends delays, backoffs, snoozes and sleeps at once and returns when no run can move any further, with a count of how each run ended. It is for tests on the memory driver; production code never calls it.
 
 ## Before you start
 
-- The memory driver, started: `RunAll` returns `workflow.ErrNotStarted` before `Start`.
+- The memory driver, started: [`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) returns `workflow.ErrNotStarted` before `Start` ([the client's usable check](ds:block?id=memory-client-usablelocked-ky48yta5), which also refuses a stopped or draining client).
 - The example is [`examples/run-all`](../../examples/run-all). It runs on a fake clock that nobody advances, which proves `RunAll` does not need one. Run it with `go run ./run-all` from `examples/`.
 - To check what your code enqueues without running anything, use [the Fake](fake.md) instead; to step through time on purpose, [drive a fake clock](fake-clock.md).
 
@@ -36,9 +36,9 @@ fmt.Printf("succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
 succeeded=2 failed=0 waiting=1 sends=2 clock=Oct 14 09:00
 ```
 
-The welcome email was delayed a day and its first send failed with a ten-minute backoff; the trial reminder slept a week; both succeeded, and the clock still reads 09:00. The approval run is counted as waiting: it waits for an event, which `RunAll` cannot send.
+The welcome email was delayed a day and its first send failed with a ten-minute backoff; the trial reminder slept a week; both succeeded, and the clock still reads 09:00. The approval run is counted as waiting: it waits for an event, which [`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) cannot send.
 
-`RunAll` covers the runs unfinished when it is called and every run enqueued while it runs (chained jobs, children, cron fires). Its `memory.RunAllReport` counts them by how they ended: `Succeeded`, `Failed`, `Cancelled`, `Discarded`, and `Waiting` for runs left on a wait step.
+[`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) covers the runs unfinished when it is called and every run enqueued while it runs (chained jobs, children, cron fires). Its [`memory.RunAllReport`](ds:block?id=memory-runallreport-jfbkhxx2) counts them by how they ended: `Succeeded`, `Failed`, `Cancelled`, `Discarded`, and `Waiting` for runs left on a wait step.
 
 ## What it hurries and what it does not
 
@@ -49,11 +49,11 @@ The welcome email was delayed a day and its first send failed with a ten-minute 
 | A `workflow.Snooze` | `Step.HeartbeatTimeout` |
 | A sleep step (`Step.Sleep`) | `Workflow.RunTimeout` |
 
-Timeouts are left alone on purpose: hurrying them would make every step with a timeout fail. A test of a timeout drives the clock itself, with `clock.Fake.Advance` ([Drive time in tests](fake-clock.md)). Rate limits and cron ticks are on the clock too.
+Timeouts are left alone on purpose: hurrying them would make every step with a timeout fail. [`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) hurries only the four kinds on the left, as [`TestRunAllRunsDelayedRetriedSnoozedAndSleepingWorkNow`](ds:block?id=memory-testrunallrunsdelayedretriedsnoozedandsleepingworknow-rjaujjth) shows. A test of a timeout drives the clock itself, with `clock.Fake.Advance` ([Drive time in tests](fake-clock.md)). Rate limits and cron ticks are on the clock too.
 
 ## Events, and runs nothing can move
 
-`RunAll` cannot send the event a waiting run needs. The test signals it and calls `RunAll` again, which now carries the woken run to its end:
+[`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) cannot send the event a waiting run needs. The test signals it and calls `RunAll` again, which now carries the woken run to its end ([`TestRunAllRightAfterSignal`](ds:block?id=memory-testrunallrightaftersignal-g8fg3vdt)):
 
 <!-- snippet: examples/run-all/main.go#signal -->
 ```go
@@ -69,7 +69,7 @@ if err != nil {
 fmt.Printf("after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
 ```
 
-When runs are left that nothing `RunAll` hurries can move, it does not hang: after about half a second without progress it returns its report and an error wrapping `memory.ErrRunAllStalled`. A paused workflow or queue does this, as does a rate limit or timeout waiting on a fake clock, or a concurrency slot held by a run that waits for an event:
+When runs are left that nothing `RunAll` hurries can move, it does not hang: after about half a second without progress ([500 looks](ds:block?id=memory-runallstall-wwfzs6c2) [a millisecond apart](ds:block?id=memory-runallpoll-pb4sk4m5)) it returns its report and an error wrapping [`memory.ErrRunAllStalled`](ds:block?id=memory-errrunallstalled-gd4qrw79). A paused workflow or queue does this ([`TestRunAllReportsAStall`](ds:block?id=memory-testrunallreportsastall-6b4hvsj9)), as does a rate limit or timeout waiting on a fake clock, or a concurrency slot held by a run that waits for an event:
 
 <!-- snippet: examples/run-all/main.go#stalled -->
 ```go
@@ -88,7 +88,7 @@ after the signal: succeeded=1 waiting=0
 paused: stalled=true succeeded=0
 ```
 
-If `ctx` ends first, `RunAll` returns `ctx`'s error and an empty report.
+If `ctx` ends first, [`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) returns `ctx`'s error and an empty report.
 
 ## Try it
 
@@ -107,10 +107,10 @@ paused: stalled=true succeeded=0
 
 ## Pitfalls
 
-- **A waiting run is a normal end for `RunAll`.** It returns with no error and counts it in `Waiting`; assert on `Waiting` when the test expects every run to finish.
-- **A stall costs about half a second.** `RunAll` decides a run cannot move after 500 looks a millisecond apart on the wall clock. A test that expects `ErrRunAllStalled` takes that long.
-- **It is memory-only.** There is no `RunAll` on durable drivers; tests against them run real workers and wait for run ends.
-- **It runs what your steps do.** Steps execute for real, side effects included; it is not a dry run.
+- **A waiting run is a normal end for `RunAll`.** It returns with no error and counts it in [`Waiting`](ds:block?id=memory-runallreport-jfbkhxx2); assert on `Waiting` when the test expects every run to finish.
+- **A stall costs about half a second.** `RunAll` decides a run cannot move after [500 looks](ds:block?id=memory-runallstall-wwfzs6c2) [a millisecond apart](ds:block?id=memory-runallpoll-pb4sk4m5) on the wall clock. A test that expects `ErrRunAllStalled` takes that long.
+- **It is memory-only.** [`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) is a method of the memory client; there is none on durable drivers; tests against them run real workers and wait for run ends.
+- **It runs what your steps do.** Steps execute for real, side effects included ([`RunAll`](ds:block?id=memory-client-runall-zdkrjb96) only ends the waits between them); it is not a dry run.
 
 ## Related
 

@@ -1,0 +1,6 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if err := workflow.CheckJobLabels(ctx, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	return c.enqueue(ctx, job)
+}

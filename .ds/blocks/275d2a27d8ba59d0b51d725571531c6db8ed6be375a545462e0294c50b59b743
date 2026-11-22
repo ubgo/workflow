@@ -1,0 +1,14 @@
+func (b *Bus) chainLabels(labels map[string]string, m Message) []string {
+	if !b.correlate {
+		return nil
+	}
+	corr := m.Correlation
+	if corr == "" {
+		corr = m.ID
+	}
+	labels[LabelCorrelation] = corr
+	if m.Causation != "" {
+		labels[LabelCausation] = m.Causation
+	}
+	return []string{LabelCorrelation, LabelCausation}
+}

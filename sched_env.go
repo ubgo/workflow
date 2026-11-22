@@ -15,6 +15,8 @@ import (
 //
 // The decision is made once, here: the returned function ignores the tick.
 // Combine it with other conditions through AllWhen.
+//
+//ds:def id=inenvironment-p5vgb3j9 owner=@khanakia stability=stable
 func InEnvironment(current string, allowed ...string) func(context.Context, Tick) bool {
 	ok := slices.Contains(allowed, current)
 	return func(context.Context, Tick) bool { return ok }
@@ -23,6 +25,8 @@ func InEnvironment(current string, allowed ...string) func(context.Context, Tick
 // AllWhen returns a Workflow.ScheduleWhen that fires a tick only when every
 // condition does, asking them in order and stopping at the first false.
 // Nil conditions are ignored; with none it always fires.
+//
+//ds:def id=allwhen-g8hpvf7s owner=@khanakia stability=stable
 func AllWhen(conds ...func(context.Context, Tick) bool) func(context.Context, Tick) bool {
 	return func(ctx context.Context, t Tick) bool {
 		for _, c := range conds {

@@ -1,0 +1,5 @@
+func MarkInserted(ctx context.Context) {
+	if out, ok := ctx.Value(outcomeKey{}).(*EnqueueOutcome); ok && !out.Reported {
+		out.Reported = true
+	}
+}

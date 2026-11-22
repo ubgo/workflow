@@ -1,0 +1,7 @@
+func newOwnerToken() (string, error) {
+	b := make([]byte, ownerTokenBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("workflow/middleware: unique owner token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}

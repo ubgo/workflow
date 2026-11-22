@@ -1,0 +1,16 @@
+func (h *handler[P]) fail(w http.ResponseWriter, action Action, err error) {
+	noteError(w, err)
+	switch {
+	case errors.Is(err, workflow.ErrInvalid):
+		writeError(w, http.StatusBadRequest, CodeInvalid, err.Error())
+	case errors.Is(err, workflow.ErrNotFound):
+		writeError(w, http.StatusNotFound, CodeNotFound, err.Error())
+	case errors.Is(err, workflow.ErrUnsupported):
+		writeError(w, http.StatusNotImplemented, CodeUnsupported, err.Error())
+	case errors.Is(err, workflow.ErrWrongState), errors.Is(err, workflow.ErrDuplicate), errors.Is(err, workflow.ErrOverlap):
+		writeError(w, http.StatusConflict, CodeConflict, err.Error())
+	default:
+		h.cfg.logger.Error("admin: operation failed", "action", string(action), "err", err)
+		writeError(w, http.StatusInternalServerError, CodeInternal, "internal error")
+	}
+}

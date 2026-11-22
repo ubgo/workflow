@@ -1,0 +1,113 @@
+var admitScript = goredis.NewScript(luaPrelude + `
+local b, wf, now, fin, ret = ARGV[1], ARGV[2], tonumber(ARGV[3]), ARGV[4], ARGV[5]
+readyNow = now
+local maxr, strat, nl, fifo = tonumber(ARGV[6]), ARGV[7], tonumber(ARGV[8]), ARGV[9] == '1'
+local rr = strat == 'round_robin'
+local lim, per = {}, {}
+for i = 1, nl do lim[i], per[i] = tonumber(ARGV[8 + 2 * i]), tonumber(ARGV[9 + 2 * i]) end
+local first, width = 10 + 2 * nl, 5 + nl
+local wake = 0
+local held = {}
+-- Round robin: a bucket with room again (MaxRuns raised, or a slot freed
+-- by a path that did not unpark) gets its parked runs back first.
+local parked = b .. ':parked:' .. wf
+if rr then
+  for _, pk in ipairs(redis.call('SMEMBERS', parked)) do
+    local ck = string.sub(pk, 1, -6)
+    for _ = 1, maxr - redis.call('ZCARD', ck) do
+      if not unpark(b, pk) then break end
+    end
+    if redis.call('ZCARD', pk) == 0 then redis.call('SREM', parked, pk) end
+  end
+end
+-- fv is the workflow's virtual time (workflow.FairTurn): the smallest
+-- start tag of its runs waiting for a worker, else the largest key pass.
+local fv
+local fpass, fmax = b .. ':fpass:' .. wf, b .. ':fmax:' .. wf
+for j = first, #ARGV, width do
+  local id, q, bucket, rto, stride = ARGV[j], ARGV[j + 1], ARGV[j + 2], ARGV[j + 3], tonumber(ARGV[j + 4])
+  local st = redis.call('HGET', rk(b, id), 'status')
+  local pend = b .. ':pending:' .. rname(wf, redis.call('HGET', rk(b, id), 'ver'))
+  if not redis.call('ZSCORE', pend, id) then
+    -- admitted or ended meanwhile
+  elseif not st or terminal(st) then
+    redis.call('ZREM', pend, id)
+  else
+    local blocked = fifo and held[bucket] or false
+    for i = 1, nl do
+      local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 4 + i]
+      redis.call('ZREMRANGEBYSCORE', wk, '-inf', now - per[i])
+      if redis.call('ZCARD', wk) >= lim[i] then
+        blocked = true
+        local o = redis.call('ZRANGE', wk, 0, 0, 'WITHSCORES')
+        local at = tonumber(o[2]) + per[i]
+        if wake == 0 or at < wake then wake = at end
+      end
+    end
+    local ck = ''
+    if not blocked and maxr > 0 then
+      ck = b .. ':conc:' .. wf .. '\n' .. bucket
+      if redis.call('ZCARD', ck) >= maxr then
+        if strat == 'drop_newest' or strat == 'cancel_newest' then
+          cancel_run(b, id, fin, 'redis: concurrency bucket full (' .. strat .. ')', ret)
+          blocked = true
+        elseif strat == 'cancel_in_progress' then
+          while redis.call('ZCARD', ck) >= maxr do
+            local old = redis.call('ZRANGE', ck, 0, 0)[1]
+            local ost = redis.call('HGET', rk(b, old), 'status')
+            if ost and not terminal(ost) then
+              cancel_run(b, old, fin, 'redis: cancelled by a newer run (cancel_in_progress)', ret)
+            end
+            redis.call('ZREM', ck, old)
+          end
+        else
+          blocked = true
+          if rr then
+            -- Parked until a slot of the bucket frees (ended, unpark): a
+            -- run that cannot be admitted must not fill the admission
+            -- window of a later key's runs.
+            local pk = ck .. '\npark'
+            redis.call('ZADD', pk, redis.call('ZSCORE', pend, id), id)
+            redis.call('ZREM', pend, id)
+            redis.call('HSET', rk(b, id), 'pk', pk)
+            redis.call('SADD', parked, pk)
+          end
+        end
+      end
+    end
+    if blocked then held[bucket] = true end
+    if not blocked then
+      for i = 1, nl do
+        local wk = b .. ':rate:' .. wf .. '\n' .. i .. '\n' .. ARGV[j + 4 + i]
+        redis.call('ZADD', wk, now, id)
+        redis.call('PEXPIRE', wk, per[i] * 2 + 60000)
+      end
+      if ck ~= '' then redis.call('ZADD', ck, now, id) end
+      redis.call('HSET', rk(b, id), 'q', q, 'adm', '1', 'ck', ck, 'rto', rto)
+      if tonumber(rto) > 0 then redis.call('ZADD', b .. ':rto', rto, id) end
+      redis.call('ZREM', pend, id)
+      if rr then
+        if not fv then
+          local m = redis.call('ZRANGE', b .. ':fwait:' .. wf, 0, 0, 'WITHSCORES')
+          if m[1] then fv = tonumber(m[2]) else fv = tonumber(redis.call('GET', fmax) or '0') end
+        end
+        local start = math.max(tonumber(redis.call('HGET', fpass, bucket) or '0'), fv)
+        local nx = start + stride
+        redis.call('HSET', fpass, bucket, string.format('%d', nx))
+        if nx > tonumber(redis.call('GET', fmax) or '0') then redis.call('SET', fmax, string.format('%d', nx)) end
+        redis.call('HSET', rk(b, id), 'ft', string.format('%d', start))
+      end
+      enready(b, id)
+      redis.call('PUBLISH', b .. ':wake', 'e')
+    end
+  end
+end
+if fv and redis.call('HLEN', fpass) > 256 then
+  -- a key whose pass is behind the virtual time starts at it anyway
+  local all = redis.call('HGETALL', fpass)
+  for i = 1, #all, 2 do
+    if tonumber(all[i + 1]) < fv then redis.call('HDEL', fpass, all[i]) end
+  end
+end
+return wake
+`)

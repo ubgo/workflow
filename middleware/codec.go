@@ -18,6 +18,8 @@ import (
 // ErrDecode is wrapped by the error DecodeStep returns when the input does
 // not decode (a wrong key, tampered or truncated bytes, or a value that was
 // never encoded). The error never carries the bytes themselves.
+//
+//ds:def id=mw-errdecode-4bvj8hk4 owner=@khanakia stability=stable
 var ErrDecode = errors.New("workflow/middleware: payload does not decode")
 
 // Codec turns plain bytes into the bytes an engine stores, and back. It is
@@ -25,6 +27,8 @@ var ErrDecode = errors.New("workflow/middleware: payload does not decode")
 // Decode(Encode(b)) must equal b. A Codec works on raw bytes; the
 // middleware in this file wraps its output in a sealed envelope (see
 // envelopePrefix) so the result survives every place a driver moves it.
+//
+//ds:def id=mw-codec-zax9ezsu owner=@khanakia stability=api
 type Codec interface {
 	Encode(plain []byte) ([]byte, error)
 	Decode(encoded []byte) ([]byte, error)
@@ -39,10 +43,14 @@ type Codec interface {
 // destroyed. As a JSON string the sealed output is embedded unchanged and
 // can be opened per parent. The version in the prefix leaves room for a
 // later format.
+//
+//ds:def id=mw-envelopeprefix-dfncnahu owner=@khanakia stability=stable
 const envelopePrefix = "wfenc1:"
 
 // seal encodes plain with c and wraps it in the envelope. Empty stays
 // empty, so a job with no input needs no key to read.
+//
+//ds:def id=mw-seal-h64dfv4p owner=@khanakia stability=stable
 func seal(c Codec, plain []byte) ([]byte, error) {
 	if len(plain) == 0 {
 		return plain, nil
@@ -84,6 +92,8 @@ func openValue(c Codec, v []byte) (plain []byte, ok bool, err error) {
 // Anything else, including a parent value that was never sealed, is
 // refused: the codec is closed by default, so plaintext slipping past it
 // (an unsealed Signal, a step without DecodeStep) fails loudly.
+//
+//ds:def id=mw-open-7vdaas86 owner=@khanakia stability=stable
 func open(c Codec, in []byte) ([]byte, error) {
 	trimmed := bytes.TrimSpace(in)
 	if len(trimmed) == 0 {
@@ -167,6 +177,8 @@ func openObject(c Codec, in []byte) ([]byte, error) {
 // the same Codec on the worker side. WithCodec does this and also seals
 // Signal payloads and Schedule inputs; prefer it unless only Enqueue
 // carries data.
+//
+//ds:def id=mw-encodeenqueue-77qfefr6 owner=@khanakia stability=stable
 func EncodeEnqueue(c Codec) workflow.EnqueueMiddleware {
 	return func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 		return func(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
@@ -192,6 +204,8 @@ func EncodeEnqueue(c Codec) workflow.EnqueueMiddleware {
 // interfaces workflow.Forward covers are forwarded to c. Those pass bytes
 // through as stored: a RunInfo.Payload from Runs is sealed, and opening
 // it is the app's call (Codec.Decode).
+//
+//ds:def id=mw-withcodec-4aa2ymdy owner=@khanakia stability=stable
 func WithCodec(c workflow.Client, codec Codec, mws ...workflow.EnqueueMiddleware) workflow.Client {
 	inner := WrapClient(c, append([]workflow.EnqueueMiddleware{EncodeEnqueue(codec)}, mws...)...)
 	return &codecClient{Client: inner, Forward: workflow.Forward{Inner: inner}, codec: codec}
@@ -207,6 +221,7 @@ func (cc *codecClient) OnRunFinished(fn workflow.RunFinishedFunc) error {
 	return forwardRunFinished(cc.Client, fn)
 }
 
+//ds:def id=mw-codecclient-signal-7hgxdfqq owner=@khanakia stability=stable
 func (cc *codecClient) Signal(ctx context.Context, ev workflow.Event) error {
 	sealed, err := seal(cc.codec, ev.Payload)
 	if err != nil {
@@ -216,6 +231,7 @@ func (cc *codecClient) Signal(ctx context.Context, ev workflow.Event) error {
 	return cc.Client.Signal(ctx, ev)
 }
 
+//ds:def id=mw-codecclient-schedule-sdcyjckh owner=@khanakia stability=stable
 func (cc *codecClient) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
 	sealed, err := seal(cc.codec, s.Input)
 	if err != nil {
@@ -250,6 +266,8 @@ func sealJob(c Codec) func(workflow.Job) (workflow.Job, error) {
 // wrapping ErrDecode: retrying the same bytes with the same key cannot
 // succeed, and accepting plaintext would make the codec optional without
 // anyone noticing.
+//
+//ds:def id=mw-decodestep-kartthuw owner=@khanakia stability=stable
 func DecodeStep(c Codec) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {
@@ -285,6 +303,8 @@ func DecodeStep(c Codec) workflow.Middleware {
 // valid AES key too.
 //
 //	codec, err := middleware.Encrypt(newKey, previousKey)
+//
+//ds:def id=mw-encrypt-m3ndvkk8 owner=@khanakia stability=stable
 func Encrypt(key []byte, oldKeys ...[]byte) (Codec, error) {
 	aead, err := newGCM(key)
 	if err != nil {
@@ -301,6 +321,7 @@ func Encrypt(key []byte, oldKeys ...[]byte) (Codec, error) {
 	return g, nil
 }
 
+//ds:def id=mw-newgcm-mvjkj92k owner=@khanakia stability=stable
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -320,6 +341,7 @@ type gcmCodec struct {
 	old  []cipher.AEAD
 }
 
+//ds:def id=mw-gcmcodec-encode-dbsedhq3 owner=@khanakia stability=stable
 func (g gcmCodec) Encode(plain []byte) ([]byte, error) {
 	nonce := make([]byte, g.aead.NonceSize(), g.aead.NonceSize()+len(plain)+g.aead.Overhead())
 	if _, err := rand.Read(nonce); err != nil {
@@ -328,6 +350,7 @@ func (g gcmCodec) Encode(plain []byte) ([]byte, error) {
 	return g.aead.Seal(nonce, nonce, plain, nil), nil
 }
 
+//ds:def id=mw-gcmcodec-decode-hgxs36dg owner=@khanakia stability=stable
 func (g gcmCodec) Decode(enc []byte) ([]byte, error) {
 	plain, err := gcmOpen(g.aead, enc)
 	for _, old := range g.old {

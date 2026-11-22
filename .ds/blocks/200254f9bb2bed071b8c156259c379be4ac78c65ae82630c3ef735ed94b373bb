@@ -1,0 +1,7 @@
+func (b Builder) Schedule() (Schedule, error) {
+	expr, err := b.Expr()
+	if err != nil {
+		return nil, err
+	}
+	return Parse(expr)
+}

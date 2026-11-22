@@ -1,0 +1,5 @@
+func (f *Fake) SignalsWaiting() []workflow.Event {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.waiting)
+}

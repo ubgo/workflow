@@ -1,0 +1,27 @@
+func (m *Manager) record(ctx context.Context, id ID, idx, attempt int, status workflow.Status) error {
+	if !status.IsTerminal() {
+		return nil
+	}
+	var eff effects
+	var claimed []PendingCallback
+	st, err := m.store.Update(ctx, id, func(s *State) error {
+		now := m.clk.Now()
+		if idx >= 0 && idx < len(s.Jobs) && s.Jobs[idx].Attempt != attempt {
+			claimed = m.claimCallbacks(s, eff, now)
+			return nil
+		}
+		eff = recordFinish(s, idx, status, now)
+		if eff.recorded {
+			eff.progress = []int{idx}
+		}
+		claimed = m.claimCallbacks(s, eff, now)
+		return nil
+	})
+	if errors.Is(err, workflow.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return m.apply(ctx, st, eff, claimed)
+}

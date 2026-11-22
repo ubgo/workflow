@@ -1,0 +1,1 @@
+type OutputSourceFunc func(ctx context.Context, run workflow.RunID) ([]AttemptOutput, error)

@@ -1,0 +1,15 @@
+func (f *Fake) AssertChained(t testing.TB, wf string, steps ...string) {
+	t.Helper()
+	def, ok := f.Workflow(wf)
+	if !ok {
+		t.Errorf("workflow %q is not registered", wf)
+		return
+	}
+	if why := checkChain(def, steps); why != "" {
+		t.Errorf("workflow %q is not the chain %v: %s", wf, steps, why)
+		return
+	}
+	if len(f.Enqueued(wf)) == 0 {
+		t.Errorf("chain %q was not enqueued; %s", wf, f.recorded())
+	}
+}

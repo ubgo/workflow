@@ -17,6 +17,8 @@ import (
 // and fail, the bulk retries and deletes, reschedule, edit, cancel-step,
 // reset, fork, signal-waiting, and any write a later version adds), dry
 // runs included (Resource.DryRun says so).
+//
+//ds:def id=admin-auditentry-d4n3jycr owner=@khanakia stability=stable
 type AuditEntry struct {
 	// Who is the principal Auth.Identify returned for the request (the
 	// handler's P), as an any so one sink serves every handler.
@@ -49,11 +51,15 @@ type AuditEntry struct {
 // after the response is written, so a slow sink delays only the end of
 // that request. An error is logged (WithLogger) and never changes the
 // response, which has already been sent.
+//
+//ds:def id=admin-auditsink-wxp7v9x2 owner=@khanakia stability=api
 type AuditSink interface {
 	Record(ctx context.Context, e AuditEntry) error
 }
 
 // AuditFunc adapts a function to AuditSink.
+//
+//ds:def id=admin-auditfunc-ghwx8jf2 owner=@khanakia stability=api
 type AuditFunc func(ctx context.Context, e AuditEntry) error
 
 // Record calls f.
@@ -64,11 +70,15 @@ func (f AuditFunc) Record(ctx context.Context, e AuditEntry) error { return f(ct
 // are not recorded, nor are requests refused before Authorize (401
 // anonymous, 415 media type, 400 malformed), since no action was asked
 // for. Nil turns auditing off, the default.
+//
+//ds:def id=admin-withaudit-qj2q5pss owner=@khanakia stability=stable
 func WithAudit(sink AuditSink) HandlerOption { return func(c *handlerConfig) { c.audit = sink } }
 
 // MemoryAudit is an in-memory AuditSink for tests and small tools. Every
 // method is safe for concurrent use. It keeps every entry, so it is not
 // for a long-running server.
+//
+//ds:def id=admin-memoryaudit-9mh2u7tn owner=@khanakia stability=stable
 type MemoryAudit struct {
 	mu      sync.Mutex
 	entries []AuditEntry
@@ -137,6 +147,8 @@ func (h *handler[P]) startAudit(w http.ResponseWriter, ctx context.Context) (htt
 }
 
 // finishAudit records the request's entry when it asked for a write.
+//
+//ds:def id=admin-handler-finishaudit-p5za5fer owner=@khanakia stability=stable
 func (h *handler[P]) finishAudit(ctx context.Context, who P, aw *auditWriter) {
 	if aw == nil || !aw.rec.asked || aw.rec.action.ReadOnly() {
 		return
@@ -162,6 +174,8 @@ func (h *handler[P]) finishAudit(ctx context.Context, who P, aw *auditWriter) {
 }
 
 // noteAuthorize records what Authorize was asked and its answer.
+//
+//ds:def id=admin-noteauthorize-2wqmbyjs owner=@khanakia stability=stable
 func noteAuthorize(ctx context.Context, action Action, res Resource, err error) {
 	rec, ok := ctx.Value(auditKey{}).(*auditRecord)
 	if !ok {

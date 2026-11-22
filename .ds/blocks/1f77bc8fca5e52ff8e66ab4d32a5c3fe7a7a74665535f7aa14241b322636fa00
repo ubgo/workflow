@@ -1,0 +1,4 @@
+type ObjectHarness struct {
+	Start func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
+	Store func(t *testing.T) workflow.JournalStore
+}

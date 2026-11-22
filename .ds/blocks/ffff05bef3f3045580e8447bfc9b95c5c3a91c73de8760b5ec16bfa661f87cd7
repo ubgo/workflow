@@ -1,0 +1,3 @@
+func (a *Admin) Discarded(ctx context.Context, q workflow.RunQuery) (workflow.RunPage, error) {
+	return a.listStatus(ctx, OpDiscarded, workflow.StatusDiscarded, q)
+}

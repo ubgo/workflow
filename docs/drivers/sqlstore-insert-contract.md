@@ -4,14 +4,14 @@ A billing service in Python, a Rails app or a nightly SQL script needs to start 
 
 ## Before you start
 
-- A database migrated by `Client.Migrate`, or by the statements `sqlstore.MigrationScripts` returns applied with your own tool ([Migrations](../operations/migrations.md)). The column list below is the frozen schema of migrations `001` to `009`; a later release adds new migrations and tables, never a changed column, so a writer built against this page keeps working.
-- At least one Go client (`sqlstore.New(db, dialect, ...)`, started) that registers the workflow, on the same tables: the same table prefix (`WithTablePrefix`, default `wf_`) and, on Postgres, the same schema (`WithSchema`).
-- SQLite, Postgres and MySQL 8 follow the same contract. It is proven by `TestForeignInsert` in `sqlstore/enginetest/foreign_insert_test.go` on all three, which inserts with exactly the statements below.
+- A database migrated by [`Client.Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d), or by the statements [`sqlstore.MigrationScripts`](ds:block?id=sql-migrationscripts-3yurujx6) returns applied with your own tool ([Migrations](../operations/migrations.md)). The column list below is the frozen schema of migrations `001` to `009`; a later release adds new migrations and tables, never a changed column, so a writer built against this page keeps working.
+- At least one Go client (`sqlstore.New(db, dialect, ...)`, started) that registers the workflow, on the same tables: the same table prefix ([`WithTablePrefix`](ds:block?id=sql-withtableprefix-27tumk8t), default `wf_`) and, on Postgres, the same schema ([`WithSchema`](ds:block?id=sql-withschema-es3gsbyz)).
+- SQLite, Postgres and MySQL 8 follow the same contract. It is proven by [`TestForeignInsert`](ds:block?id=enginetest-testforeigninsert-e8axw8f6) in `sqlstore/enginetest/foreign_insert_test.go` on all three, which inserts with exactly the statements below.
 - The runnable writer is [`examples/insert-contract`](../../examples/insert-contract): it writes the rows with `database/sql` and no `sqlstore` call, the way a Python or Ruby program would with its own driver, and a Go worker runs them. [A writer, step by step](#a-writer-step-by-step) walks through it.
 
 ## The rows to write
 
-One run is three rows, written in one transaction: `<prefix>runs`, `<prefix>run_ext` and `<prefix>run_info`, plus one `<prefix>run_labels` row per label when the run has labels. Table names carry the prefix (`wf_runs` by default) and, on Postgres under `WithSchema`, the schema (`"jobs"."wf_runs"`). Each `?` is a parameter; use your driver's placeholder (`$1` on Postgres):
+One run is three rows, written in one transaction: `<prefix>runs` ([`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)), `<prefix>run_ext` and `<prefix>run_info` ([`runInfoDefs`](ds:block?id=sql-runinfodefs-mje58wrf)), plus one `<prefix>run_labels` row per label when the run has labels ([`labelDefs`](ds:block?id=sql-labeldefs-yz6wwuqp)). Table names carry the prefix (`wf_runs` by default) and, on Postgres under `WithSchema`, the schema (`"jobs"."wf_runs"`). Each `?` is a parameter; use your driver's placeholder (`$1` on Postgres). These are the statements the contract test sends ([`foreignRun`](ds:block?id=enginetest-foreignrun-rkf6n8qx), [`foreignRunExt`](ds:block?id=enginetest-foreignrunext-zuvsh9y6), [`foreignRunInfo`](ds:block?id=enginetest-foreignruninfo-fz5tjbvv), [`foreignRunLabel`](ds:block?id=enginetest-foreignrunlabel-7vk4p34x)):
 
 ```sql
 INSERT INTO wf_runs (id, scheduled_id, workflow, payload, labels, idem_active, priority, bucket, rate_keys,
@@ -32,8 +32,8 @@ The values, in parameter order:
 
 | Column | Value |
 |---|---|
-| `runs.id`, `run_ext.run_id`, `run_info.run_id`, `run_labels.run_id` | The run ID: unique, 1 to 64 bytes. The Go side makes `run_` and 32 random hex characters (`DefaultIDGenerator`); any unique string works, such as a UUIDv7. It is the `RunRef.RunID` Go code passes to `Status`, `Cancel` and `Result`. |
-| `scheduled_id` | `NULL` for a run that starts now. For a delayed run, a second unique ID (`sched_` and 32 hex characters), which is the `RunRef.ScheduledID`. |
+| `runs.id`, `run_ext.run_id`, `run_info.run_id`, `run_labels.run_id` | The run ID: unique, 1 to 64 bytes. The Go side makes `run_` and 32 random hex characters ([`DefaultIDGenerator`](ds:block?id=sql-defaultidgenerator-s4a7t379)); any unique string works, such as a UUIDv7. It is the `RunRef.RunID` Go code passes to `Status`, `Cancel` and `Result`. |
+| `scheduled_id` | `NULL` for a run that starts now. For a delayed run, a second unique ID (`sched_` and 32 hex characters, [`IDScheduled`](ds:block?id=sql-idscheduled-gss6h33a)), which is the `RunRef.ScheduledID`. |
 | `workflow` | The workflow name, exactly as registered in Go. |
 | `payload` | The bytes the first step receives as its input, usually UTF-8 JSON; `NULL` for none. Bytes are stored as given: no encoding is added. |
 | `labels` | The run's labels as a JSON object of string values, `{}` for none. Never `NULL`. |
@@ -42,30 +42,30 @@ The values, in parameter order:
 | `status` | `pending` for a run that starts now, `scheduled` for a delayed one. |
 | `run_at` | Unix nanoseconds (a 64-bit integer): now for a pending run, the start time for a scheduled one. |
 | `created_at` | Unix nanoseconds now. |
-| `run_ext.queue` | The run's queue, or `''` to have the first worker that admits the run fill in the workflow's queue (`Workflow.Queue`, else `default`). |
+| `run_ext.queue` | The run's queue, or `''` to have the first worker that admits the run fill in the workflow's queue (`Workflow.Queue`, else `default`; [`evaluateKeys`](ds:block?id=sql-client-evaluatekeys-gnscfsy7)). |
 | `run_ext.idem_key` | The same key as `idem_active`, or `NULL`. |
 | `run_info.tenant` | `Job.Tenant`, or `''`. |
-| `run_labels.lkey`, `lval` | One row per label, key and value each cut to 191 characters. Needed only for `RunQuery.Labels` and label-prefix searches to find the run; the labels themselves are read from `runs.labels`. |
+| `run_labels.lkey`, `lval` | One row per label, key and value each cut to 191 characters ([`labelIndexWidth`](ds:block?id=sql-labelindexwidth-xdtnr3dj)). Needed only for `RunQuery.Labels` and label-prefix searches to find the run; the labels themselves are read from `runs.labels`. |
 
 The literals in the statements are part of the contract too:
 
-- `bucket = ''` and `rate_keys = ''` mark the run's concurrency key and rate-limit keys as not yet evaluated: the first worker that admits it evaluates them from the workflow's Go definition (`Concurrency.Key`, `RateLimits`), as it does for runs from an enqueue-only client. Never write your own values there.
-- `sig_floor` is the highest signal ID when the run is written, read by the subquery: the run takes only signals sent after it (`Signal`'s look-back). Keep the subquery.
+- `bucket = ''` and `rate_keys = ''` mark the run's concurrency key and rate-limit keys as not yet evaluated ([`unevaluatedKeys`](ds:block?id=sql-unevaluatedkeys-y85mmxge)): the first worker that admits it evaluates them from the workflow's Go definition (`Concurrency.Key`, `RateLimits`; [`evaluateKeys`](ds:block?id=sql-client-evaluatekeys-gnscfsy7)), as it does for runs from an enqueue-only client. Never write your own values there.
+- `sig_floor` is the highest signal ID when the run is written, read by the subquery (the Go side writes it the same way in [`insertRun`](ds:block?id=sql-client-insertrun-6w3uw293)): the run takes only signals sent after it (`Signal`'s look-back). Keep the subquery.
 - `finished_at`, `fail_until`, `notified`, `notify_until`, `ver`, and in `run_ext`, `run_info` the zeros, `NULL`s and `'[]'` shown, are the state of a run nothing has touched yet. The columns left out (`err`, `fail_step`, `fail_input`, `fail_token`) stay `NULL`.
 
-Times are always Unix nanoseconds in a 64-bit integer, UTC by definition, so no engine's date type or session time zone can shift them. On Postgres compute now with `(extract(epoch from clock_timestamp()) * 1000000000)::bigint`, on MySQL with `CAST(UNIX_TIMESTAMP(NOW(6)) * 1000000000 AS SIGNED)`, on SQLite with `CAST((julianday('now') - 2440587.5) * 86400000000000 AS INTEGER)`, or pass the value from your language's clock.
+Times are always Unix nanoseconds in a 64-bit integer, UTC by definition, so no engine's date type or session time zone can shift them. Every engine's columns are `BIGINT` ([`typesFor`](ds:block?id=sql-typesfor-6wkwbx9y)). On Postgres compute now with `(extract(epoch from clock_timestamp()) * 1000000000)::bigint`, on MySQL with `CAST(UNIX_TIMESTAMP(NOW(6)) * 1000000000 AS SIGNED)`, on SQLite with `CAST((julianday('now') - 2440587.5) * 86400000000000 AS INTEGER)`, or pass the value from your language's clock.
 
 ## Idempotency keys
 
-A key held by an unfinished run of the workflow is unique: the unique index on `runs (workflow, idem_active)` makes a second insert with the same workflow and key fail with a unique violation, and the failed transaction writes nothing. Treat that error as "already enqueued": roll back (on Postgres the failed statement has aborted the transaction anyway) and, if you need the existing run, read it with `SELECT id, scheduled_id FROM wf_runs WHERE workflow = ? AND idem_active = ?`. A Go `Enqueue` or `EnqueueTx` with the same key returns that run, and the key is free again once the run finishes, exactly as for runs enqueued from Go. On Postgres, `ON CONFLICT (workflow, idem_active) DO NOTHING` on the `runs` insert avoids the aborted transaction; skip the other inserts when it inserted nothing.
+A key held by an unfinished run of the workflow is unique: the unique index on `runs (workflow, idem_active)` ([`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)) makes a second insert with the same workflow and key fail with a unique violation, and the failed transaction writes nothing. Treat that error as "already enqueued": roll back (on Postgres the failed statement has aborted the transaction anyway) and, if you need the existing run, read it with `SELECT id, scheduled_id FROM wf_runs WHERE workflow = ? AND idem_active = ?`. A Go [`Enqueue`](ds:block?id=sql-client-enqueue-k67k79h8) or `EnqueueTx` with the same key returns that run, and the key is free again once the run finishes, exactly as for runs enqueued from Go. On Postgres, `ON CONFLICT (workflow, idem_active) DO NOTHING` on the `runs` insert avoids the aborted transaction; skip the other inserts when it inserted nothing.
 
 A workflow-level idempotency policy that derives the key in Go (`Workflow.Idempotency` with a key function) does not run for a foreign insert: compute the key yourself.
 
 ## Wake the workers
 
-Nothing has to be notified. Every started client looks for pending runs of its workflows every `WithPollInterval` (one second by default) and promotes a scheduled run once its `run_at` has passed, so a committed run starts within a poll interval.
+Nothing has to be notified. Every started client looks for pending runs of its workflows every [`WithPollInterval`](ds:block?id=sql-withpollinterval-4mg6xgyu) (one second by default, [`defaultPoll`](ds:block?id=sql-defaultpoll-nn9t9vqu)) and promotes a scheduled run once its `run_at` has passed ([`promote`](ds:block?id=sql-client-promote-5d4ts6nj)), so a committed run starts within a poll interval.
 
-On Postgres, clients built with `WithNotifier(pgnotify.New(db))` also listen on a channel and look at once when it fires ([Wake workers at once](sqlstore.md#wake-workers-at-once)). Send `SELECT pg_notify('ubgo_workflow_wf_wake', '')` in the same transaction: Postgres delivers it when the transaction commits, never before. The channel is `ubgo_workflow_` + the table prefix + `wake`, or `ubgo_workflow_` + schema + `_` + prefix + `wake` under `WithSchema`; when that is longer than 63 characters it is `ubgo_workflow_` followed by the first 16 bytes, in hex, of the SHA-256 of the long name. A wrong channel name only means the run waits for the next poll.
+On Postgres, clients built with [`WithNotifier(pgnotify.New(db))`](ds:block?id=sql-withnotifier-zmpj2dtv) also listen on a channel and look at once when it fires ([Wake workers at once](sqlstore.md#wake-workers-at-once)). Send `SELECT pg_notify('ubgo_workflow_wf_wake', '')` in the same transaction: Postgres delivers it when the transaction commits, never before. The channel ([`notifyChannel`](ds:block?id=sql-client-notifychannel-jjebh9y7)) is `ubgo_workflow_` ([`channelPrefix`](ds:block?id=sql-channelprefix-eddt8gb5)) + the table prefix + `wake`, or `ubgo_workflow_` + schema + `_` + prefix + `wake` under `WithSchema`; when that is longer than 63 characters ([`maxChannelLen`](ds:block?id=sql-maxchannellen-chrc2urb)) it is `ubgo_workflow_` followed by the first 16 bytes, in hex, of the SHA-256 of the long name. A wrong channel name only means the run waits for the next poll.
 
 ## A writer, step by step
 
@@ -73,7 +73,7 @@ The program below is Go only so the test suite can run it; every statement in it
 
 ### Step 1: start a worker that registers the workflow
 
-The tables must exist and a started client must register the workflow before runs are inserted for it. Here the worker migrates them too; in production that is your deploy's migration step:
+The tables must exist ([`Migrate`](ds:block?id=sql-client-migrate-vdt8uy3d)) and a started client must register the workflow before runs are inserted for it ([`claimFilter`](ds:block?id=sql-client-claimfilter-fxuq8cus) claims only registered workflows). Here the worker migrates them too; in production that is your deploy's migration step:
 
 <!-- snippet: examples/insert-contract/main.go#worker -->
 ```go
@@ -97,11 +97,11 @@ if err := worker.Register(report); err != nil { // register before runs are inse
 }
 ```
 
-`Queue: "reports"` is the workflow's queue. The runs below leave `run_ext.queue` empty, and the worker that admits them fills it in.
+`Queue: "reports"` is the workflow's queue. The runs below leave `run_ext.queue` empty, and the worker that admits them fills it in ([`evaluateKeys`](ds:block?id=sql-client-evaluatekeys-gnscfsy7)).
 
 ### Step 2: keep the statements
 
-The four statements of [The rows to write](#the-rows-to-write), for the default prefix `wf_`:
+The four statements of [The rows to write](#the-rows-to-write) ([`foreignRun`](ds:block?id=enginetest-foreignrun-rkf6n8qx) and the three after it in the contract test), for the default prefix `wf_`:
 
 <!-- snippet: examples/insert-contract/main.go#statements -->
 ```go
@@ -121,7 +121,7 @@ VALUES (?, ?, NULL, 0, NULL, '[]', 0, '')`
 
 ### Step 3: describe a run and write its rows in one transaction
 
-The other program's view of a run is a handful of values. Absent values go in as SQL `NULL`, labels as a JSON object (`{}` for none), times as Unix nanoseconds:
+The other program's view of a run is a handful of values. Absent values go in as SQL `NULL`, labels as a JSON object (`{}` for none), times as Unix nanoseconds (the `BIGINT` columns of [`typesFor`](ds:block?id=sql-typesfor-6wkwbx9y)):
 
 <!-- snippet: examples/insert-contract/main.go#job -->
 ```go
@@ -192,7 +192,7 @@ func nullable(s string) sql.NullString {
 
 ### Step 4: insert a run due now and a delayed one
 
-A `pending` run starts within a poll interval; a `scheduled` one once its `run_at` has passed. The delayed run needs a second unique ID for `scheduled_id`:
+A `pending` run starts within a poll interval; a `scheduled` one once its `run_at` has passed ([`promote`](ds:block?id=sql-client-promote-5d4ts6nj)). The delayed run needs a second unique ID for `scheduled_id`:
 
 <!-- snippet: examples/insert-contract/main.go#write -->
 ```go
@@ -211,7 +211,7 @@ The worker runs both. The label row lets `RunQuery.Labels` find the first, and t
 
 ### Step 5: handle a held idempotency key
 
-A second insert with a key an unfinished run holds fails on the unique index; the transaction rolls back and writes nothing. A Go `Enqueue` with the same key returns the run the other program inserted:
+A second insert with a key an unfinished run holds fails on the unique index ([`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)); the transaction rolls back and writes nothing. A Go [`Enqueue`](ds:block?id=sql-client-enqueue-k67k79h8) with the same key returns the run the other program inserted:
 
 <!-- snippet: examples/insert-contract/main.go#key -->
 ```go
@@ -253,21 +253,21 @@ The first line is the contract working end to end: a run no Go code enqueued ran
 
 The insert above is the whole contract. Everything else belongs to the Go clients, and a foreign write there can break runs other workers are executing:
 
-- Never write `<prefix>steps`: a worker creates the step rows when it admits the run.
+- Never write `<prefix>steps`: a worker creates the step rows when it admits the run ([`evaluateKeys`](ds:block?id=sql-client-evaluatekeys-gnscfsy7) runs in that admission).
 - Never insert a run in any status other than `pending` or `scheduled`, and never update or delete an existing run. Cancel, retry, delete and reschedule go through a Go client (`Cancel`, `Retry`, `Delete`, `Reschedule`) or the `admin` HTTP API.
 - Never write the lease, failure or notification columns (`lease_*`, `fail_*`, `notified`, `notify_until`), the `locks`, `starts`, `schedules`, `ticks`, `signals` or `consumed` tables, or the `migrations` ledger.
-- Never write `bucket` or `rate_keys` (keep `''`) or `run_ext.retry` (keep `NULL`; a per-job retry override is a Go `Job.Retry`).
+- Never write `bucket` or `rate_keys` (keep `''`, [`unevaluatedKeys`](ds:block?id=sql-unevaluatedkeys-y85mmxge)) or `run_ext.retry` (keep `NULL`; a per-job retry override is a Go `Job.Retry`).
 - Never change the schema: a column added by hand breaks nothing today but the next migration may collide with it.
 
 ## Pitfalls
 
-- The checks Go's `Enqueue` runs (`workflow.ValidateJob`, `WithPayloadLimit`, capability checks, enqueue middleware such as unique jobs or debounce) do not run for a foreign insert. A payload the workflow cannot decode fails the step, as it would for a bad payload from Go.
-- A run of a workflow no client registers stays pending forever: nothing executes it, and nothing reports it. Register the workflow before inserting runs for it.
-- Write all rows in one transaction. A `runs` row without its `run_ext` row reads as the `default` queue (a client serving only named queues never claims it), and one without its `run_info` row never gets a run timeout (`RunTimeout` lives there).
-- On MySQL use `utf8mb4` and keep the tables' `utf8mb4_bin` collation: workflow names and keys compare byte for byte.
-- Transaction poolers are fine for the insert; only `pgnotify`'s `LISTEN` on the Go side needs a direct connection.
-- Write both IDs for a `scheduled` run and `NULL` for `scheduled_id` on a `pending` one, as the table above says: the `scheduled_id` is the `RunRef.ScheduledID` Go code hands to `Status` and `Cancel` before the run starts, and `TestForeignInsert` reads the delayed run's status by it.
-- On Postgres a unique violation aborts the transaction: roll back before anything else, or use `ON CONFLICT (workflow, idem_active) DO NOTHING` on the `runs` insert and skip the other three inserts when it inserted nothing ([Idempotency keys](#idempotency-keys)).
+- The checks Go's [`Enqueue`](ds:block?id=sql-client-enqueue-k67k79h8) runs ([`workflow.ValidateJob`](ds:block?id=validatejob-a7nq3u2t), [`WithPayloadLimit`](ds:block?id=sql-withpayloadlimit-vufzfrhq), capability checks, enqueue middleware such as unique jobs or debounce) do not run for a foreign insert. A payload the workflow cannot decode fails the step, as it would for a bad payload from Go.
+- A run of a workflow no client registers stays pending forever ([`claimFilter`](ds:block?id=sql-client-claimfilter-fxuq8cus)): nothing executes it, and nothing reports it. Register the workflow before inserting runs for it.
+- Write all rows in one transaction. A `runs` row without its `run_ext` row reads as the `default` queue ([`queueOf`](ds:block?id=sql-queueof-xtfmjesa); a client serving only named queues never claims it), and one without its `run_info` row never gets a run timeout (`RunTimeout` lives there, [`runInfoDefs`](ds:block?id=sql-runinfodefs-mje58wrf)).
+- On MySQL use `utf8mb4` and keep the tables' `utf8mb4_bin` collation ([`typesFor`](ds:block?id=sql-typesfor-6wkwbx9y)): workflow names and keys compare byte for byte.
+- Transaction poolers are fine for the insert; only `pgnotify`'s `LISTEN` on the Go side ([`pgnotify.Notifier.Listen`](ds:block?id=pgnotify-notifier-listen-sc6f8es4)) needs a direct connection.
+- Write both IDs for a `scheduled` run and `NULL` for `scheduled_id` on a `pending` one, as the table above says: the `scheduled_id` is the `RunRef.ScheduledID` Go code hands to `Status` and `Cancel` before the run starts, and [`TestForeignInsert`](ds:block?id=enginetest-testforeigninsert-e8axw8f6) reads the delayed run's status by it.
+- On Postgres a unique violation (the index of [`tableDefs`](ds:block?id=sql-tabledefs-cgz8s9k6)) aborts the transaction: roll back before anything else, or use `ON CONFLICT (workflow, idem_active) DO NOTHING` on the `runs` insert and skip the other three inserts when it inserted nothing ([Idempotency keys](#idempotency-keys)).
 
 ## Related
 

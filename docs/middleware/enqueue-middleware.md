@@ -1,16 +1,16 @@
 # Enqueue middleware
 
-Enqueue middleware wraps every `Client.Enqueue` before the job reaches the driver: routing jobs to another workflow, adding labels, refusing duplicates, debouncing bursts, sealing payloads, tracing. Like step middleware it is written once and works on every driver, because it wraps the `Client` interface rather than any backend. Routing tables and unique jobs are built this way.
+Enqueue middleware wraps every `Client.Enqueue` before the job reaches the driver: routing jobs to another workflow, adding labels, refusing duplicates, debouncing bursts, sealing payloads, tracing. Like step middleware it is written once and works on every driver, because it wraps the `Client` interface ([`WrapClient`](ds:block?id=mw-wrapclient-nqppp3fu)) rather than any backend. Routing tables and unique jobs are built this way.
 
 ## Before you start
 
 - Any `workflow.Client` and the `middleware` package (core module).
-- Unlike step middleware, enqueue middleware is not a driver option: `middleware.WrapClient` returns a new `Client`, and the app enqueues through that one.
+- Unlike step middleware, enqueue middleware is not a driver option: [`middleware.WrapClient`](ds:block?id=mw-wrapclient-nqppp3fu) returns a new `Client`, and the app enqueues through that one.
 - The runnable program for this page is [examples/middleware-stack](../../examples/middleware-stack/), the same program as [step middleware](step-middleware.md). The routing table has a program of its own, [examples/route-jobs](../../examples/route-jobs/).
 
 ## Wrap every enqueue
 
-A `workflow.EnqueueMiddleware` is `func(next workflow.EnqueueFunc) workflow.EnqueueFunc`, where `EnqueueFunc` has the shape of `Client.Enqueue`. It may change the job, refuse it by returning an error without calling `next`, or act on the result. A middleware of the app's own that records every enqueue:
+A [`workflow.EnqueueMiddleware`](ds:block?id=enqueuemiddleware-eg4vqams) is `func(next workflow.EnqueueFunc) workflow.EnqueueFunc`, where `EnqueueFunc` has the shape of `Client.Enqueue`. It may change the job, refuse it by returning an error without calling `next`, or act on the result. A middleware of the app's own that records every enqueue:
 
 <!-- snippet: examples/middleware-stack/main.go#enqueue-own -->
 ```go
@@ -23,7 +23,7 @@ audit := func(next workflow.EnqueueFunc) workflow.EnqueueFunc {
 }
 ```
 
-`middleware.WrapClient(c, mws...)` returns a `Client` whose `Enqueue` runs through `mws` before reaching `c`. `middleware.ChainEnqueue` composes enqueue middleware with the same rule as `Chain`: the first argument sees the job first. Every other method, `Capabilities` included, is `c`'s own, so the wrapper never claims or hides a capability, and it forwards `workflow.RunNotifier` to `c`, so code that needs the run-finished hook (such as `UniqueUntilFinished` or a batch) still finds it through any number of wrappers.
+[`middleware.WrapClient(c, mws...)`](ds:block?id=mw-wrapclient-nqppp3fu) returns a `Client` whose `Enqueue` runs through `mws` before reaching `c`. [`middleware.ChainEnqueue`](ds:block?id=mw-chainenqueue-bebyqvsx) composes enqueue middleware with the same rule as `Chain`: the first argument sees the job first. Every other method, `Capabilities` included, is `c`'s own, so the wrapper never claims or hides a capability, and it forwards `workflow.RunNotifier` to `c`, so code that needs the run-finished hook (such as `UniqueUntilFinished` or a batch) still finds it through any number of wrappers. The optional interfaces of the run query, pause, schedule and drain families are forwarded to `c` too, through [`workflow.Forward`](ds:block?id=forward-e32a7p36), and refused with an `UnsupportedError` when `c` lacks one.
 
 <!-- snippet: examples/middleware-stack/main.go#wrap -->
 ```go
@@ -64,7 +64,7 @@ Nothing reaches the driver, and the outer `Unique` releases the lock it took, so
 
 ## Route jobs
 
-`middleware.Route(rules...)` applies the first `RouteRule` whose `Match` accepts the job and passes every job on, matched or not. A rule can replace `Job.Workflow` (`RouteRule.Workflow`) and add labels (`RouteRule.Labels`); a nil `Match` matches every job, so a last rule without one is the default. Routing is an app-side table that keeps workflow choices and tenant or cost labels out of the code that enqueues:
+[`middleware.Route(rules...)`](ds:block?id=mw-route-j6bkjhsv) applies the first [`RouteRule`](ds:block?id=mw-routerule-9pesaaf2) whose `Match` accepts the job and passes every job on, matched or not. A rule can replace `Job.Workflow` (`RouteRule.Workflow`) and add labels (`RouteRule.Labels`); a nil `Match` matches every job, so a last rule without one is the default. Routing is an app-side table that keeps workflow choices and tenant or cost labels out of the code that enqueues:
 
 <!-- snippet: examples/route-jobs/main.go#route -->
 ```go
@@ -111,7 +111,7 @@ job invoice map[cost-center:sales] -> run of invoice, cost-center=sales
 the caller's labels are not changed: map[tier:bulk]
 ```
 
-A label the job already carries wins over the rule's, as an explicit choice should win over a default: the third job keeps `cost-center=sales`. The job's `Labels` map is copied before it is changed, so the caller's map is never mutated (the last line). Only the first matching rule applies; the bulk job does not also get the default rule's label. `RouteRule.Workflow` must name a workflow the driver has registered, or the enqueue fails like any job for an unknown workflow.
+A label the job already carries wins over the rule's, as an explicit choice should win over a default: the third job keeps `cost-center=sales`. [`Route`](ds:block?id=mw-route-j6bkjhsv) copies the job's `Labels` map before it changes it, so the caller's map is never mutated (the last line). Only the first matching rule applies; the bulk job does not also get the default rule's label. `RouteRule.Workflow` must name a workflow the driver has registered, or the enqueue fails like any job for an unknown workflow.
 
 ## Require a trigger source
 
@@ -148,9 +148,9 @@ typo: workflow: invalid spec: job for "nightly-report" has source "webook", not 
 
 ## Unique until a step starts
 
-`middleware.UniqueUntilStarted(by, store, ttl)` is `Unique` whose lock is freed as soon as a step of the run starts, not when the run ends. Use it for a job where one waiting copy is enough but a new one may queue up behind a running one: a report rebuilt from current data, a cache refresh, a search reindex of one record. While the first job waits for its delay or for a free worker, a second enqueue for the same key is refused with `workflow.ErrDuplicate`; once the first job's step has started, the next enqueue passes.
+[`middleware.UniqueUntilStarted(by, store, ttl)`](ds:block?id=mw-uniqueuntilstarted-x6mbz7nc) is `Unique` whose lock is freed as soon as a step of the run starts, not when the run ends. Use it for a job where one waiting copy is enough but a new one may queue up behind a running one: a report rebuilt from current data, a cache refresh, a search reindex of one record. While the first job waits for its delay or for a free worker, a second enqueue for the same key is refused with `workflow.ErrDuplicate`; once the first job's step has started, the next enqueue passes.
 
-It returns two halves. The enqueue half is `Unique` and goes in the enqueuing process's `WrapClient` chain; the step half reads the lock's key and owner from the run's labels (through the driver's `StepInfo`) and frees it before the step runs, so it goes in the worker's step middleware. A worker in another process installs `middleware.ReleaseUniqueOnStart(store)`, the same step half, and then the store must be one both processes share, such as `sqlstore.UniqueStore`. The program is [examples/release-jobs](../../examples/release-jobs/):
+It returns two halves. The enqueue half is `Unique` and goes in the enqueuing process's `WrapClient` chain; the step half reads the lock's key and owner from the run's labels (through the driver's `StepInfo`) and frees it before the step runs, so it goes in the worker's step middleware. A worker in another process installs [`middleware.ReleaseUniqueOnStart(store)`](ds:block?id=mw-releaseuniqueonstart-fz2254h2), the same step half, and then the store must be one both processes share, such as `sqlstore.UniqueStore`. The program is [examples/release-jobs](../../examples/release-jobs/):
 
 <!-- snippet: examples/release-jobs/main.go#until-started -->
 ```go
@@ -177,7 +177,7 @@ _, err = c.Enqueue(ctx, job)
 verdict("third, while the first runs", err)
 ```
 
-The step half runs on every step attempt. That is safe: a release names the run's own owner token, so a later step or retry of the first run never frees the lock a newer job has taken, and a repeat retries a release that failed before. A failed release is not reported; the `ttl` frees the key anyway, and stays the safety net for a run that never starts.
+The step half ([`ReleaseUniqueOnStart`](ds:block?id=mw-releaseuniqueonstart-fz2254h2)) runs on every step attempt. That is safe: a release names the run's own owner token, so a later step or retry of the first run never frees the lock a newer job has taken, and a repeat retries a release that failed before. A failed release is not reported; the `ttl` frees the key anyway, and stays the safety net for a run that never starts.
 
 ## Try it
 
@@ -210,14 +210,14 @@ third, while the first runs: accepted
 
 ## Pitfalls
 
-- **A wrapper hides optional interfaces other than `RunNotifier`.** `WrapClient` embeds `workflow.Client`, so a type assertion for `batch.GroupRunner`, `batch.GroupSpawner` or a driver's own methods fails on the wrapper. That is deliberate for batches: a batch dispatched through a wrapper enqueues each job through it, so its middleware (a codec sealing payloads) is never bypassed. Keep a reference to the driver's own client for its driver-specific methods.
-- **Middleware that is not the outermost sees changed jobs.** Inside `WithCodec`, payloads are already sealed with a fresh random nonce, so a `Unique` or `Route` keyed on payload content never matches; put those in a `WrapClient` outside the codec.
-- **Order changes what a refusal skips.** A middleware after `Unique` never sees a refused duplicate; one before it sees the job and the refusal coming back.
-- **`sqlstore.Client.EnqueueTx` does not run enqueue middleware.** It writes the run inside the app's transaction directly. The [transactional outbox](../reliability/outbox.md) relays through any client, wrapped or not.
-- **`UniqueUntilStarted` without its step half is plain `Unique`.** If no worker installs the step half (or `ReleaseUniqueOnStart`), nothing frees the lock early and it lasts the whole `ttl`. With `MemoryUnique`, the enqueuer and the worker must be one process.
-- **`RequireSource` is not authorization.** It checks that a source is named, not who named it: anything that can enqueue can claim any source.
-- **`Route` cannot set `Job.Queue`.** A rule changes the workflow and adds labels only; a label named `queue` is just a label. To move jobs to another queue, route them to a workflow declared on that queue (`Workflow.Queue`).
-- **Labels under a reserved prefix are refused, not overwritten.** An app label such as `otel.tenant` or `workflow.batch.id` fails the enqueue with `workflow.ErrInvalid`; pick another key.
+- **A wrapper hides the batch interfaces and a driver's own methods.** [`WrapClient`](ds:block?id=mw-wrapclient-nqppp3fu) forwards `RunNotifier` and the interfaces [`workflow.Forward`](ds:block?id=forward-e32a7p36) covers, but nothing else: a type assertion for `batch.GroupRunner`, `batch.GroupSpawner` or a driver's own methods fails on the wrapper. That is deliberate for batches: a batch dispatched through a wrapper enqueues each job through it, so its middleware (a codec sealing payloads) is never bypassed. Keep a reference to the driver's own client for its driver-specific methods.
+- **Middleware that is not the outermost sees changed jobs.** Inside [`WithCodec`](ds:block?id=mw-withcodec-4aa2ymdy), payloads are already sealed, with a fresh random nonce under [`Encrypt`](ds:block?id=mw-gcmcodec-encode-dbsedhq3), so a `Unique` or `Route` keyed on payload content never matches; put those in a `WrapClient` outside the codec.
+- **Order changes what a refusal skips.** A middleware after [`Unique`](ds:block?id=mw-unique-pgzepgu6) never sees a refused duplicate; one before it sees the job and the refusal coming back.
+- **`sqlstore.Client.EnqueueTx` does not run enqueue middleware.** [`EnqueueTx`](ds:block?id=sql-client-enqueuetx-8tdebvcq) writes the run inside the app's transaction directly. The [transactional outbox](../reliability/outbox.md) relays through any client, wrapped or not.
+- **`UniqueUntilStarted` without its step half is plain `Unique`.** If no worker installs the step half (or [`ReleaseUniqueOnStart`](ds:block?id=mw-releaseuniqueonstart-fz2254h2)) of [`UniqueUntilStarted`](ds:block?id=mw-uniqueuntilstarted-x6mbz7nc), nothing frees the lock early and it lasts the whole `ttl`. With `MemoryUnique`, the enqueuer and the worker must be one process.
+- **`RequireSource` is not authorization.** [`RequireSource`](ds:block?id=mw-requiresource-3tsntxp2) checks that a source is named, not who named it: anything that can enqueue can claim any source.
+- **`Route` cannot set `Job.Queue`.** A [`RouteRule`](ds:block?id=mw-routerule-9pesaaf2) changes the workflow and adds labels only; a label named `queue` is just a label. To move jobs to another queue, route them to a workflow declared on that queue (`Workflow.Queue`).
+- **Labels under a reserved prefix are refused, not overwritten.** An app label such as `otel.tenant` or `workflow.batch.id` fails the enqueue with `workflow.ErrInvalid` ([`workflow.CheckJobLabels`](ds:block?id=checkjoblabels-p6m28b9h), which every driver's `Enqueue` calls first); pick another key.
 
 ## Related
 

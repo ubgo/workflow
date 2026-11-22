@@ -1,0 +1,9 @@
+func sideLabels(labels map[string]string, s side) map[string]string {
+	id, ok := labels[workflow.LabelSchedule]
+	if !ok || id == "" {
+		return labels
+	}
+	out := maps.Clone(labels)
+	out[workflow.LabelSchedule] = string(encodeScheduleID(s, workflow.ScheduleID(id)))
+	return out
+}

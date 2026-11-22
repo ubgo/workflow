@@ -1,0 +1,10 @@
+func (c *Client) lastStatusLocked(s *schedule) workflow.Status {
+	if s.last.Run.IsZero() {
+		return ""
+	}
+	r, err := c.lookupLocked(s.last.Run)
+	if err != nil {
+		return ""
+	}
+	return r.statusLocked()
+}

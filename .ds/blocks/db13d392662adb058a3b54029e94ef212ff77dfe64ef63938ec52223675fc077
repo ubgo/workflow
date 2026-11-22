@@ -1,0 +1,1 @@
+type MachineAction[D any] func(ctx context.Context, m *MachineCtx[D]) error

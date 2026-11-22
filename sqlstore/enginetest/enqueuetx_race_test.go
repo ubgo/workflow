@@ -43,6 +43,8 @@ const blockedFor = 300 * time.Millisecond
 // Postgres READ COMMITTED every statement sees the latest commit. They skip
 // on SQLite, where a transaction that has read and then writes after another
 // writer committed fails with SQLITE_BUSY_SNAPSHOT by design.
+//
+//ds:def id=enginetest-testenqueuetxconcurrentkey-mdazsx8n owner=@khanakia stability=stable
 func TestEnqueueTxConcurrentKey(t *testing.T) {
 	cases := []struct {
 		name        string

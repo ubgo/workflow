@@ -1,0 +1,108 @@
+func RunForkFlows(t *testing.T, h FlowHarness) {
+	e := &redoETL{name: "fork-etl", next: "fork-next", failLoadUnfixed: true, hold: make(chan struct{})}
+	c := h.Start(t, e.workflows()...)
+	if !workflow.Supports(c, workflow.OpForkRun) {
+		t.Skip("driver does not fork runs")
+	}
+	t.Cleanup(func() { close(e.hold) })
+	fk := c.(workflow.RunForker)
+	ctx := workflow.AllowReservedLabels(context.Background(), workflow.LabelParentRun)
+	job := workflow.Job{Workflow: e.name, Labels: map[string]string{"app": "x", workflow.LabelParentRun: "some-parent"}}
+	chained := c.Capabilities().Has(workflow.CapChain)
+	if chained {
+		job.Chain = []workflow.Job{{Workflow: e.next}}
+	}
+	if c.Capabilities().Has(workflow.CapIdempotencyKey) {
+		job.IdempotencyKey = "fork-original"
+	}
+	ref, err := c.Enqueue(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := flowAwait(t, c, ref); err == nil {
+		t.Fatal("the first run must fail at load")
+	}
+	for _, tc := range []struct {
+		name string
+		step string
+		opts workflow.ForkOptions
+	}{
+		{"unknown step", "nope", workflow.ForkOptions{}},
+		{"empty step", "", workflow.ForkOptions{}},
+		{"reserved label", "transform", workflow.ForkOptions{Labels: map[string]string{workflow.LabelForkOf: "x"}}},
+	} {
+		if _, err := fk.ForkRun(ctx, ref, tc.step, tc.opts); !errors.Is(err, workflow.ErrInvalid) {
+			t.Fatalf("fork with %s: %v, want ErrInvalid", tc.name, err)
+		}
+	}
+	if _, err := fk.ForkRun(ctx, workflow.RunRef{RunID: "no-such-run"}, "transform", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrNotFound) {
+		t.Fatalf("fork of an unknown run: %v, want ErrNotFound", err)
+	}
+
+	e.fixed.Store(true)
+	fork, err := fk.ForkRun(ctx, ref, "transform", workflow.ForkOptions{Labels: map[string]string{"ticket": "42"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fork.RunID.IsZero() || fork.RunID == ref.RunID {
+		t.Fatalf("fork ref %v: want a new RunID beside %v", fork, ref)
+	}
+	if out, err := flowAwait(t, c, fork); err != nil || string(out) != `"loaded rows cleaned"` {
+		t.Fatalf("fork: %q %v", out, err)
+	}
+	if got := e.counts(); got != [3]int32{1, 2, 2} {
+		t.Fatalf("extract, transform, load ran %v times, want [1 2 2]", got)
+	}
+	if st, err := c.Status(ctx, ref); err != nil || st != workflow.StatusFailed {
+		t.Fatalf("the original after the fork: %s %v, want failed", st, err)
+	}
+	if l := runLabels(t, c, fork); l != nil {
+		if !sameRun(l[workflow.LabelForkOf], ref.RunID) {
+			t.Fatalf("fork label %s = %q, want %v (labels %v)", workflow.LabelForkOf, l[workflow.LabelForkOf], ref.RunID, l)
+		}
+		findByLabel(t, c, workflow.LabelForkOf, l[workflow.LabelForkOf], fork)
+		want := map[string]string{"app": "x", "ticket": "42", workflow.LabelForkStep: "transform"}
+		for k, v := range want {
+			if l[k] != v {
+				t.Fatalf("fork label %s = %q, want %q (labels %v)", k, l[k], v, l)
+			}
+		}
+		for _, k := range []string{workflow.LabelParentRun, workflow.LabelRedo} {
+			if _, ok := l[k]; ok {
+				t.Fatalf("fork of a failed run carries %s: %v", k, l)
+			}
+		}
+	}
+	if chained {
+		time.Sleep(50 * time.Millisecond)
+		if n := e.nextRuns.Load(); n != 0 {
+			t.Fatalf("a fork handed on the original's chain: %d chained runs", n)
+		}
+	}
+
+	// A fork of the succeeded fork, from load, gets LabelRedo and runs load only.
+	again, err := fk.ForkRun(ctx, fork, "load", workflow.ForkOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := flowAwait(t, c, again); err != nil || string(out) != `"loaded rows cleaned"` {
+		t.Fatalf("fork of the fork: %q %v", out, err)
+	}
+	if got := e.counts(); got != [3]int32{1, 2, 3} {
+		t.Fatalf("after the second fork extract, transform, load ran %v times, want [1 2 3]", got)
+	}
+	if l := runLabels(t, c, again); l != nil && (l[workflow.LabelRedo] != "true" || !sameRun(l[workflow.LabelForkOf], fork.RunID)) {
+		t.Fatalf("fork of a succeeded run: labels %v, want %s=true and %s=%s", l, workflow.LabelRedo, workflow.LabelForkOf, fork.RunID)
+	}
+
+	// An unfinished run cannot be forked.
+	e.holdOn.Store(true)
+	held, err := c.Enqueue(ctx, workflow.Job{Workflow: e.name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCount(t, "load attempts", e.loaded.Load, 4)
+	if _, err := fk.ForkRun(ctx, held, "transform", workflow.ForkOptions{}); !errors.Is(err, workflow.ErrWrongState) {
+		t.Fatalf("fork of a running run: %v, want ErrWrongState", err)
+	}
+}

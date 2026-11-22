@@ -1,0 +1,1 @@
+func TwiceDaily(first, second int) Builder { return TwiceDailyAt(first, second, 0) }

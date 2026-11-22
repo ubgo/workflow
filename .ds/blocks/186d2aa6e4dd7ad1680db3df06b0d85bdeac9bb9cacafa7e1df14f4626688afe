@@ -1,0 +1,19 @@
+func UpdateHandler(store PromiseStore, fn Handler) Handler {
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		if store == nil || fn == nil {
+			return nil, Permanent(invalidf("UpdateHandler needs a promise store and a handler"))
+		}
+		req, ok := DecodeUpdate(in)
+		if !ok {
+			return fn(ctx, in)
+		}
+		out, err := fn(ctx, req.Payload)
+		if err != nil && !IsPermanent(err) {
+			return nil, err
+		}
+		if rerr := ReplyUpdate(ctx, store, req, out, err); rerr != nil {
+			return nil, rerr
+		}
+		return out, err
+	}
+}

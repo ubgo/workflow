@@ -1,0 +1,80 @@
+func (c *Client) execute(h *held) {
+	defer c.doneInflight()
+	stopBeat := c.heartbeat(h)
+	defer func() {
+		stopBeat()
+		h.cancel(nil)
+		c.mu.Lock()
+		delete(c.running, h.id)
+		c.heldQ[h.queue]--
+		c.mu.Unlock()
+	}()
+	if h.reg == nil { // claimed only for registered workflows; never expected
+		c.release(h, time.Time{}, "queued")
+		return
+	}
+	job := workflow.Job{Workflow: h.wf, Payload: h.payload, Labels: h.labels, Priority: h.priority, Retry: h.retry, Queue: h.queue}
+	if h.reclaims > c.maxReclaims {
+		times := "times"
+		if h.reclaims == 1 {
+			times = "time"
+		}
+		// Through the failure path, as sqlstore does: OnFailure runs with
+		// the input of the step the dead workers were running (ErrAbandoned
+		// is no timeout, so never OnTimeout).
+		step, in := c.current(h, job)
+		c.fail(h, step, in, fmt.Errorf("%w: its lease expired %d %s in a row (WithMaxReclaims %d)", ErrAbandoned, h.reclaims, times, c.maxReclaims))
+		return
+	}
+	for rounds := 0; ; rounds++ {
+		if c.gone(h) {
+			return
+		}
+		if rounds > 0 && c.held(h) {
+			c.release(h, time.Time{}, "queued") // paused meanwhile: the next steps wait
+			return
+		}
+		now := c.clk.Now()
+		if c.pastDeadline(h, now) {
+			step, in := c.current(h, job)
+			c.fail(h, step, in, c.runTimeoutErr(h))
+			return
+		}
+		p, err := c.plan(h, job, now)
+		if err != nil {
+			if !errors.Is(err, errLost) {
+				c.log.Error("redis: begin a wait step (the run is handed back)", "run", h.id, "error", err)
+				c.release(h, time.Time{}, "queued")
+			}
+			return
+		}
+		switch {
+		case p.timedOut != nil:
+			c.fail(h, p.timedOut.step, p.timedOut.in, p.timedOut.err)
+			return
+		case p.withdrawn != nil:
+			c.fail(h, p.withdrawn.step, p.withdrawn.in, p.withdrawn.err)
+			return
+		case p.all:
+			c.finish(h, workflow.StatusSucceeded, "", nil)
+			return
+		case len(p.ready) == 0:
+			status, due := "queued", p.wake
+			switch {
+			case c.retrying(h, now):
+				status = string(workflow.StatusRetrying)
+			case p.waiting || c.sleeping(h, now) || c.snoozed(h, now):
+				status = string(workflow.StatusWaiting)
+			}
+			if due.IsZero() && p.waiting {
+				c.park(h, status)
+				return
+			}
+			c.release(h, due, status)
+			return
+		}
+		if ended := c.round(h, job, p.ready, now); ended {
+			return
+		}
+	}
+}

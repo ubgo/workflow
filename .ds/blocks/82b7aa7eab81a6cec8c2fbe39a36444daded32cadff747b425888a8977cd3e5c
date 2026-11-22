@@ -1,0 +1,5 @@
+func (s *store) inboxMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(InboxMigrationOwner), Name: "001_inbox", Script: s.script(s.render(inboxDefs(typesFor(s.engine))))},
+	}
+}

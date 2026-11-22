@@ -1,0 +1,37 @@
+func (c *Client) RunGroup(ctx context.Context, group string, jobs []workflow.Job) ([]workflow.RunRef, error) {
+	runs := make([]preparedRun, len(jobs))
+	for i, job := range jobs {
+		if !job.RunAt.IsZero() || job.IdempotencyKey != "" {
+			return nil, workflow.Unsupported("Job.RunAt/Job.IdempotencyKey", "group "+group+" job "+fmt.Sprint(i)+" needs Enqueue")
+		}
+		if err := workflow.CheckJobLabels(ctx, job); err != nil {
+			return nil, fmt.Errorf("hatchet driver: group %s job %d: %w", group, i, err)
+		}
+		run, err := c.prepare(job)
+		if err != nil {
+			return nil, fmt.Errorf("hatchet driver: group %s job %d: %w", group, i, err)
+		}
+		runs[i] = run
+	}
+	refs := make([]workflow.RunRef, len(jobs))
+	for _, chunk := range groupChunks(jobs, runs, c.cfg.GroupChunkRuns, c.cfg.GroupChunkBytes) {
+		inputs := make([]hatchetsdk.RunManyOpt, len(chunk))
+		for k, i := range chunk {
+			inputs[k] = hatchetsdk.RunManyOpt{Input: runs[i].input, Opts: runs[i].runOptions()}
+		}
+		got, err := runs[chunk[0]].hw.RunMany(ctx, inputs)
+		if err == nil && len(got) != len(chunk) {
+			err = fmt.Errorf("engine returned %d runs for %d", len(got), len(chunk))
+		}
+		if err != nil {
+			return refs, engineErr(err, "group %s: run %d jobs of %q", group, len(chunk), jobs[chunk[0]].Workflow)
+		}
+		for k, i := range chunk {
+			refs[i] = workflow.RunRef{RunID: workflow.RunID(got[k].RunId)}
+		}
+		if c.afterChunk != nil {
+			c.afterChunk()
+		}
+	}
+	return refs, nil
+}

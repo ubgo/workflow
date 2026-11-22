@@ -1,0 +1,11 @@
+func runClaimToken(ctx context.Context) string {
+	info, ok := workflow.StepInfoFrom(ctx)
+	if !ok {
+		return ""
+	}
+	token := info.Labels[ClaimCheckLabel]
+	if validClaimKey(token) != nil {
+		return ""
+	}
+	return token
+}

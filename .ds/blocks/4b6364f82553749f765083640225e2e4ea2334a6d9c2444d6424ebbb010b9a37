@@ -1,0 +1,13 @@
+type ArchiveQuery struct {
+	// Workflow and Tenant keep only the runs of that workflow or tenant.
+	Workflow string
+	Tenant   string
+
+	// Limit is the page size: zero means workflow.DefaultRunsLimit, more
+	// than workflow.MaxRunsLimit is refused.
+	Limit int
+
+	// Cursor is the Next of the previous page; empty starts at the oldest
+	// run.
+	Cursor string
+}

@@ -1,0 +1,17 @@
+type BulkResult struct {
+	// Matched is how many runs the filter matched, up to the bound.
+	Matched int
+	// Done is how many runs were retried or deleted; zero on a dry run.
+	Done int
+	// Skipped is how many matched runs were left alone because they
+	// changed between the listing and the action: no longer in a state
+	// the action accepts (workflow.ErrWrongState), gone
+	// (workflow.ErrNotFound), or, for a retry, their idempotency key held
+	// by another unfinished run (workflow.ErrDuplicate).
+	Skipped int
+	// Truncated is true when more runs match than the bound: repeat the
+	// call for the rest.
+	Truncated bool
+	// Sample is the first BulkSample matched refs, newest first.
+	Sample []workflow.RunRef
+}

@@ -1,0 +1,7 @@
+func AwaitChild(ctx context.Context, client Client, name string, job Job, opts ChildOptions) ([]byte, error) {
+	outs, err := AwaitChildren(ctx, client, name, []Job{job}, opts)
+	if err != nil {
+		return nil, err
+	}
+	return outs[0], nil
+}

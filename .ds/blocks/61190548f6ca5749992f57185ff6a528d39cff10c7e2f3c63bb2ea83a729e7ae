@@ -1,0 +1,18 @@
+func (r *Relay) loop(ctx context.Context) {
+	defer close(r.done)
+	for {
+		wake := r.wakeCh()
+		if _, err := r.Flush(ctx); err != nil && ctx.Err() == nil {
+			r.o.log.Error("outbox: relay pass failed", "error", err)
+		}
+		poll := r.o.clk.NewTimer(r.poll)
+		select {
+		case <-ctx.Done():
+			poll.Stop()
+			return
+		case <-wake:
+		case <-poll.C():
+		}
+		poll.Stop()
+	}
+}

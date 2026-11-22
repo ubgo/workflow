@@ -8,10 +8,14 @@ import (
 
 // ErrSnoozed matches the error of a step that snoozed (Snooze), for code
 // that inspects an attempt's outcome, such as a lifecycle observer.
+//
+//ds:def id=errsnoozed-3x74fmpm owner=@khanakia stability=stable
 var ErrSnoozed = errors.New("workflow: step snoozed")
 
 // MaxSnooze bounds one snooze, so a bug that computes a huge delay cannot
 // park a run for years. A longer delay is cut to it.
+//
+//ds:def id=maxsnooze-jzy97vu4 owner=@khanakia stability=stable
 const MaxSnooze = 30 * 24 * time.Hour
 
 // snoozeError carries the delay of a snooze.
@@ -33,12 +37,16 @@ func (s *snoozeError) Is(target error) bool { return target == ErrSnoozed }
 // zero (run again as soon as a worker is free); a d over MaxSnooze is
 // MaxSnooze. A driver without CapSnooze treats it as an ordinary error, so
 // it spends an attempt: check the capability when that matters.
+//
+//ds:def id=snooze-mcp3r4p7 owner=@khanakia stability=stable
 func Snooze(d time.Duration) error {
 	return &snoozeError{d: min(max(d, 0), MaxSnooze)}
 }
 
 // SnoozeDelay reports whether err, or any error it wraps, is a Snooze, and
 // its delay.
+//
+//ds:def id=snoozedelay-hpbukddn owner=@khanakia stability=stable
 func SnoozeDelay(err error) (time.Duration, bool) {
 	var s *snoozeError
 	if errors.As(err, &s) {

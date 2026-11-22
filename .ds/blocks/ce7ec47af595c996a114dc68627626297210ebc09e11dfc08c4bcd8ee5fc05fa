@@ -1,0 +1,15 @@
+type Branch struct {
+	// Name identifies the branch; Decide returns it. Unique within the
+	// Choice.
+	Name string
+
+	// Run is the branch's work. It receives the input the decide step
+	// received, and its output becomes the Choice's output.
+	Run Handler
+
+	// Retry overrides the workflow default for this branch, as Step.Retry.
+	Retry *RetryPolicy
+
+	// Timeout caps one attempt of this branch, as Step.Timeout.
+	Timeout time.Duration
+}

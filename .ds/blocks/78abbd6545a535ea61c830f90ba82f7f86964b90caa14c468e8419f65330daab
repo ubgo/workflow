@@ -1,0 +1,8 @@
+func (h *webhook) fail(ctx context.Context, w http.ResponseWriter, err error) {
+	h.cfg.Logger.ErrorContext(ctx, "webhook: enqueue failed", slog.Any("err", err))
+	if errors.Is(err, workflow.ErrUnavailable) || errors.Is(err, workflow.ErrInboxBusy) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	http.Error(w, "internal error", http.StatusInternalServerError)
+}

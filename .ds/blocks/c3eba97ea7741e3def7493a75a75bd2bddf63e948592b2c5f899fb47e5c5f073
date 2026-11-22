@@ -1,0 +1,42 @@
+func (c *Client) queueArgs() []any {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.queueCfg) == 0 {
+		return []any{"all", 0}
+	}
+	byPrio := map[int][]workflow.QueueConfig{}
+	for name, q := range c.queueCfg {
+		if q.Workers > 0 && c.heldQ[name] >= q.Workers {
+			continue
+		}
+		byPrio[q.Priority] = append(byPrio[q.Priority], q)
+	}
+	var out []any
+	n := 0
+	for prio, qs := range byPrio {
+		sort.Slice(qs, func(i, j int) bool { return qs[i].Name < qs[j].Name })
+		weighted := false
+		for _, q := range qs {
+			weighted = weighted || q.Weight > 0
+		}
+		if !weighted {
+			for _, q := range qs {
+				out = append(out, q.Name, prio, 0)
+				n++
+			}
+			continue
+		}
+		rest := slices.Clone(qs)
+		for rank := 0; len(rest) > 0; rank++ {
+			ws := make([]int, len(rest))
+			for i, q := range rest {
+				ws[i] = q.Weight
+			}
+			i := workflow.PickWeighted(ws, c.draw())
+			out = append(out, rest[i].Name, prio, rank)
+			n++
+			rest = slices.Delete(rest, i, i+1)
+		}
+	}
+	return append([]any{"some", n}, out...)
+}

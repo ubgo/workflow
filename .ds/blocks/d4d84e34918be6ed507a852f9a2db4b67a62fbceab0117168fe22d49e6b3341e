@@ -1,0 +1,1 @@
+	ErrWrongState = errors.New("workflow: run is in the wrong state for this call")

@@ -11,14 +11,20 @@ import (
 
 // DefaultMapInFlight is how many child runs MapRuns keeps running at once
 // when MapRunsOptions.InFlight is zero.
+//
+//ds:def id=defaultmapinflight-nngs8xvm owner=@khanakia stability=stable
 const DefaultMapInFlight = 10
 
 // DefaultMapKeepFailed is how many failed children MapRunsResult lists
 // when MapRunsOptions.KeepFailed is zero.
+//
+//ds:def id=defaultmapkeepfailed-pszz2thj owner=@khanakia stability=stable
 const DefaultMapKeepFailed = 100
 
 // MapUnlimitedFailures as MapRunsOptions.MaxFailures tolerates any number
 // of failed items.
+//
+//ds:def id=mapunlimitedfailures-s5r92k9m owner=@khanakia stability=stable
 const MapUnlimitedFailures = -1
 
 // MapPage is one page of items a MapRuns source returns.
@@ -34,6 +40,8 @@ type MapPage[T any] struct {
 }
 
 // MapRunsOptions tunes MapRuns.
+//
+//ds:def id=maprunsoptions-mg733853 owner=@khanakia stability=stable
 type MapRunsOptions struct {
 	// InFlight is how many child runs are kept running at once; zero
 	// means DefaultMapInFlight.
@@ -56,6 +64,8 @@ type MapRunsOptions struct {
 }
 
 // MapRunsResult counts what a finished map did.
+//
+//ds:def id=maprunsresult-jus3jnwu owner=@khanakia stability=stable
 type MapRunsResult struct {
 	// Started, Succeeded and Failed count child runs; Failed counts every
 	// end other than success.
@@ -75,6 +85,8 @@ type MapFailure struct {
 
 // MapRunsError is the Permanent error of a map that passed MaxFailures;
 // Result is how far it got.
+//
+//ds:def id=maprunserror-6agjduvk owner=@khanakia stability=stable
 type MapRunsError struct {
 	Name   string
 	Result MapRunsResult
@@ -127,6 +139,8 @@ type mapChild struct {
 // stops a map from outside. When failures pass MaxFailures the children
 // still running are cancelled (on a client with CapCancel) and the map
 // fails with a Permanent *MapRunsError.
+//
+//ds:def id=mapruns-etngp9jc owner=@khanakia stability=stable
 func MapRuns[T any](ctx context.Context, client Client, name string,
 	page func(ctx context.Context, cursor string) (MapPage[T], error),
 	job func(index int, item T) (Job, error), opts MapRunsOptions) (MapRunsResult, error) {

@@ -1,0 +1,4 @@
+func (o *Outbox) triggerInsert(spec TriggerSpec, id, payload, key, now string) string {
+	return "INSERT INTO " + o.table + " (" + insertColumns + ") VALUES (" + id + ", '" + spec.Workflow + "', " + payload + ", '{}', " + key + ", " +
+		strconv.Itoa(spec.Priority) + ", 0, '" + statusPending + "', 0, 0, 0, " + now + ")"
+}

@@ -321,14 +321,41 @@ func TestNewOpensNothing(t *testing.T) {
 	}
 }
 
+// TestDelayedKeyAndZoneRefusals pins when a delayed start with an
+// idempotency key is taken (the workflow has a delayed variant, this
+// client registered it, RunAt within IdempotencyMaxHold) and when it is
+// refused with an UnsupportedError naming Job.IdempotencyKey, the names
+// the variant reserves, plus the zone refusal.
 func TestDelayedKeyAndZoneRefusals(t *testing.T) {
-	at := time.Unix(1, 0)
+	now := time.Unix(1_000_000, 0)
+	at := now.Add(time.Hour)
+	const hold = 24 * time.Hour
+	plain := workflow.Workflow{Name: "w"}
 	var ue *workflow.UnsupportedError
-	if err := checkDelayedKey("k", at); !errors.As(err, &ue) || ue.Field != "Job.IdempotencyKey" {
-		t.Fatalf("key with RunAt: err = %v, want UnsupportedError naming Job.IdempotencyKey", err)
+	if err := checkDelayedKey(plain, true, "k", at, now, hold); err != nil {
+		t.Fatalf("key with RunAt on a gated workflow: err = %v, want it taken", err)
 	}
-	if checkDelayedKey("k", time.Time{}) != nil || checkDelayedKey("", at) != nil {
+	refused := map[string]error{
+		"concurrency":   checkDelayedKey(workflow.Workflow{Name: "w", Concurrency: &workflow.Concurrency{MaxRuns: 1, Key: workflow.KeyExpr(`"a"`)}}, true, "k", at, now, hold),
+		"unregistered":  checkDelayedKey(plain, false, "k", at, now, hold),
+		"past max hold": checkDelayedKey(plain, true, "k", now.Add(hold+time.Second), now, hold),
+	}
+	for name, err := range refused {
+		if !errors.As(err, &ue) || ue.Field != "Job.IdempotencyKey" {
+			t.Errorf("%s: err = %v, want UnsupportedError naming Job.IdempotencyKey", name, err)
+		}
+	}
+	if checkDelayedKey(plain, false, "k", time.Time{}, now, hold) != nil || checkDelayedKey(plain, false, "", at, now, hold) != nil {
 		t.Fatal("a key alone or a RunAt alone was refused")
+	}
+	if !hasStartGate(plain) || hasStartGate(workflow.Workflow{Idempotency: workflow.IdempotencyOff}) || hasStartGate(workflow.Workflow{Concurrency: &workflow.Concurrency{MaxRuns: 1}}) {
+		t.Fatal("hasStartGate: want a gate on a plain workflow only, none with IdempotencyOff or a Concurrency")
+	}
+	if err := checkSupported(workflow.Workflow{Name: "w", Steps: []workflow.Step{{Name: startGateTask, Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}}}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("a step named %q: err = %v, want ErrInvalid", startGateTask, err)
+	}
+	if err := checkSupported(workflow.Workflow{Name: delayedName("w"), Steps: []workflow.Step{{Name: "a", Run: func(context.Context, []byte) ([]byte, error) { return nil, nil }}}}); !errors.Is(err, workflow.ErrInvalid) {
+		t.Fatalf("a workflow named %q: err = %v, want ErrInvalid", delayedName("w"), err)
 	}
 	kolkata := time.FixedZone("Asia/Kolkata", 5*3600+1800)
 	if err := checkScheduleZone(kolkata); !errors.As(err, &ue) || ue.Field != "Schedule.Location" {

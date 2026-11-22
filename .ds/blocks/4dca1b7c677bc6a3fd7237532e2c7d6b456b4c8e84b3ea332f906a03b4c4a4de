@@ -1,0 +1,18 @@
+func (f *Fake) Signal(ctx context.Context, ev workflow.Event) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.mu.Lock()
+	if !f.started {
+		f.mu.Unlock()
+		return workflow.ErrNotStarted
+	}
+	rec := ev
+	rec.Payload = bytes.Clone(ev.Payload)
+	f.signals = append(f.signals, rec)
+	f.mu.Unlock()
+	if f.inner != nil {
+		return f.inner.Signal(ctx, ev)
+	}
+	return nil
+}

@@ -1,0 +1,21 @@
+func (c *Client) SetWorkers(ctx context.Context, queue string, n int) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if n < 1 {
+		return fmt.Errorf("%w: queue %q: %d workers; a queue keeps at least one", workflow.ErrInvalid, queue, n)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return err
+	}
+	q, ok := c.queues[queue]
+	if !ok {
+		return fmt.Errorf("%w: queue %q is not one of this client's queues (WithQueues)", workflow.ErrNotFound, queue)
+	}
+	q.Workers = n
+	c.queues[queue] = q
+	c.taskCond.Broadcast()
+	return nil
+}

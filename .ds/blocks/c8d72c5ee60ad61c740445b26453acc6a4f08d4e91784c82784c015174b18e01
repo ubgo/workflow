@@ -1,0 +1,6 @@
+func (s *store) owner(base string) string {
+	if s.schema == "" {
+		return base
+	}
+	return base + "@" + s.schema
+}

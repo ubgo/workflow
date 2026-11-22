@@ -1,0 +1,35 @@
+func (c *Client) CancelStep(ctx context.Context, ref workflow.RunRef, step string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, err := c.lookupLocked(ref)
+	if err != nil {
+		return err
+	}
+	if _, ok := r.reg.steps[step]; !ok {
+		return fmt.Errorf("%w: run %+v has no step %q", workflow.ErrNotFound, ref, step)
+	}
+	if r.status.IsTerminal() {
+		return fmt.Errorf("%w: run %+v has ended", workflow.ErrWrongState, ref)
+	}
+	if cancel, ok := r.running[step]; ok {
+		if r.cancelled == nil {
+			r.cancelled = map[string]bool{}
+		}
+		r.cancelled[step] = true
+		cancel(workflow.ErrStepCancelled)
+		return nil
+	}
+	if r.parked[step] {
+		delete(r.parked, step)
+		c.wg.Add(1)
+		go func() { // never send to the coordinator under the lock
+			defer c.wg.Done()
+			c.send(r, runEvent{step: step, kind: evStepCancel})
+		}()
+		return nil
+	}
+	return fmt.Errorf("%w: step %q of run %+v is not running", workflow.ErrWrongState, step, ref)
+}

@@ -1,0 +1,11 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJobLabels(ctx, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.enqueueLocked(ctx, job)
+}

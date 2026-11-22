@@ -1,0 +1,11 @@
+func failureCause(msg, kind string) error {
+	if kind == failAbandoned {
+		return storedAbandoned(msg)
+	}
+	for _, k := range timeoutKinds {
+		if k.kind == kind {
+			return storedTimeout{msg: msg, kind: k.sentinel}
+		}
+	}
+	return storedError(msg)
+}

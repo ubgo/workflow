@@ -1,0 +1,7 @@
+func WithClassifier(c Classifier) Option {
+	return func(f *Client) {
+		if c != nil {
+			f.classify = c
+		}
+	}
+}

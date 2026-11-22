@@ -1,0 +1,4 @@
+type MemoryAggregate struct {
+	mu     sync.Mutex
+	groups map[string]*memGroup
+}

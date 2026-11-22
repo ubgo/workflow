@@ -1,0 +1,12 @@
+func (a *Admin) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
+	if err := a.check(OpForkRun); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if ref.IsZero() {
+		return workflow.RunRef{}, fmt.Errorf("%w: admin: run ref is empty", workflow.ErrInvalid)
+	}
+	if err := workflow.CheckFork(step, opts); err != nil {
+		return workflow.RunRef{}, err
+	}
+	return a.c.(workflow.RunForker).ForkRun(ctx, ref, step, opts)
+}

@@ -1,0 +1,10 @@
+type Transition struct {
+	From, To Status
+
+	// Trigger says what causes the move, in a few words.
+	Trigger string
+
+	// Needs is every capability the driver must declare for the move to be
+	// reported; zero means any driver.
+	Needs Caps
+}

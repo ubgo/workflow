@@ -1,0 +1,14 @@
+func (a *Admin) RetryAll(ctx context.Context, q workflow.RunQuery, opts BulkOptions) (BulkResult, error) {
+	if err := a.check(OpRetryAll); err != nil {
+		return BulkResult{}, err
+	}
+	if len(q.Statuses) > 0 && !slices.Equal(q.Statuses, retryStatuses) {
+		return BulkResult{}, fmt.Errorf("%w: admin: retry_all acts on failed runs only; leave statuses empty or [failed]", workflow.ErrInvalid)
+	}
+	q.Statuses = retryStatuses
+	rt := a.c.(workflow.RunRetrier)
+	return a.bulk(ctx, q, opts, func(ctx context.Context, ref workflow.RunRef) error {
+		_, err := rt.Retry(ctx, ref)
+		return err
+	})
+}

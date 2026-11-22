@@ -1,0 +1,39 @@
+func NewReplay(fn ReplayFunc, opts ReplayOptions) (Handler, error) {
+	if fn == nil {
+		return nil, invalidf("NewReplay needs a function")
+	}
+	if opts.Client != nil && !opts.Client.Capabilities().Has(CapSnooze) {
+		return nil, &UnsupportedError{Field: "NewReplay", Missing: CapSnooze, Reason: "a replayed wait suspends the step with a snooze"}
+	}
+	if opts.Clock == nil {
+		opts.Clock = clock.Real{}
+	}
+	if opts.Poll <= 0 {
+		opts.Poll = DefaultPromisePoll
+	}
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		j, err := journalFrom(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rc := &ReplayCtx{ctx: ctx, j: j, opts: opts, prefix: strconv.Itoa(len(j.step)) + ":" + j.step + "#replay/"}
+		out, err := fn(rc, in)
+		if rc.suspend != nil {
+			return nil, rc.suspend // whatever fn returned after a wait suspended it
+		}
+		if rc.fault != nil {
+			return nil, rc.fault
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Recorded calls past the last one the code made: the code took a
+		// shorter path than the recorded run did.
+		if e, ok, err := rc.load(rc.pos); err != nil {
+			return nil, err
+		} else if ok {
+			return nil, Permanent(&NondeterminismError{Position: rc.pos, Recorded: e.Kind + " " + e.Name})
+		}
+		return out, nil
+	}, nil
+}

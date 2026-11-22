@@ -14,6 +14,8 @@ var _ workflow.RunEditor = (*Client)(nil)
 // start (see workflow.RunEditor). The payload limit of WithPayloadLimit
 // applies to a new payload; the concurrency and rate keys are computed
 // from it when the run is admitted, as for any run.
+//
+//ds:def id=memory-client-editrun-3afh5vbv owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

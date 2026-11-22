@@ -1,0 +1,8 @@
+func ContinuedFrom(ctx context.Context) (RunID, bool) {
+	info, ok := StepInfoFrom(ctx)
+	if !ok {
+		return "", false
+	}
+	id, ok := info.Labels[LabelContinuedFrom]
+	return RunID(id), ok && id != ""
+}

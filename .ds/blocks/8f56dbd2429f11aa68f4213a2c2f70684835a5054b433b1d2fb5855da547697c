@@ -1,0 +1,3 @@
+func (s *DebounceStore) PruneExpired(ctx context.Context) (int64, error) {
+	return s.st.execN(ctx, s.st.db, "DELETE FROM {debounce} WHERE run_at <= ?", s.clk.Now().UnixNano())
+}

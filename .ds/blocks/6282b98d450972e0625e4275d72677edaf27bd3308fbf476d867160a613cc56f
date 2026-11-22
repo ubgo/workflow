@@ -1,0 +1,4 @@
+func CapsOf(cs ...Caps) Caps {
+	var c Caps
+	return c.With(cs...)
+}

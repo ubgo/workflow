@@ -1,0 +1,13 @@
+func (i *Instrumentation) labelAttrs(labels map[string]string) []attribute.KeyValue {
+	if len(labels) == 0 || i.labels == nil {
+		return nil
+	}
+	out := make([]attribute.KeyValue, 0, len(labels))
+	for k, v := range labels {
+		if strings.HasPrefix(k, LabelPrefix) || !i.labels(k) {
+			continue
+		}
+		out = append(out, attribute.String(LabelAttributePrefix+k, v))
+	}
+	return out
+}

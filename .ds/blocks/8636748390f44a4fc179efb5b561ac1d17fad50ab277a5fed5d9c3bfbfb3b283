@@ -1,0 +1,18 @@
+func New(c workflow.Client, opts ...Option) *Admin {
+	a := &Admin{c: c}
+	for _, o := range opts {
+		if o != nil {
+			o(a)
+		}
+	}
+	if a.clk == nil {
+		a.clk = clock.Real{}
+	}
+	if a.maxScan <= 0 {
+		a.maxScan = DefaultMaxScan
+	}
+	if a.maxBulk <= 0 {
+		a.maxBulk = DefaultMaxBulk
+	}
+	return a
+}

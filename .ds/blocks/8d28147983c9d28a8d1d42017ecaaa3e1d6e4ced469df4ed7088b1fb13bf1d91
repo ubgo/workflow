@@ -1,0 +1,68 @@
+func TestEnqueueTxIdempotency(t *testing.T) {
+	for _, e := range engines(t) {
+		t.Run(e.name, func(t *testing.T) {
+			ctx := context.Background()
+			c, db, orders, runs := txSetup(t, e, workflow.IdempotencyOptional)
+			job := workflow.Job{Workflow: "ship", IdempotencyKey: "order-1"}
+
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = tx.Rollback() }) // a no-op after Commit; frees locks when a check fails first
+			first, err := c.EnqueueTx(ctx, tx, job)
+			if err != nil {
+				t.Fatalf("EnqueueTx: %v", err)
+			}
+			again, err := c.EnqueueTx(ctx, tx, job)
+			if err != nil {
+				t.Fatalf("EnqueueTx with the key held in tx: %v", err)
+			}
+			if again != first {
+				t.Fatalf("same key in one tx: %+v, want %+v", again, first)
+			}
+			if _, err := tx.Exec("INSERT INTO " + orders + " (id) VALUES ('after-duplicate')"); err != nil {
+				t.Fatalf("the duplicate aborted the caller's tx: %v", err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("commit after a duplicate: %v", err)
+			}
+			var n int
+			if err := db.QueryRow("SELECT COUNT(*) FROM " + orders).Scan(&n); err != nil || n != 1 {
+				t.Fatalf("app rows after commit = %d (%v), want 1", n, err)
+			}
+
+			// A committed holder: a second transaction gets the same run. The
+			// job starts in an hour, so the run cannot finish (and release
+			// the key) while the test runs.
+			tx2, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = tx2.Rollback() }) // a no-op after Commit; frees locks when a check fails first
+			later := workflow.Job{Workflow: "ship", IdempotencyKey: "order-2", RunAt: time.Now().Add(time.Hour)}
+			held, err := c.Enqueue(ctx, later)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := c.EnqueueTx(ctx, tx2, later)
+			if err != nil {
+				t.Fatalf("EnqueueTx with a committed holder: %v", err)
+			}
+			if err := tx2.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			if second != held || second.ScheduledID.IsZero() {
+				t.Fatalf("key held by a committed run: %+v, want %+v", second, held)
+			}
+			c.Wake()
+			waitFor(t, 5*time.Second, "the in-tx keyed run to succeed", func() bool {
+				st, err := c.Status(ctx, first)
+				return err == nil && st == workflow.StatusSucceeded
+			})
+			if n := runs.Load(); n != 1 {
+				t.Fatalf("one keyed run executed %d times", n)
+			}
+		})
+	}
+}

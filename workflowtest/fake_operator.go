@@ -26,6 +26,8 @@ type FakeForce struct {
 // It needs CapScheduleTrigger and obeys OverlapSkip against the run the
 // previous trigger made (use Finish to end it). An unscheduled or unknown
 // id goes to the pass-through client, or is ErrNotFound without one.
+//
+//ds:def id=workflowtest-fake-triggerschedule-vyn8s5ke owner=@khanakia stability=stable
 func (f *Fake) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -78,6 +80,8 @@ func (f *Fake) scheduleIndexLocked(id workflow.ScheduleID) int {
 // (ErrWrongState otherwise) and needs CapForceRun. The Fake runs no
 // chain, so a chained job is not enqueued. A ref the Fake did not issue
 // goes to the pass-through client, or is ErrNotFound without one.
+//
+//ds:def id=workflowtest-fake-forcecomplete-xxhh3rdm owner=@khanakia stability=stable
 func (f *Fake) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
 	return f.force(ctx, ref, FakeForce{Ref: ref, Complete: true})
 }
@@ -89,6 +93,7 @@ func (f *Fake) ForceFail(ctx context.Context, ref workflow.RunRef, reason string
 	return f.force(ctx, ref, FakeForce{Ref: ref, Reason: reason})
 }
 
+//ds:def id=workflowtest-fake-force-2mafef4c owner=@khanakia stability=stable
 func (f *Fake) force(ctx context.Context, ref workflow.RunRef, rec FakeForce) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -143,6 +148,8 @@ func (f *Fake) Forced() []FakeForce {
 }
 
 // AssertTriggered fails t unless schedule id was triggered.
+//
+//ds:def id=workflowtest-fake-asserttriggered-a8bw2mfz owner=@khanakia stability=stable
 func (f *Fake) AssertTriggered(t testing.TB, id workflow.ScheduleID) {
 	t.Helper()
 	for _, got := range f.Triggers() {
@@ -155,6 +162,8 @@ func (f *Fake) AssertTriggered(t testing.TB, id workflow.ScheduleID) {
 
 // AssertForced fails t unless ref was force-completed (complete true) or
 // force-failed (complete false).
+//
+//ds:def id=workflowtest-fake-assertforced-dgc9quek owner=@khanakia stability=stable
 func (f *Fake) AssertForced(t testing.TB, ref workflow.RunRef, complete bool) {
 	t.Helper()
 	for _, got := range f.Forced() {

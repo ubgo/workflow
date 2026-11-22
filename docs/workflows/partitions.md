@@ -4,13 +4,13 @@ A backfill of last month's totals is one job made of thirty days; a nightly sync
 
 ## Before you start
 
-- `workflow.EnqueuePartitions` gives each run an idempotency key, so it needs `workflow.CapIdempotencyKey`, which every driver declares; a client without it is refused with an `*workflow.UnsupportedError` unless the set has `AllowDuplicates: true`.
-- `workflow.PartitionStatus` and `workflow.RetryFailedPartitions` read the run listing, so they need `workflow.CapRunQuery` and a client implementing `workflow.RunQuerier`; without them they refuse with an `*workflow.UnsupportedError` (field `PartitionStatus`, missing `CapRunQuery`).
+- [`workflow.EnqueuePartitions`](ds:block?id=enqueuepartitions-h5gbqfcb) gives each run an idempotency key, so it needs [`workflow.CapIdempotencyKey`](ds:block?id=capidempotencykey-5wcqqwy8), which every driver declares ([memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t), [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z)); a client without it is refused with an `*workflow.UnsupportedError` unless the set has `AllowDuplicates: true` ([`checkPartitionSet`](ds:block?id=checkpartitionset-psguru6z)).
+- [`workflow.PartitionStatus`](ds:block?id=partitionstatus-6rn6e7q5) and [`workflow.RetryFailedPartitions`](ds:block?id=retryfailedpartitions-wumd58gv) read the run listing, so they need [`workflow.CapRunQuery`](ds:block?id=caprunquery-7pyv7hv3) and a client implementing `workflow.RunQuerier`; without them they refuse with an `*workflow.UnsupportedError` (field `PartitionStatus`, missing `CapRunQuery`).
 - The example is [`examples/partitioned-runs`](../../examples/partitioned-runs). Run it with `go run ./partitioned-runs` from `examples/`.
 
 ## Start one run per partition
 
-A `workflow.PartitionSet` names the set and the workflow every partition runs; `EnqueuePartitions(ctx, client, set, keys)` starts one run per key and returns their `RunRef`s in the order of `keys`:
+A [`workflow.PartitionSet`](ds:block?id=partitionset-7944khcx) names the set and the workflow every partition runs; [`EnqueuePartitions(ctx, client, set, keys)`](ds:block?id=enqueuepartitions-h5gbqfcb) starts one run per key and returns their `RunRef`s in the order of `keys`:
 
 <!-- snippet: examples/partitioned-runs/main.go#enqueue -->
 ```go
@@ -21,15 +21,15 @@ if err != nil {
 }
 ```
 
-Each run's payload is its key as a JSON string, so the step reads `"2026-11-01"`. Set `PartitionSet.Job` instead to build each job from its key (a payload of your own shape, a queue, a tenant, a priority); a job it returns without a `Workflow` runs the set's. Inside a step, `workflow.PartitionOf(ctx)` returns the run's set and key whatever the payload.
+Each run's payload is its key as a JSON string ([`enqueuePartition`](ds:block?id=enqueuepartition-z9fhqc5s)), so the step reads `"2026-11-01"`. Set `PartitionSet.Job` instead to build each job from its key (a payload of your own shape, a queue, a tenant, a priority); a job it returns without a `Workflow` runs the set's. Inside a step, [`workflow.PartitionOf(ctx)`](ds:block?id=partitionof-zxdukbq3) returns the run's set and key whatever the payload.
 
-The set's `Name` must be stable across deploys and unique among the sets on one client: it is part of every run's idempotency key and the label the status is read by. A set without a `Name`, with neither `Workflow` nor `Job`, or with an empty or repeated key is refused with `workflow.ErrInvalid` before anything is enqueued. Every key is tried even when one fails to start: the error joins each failure, naming its key, and that key's `RunRef` is zero.
+The set's `Name` must be stable across deploys and unique among the sets on one client: it is part of every run's idempotency key and the label the status is read by. A set without a `Name`, with neither `Workflow` nor `Job`, or with an empty or repeated key is refused with `workflow.ErrInvalid` before anything is enqueued ([`EnqueuePartitions`](ds:block?id=enqueuepartitions-h5gbqfcb), [`checkPartitionSet`](ds:block?id=checkpartitionset-psguru6z)). Every key is tried even when one fails to start: the error joins each failure, naming its key, and that key's `RunRef` is zero.
 
-Every run carries two labels under the reserved internal prefix `ubgo.workflow/`: `workflow.LabelPartitionSet`, the set's name, and `workflow.LabelPartitionKey`, the key. `EnqueuePartitions` sets them itself, overwriting any value the job carried, and allows only these two keys on its own `Enqueue`, so on a driver that enforces `workflow.CheckJobLabels` a public `Enqueue` cannot forge a partition run and skew the set's status; like every reserved label they are a guard, not a sandbox. Reserved labels in a job `PartitionSet.Job` returns fail that key with `ErrInvalid`.
+Every run carries two labels under the reserved internal prefix `ubgo.workflow/`: [`workflow.LabelPartitionSet`](ds:block?id=labelpartitionset-umkwv73t), the set's name, and [`workflow.LabelPartitionKey`](ds:block?id=labelpartitionkey-ysc6y8xw), the key. `EnqueuePartitions` sets them itself, overwriting any value the job carried ([`enqueuePartition`](ds:block?id=enqueuepartition-z9fhqc5s)), and allows only these two keys on its own `Enqueue`, so on a driver that enforces `workflow.CheckJobLabels` a public `Enqueue` cannot forge a partition run and skew the set's status; like every reserved label they are a guard, not a sandbox. Reserved labels in a job `PartitionSet.Job` returns fail that key with `ErrInvalid`.
 
 ## Run a backfill again safely
 
-Each run's idempotency key is `workflow.PartitionKey(workflow, set, key)`: `partition/<workflow>/<set>/<key>`, each part path-escaped. Enqueueing the set again, after a crash halfway through or a timeout, returns the runs of partitions still unfinished instead of starting them twice, and starts the partitions that never started:
+Each run's idempotency key is [`workflow.PartitionKey(workflow, set, key)`](ds:block?id=partitionkey-84t3xsxm): `partition/<workflow>/<set>/<key>`, each part path-escaped. Enqueueing the set again, after a crash halfway through or a timeout, returns the runs of partitions still unfinished instead of starting them twice, and starts the partitions that never started:
 
 <!-- snippet: examples/partitioned-runs/main.go#again -->
 ```go
@@ -45,11 +45,11 @@ if err != nil {
 fmt.Printf("  same runs: %v\n", first[0] == again[0] && first[1] == again[1])
 ```
 
-An idempotency key guards only while its run is unfinished, so a partition whose run has ended, failed or succeeded, starts afresh when it is enqueued again. To fill only the gaps of a set, compare `PartitionStatus` with the keys you expect and enqueue the missing ones. A job that `PartitionSet.Job` gives its own `IdempotencyKey` keeps it.
+An idempotency key guards only while its run is unfinished, so a partition whose run has ended, failed or succeeded, starts afresh when it is enqueued again. To fill only the gaps of a set, compare `PartitionStatus` with the keys you expect and enqueue the missing ones. A job that `PartitionSet.Job` gives its own `IdempotencyKey` keeps it ([`enqueuePartition`](ds:block?id=enqueuepartition-z9fhqc5s)).
 
 ## Read the status of every partition
 
-`workflow.PartitionStatus(ctx, client, set)` reads every page of the run listing filtered by `LabelPartitionSet` and returns the newest run of each partition as a `workflow.PartitionRun` (`Key` and the run's `workflow.RunInfo`), sorted by key:
+[`workflow.PartitionStatus(ctx, client, set)`](ds:block?id=partitionstatus-6rn6e7q5) reads every page of the run listing filtered by `LabelPartitionSet` and returns the newest run of each partition as a [`workflow.PartitionRun`](ds:block?id=partitionrun-czz4h728) (`Key` and the run's `workflow.RunInfo`), sorted by key:
 
 <!-- snippet: examples/partitioned-runs/main.go#status -->
 ```go
@@ -70,7 +70,7 @@ for _, p := range parts {
 
 ## Retry only the failed partitions
 
-`workflow.RetryFailedPartitions(ctx, client, set)` starts a new run for every partition whose newest run ended `StatusFailed`, and returns those keys, sorted, with their new `RunRef`s:
+[`workflow.RetryFailedPartitions(ctx, client, set)`](ds:block?id=retryfailedpartitions-wumd58gv) starts a new run for every partition whose newest run ended `StatusFailed`, and returns those keys, sorted, with their new `RunRef`s:
 
 <!-- snippet: examples/partitioned-runs/main.go#retry -->
 ```go
@@ -108,11 +108,11 @@ per tenant, enqueued twice while running:
 
 ## Pitfalls
 
-- **A set name is an identity.** Two backfills under one name share their status and their idempotency keys; name each one (`totals-backfill-2026-11`).
-- **A finished partition starts again when enqueued again.** The idempotency key only stops a second run while the first is unfinished; use `RetryFailedPartitions` or the gaps of `PartitionStatus` to re-run a part of a set.
-- **The workflow's idempotency policy applies.** A workflow with `Idempotency: workflow.IdempotencyOff` ignores the keys, so enqueueing a set again starts every partition again.
+- **A set name is an identity.** Two backfills under one name share their status and their idempotency keys ([`PartitionKey`](ds:block?id=partitionkey-84t3xsxm)); name each one (`totals-backfill-2026-11`).
+- **A finished partition starts again when enqueued again.** The idempotency key only stops a second run while the first is unfinished; use [`RetryFailedPartitions`](ds:block?id=retryfailedpartitions-wumd58gv) or the gaps of `PartitionStatus` to re-run a part of a set.
+- **The workflow's idempotency policy applies.** A workflow with `Idempotency:` [`workflow.IdempotencyOff`](ds:block?id=idempotencyoff-n73f93jz) ignores the keys, so enqueueing a set again starts every partition again.
 - **Status is as old as the run listing keeps.** With retention, the status of an old set thins out as its runs are removed.
-- **Large sets read every page.** `PartitionStatus` reads the whole listing of the set, newest first, a thousand runs per page; keep a set to the partitions of one job.
+- **Large sets read every page.** [`PartitionStatus`](ds:block?id=partitionstatus-6rn6e7q5) reads the whole listing of the set, newest first, [a thousand runs per page](ds:block?id=maxrunslimit-ycr4zjnb); keep a set to the partitions of one job.
 
 ## Related
 

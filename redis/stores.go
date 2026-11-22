@@ -21,6 +21,8 @@ import (
 // one Lua script.
 
 // storeBase checks rdb and prefix and returns the hash-tagged key base.
+//
+//ds:def id=redis-storebase-5hyngv48 owner=@khanakia stability=stable
 func storeBase(rdb goredis.UniversalClient, prefix string) (string, error) {
 	if rdb == nil {
 		return "", fmt.Errorf("%w: redis: nil Redis client", workflow.ErrInvalid)
@@ -37,6 +39,8 @@ func storeBase(rdb goredis.UniversalClient, prefix string) (string, error) {
 // run. With a TTL each Save also sets the hash to expire that long (wall
 // time, measured by Redis) after its last write, a safety net for runs
 // whose Forget never comes; zero keeps entries until Forget.
+//
+//ds:def id=redis-journalstore-wshcrgdq owner=@khanakia stability=stable
 type JournalStore struct {
 	rdb  goredis.UniversalClient
 	base string
@@ -45,6 +49,8 @@ type JournalStore struct {
 
 // NewJournalStore returns a JournalStore over rdb under prefix, whose
 // entries expire ttl after a run's last Save (zero: never).
+//
+//ds:def id=redis-newjournalstore-y425cr6b owner=@khanakia stability=stable
 func NewJournalStore(rdb goredis.UniversalClient, prefix string, ttl time.Duration) (*JournalStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -99,12 +105,16 @@ func (j *JournalStore) Forget(ctx context.Context, run workflow.RunID) error {
 // clock drives it. Times are stored in microseconds, which a Lua number
 // holds exactly. An idle bucket's key expires once it would have drained
 // to empty, plus a minute.
+//
+//ds:def id=redis-bucketstore-92emr886 owner=@khanakia stability=stable
 type BucketStore struct {
 	rdb  goredis.UniversalClient
 	base string
 }
 
 // NewBucketStore returns a BucketStore over rdb under prefix.
+//
+//ds:def id=redis-newbucketstore-y7qfweb3 owner=@khanakia stability=stable
 func NewBucketStore(rdb goredis.UniversalClient, prefix string) (*BucketStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -138,6 +148,7 @@ redis.call('PEXPIRE', KEYS[1], ARGV[5])
 return 0
 `)
 
+//ds:def id=redis-bucketstore-run-9hrcg8yy owner=@khanakia stability=stable
 func (b *BucketStore) run(ctx context.Context, key string, spec workflow.BucketSpec, v float64, now time.Time, mode string) (int64, error) {
 	if !(spec.Capacity > 0) || !(spec.LeakPerSecond > 0) || math.IsInf(spec.Capacity, 0) || math.IsInf(spec.LeakPerSecond, 0) {
 		return 0, fmt.Errorf("%w: redis: bucket needs a positive, finite Capacity and LeakPerSecond", workflow.ErrInvalid)
@@ -162,6 +173,8 @@ func (b *BucketStore) Take(ctx context.Context, key string, spec workflow.Bucket
 
 // Observe sets key's level to what the upstream reported, clamped to
 // [0, Capacity].
+//
+//ds:def id=redis-bucketstore-observe-jkzkzk6g owner=@khanakia stability=stable
 func (b *BucketStore) Observe(ctx context.Context, key string, spec workflow.BucketSpec, level float64, now time.Time) error {
 	_, err := b.run(ctx, key, spec, level, now, "set")
 	return err
@@ -174,12 +187,16 @@ func (b *BucketStore) Observe(ctx context.Context, key string, spec workflow.Buc
 // once each gets back a different previous burst. A burst's key expires
 // an hour of wall time after its RunAt (at least an hour after the swap),
 // when its run has long started and nothing can cancel it any more.
+//
+//ds:def id=redis-debouncestore-mhpmmnn9 owner=@khanakia stability=stable
 type DebounceStore struct {
 	rdb  goredis.UniversalClient
 	base string
 }
 
 // NewDebounceStore returns a DebounceStore over rdb under prefix.
+//
+//ds:def id=redis-newdebouncestore-vxbekqms owner=@khanakia stability=stable
 func NewDebounceStore(rdb goredis.UniversalClient, prefix string) (*DebounceStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -243,9 +260,13 @@ func (d *DebounceStore) Swap(ctx context.Context, key string, b middleware.Debou
 
 // JournalStore returns a JournalStore over this client's Redis and prefix
 // with no expiry.
+//
+//ds:def id=redis-client-journalstore-9z2gqbez owner=@khanakia stability=stable
 func (c *Client) JournalStore() *JournalStore { return &JournalStore{rdb: c.rdb, base: c.base} }
 
 // BucketStore returns a BucketStore over this client's Redis and prefix.
+//
+//ds:def id=redis-client-bucketstore-sapyv8nv owner=@khanakia stability=stable
 func (c *Client) BucketStore() *BucketStore { return &BucketStore{rdb: c.rdb, base: c.base} }
 
 // DebounceStore returns a DebounceStore over this client's Redis and
@@ -266,6 +287,8 @@ var (
 // so every process reads and writes one value. Put is one script, so the
 // version check and the write are atomic. Entries never expire; Delete
 // removes them.
+//
+//ds:def id=redis-datastore-pjugtgcb owner=@khanakia stability=stable
 type DataStore struct {
 	rdb  goredis.UniversalClient
 	base string
@@ -274,6 +297,8 @@ type DataStore struct {
 var _ workflow.DataStore = (*DataStore)(nil)
 
 // NewDataStore returns a DataStore over rdb under prefix.
+//
+//ds:def id=redis-newdatastore-acqnn2p6 owner=@khanakia stability=stable
 func NewDataStore(rdb goredis.UniversalClient, prefix string) (*DataStore, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {
@@ -354,6 +379,8 @@ type Inbox struct {
 var _ workflow.Inbox = (*Inbox)(nil)
 
 // NewInbox returns an Inbox over rdb under prefix.
+//
+//ds:def id=redis-newinbox-dk4wc654 owner=@khanakia stability=stable
 func NewInbox(rdb goredis.UniversalClient, prefix string) (*Inbox, error) {
 	base, err := storeBase(rdb, prefix)
 	if err != nil {

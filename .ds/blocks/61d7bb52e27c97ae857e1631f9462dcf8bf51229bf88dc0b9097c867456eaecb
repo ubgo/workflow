@@ -1,0 +1,32 @@
+func (c *Client) Paused(ctx context.Context) ([]workflow.PauseTarget, error) {
+	ps, err := every[workflow.Pauser](c, "Paused", workflow.CapPauseWorkflow)
+	if err != nil {
+		return nil, err
+	}
+	set := map[workflow.PauseTarget]struct{}{}
+	errs := map[string]error{}
+	for _, name := range c.names {
+		ts, err := ps[name].Paused(ctx)
+		errs[name] = err
+		for _, t := range ts {
+			set[t] = struct{}{}
+		}
+	}
+	if err := joinRegions("Paused", c.names, errs); err != nil {
+		return nil, err
+	}
+	out := slices.Collect(maps.Keys(set))
+	rank := func(t workflow.PauseTarget) int {
+		switch {
+		case t.All:
+			return 0
+		case t.Workflow != "":
+			return 1
+		}
+		return 2
+	}
+	slices.SortFunc(out, func(a, b workflow.PauseTarget) int {
+		return cmp.Or(cmp.Compare(rank(a), rank(b)), cmp.Compare(a.Workflow, b.Workflow), cmp.Compare(a.Queue, b.Queue))
+	})
+	return out, nil
+}

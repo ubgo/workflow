@@ -1,0 +1,6 @@
+var scheduleCaps = workflow.CapsOf(
+	workflow.CapCron, workflow.CapScheduleWhen, workflow.CapScheduleWindow,
+	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents,
+	workflow.CapOverlapSkip, workflow.CapScheduleTrigger, workflow.CapScheduleHistory,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+)

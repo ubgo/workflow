@@ -1,0 +1,3 @@
+type RunFinder interface {
+	FindBatchRuns(ctx context.Context, id ID, since time.Time) (map[int]workflow.RunRef, error)
+}

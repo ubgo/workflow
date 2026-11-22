@@ -1,11 +1,11 @@
 # Your first workflow
 
-A workflow of four steps on the in-memory driver: a payment step that fails once and is retried, two steps that run in parallel once it succeeds, and a last step that joins their outputs. A second order fails for good, is not retried, and runs the workflow's failure handler. Along the way you meet typed handlers, step inputs, retry policies, `StepInfo`, run status and the run-finished hook.
+A workflow of four steps on the in-memory driver: a payment step that fails once and is retried, two steps that run in parallel once it succeeds, and a last step that joins their outputs. A second order fails for good, is not retried, and runs the workflow's failure handler. Along the way you meet typed handlers ([`workflow.Define`](ds:block?id=define-d3ttbgk3)), step inputs ([`workflow.StepInput`](ds:block?id=stepinput-ykz7ud5d)), retry policies ([`workflow.RetryPolicy`](ds:block?id=retrypolicy-cjkmhshn)), [`StepInfo`](ds:block?id=stepinfo-kun3n4c3), run status and the run-finished hook ([`workflow.RunNotifier`](ds:block?id=runnotifier-tbkv69uz)).
 
 ## Before you start
 
 - The [Quickstart](quickstart.md) runs; this page builds on it.
-- Every step's input and output are bytes, JSON by convention. `workflow.Define` does the encoding for you.
+- Every step's input and output are bytes, JSON by convention. [`workflow.Define`](ds:block?id=define-d3ttbgk3) does the encoding for you.
 
 ## Step 1 — Declare the payload types
 
@@ -29,9 +29,9 @@ type joined struct {
 
 ## Step 2 — Write the workflow
 
-Steps form a graph through `After`. A step with no `After` starts with the run; a list of steps without `After` runs them all in parallel, so you chain them for sequence. What each step receives follows one rule on every driver (`workflow.StepInput`): the payload for a first step, its parent's output unchanged for one parent, and an object keyed by parent name for several.
+Steps form a graph through `After`. A step with no `After` starts with the run; a list of steps without `After` runs them all in parallel, so you chain them for sequence. What each step receives follows one rule on every driver ([`workflow.StepInput`](ds:block?id=stepinput-ykz7ud5d)): the payload for a first step, its parent's output unchanged for one parent, and an object keyed by parent name for several.
 
-`Workflow.Retry` is the default retry policy of every step (a step's own `Retry` overrides it, and `workflow.RetriesNone()` turns retries off for one step). Its zero value means no retries. Returning `workflow.Permanent(err)` fails the step at once and skips the remaining attempts. `workflow.StepInfoFrom(ctx)` tells a handler which run, step and attempt it is.
+`Workflow.Retry` is the default retry policy of every step (a step's own `Retry` overrides it, a job's `Retry` overrides both: [`EffectiveRetriesFor`](ds:block?id=effectiveretriesfor-cv2kmktb); [`workflow.RetriesNone()`](ds:block?id=retriesnone-gvsc2j8f) turns retries off for one step). Its zero value means no retries ([`DefaultRetryMax`](ds:block?id=defaultretrymax-wwnmv64w) is 0). Returning [`workflow.Permanent(err)`](ds:block?id=permanent-9e6vjm6s) fails the step at once and skips the remaining attempts. [`workflow.StepInfoFrom(ctx)`](ds:block?id=stepinfofrom-rr9mwh2c) tells a handler which run, step and attempt it is.
 
 <!-- snippet: examples/first-workflow/main.go#workflow -->
 ```go
@@ -82,7 +82,7 @@ wf := workflow.Workflow{
 
 ## Step 3 — Register, observe run ends, start
 
-The memory driver implements `workflow.RunNotifier`: an observer registered with `OnRunFinished` before `Start` sees every run that reaches a terminal status (succeeded, failed or cancelled). It is how app code reacts to a run's end without polling. Registering after `Start` returns `workflow.ErrAlreadyStarted`.
+The memory driver implements [`workflow.RunNotifier`](ds:block?id=runnotifier-tbkv69uz): an observer registered with [`OnRunFinished`](ds:block?id=memory-client-onrunfinished-4jxy93vq) before `Start` sees every run that reaches a terminal status (succeeded, failed or cancelled). It is how app code reacts to a run's end without polling. Registering after `Start` returns [`workflow.ErrAlreadyStarted`](ds:block?id=erralreadystarted-prauyy24).
 
 <!-- snippet: examples/first-workflow/main.go#start -->
 ```go
@@ -105,7 +105,7 @@ if err := c.Start(ctx); err != nil {
 
 ## Step 4 — Enqueue and read the status
 
-`Job.Labels` carry app metadata (a tenant, a source) to every step through `StepInfo.Labels` and to observers through `RunEvent.Labels`. `Status` reads where a run is; once the observer has seen the end, `Status` reports the same terminal status.
+`Job.Labels` carry app metadata (a tenant, a source) to every step through [`StepInfo.Labels`](ds:block?id=stepinfo-kun3n4c3) and to observers through [`RunEvent.Labels`](ds:block?id=runevent-upvhdx59). `Status` reads where a run is; once the observer has seen the end, `Status` reports the same terminal status.
 
 <!-- snippet: examples/first-workflow/main.go#enqueue -->
 ```go
@@ -147,12 +147,12 @@ The first charge failed and the retry policy ran it again 10ms later; `notify` r
 
 ## Pitfalls
 
-- Steps without `After` run in parallel, not in list order. Give every step after the first its parents.
-- A step's input with several parents is an object keyed by parent name; a parent whose output is empty or missing appears as `null`. Name the input struct's fields after the parents.
-- Retries are off by default. A workflow without `Retry` fails at the first error.
-- Mark errors that retrying cannot fix with `workflow.Permanent`, or list them in `RetryPolicy.NoRetryOn`; `Define` already marks undecodable input permanent.
-- A failed run's `RunEvent.Err` keeps the original error on in-process drivers; an engine driver such as Hatchet rebuilds it from the stored message, so `errors.Is` against your own sentinel is reliable only on in-process drivers.
-- `OnRunFinished` is an optional interface: the memory, SQL and Redis drivers declare `CapRunFinished` (every end delivered at least once); the Hatchet driver delivers best-effort only. Observers must tolerate seeing the same run twice.
+- Steps without `After` run in parallel, not in list order (each gets the payload: [`StepInput`](ds:block?id=stepinput-ykz7ud5d)). Give every step after the first its parents.
+- A step's input with several parents is an object keyed by parent name; a parent whose output is empty or missing appears as `null` ([`TestStepInput`](ds:block?id=teststepinput-khb3gvzx)). Name the input struct's fields after the parents.
+- Retries are off by default ([`DefaultRetryMax`](ds:block?id=defaultretrymax-wwnmv64w)). A workflow without `Retry` fails at the first error.
+- Mark errors that retrying cannot fix with `workflow.Permanent` ([`TestPermanent`](ds:block?id=testpermanent-874stknn)), or list them in [`RetryPolicy.NoRetryOn`](ds:block?id=retrypolicy-cjkmhshn); [`Define`](ds:block?id=define-d3ttbgk3) already marks undecodable input permanent.
+- A failed run's `RunEvent.Err` keeps the original error on in-process drivers; an engine driver such as Hatchet rebuilds it from the stored message ([`runError`](ds:block?id=hatchet-runerror-uu2gg4db)), so `errors.Is` against your own sentinel is reliable only on in-process drivers.
+- `OnRunFinished` is an optional interface: the [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j) and [Redis](ds:block?id=redis-caps-bfgdst9t) drivers declare `CapRunFinished` (every end delivered at least once); the [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) driver delivers best-effort only. Observers must tolerate seeing the same run twice.
 
 ## Related
 

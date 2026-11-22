@@ -1,0 +1,3 @@
+func WithProgressReporter(ctx context.Context, r ProgressReporter) context.Context {
+	return context.WithValue(ctx, progressKey{}, r)
+}

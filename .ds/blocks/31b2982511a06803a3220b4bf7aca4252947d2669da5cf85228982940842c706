@@ -1,0 +1,25 @@
+func RequiresJob(job Job) Caps {
+	var c Caps
+	if !job.RunAt.IsZero() {
+		c = c.With(CapDelayedStart)
+	}
+	if job.IdempotencyKey != "" {
+		c = c.With(CapIdempotencyKey)
+	}
+	if job.Queue != "" {
+		c = c.With(CapQueue)
+	}
+	if job.Retry != nil {
+		c = c.With(CapJobRetry, retryCaps(*job.Retry))
+	}
+	if job.Tenant != "" {
+		c = c.With(CapTenant)
+	}
+	if len(job.Chain) > 0 {
+		c = c.With(CapChain)
+		for _, next := range job.Chain {
+			c = c.With(RequiresJob(next))
+		}
+	}
+	return c
+}

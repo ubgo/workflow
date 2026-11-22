@@ -1,0 +1,2 @@
+	secretKeyParts = []string{"password", "passwd", "secret", "apikey", "privatekey", "accesstoken",
+		"refreshtoken", "authtoken", "bearertoken", "clientsecret", "authorization", "credential", "sessiontoken"}

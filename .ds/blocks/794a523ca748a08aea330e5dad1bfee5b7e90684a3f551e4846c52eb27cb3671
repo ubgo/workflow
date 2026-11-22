@@ -1,0 +1,8 @@
+type Request[P any] struct {
+	Who      P
+	Action   Action
+	Resource Resource
+	// HTTP is the request, for headers an Authorizer needs (a tenant
+	// header, the remote address). Its body has been read; do not read it.
+	HTTP *http.Request
+}

@@ -1,0 +1,19 @@
+func isUnavailable(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	msg := err.Error()
+	for _, s := range errOutageStatuses {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	return false
+}

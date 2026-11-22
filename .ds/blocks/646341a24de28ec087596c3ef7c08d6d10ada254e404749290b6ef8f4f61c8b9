@@ -1,0 +1,19 @@
+func (f *Client) Done() <-chan struct{} {
+	if f.need("Done", workflow.CapDrain) != nil {
+		return nil
+	}
+	pd, pok := f.primary.(workflow.Drainer)
+	sd, sok := f.secondary.(workflow.Drainer)
+	if !pok || !sok {
+		return nil
+	}
+	f.doneOnce.Do(func() {
+		f.done = make(chan struct{})
+		go func() {
+			<-pd.Done()
+			<-sd.Done()
+			close(f.done)
+		}()
+	})
+	return f.done
+}

@@ -1,0 +1,20 @@
+func systemdPrepare(s workflow.Schedule, t Target) (job, error) {
+	const f = FormatSystemd
+	j, err := prepare(f, s, t)
+	if err != nil {
+		return job{}, err
+	}
+	if !unitName.MatchString(j.name) {
+		return job{}, invalid(f, "unit name %q: use letters, digits, ':', '_', '.' and '-'", j.name)
+	}
+	if len(t.Command) == 0 {
+		return job{}, invalid(f, "Target.Command is required")
+	}
+	if strings.IndexAny(t.Command[0], "-@:+!|") == 0 || t.Command[0] == "" {
+		return job{}, invalid(f, "command %q is empty or starts with an ExecStart= prefix character", t.Command[0])
+	}
+	if strings.HasSuffix(j.desc, `\`) {
+		return job{}, invalid(f, "description ends with a backslash, which continues the line")
+	}
+	return j, nil
+}

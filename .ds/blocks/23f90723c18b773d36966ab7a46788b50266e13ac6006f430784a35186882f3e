@@ -1,0 +1,16 @@
+func (f *Fake) Status(ctx context.Context, ref workflow.RunRef) (workflow.Status, error) {
+	f.mu.Lock()
+	r, ok := f.byRef[ref]
+	var st workflow.Status
+	if ok {
+		st = r.status
+	}
+	f.mu.Unlock()
+	switch {
+	case ok:
+		return st, nil
+	case f.inner != nil:
+		return f.inner.Status(ctx, ref)
+	}
+	return "", fmt.Errorf("%w: run %+v", workflow.ErrNotFound, ref)
+}

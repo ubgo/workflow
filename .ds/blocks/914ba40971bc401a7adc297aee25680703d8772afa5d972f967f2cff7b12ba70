@@ -1,0 +1,11 @@
+func WaitPromise(ctx context.Context, store PromiseStore, id string, opts AwaitOptions) ([]byte, error) {
+	for {
+		v, settled, err := PromiseResult(ctx, store, id)
+		if err != nil || settled {
+			return v, err
+		}
+		if err := opts.sleep(ctx); err != nil {
+			return nil, err
+		}
+	}
+}

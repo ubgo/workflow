@@ -1,0 +1,91 @@
+func (c *Client) attempt(parent context.Context, h *held, s workflow.Step, in []byte, attempt int, readyAt time.Time, edits *workflow.ChainEdits) (out []byte, err error, withdrawn bool) {
+	ctx := workflow.WithStepInfo(parent, workflow.StepInfo{
+		Workflow: h.wf, Step: s.Name, RunID: workflow.RunID(h.id), Attempt: attempt,
+		Labels: h.labels, Queue: h.queue, ReadyAt: readyAt, Tenant: h.tenant, Node: c.node, Version: h.version,
+	})
+	ctx = workflow.WithChainEditor(ctx, edits)
+	ctx = workflow.WithProgressReporter(ctx, progressReporter{c: c, h: h, step: s.Name, attempt: attempt})
+	defer c.drainTrack.Begin(workflow.DrainCut{RunID: workflow.RunID(h.id), Workflow: h.wf, Step: s.Name, Attempt: attempt})()
+	handler := h.reg.handlers[s.Name]
+	d := s.Timeout
+	if d == 0 {
+		d = h.reg.wf.Timeout
+	}
+	actx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	h.mu.Lock()
+	h.live[s.Name] = cancel
+	if h.withdrawn[s.Name] {
+		cancel(workflow.ErrStepCancelled)
+	}
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		delete(h.live, s.Name)
+		h.mu.Unlock()
+	}()
+	// lastBeat is the clock's UnixNano at the latest heartbeat (the start
+	// counts as one). A beat stores it at once, in the handler's goroutine,
+	// and the watchdog below re-checks it when its timer fires, so a beat
+	// made in time never loses to a timer the watchdog has not seen yet.
+	var lastBeat atomic.Int64
+	lastBeat.Store(c.clk.Now().UnixNano())
+	actx = workflow.WithHeartbeater(actx, workflow.HeartbeatFunc(func(context.Context, []byte) error {
+		lastBeat.Store(c.clk.Now().UnixNano())
+		return c.renew(h)
+	}))
+	// The attempt's own deadlines cancel it with timeout errors, so
+	// context.Cause in the handler matches workflow.ErrStepTimeout or
+	// ErrHeartbeatTimeout; the driver tells them from any other cause by
+	// identity.
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("redis: step %q attempt %d after %s", s.Name, attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("redis: step %q attempt %d sent no heartbeat for %s", s.Name, attempt, s.HeartbeatTimeout))
+	if d > 0 {
+		tm := c.clk.NewTimer(d)
+		go func() {
+			select {
+			case <-tm.C():
+				cancel(errStep)
+			case <-actx.Done():
+				tm.Stop()
+			}
+		}()
+	}
+	if hb := s.HeartbeatTimeout; hb > 0 {
+		go func() {
+			wait := hb
+			for {
+				tm := c.clk.NewTimer(wait)
+				select {
+				case <-tm.C():
+				case <-actx.Done():
+					tm.Stop()
+					return
+				}
+				since := time.Duration(c.clk.Now().UnixNano() - lastBeat.Load())
+				if since >= hb {
+					cancel(errHeartbeat)
+					return
+				}
+				wait = hb - since
+			}
+		}()
+	}
+	// A tolerated step (WithRules) claims the attempt's timeout to keep its
+	// record; without a claim a timed-out attempt fails with the timeout.
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err = safeCall(handler, hctx, in)
+	switch cause := context.Cause(actx); {
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		return out, err, false
+	case cause == errStep:
+		return nil, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded), false
+	case cause == errHeartbeat:
+		return nil, fmt.Errorf("%w: %w", errHeartbeat, context.DeadlineExceeded), false
+	case errors.Is(cause, workflow.ErrStepCancelled):
+		return out, err, true
+	}
+	return out, err, false
+}

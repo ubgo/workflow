@@ -1,0 +1,9 @@
+func (f *Client) StopCause() error {
+	cause := func(c workflow.Client) error {
+		if sc, ok := c.(workflow.StopCauser); ok {
+			return sc.StopCause()
+		}
+		return nil
+	}
+	return joinSides("StopCause", cause(f.primary), cause(f.secondary))
+}

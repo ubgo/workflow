@@ -1,0 +1,3 @@
+type RunRetrier interface {
+	Retry(ctx context.Context, ref RunRef) (RunRef, error)
+}

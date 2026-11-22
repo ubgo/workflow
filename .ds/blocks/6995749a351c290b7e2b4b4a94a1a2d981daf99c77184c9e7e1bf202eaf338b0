@@ -1,0 +1,1 @@
+	secretKeyExact = []string{"token", "pass", "pwd", "auth", "apikey", "secret"}

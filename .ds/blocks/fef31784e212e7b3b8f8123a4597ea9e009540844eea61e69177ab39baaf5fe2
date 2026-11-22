@@ -1,0 +1,3 @@
+func DatasetEventID(dataset, version string) string {
+	return url.QueryEscape(dataset) + "@" + url.QueryEscape(version)
+}

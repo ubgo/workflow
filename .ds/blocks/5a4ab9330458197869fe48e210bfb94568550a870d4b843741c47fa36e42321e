@@ -1,0 +1,10 @@
+func NewPinger(send PingFunc, opts ...PingerOption) *Pinger {
+	if send == nil {
+		send = HTTPPing(nil)
+	}
+	p := &Pinger{send: send, timeout: DefaultPingTimeout, logger: slog.Default()}
+	for _, o := range opts {
+		o(p)
+	}
+	return p
+}

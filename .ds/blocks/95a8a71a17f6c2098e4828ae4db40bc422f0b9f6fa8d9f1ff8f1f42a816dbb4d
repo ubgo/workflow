@@ -1,0 +1,27 @@
+func (l *LocalCron) Add(name, expr string, loc *time.Location, fn LocalCronFunc) error {
+	switch {
+	case name == "":
+		return invalidf("local cron: empty name")
+	case fn == nil:
+		return invalidf("local cron %q: nil func", name)
+	case loc == nil:
+		return invalidf("local cron %q: nil location; use time.UTC for UTC", name)
+	case loc == time.Local:
+		return invalidf("local cron %q: time.Local differs between machines; name the zone", name)
+	}
+	sched, err := l.parser(expr)
+	if err != nil {
+		return invalidf("local cron %q: %v", name, err)
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.started {
+		return ErrLocalCronStarted
+	}
+	if l.names[name] {
+		return invalidf("local cron %q: name already added", name)
+	}
+	l.names[name] = true
+	l.entries = append(l.entries, localEntry{name: name, sched: sched, loc: loc, fn: fn})
+	return nil
+}

@@ -1,0 +1,29 @@
+func (s ApprovalSigner) Verify(token string, now time.Time) (string, error) {
+	enc, mac, ok := strings.Cut(token, ".")
+	if !ok {
+		return "", ErrApprovalToken
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		return "", ErrApprovalToken
+	}
+	body := string(raw)
+	valid := false
+	for _, k := range s.Keys {
+		if hmac.Equal([]byte(approvalMAC(k, body)), []byte(mac)) {
+			valid = true
+		}
+	}
+	if !valid {
+		return "", ErrApprovalToken
+	}
+	key, exp, ok := strings.Cut(body, ".")
+	unix, err := strconv.ParseInt(exp, 10, 64)
+	if !ok || err != nil || key == "" {
+		return "", ErrApprovalToken
+	}
+	if !now.Before(time.Unix(unix, 0)) {
+		return "", fmt.Errorf("%w: expired", ErrApprovalToken)
+	}
+	return key, nil
+}

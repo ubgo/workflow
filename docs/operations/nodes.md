@@ -4,14 +4,14 @@ Once workers run on several machines, an operator needs three answers: which mac
 
 ## Before you start
 
-- Node identity needs `workflow.CapNodeIdentity`: the memory and Redis drivers declare it. The Hatchet driver does not: it fills `StepInfo.Node` but keeps no per-attempt history, so `AttemptedBy` and `AttemptError.Node` stay empty there. The SQL driver declares it too: the attempt's node is stored with the run.
-- The node list is `workflow.NodeLister`, health is `workflow.HealthChecker`; check the interfaces, not a capability (a client may list its nodes without per-attempt identity, and health has no capability bit). The memory, Redis, SQL and Hatchet drivers implement both. On a wrapped client (`workflow.Forward`, a codec or plugin client, `failover`) every optional method exists whatever is underneath, so ask `workflow.Supports(c, workflow.OpNodes)` before offering a node list: a wrapper answers for the client it wraps (`failover` for both backends).
-- Scheduler-only and worker-only processes are options of the Redis and SQL drivers.
+- Node identity needs [`workflow.CapNodeIdentity`](ds:block?id=capnodeidentity-wdmsuc62): the [memory](ds:block?id=memory-caps-yxkuq583) and [Redis](ds:block?id=redis-caps-bfgdst9t) drivers declare it. The [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) driver does not: it fills `StepInfo.Node` but keeps no per-attempt history, so `AttemptedBy` and `AttemptError.Node` stay empty there. The [SQL](ds:block?id=sql-p5caps-wggh6esn) driver declares it too: the attempt's node is stored with the run. See [Hatchet limitations](../drivers/hatchet.md#limitations).
+- The node list is [`workflow.NodeLister`](ds:block?id=nodelister-e45g3kuq), health is [`workflow.HealthChecker`](ds:block?id=healthchecker-4as2xkc9); check the interfaces, not a capability (a client may list its nodes without per-attempt identity, and health has no capability bit). The memory, Redis, SQL and Hatchet drivers implement both. On a wrapped client (`workflow.Forward`, a codec or plugin client, `failover`) every optional method exists whatever is underneath, so ask [`workflow.Supports(c, workflow.OpNodes)`](ds:block?id=supports-4xyjjwvz) before offering a node list: a wrapper answers for the client it wraps (`failover` for both backends).
+- Scheduler-only and worker-only processes are options of the [Redis](ds:block?id=redis-withscheduleronly-psx5q54d) and [SQL](ds:block?id=sql-withscheduleronly-af8r5q7m) drivers.
 - The example is [`examples/node-health`](../../examples/node-health). The memory part runs anywhere; set `REDIS_URL` for the scheduler and worker nodes. Run it with `go run ./node-health` from `examples/`.
 
 ## Name the node
 
-Every client has a node ID. The default is `workflow.DefaultNodeID()`, the host name and the process ID (`"web-1:4182"`), so two processes on one host are told apart. On a platform whose host names mean nothing (containers, a scheduler that reuses names) pass your own with the driver's option: `memory.WithNodeID`, `redis.WithNodeID`, `sqlstore.WithNodeID`, or `Config.NodeID` on Hatchet, which also labels every worker it registers. Inside a step, `StepInfo.Node` is the node running the attempt:
+Every client has a node ID. The default is [`workflow.DefaultNodeID()`](ds:block?id=defaultnodeid-wzxm78ge), the host name and the process ID (`"web-1:4182"`), so two processes on one host are told apart. On a platform whose host names mean nothing (containers, a scheduler that reuses names) pass your own with the driver's option: [`memory.WithNodeID`](ds:block?id=memory-withnodeid-j8sp495g), [`redis.WithNodeID`](ds:block?id=redis-withnodeid-38w3qvxp), [`sqlstore.WithNodeID`](ds:block?id=sql-withnodeid-hrqyznwf), or [`Config.NodeID`](ds:block?id=hatchet-config-wdky3m9f) on Hatchet, which also labels every worker it registers. Inside a step, `StepInfo.Node` is the node running the attempt:
 
 <!-- snippet: examples/node-health/main.go#nodeid -->
 ```go
@@ -32,7 +32,7 @@ err := c.Register(workflow.Workflow{
 
 ## See which node ran each attempt
 
-With `CapNodeIdentity`, each failed attempt in `RunInfo.Errors` carries the node it ran on (`AttemptError.Node`), and `RunInfo.AttemptedBy` lists the nodes that ran the run's attempts, in first-attempt order, without repeats. A run that failed on one machine and succeeded on another says so:
+With [`CapNodeIdentity`](ds:block?id=capnodeidentity-wdmsuc62), each failed attempt in `RunInfo.Errors` carries the node it ran on (`AttemptError.Node`), and `RunInfo.AttemptedBy` lists the nodes that ran the run's attempts, in first-attempt order, without repeats. A run that failed on one machine and succeeded on another says so:
 
 <!-- snippet: examples/node-health/main.go#attempts -->
 ```go
@@ -56,7 +56,7 @@ The node also appears in [lifecycle events](../observability/lifecycle.md) (`Lif
 
 ## List the online nodes
 
-`NodeLister.Nodes(ctx)` returns a `workflow.NodeInfo` per online node: `ID`, `Mode`, `Queues` (empty means every queue), `Workers` (its pool size), `Running` (attempts running when it last reported in), `StartedAt` and `LastSeen`:
+[`NodeLister.Nodes(ctx)`](ds:block?id=nodelister-e45g3kuq) returns a [`workflow.NodeInfo`](ds:block?id=nodeinfo-yfhn22f2) per online node: `ID`, `Mode`, `Queues` (empty means every queue), `Workers` (its pool size), `Running` (attempts running when it last reported in), `StartedAt` and `LastSeen`:
 
 <!-- snippet: examples/node-health/main.go#nodes -->
 ```go
@@ -71,18 +71,18 @@ if nl, ok := workflow.Client(c).(workflow.NodeLister); ok {
 }
 ```
 
-`Mode` is a `workflow.NodeMode`: `NodeFull` (workers and scheduler, the default), `NodeWorker`, `NodeScheduler` or `NodeEnqueueOnly`. How a node drops out differs by driver:
+`Mode` is a [`workflow.NodeMode`](ds:block?id=nodemode-weqjj78g): `NodeFull` (workers and scheduler, the default), `NodeWorker`, `NodeScheduler` or `NodeEnqueueOnly`. How a node drops out differs by driver:
 
 | Driver | What it lists | When a dead node drops out |
 |---|---|---|
-| memory | Itself, once started; nothing before `Start` | Never: there is one process |
-| redis | Every started client of the prefix; each reports in every third of `WithLease` and a stopped client removes itself | After three leases without a report (90 seconds with the default 30-second lease) |
-| hatchet | One entry per `Config.NodeID` whose workers the engine reports active, merging its workers (one per served queue); mode `NodeFull`; enqueue-only clients register no worker and are not listed | When the engine marks its workers inactive, after their heartbeats stop |
-| sql | Every client of the tables that reported in within the last hour; each writes its row every third of `WithLease` and removes it on a clean stop | After it has been silent for an hour; read `LastSeen` for liveness, since a crashed client stays listed until then |
+| memory | Itself, once started; nothing before `Start` ([`Nodes`](ds:block?id=memory-client-nodes-zzuecmbn)) | Never: there is one process |
+| redis | Every started client of the prefix; each reports in every third of `WithLease` and a stopped client removes itself ([`reporter`](ds:block?id=redis-client-reporter-2g7gmnrm)) | After three leases without a report ([`Nodes`](ds:block?id=redis-client-nodes-pq2k53gg); 90 seconds with the default 30-second lease) |
+| hatchet | One entry per `Config.NodeID` whose workers the engine reports active, merging its workers (one per served queue); mode `NodeFull`; enqueue-only clients register no worker and are not listed ([`Nodes`](ds:block?id=hatchet-client-nodes-52bhc2hy)) | When the engine marks its workers inactive, after their heartbeats stop |
+| sql | Every client of the tables that reported in within the last hour ([`Nodes`](ds:block?id=sql-client-nodes-dxn6cc8q)); each writes its row every third of `WithLease` ([`touchNode`](ds:block?id=sql-client-touchnode-284yxqyc)) and removes it on a clean stop ([`forgetNode`](ds:block?id=sql-client-forgetnode-uaa5fsbe)) | After it has been silent for an hour ([`defaultNodesTTL`](ds:block?id=sql-defaultnodesttl-b9p86gq7)); read `LastSeen` for liveness, since a crashed client stays listed until then |
 
 ## Health and readiness probes
 
-`workflow.CheckHealth(ctx, c)` returns a `workflow.HealthReport`: `Live` (the process should keep running; restart it when false), `Ready` (it can take work now; route nothing to it when false) and `Checks`, each a `Name`, an `OK` verdict and a `Detail`. A client that does not implement `HealthChecker` is reported live and ready with one check saying it cannot tell, so an app on such a driver needs its own probe. Serve it on routes your orchestrator calls, without the admin login, with a deadline, because a probe that hangs is worse than one that fails:
+[`workflow.CheckHealth(ctx, c)`](ds:block?id=checkhealth-6rntx5kf) returns a [`workflow.HealthReport`](ds:block?id=healthreport-3vvnndqs): `Live` (the process should keep running; restart it when false), `Ready` (it can take work now; route nothing to it when false) and `Checks`, each a `Name`, an `OK` verdict and a `Detail`. A client that does not implement `HealthChecker` is reported live and ready with one check saying it cannot tell ([`CheckHealth`](ds:block?id=checkhealth-6rntx5kf)), so an app on such a driver needs its own probe. Serve it on routes your orchestrator calls, without the admin login, with a deadline, because a probe that hangs is worse than one that fails:
 
 <!-- snippet: examples/node-health/main.go#probes -->
 ```go
@@ -122,10 +122,10 @@ func probes(c workflow.Client) http.Handler {
 
 | Driver | Live | Ready | Checks |
 |---|---|---|---|
-| memory | Until stopped | Started, not draining, not stopped | `workers` ("3 of 8 busy", "not started", "draining", "stopped") |
-| redis | Until stopped | Started (an enqueue-only client: always), not draining, and Redis answers a `PING` within the deadline | `client` (its mode, or why not), `redis` ("PING ok", or the error) |
-| hatchet | Until a recycle (`Config.Recycle`) stopped it; a requested stop leaves it live | Started and not stopped, the engine answers its version call within the deadline and, for a worker client, every worker it registered is active on the engine | `client`, `engine` ("version ..." or the error), `workers` ("N active" or which is not) |
-| sql | Until stopped | Started (an enqueue-only client: at once) and the database answers a ping within the deadline | `started` (its mode), `database` ("ping ok", or the error) |
+| [memory](ds:block?id=memory-client-health-t8t72hjn) | Until stopped | Started, not draining, not stopped | `workers` ("3 of 8 busy", "not started", "draining", "stopped") |
+| [redis](ds:block?id=redis-client-health-53pawas3) | Until stopped | Started (an enqueue-only client: always), not draining, and Redis answers a `PING` within the deadline | `client` (its mode, or why not), `redis` ("PING ok", or the error) |
+| [hatchet](ds:block?id=hatchet-client-health-zg8x2yqe) | Until a recycle (`Config.Recycle`) stopped it; a requested stop leaves it live | Started and not stopped, the engine answers its version call within the deadline and, for a worker client, every worker it registered is active on the engine | `client`, `engine` ("version ..." or the error), `workers` ("N active" or which is not) |
+| [sql](ds:block?id=sql-client-health-jj2wte95) | Until stopped | Started (an enqueue-only client: at once) and the database answers a ping within the deadline | `started` (its mode), `database` ("ping ok", or the error) |
 
 A client is live but not ready before `Start` and while its backend is unreachable, so a readiness probe holds traffic back during a database or Redis outage without the orchestrator restarting a healthy process:
 
@@ -156,8 +156,8 @@ The admin API reads the same report at `GET /health` for its System screen, behi
 
 By default every client both runs workers and fires schedules, and the driver makes each tick fire once across them. Splitting the roles lets the workers scale (or scale to zero) without touching the scheduler, and keeps a small, always-on process for the clock:
 
-- `WithSchedulerOnly()` makes a scheduler node (`NodeScheduler`): `Start` runs no worker; it fires schedules and admits pending runs for the worker nodes. It reports zero workers.
-- `WithoutScheduler()` makes a worker node (`NodeWorker`): it runs workers and admits pending runs but fires no schedule. Declared `Workflow.Cron` entries are still written at `Start`, so the scheduler node fires them.
+- `WithSchedulerOnly()` makes a scheduler node (`NodeScheduler`): `Start` runs no worker; it fires schedules and admits pending runs for the worker nodes ([`redis.WithSchedulerOnly`](ds:block?id=redis-withscheduleronly-psx5q54d), [`sqlstore.WithSchedulerOnly`](ds:block?id=sql-withscheduleronly-af8r5q7m)). It reports zero workers ([`touchNode`](ds:block?id=sql-client-touchnode-284yxqyc)).
+- `WithoutScheduler()` makes a worker node (`NodeWorker`): it runs workers and admits pending runs but fires no schedule ([`firesSchedules`](ds:block?id=sql-client-firesschedules-hxyv964c)). Declared `Workflow.Cron` entries are still written at `Start`, so the scheduler node fires them ([`redis.WithoutScheduler`](ds:block?id=redis-withoutscheduler-mdn69ca3)).
 
 Both register the workflows: a schedule's `ScheduleWhen` and windows are code the firing node must have.
 
@@ -189,7 +189,7 @@ node sched-1 mode=scheduler workers=0
 node worker-1 mode=worker workers=10
 ```
 
-These are Redis and SQL options (`redis.WithSchedulerOnly`, `sqlstore.WithSchedulerOnly` and their `WithoutScheduler` twins). Hatchet has neither: its engine fires the crons itself, so every Hatchet node reports `NodeFull`. The memory driver has neither, since nothing outside the process would run what it fires; to fire crons in process and run the jobs on a durable driver, use [hybrid placement](../drivers/hybrid.md). A web node that only enqueues is a third role, `NodeEnqueueOnly` ([Deploy workers › Web nodes that only enqueue](deploy.md#web-nodes-that-only-enqueue)).
+These are Redis and SQL options ([`redis.WithSchedulerOnly`](ds:block?id=redis-withscheduleronly-psx5q54d), [`sqlstore.WithSchedulerOnly`](ds:block?id=sql-withscheduleronly-af8r5q7m) and their [`WithoutScheduler`](ds:block?id=sql-withoutscheduler-nbbxc2s8) twins). Hatchet has neither: its engine fires the crons itself, so every Hatchet node reports `NodeFull` ([`Nodes`](ds:block?id=hatchet-client-nodes-52bhc2hy)). The memory driver has neither, since nothing outside the process would run what it fires; to fire crons in process and run the jobs on a durable driver, use [hybrid placement](../drivers/hybrid.md). A web node that only enqueues is a third role, `NodeEnqueueOnly` ([Deploy workers › Web nodes that only enqueue](deploy.md#web-nodes-that-only-enqueue)).
 
 ## Try it
 
@@ -203,11 +203,11 @@ Without `REDIS_URL` the program prints the memory part and says the Redis part i
 
 ## Pitfalls
 
-- **Give containers a stable, unique node ID.** Two processes with the same `WithNodeID` overwrite each other in the node list and their attempts cannot be told apart. Use the pod or task name, or keep the default.
-- **Liveness is not readiness.** Restarting on `Ready == false` turns a short database outage into a restart storm; restart only on `Live == false`.
-- **A scheduler-only node must stay up.** With every other node started `WithoutScheduler`, no schedule fires while it is down; run it under a supervisor, or run two (each tick still fires once, decided by the driver).
-- **A worker-only fleet with no scheduler node fires nothing.** Declared crons are written at `Start` but only a node without `WithoutScheduler` fires them.
-- **The node list lags.** A crashed Redis node stays listed for up to three leases; `LastSeen` says how stale an entry is.
+- **Give containers a stable, unique node ID.** Two processes with the same `WithNodeID` overwrite each other in the node list (one row per ID: [`touchNode`](ds:block?id=sql-client-touchnode-284yxqyc)) and their attempts cannot be told apart. Use the pod or task name, or keep the default.
+- **Liveness is not readiness.** Restarting on `Ready == false` turns a short database outage into a restart storm; restart only on `Live == false` (the SQL driver stays live while its ping fails: [`Health`](ds:block?id=sql-client-health-jj2wte95)).
+- **A scheduler-only node must stay up.** With every other node started `WithoutScheduler`, no schedule fires while it is down; run it under a supervisor, or run two (each tick still fires once, decided by the driver: [`fireOne`](ds:block?id=sql-client-fireone-mfjemgus)).
+- **A worker-only fleet with no scheduler node fires nothing.** Declared crons are written at `Start` but only a node without `WithoutScheduler` fires them ([`firesSchedules`](ds:block?id=sql-client-firesschedules-hxyv964c)).
+- **The node list lags.** A crashed Redis node stays listed for up to three leases ([`Nodes`](ds:block?id=redis-client-nodes-pq2k53gg)); `LastSeen` says how stale an entry is.
 - **The admin health route is not a probe.** It needs the admin login and always answers 200; probes call `CheckHealth` on their own routes.
 
 ## Related

@@ -1,0 +1,9 @@
+func (d *Deferred) Add(enqueue EnqueueFunc, job Job) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.closed {
+		return ErrDeferredClosed
+	}
+	d.held = append(d.held, heldJob{enqueue: enqueue, job: CloneJob(job)})
+	return nil
+}

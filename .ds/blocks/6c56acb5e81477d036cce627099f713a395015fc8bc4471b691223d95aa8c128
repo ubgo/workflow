@@ -1,0 +1,7 @@
+func cancelQuery(s CancelSubscription, key string) workflow.RunQuery {
+	st := s.Statuses
+	if len(st) == 0 {
+		st = UnfinishedStatuses
+	}
+	return workflow.RunQuery{Workflow: s.Workflow, Statuses: slices.Clone(st), Labels: map[string]string{s.Label: key}}
+}

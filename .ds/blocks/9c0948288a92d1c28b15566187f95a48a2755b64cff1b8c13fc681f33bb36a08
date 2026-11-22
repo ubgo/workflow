@@ -1,0 +1,21 @@
+type ObjectSpec[S any] struct {
+	// Name is the object type; it is also the name of the workflow
+	// DefineObject returns.
+	Name string
+
+	// Methods are the operations, by name.
+	Methods map[string]ObjectMethod[S]
+
+	// Store keeps each key's state. Use the driver's durable
+	// JournalStore (sqlstore, Redis) so state survives restarts and is
+	// shared by every worker; MemoryJournal keeps it in this process.
+	Store JournalStore
+
+	// Ordered runs a key's calls in the order they were enqueued
+	// (Concurrency.FIFO, CapKeyFIFO); without it calls of one key still
+	// run one at a time, in whatever order the driver claims them.
+	Ordered bool
+
+	// Retry is the calls' retry policy, as Workflow.Retry.
+	Retry RetryPolicy
+}

@@ -109,6 +109,8 @@ func (c *Client) Drain(ctx context.Context) error {
 // it at once would miss runs that did finish. A run still unfinished after
 // this (a multi-step run whose next step the engine has yet to hand out) is
 // not counted, so a drain costs at most this much more than the handlers.
+//
+//ds:def id=hatchet-drainrunsettle-92prtznt owner=@khanakia stability=stable
 const drainRunSettle = 2 * time.Second
 
 // drainRunPoll is the pause between status reads while settling.
@@ -130,6 +132,8 @@ const drainJoinGrace = 5 * time.Second
 // that only reached terminal through another worker's step is not, because
 // this client never saw it. A second call, concurrent or after Done, waits
 // for the first drain and returns its report and its error.
+//
+//ds:def id=hatchet-client-drainwithreport-aze8rd7c owner=@khanakia stability=stable
 func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, error) {
 	return c.drain(ctx, true)
 }
@@ -139,6 +143,8 @@ func (c *Client) DrainWithReport(ctx context.Context) (workflow.DrainReport, err
 // up to drainRunSettle; a plain Drain (also what worker recycling calls)
 // never pays it. The first call decides: a report fetched after a plain
 // Drain has FinishedRuns 0.
+//
+//ds:def id=hatchet-client-drain-b9ubn36x owner=@khanakia stability=stable
 func (c *Client) drain(ctx context.Context, settle bool) (workflow.DrainReport, error) {
 	c.mu.Lock()
 	if !c.started {
@@ -218,6 +224,8 @@ func (c *Client) drain(ctx context.Context, settle bool) (workflow.DrainReport, 
 // the tracker (workflow.DrainTracker.RunFinished). A run with a cut-off
 // attempt is skipped (Seal drops it anyway). It runs before the client
 // marks itself drained, because Status refuses once it has.
+//
+//ds:def id=hatchet-client-settlefinishedruns-93ccuyj8 owner=@khanakia stability=stable
 func (c *Client) settleFinishedRuns(cut workflow.DrainReport) {
 	cutIDs := make(map[workflow.RunID]struct{}, len(cut.Cut))
 	for _, x := range cut.Cut {

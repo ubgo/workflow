@@ -1,0 +1,1 @@
+	ErrCancelled = errors.New("workflow: run cancelled")

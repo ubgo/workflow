@@ -1,0 +1,43 @@
+func TestSecretGuard(t *testing.T) {
+	next := func(context.Context, workflow.Job) (workflow.RunRef, error) { return workflow.RunRef{RunID: "ok"}, nil }
+	guard := workflow.SecretGuard(nil)(next)
+	refuse := []workflow.Job{
+		{Payload: []byte(`{"user":{"password":"hunter2"}}`)},
+		{Payload: []byte(`{"api_key":"abc"}`)},
+		{Payload: []byte(`{"Client-Secret":"abc"}`)},
+		{Payload: []byte(`{"note":"AKIAABCDEFGHIJKLMNOP"}`)},
+		{Payload: []byte(`{"k":["-----BEGIN RSA PRIVATE KEY-----"]}`)},
+		{Payload: []byte(`raw sk_live_abcdefghijklmnop`)},
+		{Labels: map[string]string{"token": "x"}},
+		{Chain: []workflow.Job{{Payload: []byte(`{"passwd":"x"}`)}}},
+	}
+	for _, j := range refuse {
+		_, err := guard(context.Background(), j)
+		if !errors.Is(err, workflow.ErrSecretInPayload) || !errors.Is(err, workflow.ErrInvalid) {
+			t.Errorf("job %s %v: err = %v, want ErrSecretInPayload", j.Payload, j.Labels, err)
+		}
+		if err != nil && (strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "AKIAABCD")) {
+			t.Errorf("error leaks the value: %v", err)
+		}
+	}
+	pass := []workflow.Job{
+		{Payload: []byte(`{"password":{"secret_ref":"db"}}`)},
+		{Payload: []byte(`{"password":""}`)},
+		{Payload: []byte(`{"order":42,"tokens_used":3}`)},
+		{Labels: map[string]string{"tenant": "acme"}},
+	}
+	for _, j := range pass {
+		if _, err := guard(context.Background(), j); err != nil {
+			t.Errorf("job %s: err = %v, want accepted", j.Payload, err)
+		}
+	}
+	allow := workflow.SecretGuard(workflow.NewSecretDetector(workflow.SecretRules{AllowKeys: []string{"page_token"}, AllowRules: []string{"jwt"}}))(next)
+	for _, p := range []string{`{"page_token":"abc"}`, `{"link":"eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT4f"}`} {
+		if _, err := allow(context.Background(), workflow.Job{Payload: []byte(p)}); err != nil {
+			t.Errorf("allowed %s: err = %v", p, err)
+		}
+	}
+	if _, err := guard(context.Background(), workflow.Job{Payload: []byte(`{"link":"eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT4f"}`)}); !errors.Is(err, workflow.ErrSecretInPayload) {
+		t.Errorf("jwt not reported by default: %v", err)
+	}
+}

@@ -1,0 +1,43 @@
+func (c *Client) scheduleLast(ctx context.Context, sdk *hatchetsdk.Client, row rest.CronWorkflows) (workflow.ScheduleLast, error) {
+	since := time.Now().Add(-c.cfg.ScheduleHistoryWindow)
+	var filter string
+	if row.Method == rest.CronWorkflowsMethodAPI && row.Name != nil {
+		filter = metaCronName + ":" + *row.Name
+	} else {
+		filter = metaCronExpression + ":" + row.Cron
+	}
+	tick, err := c.newestRun(ctx, sdk, row, since, filter, func(md map[string]string) bool {
+		// A declared trigger is found by its expression, which a named
+		// trigger of the same workflow may share: only unnamed fires count.
+		if row.Method != rest.CronWorkflowsMethodAPI || row.Name == nil {
+			_, named := md[metaCronName]
+			return md[metaCronExpression] == row.Cron && !named
+		}
+		return md[metaCronName] == *row.Name
+	})
+	if err != nil {
+		return workflow.ScheduleLast{}, err
+	}
+	listed := c.scheduleIDOf(row).String()
+	manual, err := c.newestRun(ctx, sdk, row, since, workflow.LabelSchedule+":"+listed, func(md map[string]string) bool {
+		return md[workflow.LabelSchedule] == listed
+	})
+	if err != nil {
+		return workflow.ScheduleLast{}, err
+	}
+	last := tick
+	if manual.Run.RunID != "" && manual.Fire.After(tick.Fire) {
+		last = manual
+	}
+	if last.Run.RunID == "" {
+		return workflow.ScheduleLast{}, nil
+	}
+	st, err := c.settledStatus(ctx, last.Run.RunID.String())
+	if err != nil && !isNotFound(err) {
+		return workflow.ScheduleLast{}, err
+	}
+	if err == nil {
+		last.Status = st
+	}
+	return last, nil
+}

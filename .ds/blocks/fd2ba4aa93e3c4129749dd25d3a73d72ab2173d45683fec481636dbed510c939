@@ -1,0 +1,93 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if err := workflow.ValidateSchedule(s); err != nil {
+		return "", err
+	}
+	if err := checkScheduleZone(s.Location); err != nil {
+		return "", err
+	}
+	if err := checkScheduleMisfire(s.Misfire); err != nil {
+		return "", err
+	}
+	if !s.Active.IsZero() {
+		return "", unsupported("Schedule.Active", workflow.CapScheduleActive, "a Hatchet cron trigger has no start or end, and the engine fires it without asking a worker")
+	}
+	if s.KeepRuns > 0 {
+		return "", unsupported("Schedule.KeepRuns", workflow.CapScheduleKeep, keepRunsReason)
+	}
+	if err := workflow.CheckScheduleCaps(caps, s); err != nil {
+		return "", err
+	}
+	if err := checkCron(s.Cron, s.Seconds); err != nil {
+		return "", err
+	}
+	if _, _, err := c.lookup(s.Workflow); err != nil {
+		return "", err
+	}
+	sdk, err := c.ready()
+	if err != nil {
+		return "", err
+	}
+	input, err := encodeInput(s.Input)
+	if err != nil {
+		return "", err
+	}
+	md, err := runMetadata(s.Labels, "")
+	if err != nil {
+		return "", err
+	}
+	// The cron fire gets its idempotency key from the engine's cron
+	// metadata (idempotencyExpression), not from this stamp.
+	delete(md, metaIdempotencyKey)
+	// Schedule.Tenant rides on the trigger's metadata, which the engine
+	// copies onto every run it fires, as Enqueue stamps Job.Tenant.
+	if s.Tenant != "" {
+		md[metaTenant] = s.Tenant
+	}
+	name := s.Name
+	var replaced replacedCron
+	if name == "" {
+		name = s.Workflow + "-" + uuid.NewString()[:8]
+	} else {
+		md[metaNamed] = "1"
+		var found bool
+		replaced, found, err = c.replaceNamedCron(ctx, sdk, s)
+		if err != nil {
+			return "", err
+		}
+		if found {
+			return namedScheduleID(s.Workflow, s.Name), nil
+		}
+	}
+	cr, err := sdk.Crons().Create(ctx, engineName(c.cfg.Namespace, s.Workflow), features.CreateCronTrigger{
+		Name:               name,
+		Expression:         s.Cron,
+		Input:              input,
+		AdditionalMetadata: labelsAny(md),
+	})
+	if err != nil {
+		var bad *features.InvalidCronExpressionError
+		if errors.As(err, &bad) {
+			return "", fmt.Errorf("%w: %v", workflow.ErrInvalid, err)
+		}
+		if s.Name != "" {
+			// Another process created the same name and expression first
+			// (the engine's unique key on parent, cron and name): return
+			// that trigger when it is the same definition.
+			if _, found, lerr := c.replaceNamedCron(ctx, sdk, s); lerr == nil && found {
+				return namedScheduleID(s.Workflow, s.Name), nil
+			}
+		}
+		return "", engineErr(err, "create cron")
+	}
+	if s.Name == "" {
+		return workflow.ScheduleID(cr.Metadata.Id), nil
+	}
+	id := namedScheduleID(s.Workflow, s.Name)
+	// A replaced trigger that was disabled keeps its pause.
+	if replaced.disabled && c.cfg.API != nil {
+		if err := c.setCronEnabled(ctx, id, false); err != nil {
+			return id, err
+		}
+	}
+	return id, nil
+}

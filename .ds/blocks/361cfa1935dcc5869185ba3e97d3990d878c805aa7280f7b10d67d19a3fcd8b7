@@ -1,0 +1,14 @@
+func classify(f Format, m workflow.Misfire) (misfire, error) {
+	switch m.Policy {
+	case "":
+		return misfireDefault, nil
+	case workflow.MisfireSkip:
+		return misfireSkip, nil
+	case workflow.MisfireFireOnce:
+		if m.Within > 0 {
+			return misfireDeadline, nil
+		}
+		return misfireCatchUp, nil
+	}
+	return 0, refuse(f, "Misfire", "policy %q: it starts at most one run for the ticks it missed", m.Policy)
+}

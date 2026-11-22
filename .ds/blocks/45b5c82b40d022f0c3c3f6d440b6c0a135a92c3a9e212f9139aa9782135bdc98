@@ -1,0 +1,5 @@
+func (f *Fake) AssertEnqueuedOn(t testing.TB, queue, wf string, m ...JobMatcher) {
+	t.Helper()
+	def, _ := f.Workflow(wf)
+	assertOn(t, queue, wf, def, f.Enqueued(wf, m...), m, f.recorded())
+}

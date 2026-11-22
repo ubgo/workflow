@@ -1,0 +1,23 @@
+func (h *handler[P]) finishAudit(ctx context.Context, who P, aw *auditWriter) {
+	if aw == nil || !aw.rec.asked || aw.rec.action.ReadOnly() {
+		return
+	}
+	e := AuditEntry{Who: who, Action: aw.rec.action, Resource: aw.rec.res, Allowed: aw.rec.allowed, Status: aw.status, Err: aw.rec.err, At: h.a.clk.Now()}
+	if e.Status == 0 {
+		e.Status = http.StatusOK
+	}
+	if e.Err == nil && e.Status >= 400 {
+		e.Err = fmt.Errorf("admin: answered %d", e.Status)
+	}
+	err := func() (err error) {
+		defer func() {
+			if p := recover(); p != nil {
+				err = fmt.Errorf("admin: audit sink panicked: %v", p)
+			}
+		}()
+		return h.cfg.audit.Record(context.WithoutCancel(ctx), e)
+	}()
+	if err != nil {
+		h.cfg.logger.Error("admin: audit sink failed", "action", string(e.Action), "err", err)
+	}
+}

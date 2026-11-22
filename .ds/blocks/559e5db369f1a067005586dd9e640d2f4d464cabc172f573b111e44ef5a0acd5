@@ -1,0 +1,20 @@
+func (l *LocalCron) loop(ctx context.Context, e localEntry) {
+	defer l.wg.Done()
+	for {
+		now := l.clk.Now()
+		next := e.sched.Next(now, e.loc)
+		if next.IsZero() {
+			return
+		}
+		timer := l.clk.NewTimer(next.Sub(now))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C():
+		}
+		if err := l.run(ctx, e, next); err != nil && l.onError != nil {
+			l.onError(e.name, next, err)
+		}
+	}
+}

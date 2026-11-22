@@ -1,0 +1,46 @@
+type WebhookConfig struct {
+	// Verifier authenticates each request. Required unless Unsigned.
+	Verifier Verifier
+
+	// Unsigned accepts requests without verifying them. It must be set
+	// on purpose: a nil Verifier without it is refused, so an endpoint is
+	// never left open by omission.
+	Unsigned bool
+
+	// Bus and Event publish each delivery as Message{Name: Event}.
+	Bus   *Bus
+	Event string
+
+	// Client and Workflow enqueue each delivery as a run of Workflow.
+	Client   workflow.Client
+	Workflow string
+
+	// ID returns the delivery's deduplication ID when the Verifier gives
+	// none. Nil means the SHA-256 of the body in hex, so a sender's retry
+	// of the same body starts nothing new.
+	ID func(r *http.Request, body []byte) string
+
+	// MaxBody caps the body in bytes; a larger one gets 413. Zero means
+	// DefaultWebhookMaxBody.
+	MaxBody int64
+
+	// Labels, when set, adds labels to the run (or event) from the
+	// request (a tenant from the path). It runs per request, so a reserved
+	// key cannot be refused at NewWebhook: such a request gets 500 and a
+	// log line naming the config error.
+	Labels func(r *http.Request) map[string]string
+
+	// Logger gets enqueue failures, which the response does not detail.
+	// Nil discards them.
+	Logger *slog.Logger
+
+	// Inbox, when set, records each delivery's ID per consumer
+	// (workflow.InboxConsumer.Once): a redelivery of an ID already
+	// processed is answered 200 with nothing enqueued, for as long as the
+	// inbox keeps it (DefaultInboxKeep, seven days), however long the
+	// driver keeps the run its idempotency key points at; a delivery
+	// another request is processing gets 503, so the sender retries. A
+	// durable inbox (sqlstore.Inbox, redis.Inbox) drops duplicates that
+	// reach any replica. Inbox.Inbox and Inbox.Consumer are required.
+	Inbox *workflow.InboxConsumer
+}

@@ -1,0 +1,29 @@
+var delayedCases = []testCase{
+	{"RunAt does not run before its time and runs after", func(e *env) {
+		e.need(workflow.CapDelayedStart)
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		u := e.tm.unit
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name, RunAt: e.now().Add(u)})
+		if st := e.status(ref); st != workflow.StatusScheduled {
+			e.t.Errorf("status of a delayed run = %q, want scheduled", st)
+		}
+		if e.clk != nil {
+			e.clk.Advance(u / 2)
+			e.quiet()
+		} else {
+			time.Sleep(u / 2)
+		}
+		if got := c.count(); got != 0 {
+			e.t.Fatalf("delayed step ran %d times before RunAt", got)
+		}
+		if st := e.status(ref); st.IsTerminal() || st == workflow.StatusRunning {
+			e.t.Fatalf("status before RunAt = %q, want it not started", st)
+		}
+		e.waitStatus(ref, workflow.StatusSucceeded, u/4)
+		if got := c.count(); got != 1 {
+			e.t.Fatalf("delayed step ran %d times, want 1", got)
+		}
+	}},
+}

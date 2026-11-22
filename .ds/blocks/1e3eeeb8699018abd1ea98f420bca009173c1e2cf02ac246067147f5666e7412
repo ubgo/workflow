@@ -1,0 +1,7 @@
+func (c *Client) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	n, ok := c.jobs.(workflow.RunNotifier)
+	if !ok {
+		return &workflow.UnsupportedError{Field: "OnRunFinished", Missing: workflow.CapRunFinished, Reason: "hybrid: the jobs client does not implement workflow.RunNotifier"}
+	}
+	return n.OnRunFinished(fn)
+}

@@ -1,0 +1,14 @@
+func (m *Manager) callback(ctx context.Context, st State, cb PendingCallback) error {
+	payload, err := json.Marshal(progressOf(st))
+	if err != nil {
+		return err
+	}
+	job := workflow.Job{Workflow: cb.Workflow, Payload: payload, Labels: callbackLabels(st.Labels)}
+	if m.client.Capabilities().Has(workflow.CapIdempotencyKey) {
+		job.IdempotencyKey = callbackKey(st.ID, cb)
+	}
+	if _, err := m.client.Enqueue(owned(ctx), job); err != nil {
+		return fmt.Errorf("batch %s: enqueue %s callback %q: %w", st.ID, cb.Kind, cb.Workflow, err)
+	}
+	return nil
+}

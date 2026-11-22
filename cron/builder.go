@@ -12,6 +12,8 @@ import (
 // ErrBuilder is wrapped by every error a Builder returns, so a caller can
 // tell a bad frequency call from a parse error of a hand-written
 // expression.
+//
+//ds:def id=cron-errbuilder-bjbhu6mv owner=@khanakia stability=stable
 var ErrBuilder = errors.New("cron: invalid builder")
 
 // leapYear is any leap year: YearlyOn measures a month's length in it, so
@@ -63,6 +65,8 @@ const leapYear = 2024
 //
 // The last day of the month has no five-field form and is not offered;
 // time windows and conditions belong to a schedule, not to the expression.
+//
+//ds:def id=cron-builder-9r7pyp69 owner=@khanakia stability=stable
 type Builder struct {
 	minute, hour, dom, month, dow string
 	// every is the "@every" interval; when set, the fields are unused and
@@ -86,6 +90,8 @@ const (
 // fall at the same seconds of every minute; for another interval write
 // "@every 90s" by hand. Constraints (At, Days) are refused: an interval
 // ignores the wall clock.
+//
+//ds:def id=cron-everyseconds-9zakja2j owner=@khanakia stability=stable
 func EverySeconds(n int) Builder {
 	if n < 1 || n > 59 || 60%n != 0 {
 		return failed("EverySeconds(%d): n must divide 60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30)", n)
@@ -94,12 +100,16 @@ func EverySeconds(n int) Builder {
 }
 
 // EveryMinute fires at the start of every minute: "* * * * *".
+//
+//ds:def id=cron-everyminute-nsg5jr4w owner=@khanakia stability=stable
 func EveryMinute() Builder { return builderFields(wild, wild, wild, wild, wild, false) }
 
 // EveryMinutes fires every n minutes from minute 0 of each hour:
 // "*/n * * * *". n must divide 60, because "*/7" fires at :56 and again
 // at :00, four minutes later; for an uneven step write the expression by
 // hand. EveryMinutes(1) is EveryMinute.
+//
+//ds:def id=cron-everyminutes-d3gxg6ra owner=@khanakia stability=stable
 func EveryMinutes(n int) Builder {
 	if n < 1 || n > 59 || 60%n != 0 {
 		return failed("EveryMinutes(%d): n must divide 60 (1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30)", n)
@@ -111,9 +121,13 @@ func EveryMinutes(n int) Builder {
 }
 
 // Hourly fires at minute 0 of every hour: "0 * * * *".
+//
+//ds:def id=cron-hourly-9uquxr9u owner=@khanakia stability=stable
 func Hourly() Builder { return HourlyAt(0) }
 
 // HourlyAt fires at the given minute (0-59) of every hour.
+//
+//ds:def id=cron-hourlyat-6u8cjrgv owner=@khanakia stability=stable
 func HourlyAt(minute int) Builder {
 	if minute < 0 || minute > 59 {
 		return failed("HourlyAt(%d): minute must be 0-59", minute)
@@ -123,6 +137,8 @@ func HourlyAt(minute int) Builder {
 
 // EveryHours fires at minute 0 every n hours from midnight: "0 */n * * *".
 // n must divide 24 so the step is even across midnight.
+//
+//ds:def id=cron-everyhours-d7vzn3bz owner=@khanakia stability=stable
 func EveryHours(n int) Builder {
 	if n < 1 || n > 23 || 24%n != 0 {
 		return failed("EveryHours(%d): n must divide 24 (1, 2, 3, 4, 6, 8, 12)", n)
@@ -134,15 +150,23 @@ func EveryHours(n int) Builder {
 }
 
 // Daily fires at midnight: "0 0 * * *".
+//
+//ds:def id=cron-daily-22e84jn5 owner=@khanakia stability=stable
 func Daily() Builder { return builderFields("0", "0", wild, wild, wild, true) }
 
 // DailyAt fires every day at hhmm ("13:00", "9:05").
+//
+//ds:def id=cron-dailyat-522rkjf9 owner=@khanakia stability=stable
 func DailyAt(hhmm string) Builder { return Daily().At(hhmm) }
 
 // TwiceDaily fires at minute 0 of two hours (0-23) every day.
+//
+//ds:def id=cron-twicedaily-zmp37rpx owner=@khanakia stability=stable
 func TwiceDaily(first, second int) Builder { return TwiceDailyAt(first, second, 0) }
 
 // TwiceDailyAt fires at the given minute of two hours every day.
+//
+//ds:def id=cron-twicedailyat-cyruh7d9 owner=@khanakia stability=stable
 func TwiceDailyAt(first, second, minute int) Builder {
 	switch {
 	case first < 0 || first > 23 || second < 0 || second > 23:
@@ -156,17 +180,25 @@ func TwiceDailyAt(first, second, minute int) Builder {
 }
 
 // Weekly fires at midnight on Sunday: "0 0 * * 0". Days changes the day.
+//
+//ds:def id=cron-weekly-8kaz4zbu owner=@khanakia stability=stable
 func Weekly() Builder { return builderFields("0", "0", wild, wild, "0", true) }
 
 // WeeklyOn fires once a week on day at hhmm.
+//
+//ds:def id=cron-weeklyon-dqymuces owner=@khanakia stability=stable
 func WeeklyOn(day time.Weekday, hhmm string) Builder { return Weekly().Days(day).At(hhmm) }
 
 // Monthly fires at midnight on the 1st: "0 0 1 * *".
+//
+//ds:def id=cron-monthly-ebkmgna3 owner=@khanakia stability=stable
 func Monthly() Builder { return builderFields("0", "0", "1", wild, wild, true) }
 
 // MonthlyOn fires on day (1-31) of every month at hhmm. Months without
 // that day are skipped, as in cron: MonthlyOn(31, ...) fires seven times a
 // year.
+//
+//ds:def id=cron-monthlyon-myfbnktr owner=@khanakia stability=stable
 func MonthlyOn(day int, hhmm string) Builder {
 	if day < 1 || day > 31 {
 		return failed("MonthlyOn(%d): day must be 1-31", day)
@@ -175,6 +207,8 @@ func MonthlyOn(day int, hhmm string) Builder {
 }
 
 // TwiceMonthly fires on two days of every month at hhmm.
+//
+//ds:def id=cron-twicemonthly-hjehbwtx owner=@khanakia stability=stable
 func TwiceMonthly(first, second int, hhmm string) Builder {
 	switch {
 	case first < 1 || first > 31 || second < 1 || second > 31:
@@ -187,10 +221,14 @@ func TwiceMonthly(first, second int, hhmm string) Builder {
 
 // Quarterly fires at midnight on the 1st of January, April, July and
 // October: "0 0 1 1,4,7,10 *".
+//
+//ds:def id=cron-quarterly-yn2d7p74 owner=@khanakia stability=stable
 func Quarterly() Builder { return builderFields("0", "0", "1", quarterDays, wild, true) }
 
 // QuarterlyOn fires on day (1-31) of the first month of each quarter at
 // hhmm.
+//
+//ds:def id=cron-quarterlyon-sbxgdbby owner=@khanakia stability=stable
 func QuarterlyOn(day int, hhmm string) Builder {
 	if day < 1 || day > 31 {
 		return failed("QuarterlyOn(%d): day must be 1-31", day)
@@ -199,11 +237,15 @@ func QuarterlyOn(day int, hhmm string) Builder {
 }
 
 // Yearly fires at midnight on 1 January: "0 0 1 1 *".
+//
+//ds:def id=cron-yearly-myp62832 owner=@khanakia stability=stable
 func Yearly() Builder { return builderFields("0", "0", "1", "1", wild, true) }
 
 // YearlyOn fires once a year on month and day at hhmm. A day the month
 // never has (30 February) is refused rather than producing a schedule
 // that never fires; 29 February is accepted and fires in leap years only.
+//
+//ds:def id=cron-yearlyon-48djeydr owner=@khanakia stability=stable
 func YearlyOn(month time.Month, day int, hhmm string) Builder {
 	if month < time.January || month > time.December {
 		return failed("YearlyOn(%d, %d): month must be 1-12", month, day)
@@ -219,6 +261,8 @@ func YearlyOn(month time.Month, day int, hhmm string) Builder {
 // Quarterly, Yearly and their On forms); on an hourly, minute or second
 // frequency it is refused, because replacing the minute and hour would
 // silently drop the repetition: use DailyAt, HourlyAt or TwiceDailyAt.
+//
+//ds:def id=cron-builder-at-kw9vhj5f owner=@khanakia stability=stable
 func (b Builder) At(hhmm string) Builder {
 	if b.err != nil {
 		return b
@@ -235,9 +279,13 @@ func (b Builder) At(hhmm string) Builder {
 }
 
 // Weekdays limits the frequency to Monday to Friday.
+//
+//ds:def id=cron-builder-weekdays-9cnkxc7g owner=@khanakia stability=stable
 func (b Builder) Weekdays() Builder { return b.withDow("Weekdays()", "1-5") }
 
 // Weekends limits the frequency to Saturday and Sunday.
+//
+//ds:def id=cron-builder-weekends-qzm2d8br owner=@khanakia stability=stable
 func (b Builder) Weekends() Builder { return b.withDow("Weekends()", "0,6") }
 
 // Days limits the frequency to the given weekdays. On Weekly it picks the day the week fires on.
@@ -246,6 +294,8 @@ func (b Builder) Weekends() Builder { return b.withDow("Weekends()", "0,6") }
 // day field matches there (the Vixie rule), so Monthly().Days(Monday)
 // would fire on the 1st and on every Monday, not on Mondays that are the
 // 1st.
+//
+//ds:def id=cron-builder-days-56mxtkd6 owner=@khanakia stability=stable
 func (b Builder) Days(days ...time.Weekday) Builder {
 	if len(days) == 0 {
 		return b.fail("Days(): name at least one day")
@@ -260,6 +310,7 @@ func (b Builder) Days(days ...time.Weekday) Builder {
 	return b.withDow("Days()", joinInts(nums))
 }
 
+//ds:def id=cron-builder-withdow-5bxem2en owner=@khanakia stability=stable
 func (b Builder) withDow(call, dow string) Builder {
 	switch {
 	case b.err != nil:
@@ -275,6 +326,8 @@ func (b Builder) withDow(call, dow string) Builder {
 
 // Expr returns the expression, checked by Parse, or the first error a
 // call made, wrapping ErrBuilder.
+//
+//ds:def id=cron-builder-expr-msg925hv owner=@khanakia stability=stable
 func (b Builder) Expr() (string, error) {
 	if b.err != nil {
 		return "", b.err
@@ -296,6 +349,8 @@ func (b Builder) Expr() (string, error) {
 // (Workflow.Cron, a package-level schedule), where an error is a bug: it
 // panics with Expr's error. Use Expr for input that comes from users or
 // configuration.
+//
+//ds:def id=cron-builder-mustexpr-6squrnsu owner=@khanakia stability=stable
 func (b Builder) MustExpr() string {
 	expr, err := b.Expr()
 	if err != nil {
@@ -306,6 +361,8 @@ func (b Builder) MustExpr() string {
 
 // Schedule parses the expression, for computing fire times (Next,
 // Between) without a driver.
+//
+//ds:def id=cron-builder-schedule-wmbazqzd owner=@khanakia stability=stable
 func (b Builder) Schedule() (Schedule, error) {
 	expr, err := b.Expr()
 	if err != nil {

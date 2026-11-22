@@ -1,0 +1,1 @@
+func (c Caps) Missing(required Caps) Caps { return required.Without(c) }

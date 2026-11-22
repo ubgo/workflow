@@ -12,6 +12,8 @@ import (
 // misfire catch-up across the time before From). A zero From means no
 // start and a zero Until no end; an Until at or before From is refused,
 // since it would mean a schedule that never fires.
+//
+//ds:def id=active-r7frpdu3 owner=@khanakia stability=stable
 type Active struct {
 	From, Until time.Time
 }
@@ -34,6 +36,8 @@ func (a Active) Ended(after time.Time) bool {
 }
 
 // validate refuses an empty period.
+//
+//ds:def id=active-validate-vfxfreh8 owner=@khanakia stability=stable
 func (a Active) validate() error {
 	if !a.From.IsZero() && !a.Until.IsZero() && !a.Until.After(a.From) {
 		return fmt.Errorf("active period: Until %s is not after From %s", a.Until.Format(time.RFC3339), a.From.Format(time.RFC3339))
@@ -47,6 +51,8 @@ func (a Active) validate() error {
 // From, so a tick exactly at From fires. Every driver computes ticks of a
 // schedule with an Active period through it, so the bounds mean the same
 // everywhere.
+//
+//ds:def id=nextactive-nt7cn659 owner=@khanakia stability=stable
 func NextActive(s cron.Schedule, after time.Time, loc *time.Location, a Active) time.Time {
 	if !a.From.IsZero() && after.Before(a.From) {
 		after = a.From.Add(-time.Nanosecond)

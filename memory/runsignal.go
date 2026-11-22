@@ -16,6 +16,8 @@ var _ workflow.RunSignalReader = (*Client)(nil)
 // with one of names that the run may still take: kept, sent after its
 // enqueue and not taken by it, oldest first (workflow.RunSignalReader).
 // The ID is the signal's sequence number.
+//
+//ds:def id=memory-client-pendingsignals-npvn9fcu owner=@khanakia stability=stable
 func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names []string, limit int) ([]workflow.RunSignal, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -51,6 +53,8 @@ func (c *Client) PendingSignals(ctx context.Context, run workflow.RunID, names [
 
 // TakeSignal marks the signal id taken by run, as a wait step taking it
 // would (workflow.RunSignalReader).
+//
+//ds:def id=memory-client-takesignal-6neqmtnc owner=@khanakia stability=stable
 func (c *Client) TakeSignal(ctx context.Context, run workflow.RunID, id string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err

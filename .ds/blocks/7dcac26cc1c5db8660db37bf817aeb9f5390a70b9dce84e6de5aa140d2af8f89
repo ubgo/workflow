@@ -1,0 +1,11 @@
+func (f *Fake) AssertScheduled(t testing.TB, wf string) {
+	t.Helper()
+	var all []string
+	for _, s := range f.Schedules() {
+		if s.Schedule.Workflow == wf && !s.Unscheduled {
+			return
+		}
+		all = append(all, fmt.Sprintf("%s %q (unscheduled: %t)", s.Schedule.Workflow, s.Schedule.Cron, s.Unscheduled))
+	}
+	t.Errorf("no schedule of workflow %q is in place; schedules: [%s]", wf, strings.Join(all, ", "))
+}

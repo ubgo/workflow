@@ -1,0 +1,18 @@
+func TestServeNilOnRequestedStop(t *testing.T) {
+	c := memory.New(memory.WithRecycle(workflow.Recycle{MaxJobs: 5}))
+	ctx, cancel := context.WithCancel(context.Background())
+	errc := make(chan error, 1)
+	go func() { errc <- workflow.Serve(ctx, c) }()
+	cancel()
+	select {
+	case err := <-errc:
+		if err != nil {
+			t.Fatalf("Serve after cancel = %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return after cancel")
+	}
+	if err := c.StopCause(); err != nil {
+		t.Fatalf("StopCause after a requested stop = %v", err)
+	}
+}

@@ -1,0 +1,3 @@
+func namedScheduleID(wf, name string) workflow.ScheduleID {
+	return workflow.ScheduleID(namedIDPrefix + base64.RawURLEncoding.EncodeToString([]byte(wf+namedSep+name)))
+}

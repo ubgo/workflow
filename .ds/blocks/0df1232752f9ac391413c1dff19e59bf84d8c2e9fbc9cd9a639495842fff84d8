@@ -1,0 +1,1 @@
+var DefaultRunRetention = RunRetention{MaxAge: 24 * time.Hour, MaxRuns: 10_000}

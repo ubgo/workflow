@@ -1,0 +1,15 @@
+func (m *Manager) ResumeDispatches(ctx context.Context) error {
+	open, err := m.store.Unfinished(ctx)
+	if err != nil {
+		return fmt.Errorf("batch: list batches to resume: %w", err)
+	}
+	now := m.clk.Now()
+	var errs []error
+	for _, st := range open {
+		if st.Dispatched || now.Before(st.DispatchUntil) {
+			continue
+		}
+		errs = append(errs, m.resume(ctx, st.ID))
+	}
+	return errors.Join(errs...)
+}

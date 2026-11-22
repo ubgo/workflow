@@ -16,13 +16,17 @@ import (
 // another language. {p} is the table prefix and ? a parameter; the test
 // rewrites both for the engine. Keep them equal to the page.
 const (
+	//ds:def id=enginetest-foreignrun-rkf6n8qx owner=@khanakia stability=stable
 	foreignRun = `INSERT INTO {p}runs (id, scheduled_id, workflow, payload, labels, idem_active, priority, bucket, rate_keys,
   status, run_at, sig_floor, created_at, finished_at, fail_until, notified, notify_until, ver)
 VALUES (?, ?, ?, ?, ?, ?, ?, '', '', ?, ?, (SELECT COALESCE(MAX(id), 0) FROM {p}signals), ?, 0, 0, 0, 0, 0)`
+	//ds:def id=enginetest-foreignrunext-zuvsh9y6 owner=@khanakia stability=stable
 	foreignRunExt = `INSERT INTO {p}run_ext (run_id, queue, idem_key, retry, started_at, discarded)
 VALUES (?, ?, ?, NULL, 0, 0)`
+	//ds:def id=enginetest-foreignruninfo-fz5tjbvv owner=@khanakia stability=stable
 	foreignRunInfo = `INSERT INTO {p}run_info (run_id, tenant, output, has_output, progress, nodes, deadline, timeout)
 VALUES (?, ?, NULL, 0, NULL, '[]', 0, '')`
+	//ds:def id=enginetest-foreignrunlabel-7vk4p34x owner=@khanakia stability=stable
 	foreignRunLabel = `INSERT INTO {p}run_labels (run_id, lkey, lval) VALUES (?, ?, ?)`
 )
 
@@ -95,6 +99,8 @@ func insertForeign(ctx context.Context, db *sql.DB, d sqlb.Dialect, prefix strin
 // workflow, on every engine: a run due now (with labels found by the label
 // index, and its queue filled in by the admitting worker), a delayed run,
 // and a keyed run whose key a second writer and Enqueue both see held.
+//
+//ds:def id=enginetest-testforeigninsert-e8axw8f6 owner=@khanakia stability=stable
 func TestForeignInsert(t *testing.T) {
 	for _, e := range engines(t) {
 		t.Run(e.name, func(t *testing.T) {

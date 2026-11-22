@@ -1,0 +1,27 @@
+func (r *Relay) fail(ctx context.Context, e *entry, token string, cause error) error {
+	o := r.o
+	attempts := e.attempts + 1
+	status := statusPending
+	dead := r.maxAttempts > 0 && attempts >= int64(r.maxAttempts)
+	if dead {
+		status = statusDead
+		o.log.Error("outbox: entry is dead", "entry", e.id, "workflow", e.workflow, "attempts", attempts, "error", cause)
+	} else {
+		o.log.Warn("outbox: enqueue failed; will retry", "entry", e.id, "workflow", e.workflow, "attempts", attempts, "error", cause)
+	}
+	due := o.clk.Now().Add(r.backoff.Delay(int(attempts))).UnixNano()
+	_, err := o.db.ExecContext(context.WithoutCancel(ctx), o.sql(`UPDATE {t} SET status = ?, attempts = ?, due = ?, last_err = ?, lease_token = NULL, lease_until = 0
+		WHERE id = ? AND lease_token = ?`), status, attempts, due, cause.Error(), e.id, token)
+	if err != nil {
+		return fmt.Errorf("outbox: record failed entry %s: %w", e.id, err)
+	}
+	if dead && r.onDead != nil {
+		job, jerr := e.job(false)
+		if jerr != nil {
+			o.log.Error("outbox: dead entry reported without labels", "entry", e.id, "error", jerr)
+		}
+		r.onDead(context.WithoutCancel(ctx), DeadEntry{ID: e.id, Job: job, Attempts: int(attempts), LastErr: cause.Error(),
+			CreatedAt: time.Unix(0, e.created).UTC()}, cause)
+	}
+	return nil
+}

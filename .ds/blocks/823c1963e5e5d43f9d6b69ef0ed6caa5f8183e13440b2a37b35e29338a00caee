@@ -1,0 +1,34 @@
+func (m *Manager) abortJobs(ctx context.Context, id ID, owner string, idxs []int, refs []workflow.RunRef, landed bool) error {
+	var eff effects
+	var claimed []PendingCallback
+	st, err := m.store.Update(ctx, id, func(s *State) error {
+		if err := m.renew(s, owner); err != nil {
+			return err
+		}
+		now := m.clk.Now()
+		eff = markCancelled(s, now)
+		for k, i := range idxs {
+			if k < len(refs) && !refs[k].IsZero() {
+				s.Jobs[i].Ref = refs[k]
+				continue
+			}
+			e := recordFinish(s, i, workflow.StatusCancelled, now)
+			eff.then, eff.finally = eff.then || e.then, eff.finally || e.finally
+		}
+		s.Dispatched = true
+		m.dropSpec(s)
+		claimed = m.claimCallbacks(s, eff, now)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("batch %s: abort dispatch: %w", id, err)
+	}
+	err = m.apply(ctx, st, eff, claimed)
+	switch {
+	case refs == nil && len(idxs) > 0 && st.Grouped:
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	case landed && m.canCancelByLabel():
+		err = errors.Join(err, m.cancelUnplaced(ctx, id))
+	}
+	return err
+}

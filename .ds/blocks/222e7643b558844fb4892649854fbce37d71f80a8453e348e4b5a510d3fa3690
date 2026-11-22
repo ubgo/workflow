@@ -1,0 +1,13 @@
+type ChildOptions struct {
+	// Poll is the snooze between looks at unfinished children; zero
+	// means DefaultChildPoll.
+	Poll time.Duration
+
+	// Spawn are passed to Spawn (SpawnAllowDuplicates).
+	Spawn []SpawnOption
+
+	// Parent is the client the calling step's workflow runs on, whose
+	// driver must honour Snooze. Nil means the client the children run
+	// on, the usual case of one backend.
+	Parent Client
+}

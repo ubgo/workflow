@@ -1,0 +1,11 @@
+func seal(c Codec, plain []byte) ([]byte, error) {
+	if len(plain) == 0 {
+		return plain, nil
+	}
+	enc, err := c.Encode(plain)
+	if err != nil {
+		return nil, err
+	}
+	// Marshalling a string cannot fail.
+	return json.Marshal(envelopePrefix + base64.StdEncoding.EncodeToString(enc))
+}

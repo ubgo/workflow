@@ -1,0 +1,6 @@
+func reportCaps(from, to Status) Caps {
+	if from == StatusRetrying || to == StatusRetrying {
+		return CapRunStates
+	}
+	return Caps{}
+}

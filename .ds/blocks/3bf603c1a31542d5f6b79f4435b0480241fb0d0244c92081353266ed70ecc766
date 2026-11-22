@@ -1,0 +1,3 @@
+func Consumers(ctx context.Context, store LineageStore, dataset string) ([]Lineage, error) {
+	return store.Find(ctx, LineageQuery{Kind: LineageConsumed, Dataset: dataset})
+}

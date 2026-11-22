@@ -1,0 +1,46 @@
+func (d *Datasets) Updated(ctx context.Context, dataset, version string, meta map[string]string) (UpdateResult, error) {
+	if dataset == "" || version == "" {
+		return UpdateResult{}, fmt.Errorf("%w: events: dataset update needs a dataset and a version", workflow.ErrInvalid)
+	}
+	rec := Lineage{Kind: LineageProduced, Dataset: dataset, Version: version, Meta: maps.Clone(meta), At: d.clock.Now()}
+	if info, ok := workflow.StepInfoFrom(ctx); ok {
+		rec.Run, rec.Workflow, rec.Step = info.RunID, info.Workflow, info.Step
+	}
+	if err := d.store.Record(ctx, rec); err != nil {
+		return UpdateResult{}, fmt.Errorf("events: record dataset %q version %q: %w", dataset, version, err)
+	}
+	out := UpdateResult{Lineage: rec}
+	var errs []error
+
+	payload, err := json.Marshal(DatasetUpdate{Dataset: dataset, Version: version, Meta: meta})
+	if err != nil {
+		return out, fmt.Errorf("events: dataset %q update: %w", dataset, err)
+	}
+	out.Event, err = d.bus.Publish(ctx, Message{ID: DatasetEventID(dataset, version), Name: EventDatasetUpdated, Key: dataset, Payload: payload})
+	if err != nil {
+		errs = append(errs, err)
+	}
+
+	d.mu.RLock()
+	triggers := slices.Clone(d.triggers)
+	d.mu.RUnlock()
+	for _, t := range triggers {
+		if !slices.Contains(t.Datasets, dataset) {
+			continue
+		}
+		versions, fire, err := d.due(ctx, t, dataset)
+		if err == nil && !fire {
+			continue
+		}
+		run := TriggerRun{Trigger: t.Name, Versions: versions}
+		if err == nil {
+			run.Ref, err = d.start(ctx, t, versions)
+		}
+		if err != nil {
+			run.Err = fmt.Errorf("events: dataset trigger %q: %w", t.Name, err)
+			errs = append(errs, run.Err)
+		}
+		out.Triggered = append(out.Triggered, run)
+	}
+	return out, errors.Join(errs...)
+}

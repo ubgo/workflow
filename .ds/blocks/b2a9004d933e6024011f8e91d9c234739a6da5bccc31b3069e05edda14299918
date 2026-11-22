@@ -1,0 +1,1 @@
+var ErrScheduleJSON = errors.New("workflow: invalid schedule JSON")

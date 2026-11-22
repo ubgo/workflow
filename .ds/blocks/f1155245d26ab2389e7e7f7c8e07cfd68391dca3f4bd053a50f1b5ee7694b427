@@ -1,0 +1,55 @@
+func Deliver(url string, signer Signer, opts ...Option) workflow.Handler {
+	cfg := deliverConfig{timeout: DefaultTimeout, max: DefaultMaxResponse, header: http.Header{}}
+	for _, o := range opts {
+		if o != nil {
+			o(&cfg)
+		}
+	}
+	if cfg.client == nil {
+		cfg.client = http.DefaultClient
+	}
+	if cfg.clk == nil {
+		cfg.clk = clock.Real{}
+	}
+	if cfg.max <= 0 {
+		cfg.max = DefaultMaxResponse
+	}
+	if cfg.id == nil {
+		cfg.id = func(i workflow.StepInfo) string { return i.RunID.String() + "." + i.Step }
+	}
+	return func(ctx context.Context, in []byte) ([]byte, error) {
+		if url == "" || signer == nil {
+			return nil, workflow.Permanent(fmt.Errorf("%w: push: Deliver needs a url and a signer", workflow.ErrInvalid))
+		}
+		info, ok := workflow.StepInfoFrom(ctx)
+		if !ok {
+			return nil, workflow.Permanent(fmt.Errorf("%w: push: Deliver runs as a step (no StepInfo on ctx)", workflow.ErrInvalid))
+		}
+		body, err := json.Marshal(Envelope{Workflow: info.Workflow, Run: info.RunID.String(), Step: info.Step, Attempt: info.Attempt, Payload: in})
+		if err != nil {
+			return nil, workflow.Permanent(err)
+		}
+		if cfg.timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, cfg.timeout)
+			defer cancel()
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return nil, workflow.Permanent(fmt.Errorf("%w: push: %w", workflow.ErrInvalid, err))
+		}
+		for k, vs := range cfg.header {
+			req.Header[k] = append([]string(nil), vs...)
+		}
+		for k, vs := range signer.Headers(cfg.id(info), body) {
+			req.Header[k] = vs
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := cfg.client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("push: deliver to endpoint: %w", err) // retryable
+		}
+		defer resp.Body.Close()
+		return cfg.answer(resp)
+	}
+}

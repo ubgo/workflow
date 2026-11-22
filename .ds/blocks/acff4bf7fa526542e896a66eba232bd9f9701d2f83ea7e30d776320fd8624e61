@@ -1,0 +1,1 @@
+func ExpireMaxWait(d time.Duration) ExpireOption { return func(c *expireConfig) { c.maxWait = d } }

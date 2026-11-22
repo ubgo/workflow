@@ -19,12 +19,16 @@ import (
 // ErrSignature means a request's signature is missing, malformed, does
 // not match, or (for a timestamped scheme) is too old or too new. The
 // webhook handler answers it with 401 and never says which.
+//
+//ds:def id=events-errsignature-deeb8maq owner=@khanakia stability=stable
 var ErrSignature = errors.New("events: signature does not verify")
 
 // Verifier checks an inbound request's signature over its body (the raw
 // bytes, read once by the handler). It returns the delivery ID the
 // sender put on the request, or "" when the scheme has none, and an
 // error matching ErrSignature when the request is not authentic.
+//
+//ds:def id=events-verifier-cqn4e5me owner=@khanakia stability=api
 type Verifier interface {
 	Verify(r *http.Request, body []byte) (id string, err error)
 }
@@ -34,6 +38,7 @@ type Encoding string
 
 // The encodings.
 const (
+	//ds:def id=events-encodinghex-ma2s9r9m owner=@khanakia stability=stable
 	EncodingHex    Encoding = "hex"
 	EncodingBase64 Encoding = "base64"
 )
@@ -48,6 +53,8 @@ const (
 // It has no timestamp, so it cannot refuse a replayed request; the
 // webhook handler's deduplication by delivery ID is what makes a replay
 // start nothing new. Prefer StandardWebhooks where the sender supports it.
+//
+//ds:def id=events-hmac-5mvsrx94 owner=@khanakia stability=stable
 type HMAC struct {
 	// Header holds the signature. Required.
 	Header string
@@ -94,6 +101,8 @@ func (h HMAC) decode(s string) ([]byte, error) {
 }
 
 // Sign returns the header value for body, signed with the first secret.
+//
+//ds:def id=events-hmac-sign-bn32q9c3 owner=@khanakia stability=stable
 func (h HMAC) Sign(body []byte) (string, error) {
 	if len(h.Secrets) == 0 || len(h.Secrets[0]) == 0 {
 		return "", fmt.Errorf("events: HMAC has no secret")
@@ -103,6 +112,8 @@ func (h HMAC) Sign(body []byte) (string, error) {
 
 // Verify checks the header against body with every secret, in constant
 // time per secret.
+//
+//ds:def id=events-hmac-verify-wrhym82e owner=@khanakia stability=stable
 func (h HMAC) Verify(r *http.Request, body []byte) (string, error) {
 	if h.Header == "" || len(h.Secrets) == 0 {
 		return "", fmt.Errorf("%w: HMAC verifier has no Header or Secrets", ErrSignature)
@@ -128,13 +139,18 @@ func (h HMAC) Verify(r *http.Request, body []byte) (string, error) {
 
 // The Standard Webhooks headers.
 const (
-	HeaderWebhookID        = "webhook-id"
+	//ds:def id=events-headerwebhookid-nbkr4m47 owner=@khanakia stability=stable
+	HeaderWebhookID = "webhook-id"
+	//ds:def id=events-headerwebhooktimestamp-wqbn2bdu owner=@khanakia stability=stable
 	HeaderWebhookTimestamp = "webhook-timestamp"
+	//ds:def id=events-headerwebhooksignature-vkt6m3xx owner=@khanakia stability=stable
 	HeaderWebhookSignature = "webhook-signature"
 )
 
 // StandardWebhooksTolerance is how far a delivery's timestamp may be from
 // now, either way, by default.
+//
+//ds:def id=events-standardwebhookstolerance-fkqrj65c owner=@khanakia stability=stable
 const StandardWebhooksTolerance = 5 * time.Minute
 
 // standardSecretPrefix starts an encoded Standard Webhooks secret.
@@ -146,6 +162,8 @@ const standardSecretPrefix = "whsec_"
 // beside webhook-id and webhook-timestamp. The timestamp lets Verify
 // refuse a replayed request older than the tolerance. Build it with
 // NewStandardWebhooks.
+//
+//ds:def id=events-standardwebhooks-vfagtuu5 owner=@khanakia stability=stable
 type StandardWebhooks struct {
 	secrets   [][]byte
 	tolerance time.Duration
@@ -155,6 +173,8 @@ type StandardWebhooks struct {
 // NewStandardWebhooks parses secrets ("whsec_" followed by base64; the
 // first signs, all verify) and returns the scheme. tolerance zero means
 // StandardWebhooksTolerance; clk nil means clock.Real.
+//
+//ds:def id=events-newstandardwebhooks-nchrkphq owner=@khanakia stability=stable
 func NewStandardWebhooks(secrets []string, tolerance time.Duration, clk clock.Clock) (*StandardWebhooks, error) {
 	if len(secrets) == 0 {
 		return nil, errors.New("events: standard webhooks needs at least one secret")
@@ -185,6 +205,8 @@ func standardSign(key []byte, id string, ts int64, body []byte) string {
 
 // Headers returns the three headers that sign body as delivery id at the
 // clock's now, for an outgoing request.
+//
+//ds:def id=events-standardwebhooks-headers-ftsw7fhm owner=@khanakia stability=stable
 func (s *StandardWebhooks) Headers(id string, body []byte) http.Header {
 	ts := s.clk.Now().Unix()
 	h := http.Header{}
@@ -197,6 +219,8 @@ func (s *StandardWebhooks) Headers(id string, body []byte) http.Header {
 // Verify checks the headers against body: an ID, a timestamp within the
 // tolerance of now, and a "v1," signature that matches under any secret.
 // It returns the webhook-id.
+//
+//ds:def id=events-standardwebhooks-verify-bfd6fwea owner=@khanakia stability=stable
 func (s *StandardWebhooks) Verify(r *http.Request, body []byte) (string, error) {
 	id := r.Header.Get(HeaderWebhookID)
 	ts, err := strconv.ParseInt(r.Header.Get(HeaderWebhookTimestamp), 10, 64)

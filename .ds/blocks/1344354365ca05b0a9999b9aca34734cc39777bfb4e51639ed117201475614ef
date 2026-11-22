@@ -1,0 +1,3 @@
+func (f *Fake) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
+	return f.force(ctx, ref, FakeForce{Ref: ref, Complete: true})
+}

@@ -1,0 +1,39 @@
+func (m Misfire) Due(src TickSource, last, now time.Time, loc *time.Location) []time.Time {
+	var limit time.Duration // the oldest a tick may be; zero means any age
+	keep := 1
+	switch m.Policy {
+	case MisfireSkip:
+		limit = MisfireGrace
+	case MisfireFireOnce:
+		limit = m.Within
+	case MisfireFireAll:
+		limit, keep = m.Within, m.Max
+	default:
+		return nil
+	}
+	if keep < 1 || !now.After(last) {
+		return nil
+	}
+	from := last
+	if limit > 0 {
+		// Cron ticks have one-second resolution; start a second early and
+		// filter exactly below, so a tick exactly limit old still counts.
+		if earliest := now.Add(-limit - time.Second); earliest.After(from) {
+			from = earliest
+		}
+	}
+	ticks := newestTicks(src, from, now, loc, keep)
+	if limit > 0 {
+		kept := ticks[:0]
+		for _, t := range ticks {
+			if now.Sub(t) <= limit {
+				kept = append(kept, t)
+			}
+		}
+		ticks = kept
+	}
+	if len(ticks) == 0 {
+		return nil
+	}
+	return ticks
+}

@@ -1,0 +1,1 @@
+func AwaitAllowFailures() AwaitOption { return func(c *awaitConfig) { c.allowFailures = true } }

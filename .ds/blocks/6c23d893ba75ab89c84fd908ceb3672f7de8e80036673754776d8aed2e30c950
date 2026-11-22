@@ -1,0 +1,1 @@
+func WithSchema(name string) Option { return func(cl *Client) { cl.schema = name } }

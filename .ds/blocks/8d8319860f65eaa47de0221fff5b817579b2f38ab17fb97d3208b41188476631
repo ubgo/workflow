@@ -1,0 +1,1 @@
+type AlerterFunc func(ctx context.Context, a Alert)

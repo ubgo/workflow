@@ -17,6 +17,8 @@ import (
 // tenant (an operator of the whole system): the request is then served
 // exactly as without WithTenantScope. It is not a valid tenant ID
 // (workflow.ValidateTenant refuses "*"), so it cannot collide with one.
+//
+//ds:def id=admin-alltenants-kd8276ff owner=@khanakia stability=stable
 const AllTenants = "*"
 
 // TenantScope returns the tenant the caller who of r is confined to, or
@@ -24,6 +26,8 @@ const AllTenants = "*"
 // on every request. An error, a panic, an empty string or a value that
 // fails workflow.ValidateTenant refuses the request with 403, so a scope
 // that cannot decide fails closed.
+//
+//ds:def id=admin-tenantscope-44wgkctt owner=@khanakia stability=stable
 type TenantScope[P any] func(r *http.Request, who P) (tenant string, err error)
 
 // WithTenantScope confines each caller to one tenant (workflow.Job.Tenant),
@@ -64,6 +68,8 @@ type TenantScope[P any] func(r *http.Request, who P) (tenant string, err error)
 //
 // Authorize still runs on every request a scope lets through; TenantFrom
 // reads the caller's tenant from its ctx.
+//
+//ds:def id=admin-withtenantscope-cbtmkxnu owner=@khanakia stability=stable
 func WithTenantScope[P any](fn TenantScope[P]) HandlerOption {
 	return func(c *handlerConfig) {
 		if fn != nil {
@@ -78,6 +84,8 @@ type tenantKey struct{}
 // TenantFrom returns the tenant a request's ctx is scoped to, and false
 // for an unscoped request (no WithTenantScope, or a caller given
 // AllTenants). An Authorizer reads it from Request.HTTP.Context().
+//
+//ds:def id=admin-tenantfrom-q4yqeu8a owner=@khanakia stability=stable
 func TenantFrom(ctx context.Context) (string, bool) {
 	t, ok := ctx.Value(tenantKey{}).(string)
 	return t, ok
@@ -104,6 +112,8 @@ type tenantRoute struct {
 
 // tenantRoutes covers every route NewHandler registers, by the same
 // pattern; TestTenantRoutes_CoverEveryRoute keeps the two lists equal.
+//
+//ds:def id=admin-tenantroutes-h2f4ptcs owner=@khanakia stability=stable
 var tenantRoutes = map[string]tenantRoute{
 	"GET /capabilities":                   {tenantOpen, ActionCapabilities},
 	"GET /runs":                           {tenantList, ActionListRuns},
@@ -144,6 +154,8 @@ var tenantRoutes = map[string]tenantRoute{
 
 // refusedOps are the operations of the tenantRefused routes, reported as
 // unsupported to a scoped caller by GET /capabilities.
+//
+//ds:def id=admin-refusedops-2e7gq2bt owner=@khanakia stability=stable
 var refusedOps = map[Operation]bool{OpQueues: true, OpPause: true, OpNodes: true, OpHealth: true, OpSignalWaiting: true}
 
 // tenantGate is a handler's tenant scope, built by NewHandler.
@@ -161,6 +173,8 @@ var errScopeType = errors.New("admin API is closed: WithTenantScope's principal 
 
 // newTenantGate builds the gate for cfg's scope, or returns nil when the
 // handler has none.
+//
+//ds:def id=admin-handler-newtenantgate-2r52a7yf owner=@khanakia stability=stable
 func (h *handler[P]) newTenantGate() *tenantGate[P] {
 	if h.cfg.tenant == nil {
 		return nil
@@ -195,6 +209,8 @@ func (h *handler[P]) newTenantGate() *tenantGate[P] {
 // route serves an identified request: through the routes as they are
 // without a tenant scope or for an AllTenants caller, else through the
 // scoped routes with the tenant in the ctx.
+//
+//ds:def id=admin-handler-route-xh5wtfdb owner=@khanakia stability=stable
 func (h *handler[P]) route(w http.ResponseWriter, r *http.Request, who P) {
 	g := h.tenant
 	if g == nil {
@@ -224,6 +240,8 @@ func (h *handler[P]) route(w http.ResponseWriter, r *http.Request, who P) {
 
 // callScope asks the scope, turning a panic, an empty answer and an
 // invalid tenant into an error so each fails closed.
+//
+//ds:def id=admin-handler-callscope-5pkzhbay owner=@khanakia stability=stable
 func (h *handler[P]) callScope(scope TenantScope[P], r *http.Request, who P) (tenant string, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -243,6 +261,8 @@ func (h *handler[P]) callScope(scope TenantScope[P], r *http.Request, who P) (te
 
 // scoped is the handler of one route for a scoped caller: it applies the
 // route's rule, then hands the request to the routes.
+//
+//ds:def id=admin-handler-scoped-66mv5cdw owner=@khanakia stability=stable
 func (h *handler[P]) scoped(tr tenantRoute) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		tenant, _ := TenantFrom(r.Context())
@@ -305,6 +325,8 @@ func (h *handler[P]) scoped(tr tenantRoute) http.HandlerFunc {
 // case, so every key that spells "tenant" in any case is checked and
 // dropped before the one key is set. A body that is not one JSON object
 // is a 400; a body naming another tenant is a 403.
+//
+//ds:def id=admin-pinbodytenant-vfk7mnu4 owner=@khanakia stability=stable
 func pinBodyTenant(body io.Reader, tenant string) (out []byte, status int, msg string) {
 	dec := json.NewDecoder(body)
 	var obj map[string]json.RawMessage
@@ -331,6 +353,8 @@ func pinBodyTenant(body io.Reader, tenant string) (out []byte, status int, msg s
 
 // scopeSchedules keeps the schedules of the ctx's tenant, or all of them
 // for an unscoped request.
+//
+//ds:def id=admin-scopeschedules-eyb6wmhq owner=@khanakia stability=stable
 func scopeSchedules(ctx context.Context, all []workflow.ScheduleInfo) []workflow.ScheduleInfo {
 	tenant, ok := TenantFrom(ctx)
 	if !ok {
@@ -347,6 +371,8 @@ func scopeSchedules(ctx context.Context, all []workflow.ScheduleInfo) []workflow
 
 // scopeSupport reports the operations of the system-wide routes as
 // unsupported to a scoped caller, so the web UI hides them.
+//
+//ds:def id=admin-scopesupport-gjcgsdh6 owner=@khanakia stability=stable
 func scopeSupport(ctx context.Context, sup []OperationSupport) []OperationSupport {
 	if _, ok := TenantFrom(ctx); !ok {
 		return sup

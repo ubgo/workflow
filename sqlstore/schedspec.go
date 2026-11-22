@@ -17,6 +17,8 @@ import (
 // tblScheduleSpec is migration 008's table of the schedule settings with a
 // non-default value: a seconds field, an active period, a run history
 // bound. A schedule without a row uses the defaults.
+//
+//ds:def id=sql-tblschedulespec-7cmnxgk2 owner=@khanakia stability=stable
 const tblScheduleSpec = "schedule_spec"
 
 // scheduleSpecDefs is the schedule_spec table of migration 008.
@@ -132,6 +134,8 @@ func (a activeSchedule) Between(from, to time.Time, loc *time.Location, limit in
 // keepRuns deletes the finished runs schedule d fired beyond its newest
 // KeepRuns, as Delete would; runs still going and runs it did not fire are
 // never touched. Found through the label index (workflow.LabelSchedule).
+//
+//ds:def id=sql-client-keepruns-g7nyqccy owner=@khanakia stability=stable
 func (c *Client) keepRuns(ctx context.Context, d dueSchedule) error {
 	if d.spec.keep <= 0 {
 		return nil

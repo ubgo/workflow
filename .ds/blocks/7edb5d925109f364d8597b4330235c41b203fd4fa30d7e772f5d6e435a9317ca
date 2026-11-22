@@ -1,0 +1,7 @@
+func InlineSleep(sleep func(ctx context.Context, d time.Duration) error) InlineOption {
+	return func(c *inlineConfig) {
+		if sleep != nil {
+			c.sleep = sleep
+		}
+	}
+}

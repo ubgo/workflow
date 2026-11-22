@@ -27,10 +27,12 @@ import (
 const (
 	// CloudEventsSpecVersion is the only specversion this package reads
 	// and writes.
+	//ds:def id=events-cloudeventsspecversion-he42kjdr owner=@khanakia stability=stable
 	CloudEventsSpecVersion = "1.0"
 
 	// ContentTypeCloudEventsJSON is the media type of a structured-mode
 	// event in the JSON format.
+	//ds:def id=events-contenttypecloudeventsjson-rq8pngja owner=@khanakia stability=stable
 	ContentTypeCloudEventsJSON = "application/cloudevents+json"
 
 	// contentTypeCloudEventsBatchJSON is the batch media type, refused.
@@ -42,6 +44,8 @@ const (
 
 // coreAttributes are the context attribute names the spec defines, plus
 // the two data members of the JSON format: an extension may not reuse one.
+//
+//ds:def id=events-coreattributes-etsexf8s owner=@khanakia stability=stable
 var coreAttributes = map[string]bool{
 	"id": true, "source": true, "specversion": true, "type": true,
 	"datacontenttype": true, "dataschema": true, "subject": true, "time": true,
@@ -57,6 +61,8 @@ var coreAttributes = map[string]bool{
 // otherwise. MarshalJSON picks the member: "data" with the JSON value for
 // JSON data, "data" with a string for text, "data_base64" for anything
 // else.
+//
+//ds:def id=events-cloudevent-banpczfp owner=@khanakia stability=stable
 type CloudEvent struct {
 	// ID identifies the event; ID and Source together are unique per
 	// distinct event, so a consumer deduplicates by them.
@@ -102,6 +108,8 @@ type CloudEvent struct {
 // than "1.0", a Source or DataSchema that is not a URI, a
 // DataContentType that is not a media type, or an extension name that
 // is not lower-case letters and digits or reuses a core attribute's name.
+//
+//ds:def id=events-cloudevent-validate-neytqwkd owner=@khanakia stability=stable
 func (e CloudEvent) Validate() error {
 	switch {
 	case e.SpecVersion != CloudEventsSpecVersion:
@@ -137,6 +145,8 @@ func (e CloudEvent) Validate() error {
 // ValidExtensionName reports whether name may name a CloudEvents
 // extension attribute: one or more lower-case ASCII letters or digits,
 // and not the name of a core attribute or a data member.
+//
+//ds:def id=events-validextensionname-m2rx2xn7 owner=@khanakia stability=stable
 func ValidExtensionName(name string) bool {
 	if name == "" || coreAttributes[name] {
 		return false
@@ -180,6 +190,8 @@ func isTextType(ct string) bool {
 // Validate, and Data that is not valid JSON under an explicit JSON
 // DataContentType; under an empty one, non-JSON data goes out as
 // data_base64.
+//
+//ds:def id=events-cloudevent-marshaljson-zbwekqxp owner=@khanakia stability=stable
 func (e CloudEvent) MarshalJSON() ([]byte, error) {
 	if err := e.Validate(); err != nil {
 		return nil, err
@@ -247,6 +259,8 @@ func (e CloudEvent) MarshalJSON() ([]byte, error) {
 // value as written when DataContentType is JSON, the string's text when
 // "data" is a JSON string under another type, and the decoded bytes of
 // data_base64. Every error wraps workflow.ErrInvalid.
+//
+//ds:def id=events-cloudevent-unmarshaljson-k846eshc owner=@khanakia stability=stable
 func (e *CloudEvent) UnmarshalJSON(b []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -337,6 +351,8 @@ func (e *CloudEvent) UnmarshalJSON(b []byte) error {
 // extensionValue reads a JSON extension value: a string as itself, a
 // number or boolean as its literal text. Objects and arrays are refused:
 // the spec's attribute types are all scalars.
+//
+//ds:def id=events-extensionvalue-bg4xbcng owner=@khanakia stability=stable
 func extensionValue(v json.RawMessage) (string, error) {
 	var s string
 	if json.Unmarshal(v, &s) == nil {
@@ -358,6 +374,8 @@ func extensionValue(v json.RawMessage) (string, error) {
 // as the HTTP binding requires), DataContentType as Content-Type, and
 // returns the body, which is Data as is. It refuses an event that fails
 // Validate.
+//
+//ds:def id=events-cloudevent-writehttp-6f97kqts owner=@khanakia stability=stable
 func (e CloudEvent) WriteHTTP(h http.Header) ([]byte, error) {
 	if err := e.Validate(); err != nil {
 		return nil, err
@@ -388,6 +406,8 @@ func (e CloudEvent) WriteHTTP(h http.Header) ([]byte, error) {
 // WriteHTTPStructured writes e in HTTP structured mode: Content-Type
 // application/cloudevents+json in h, and returns the body, e in the JSON
 // format (MarshalJSON).
+//
+//ds:def id=events-cloudevent-writehttpstructured-zar4anuu owner=@khanakia stability=stable
 func (e CloudEvent) WriteHTTPStructured(h http.Header) ([]byte, error) {
 	body, err := e.MarshalJSON()
 	if err != nil {
@@ -405,6 +425,8 @@ func (e CloudEvent) WriteHTTPStructured(h http.Header) ([]byte, error) {
 // neither mode, batch mode or another event format, a body over the cap,
 // a header that does not percent-decode to UTF-8, and an event that
 // fails Validate.
+//
+//ds:def id=events-readhttp-9tkdmpb7 owner=@khanakia stability=stable
 func ReadHTTP(r *http.Request) (CloudEvent, error) {
 	ct := r.Header.Get("Content-Type")
 	mt := ""
@@ -484,6 +506,8 @@ func ReadHTTP(r *http.Request) (CloudEvent, error) {
 }
 
 // readBody reads r's body up to DefaultWebhookMaxBody bytes.
+//
+//ds:def id=events-readbody-f5zjvq7w owner=@khanakia stability=stable
 func readBody(r *http.Request) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
@@ -533,6 +557,8 @@ func percentDecode(s string) (string, error) {
 // DataSchema) reads it from e before publishing. Extension names are
 // lower-case letters and digits, so no label lands under a reserved
 // prefix. Validate e first: ToMessage does not.
+//
+//ds:def id=events-tomessage-yu5mytv4 owner=@khanakia stability=stable
 func ToMessage(e CloudEvent) Message {
 	m := Message{ID: e.ID, Name: e.Type, Key: e.Subject, Payload: e.Data}
 	if len(e.Extensions) > 0 {
@@ -550,6 +576,8 @@ func ToMessage(e CloudEvent) Message {
 // over is named like an extension. Version, Time and DataContentType are
 // not set; with an empty DataContentType the JSON format reads JSON data
 // as JSON.
+//
+//ds:def id=events-frommessage-nnam4pwr owner=@khanakia stability=stable
 func FromMessage(m Message, source string) CloudEvent {
 	e := CloudEvent{ID: m.ID, Source: source, SpecVersion: CloudEventsSpecVersion, Type: m.Name, Subject: m.Key, Data: m.Payload}
 	for k, v := range m.Labels {

@@ -1,0 +1,22 @@
+func choiceJoin(choice string, branchSteps []string) Handler {
+	return func(_ context.Context, in []byte) ([]byte, error) {
+		outs := map[string]json.RawMessage{}
+		if len(branchSteps) == 1 {
+			outs[branchSteps[0]] = in
+		} else if err := json.Unmarshal(in, &outs); err != nil {
+			return nil, Permanent(fmt.Errorf("workflow: choice %q: join input does not decode: %w", choice, err))
+		}
+		for _, s := range branchSteps {
+			var o choiceOut
+			if raw := outs[s]; len(raw) > 0 && string(raw) != "null" {
+				if err := json.Unmarshal(raw, &o); err != nil {
+					return nil, Permanent(fmt.Errorf("workflow: choice %q: branch %q output does not decode: %w", choice, s, err))
+				}
+			}
+			if o.Taken {
+				return o.Output, nil
+			}
+		}
+		return nil, Permanent(fmt.Errorf("workflow: choice %q: no branch was taken", choice))
+	}
+}

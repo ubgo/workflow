@@ -23,6 +23,8 @@ import (
 // falls in a spring-forward gap fires at the first instant after the gap
 // plus its seconds, and the periodic rule (the hour field matches every
 // hour) fires both occurrences of an overlapping minute.
+//
+//ds:def id=cron-parseseconds-kcsreqwd owner=@khanakia stability=stable
 func ParseSeconds(expr string) (Schedule, error) {
 	trimmed := strings.TrimSpace(expr)
 	if trimmed == "" {

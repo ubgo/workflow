@@ -1,0 +1,3 @@
+func envDefaults(getenv func(string) string) global {
+	return global{url: getenv(EnvURL), token: getenv(EnvToken)}
+}

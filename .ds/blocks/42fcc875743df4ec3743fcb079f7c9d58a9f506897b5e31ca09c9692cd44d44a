@@ -1,0 +1,25 @@
+func (o *Outbox) perOpTrigger(spec TriggerSpec, x engineExprs) TriggerSQL {
+	var out TriggerSQL
+	table := o.d.QuoteIdent(spec.Table)
+	for _, op := range spec.Ops {
+		row := "NEW"
+		if op == OnDelete {
+			row = "OLD"
+		}
+		key := "NULL"
+		if spec.KeyColumn != "" {
+			key = x.key(row + "." + o.d.QuoteIdent(spec.KeyColumn))
+		}
+		payload := x.object + "(" + o.jsonPairs(spec, row, "'"+strings.ToLower(string(op))+"'") + ")"
+		insert := o.triggerInsert(spec, x.id, payload, key, x.now)
+		if x.wrapped {
+			insert = "BEGIN " + insert + "; END"
+		}
+		trg := o.d.QuoteIdent(spec.Name + op.suffix())
+		out.Create = append(out.Create,
+			"DROP TRIGGER IF EXISTS "+trg,
+			"CREATE TRIGGER "+trg+" AFTER "+string(op)+" ON "+table+" FOR EACH ROW "+insert)
+		out.Drop = append(out.Drop, "DROP TRIGGER IF EXISTS "+trg)
+	}
+	return out
+}

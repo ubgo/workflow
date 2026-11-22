@@ -1,0 +1,8 @@
+type Timer interface {
+	// C delivers the fire time once. Its buffer holds one value, so a
+	// timer never blocks the clock that fires it.
+	C() <-chan time.Time
+	// Stop prevents the timer from firing. It reports whether it did so,
+	// false when the timer had already fired or been stopped.
+	Stop() bool
+}

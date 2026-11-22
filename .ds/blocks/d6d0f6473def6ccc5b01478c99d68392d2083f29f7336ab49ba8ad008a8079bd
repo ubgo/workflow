@@ -1,0 +1,25 @@
+func (c *Client) wakeScheduleLocked(s *schedule) (w wake, ok bool) {
+	if s.halted {
+		return wake{}, false
+	}
+	now := c.clk.Now()
+	if c.schedPausedLocked(s) {
+		// Every tick up to now is the pause's: report the newest and
+		// catch up past them all, so none fires on resume.
+		c.queueTickLocked(s.tick(workflow.LastTick(s.s, s.caught, now, s.loc), workflow.TickSkipped, workflow.TickReasonPaused))
+		s.caught = now
+		return wake{}, true
+	}
+	fire, dropped := effectiveMisfire(s.misfire).Plan(s.s, s.caught, now, s.loc)
+	if dropped > 0 {
+		newest := now
+		if len(fire) > 0 {
+			newest = fire[0].Add(-time.Nanosecond)
+		}
+		mt := s.tick(workflow.LastTick(s.s, s.caught, newest, s.loc), workflow.TickMisfired, "")
+		mt.Missed = dropped
+		c.queueTickLocked(mt)
+	}
+	s.caught = now
+	return wake{fire: true, ticks: fire, reg: c.wfs[s.workflow], windows: s.windows, labels: s.labels, input: s.input}, true
+}

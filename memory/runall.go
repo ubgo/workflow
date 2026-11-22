@@ -13,6 +13,8 @@ import (
 // it can hurry will move: a paused workflow or queue, a rate limit or
 // timeout waiting on a fake clock, a concurrency slot held by a run that
 // waits for an event.
+//
+//ds:def id=memory-errrunallstalled-gd4qrw79 owner=@khanakia stability=stable
 var ErrRunAllStalled = errors.New("memory: RunAll stalled")
 
 // runAllPoll is how often RunAll looks at the runs, and runAllStall how
@@ -20,13 +22,17 @@ var ErrRunAllStalled = errors.New("memory: RunAll stalled")
 // for the client's goroutines to catch up, not schedule logic, so they
 // use the wall clock even under a fake clock.
 const (
-	runAllPoll  = time.Millisecond
+	//ds:def id=memory-runallpoll-pb4sk4m5 owner=@khanakia stability=stable
+	runAllPoll = time.Millisecond
+	//ds:def id=memory-runallstall-wwfzs6c2 owner=@khanakia stability=stable
 	runAllStall = 500
 )
 
 // RunAllReport counts what became of the runs RunAll covered: the runs
 // unfinished when it was called and the runs enqueued while it ran
 // (chained jobs, children, cron fires).
+//
+//ds:def id=memory-runallreport-jfbkhxx2 owner=@khanakia stability=stable
 type RunAllReport struct {
 	Succeeded, Failed, Cancelled, Discarded int
 
@@ -43,6 +49,8 @@ type RunAllReport struct {
 // Start. When runs are left that it cannot move (paused, rate-limited on
 // a fake clock), it returns the report with an error wrapping
 // ErrRunAllStalled; ctx ending returns ctx's error.
+//
+//ds:def id=memory-client-runall-zdkrjb96 owner=@khanakia stability=stable
 func (c *Client) RunAll(ctx context.Context) (RunAllReport, error) {
 	c.mu.Lock()
 	if err := c.usableLocked(); err != nil {

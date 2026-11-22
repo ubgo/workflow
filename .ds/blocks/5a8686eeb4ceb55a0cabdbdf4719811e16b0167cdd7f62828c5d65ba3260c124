@@ -1,0 +1,49 @@
+type RetryPolicy struct {
+	// Max is the number of retries after the first attempt, so a step runs
+	// at most Max+1 times. The value that applies is the one of the policy
+	// EffectiveRetriesFor resolves: job over step over workflow over
+	// DefaultRetryMax.
+	Max int
+
+	// Backoff is the wait between attempts. Zero means retry at once.
+	Backoff Backoff
+
+	// NoRetryOn marks errors that must not be retried. Returning
+	// Permanent(err) from the handler does the same without a policy.
+	// It is a function, so it is never encoded: JSON skips it.
+	NoRetryOn func(error) bool `json:"-"`
+
+	// DelayFor sets the wait before a retry from the error itself, such
+	// as a 429's Retry-After: it returns the delay and true, or false to
+	// fall back to Backoff. retry is 1 for the first retry. The delay is
+	// used as returned (no jitter; a negative one is zero). Nil means
+	// Backoff alone. RetryAfterDelay is the stock implementation, reading
+	// errors wrapped by RetryAfter. Needs CapRetryDelay.
+	// It is a function, so it is never encoded: JSON skips it.
+	DelayFor func(err error, retry int) (time.Duration, bool) `json:"-"`
+
+	// Until stops retrying once a retry would start more than Until after
+	// the step's first attempt started. It wins
+	// over Max: a step with Max 100 and Until one hour stops at the hour.
+	// Zero means no deadline. Needs CapRetryUntil.
+	Until time.Duration
+
+	// MaxErrors fails the step for good on its MaxErrors-th error, even
+	// when Max allows more attempts. A release
+	// (an error marked by RetryAfter, see IsRelease) counts against Max
+	// only; any other error counts against both. Zero means no cap. Needs
+	// CapRetryMaxErrors.
+	MaxErrors int
+
+	// DiscardOnExhaust ends the run StatusDiscarded (Err matching
+	// ErrDiscarded and ErrCancelled, no OnFailure, no chain) instead of
+	// StatusFailed when this policy stops retrying a failed attempt:
+	// attempts ran out (Max), MaxErrors or Until stopped it, NoRetryOn
+	// excluded the error, or the handler returned Permanent. Use it for
+	// work whose giving up is routine (a notification nobody needs after
+	// five tries) so failed stays a signal that needs a person. The default
+	// (false) keeps the run failed. An explicit Discard and ErrCancelled are
+	// not affected. Needs CapDiscardExhausted, which also needs
+	// CapRunStates to report the status.
+	DiscardOnExhaust bool
+}

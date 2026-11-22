@@ -1,0 +1,11 @@
+func (f *Fake) AssertForked(t testing.TB, ref workflow.RunRef, step string) workflow.RunRef {
+	t.Helper()
+	forks := f.Forks()
+	for _, fk := range forks {
+		if fk.From == ref && fk.Step == step {
+			return fk.Ref
+		}
+	}
+	t.Errorf("run %+v was not forked from step %q; forks: %+v", ref, step, forks)
+	return workflow.RunRef{}
+}

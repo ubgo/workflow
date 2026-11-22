@@ -1,0 +1,6 @@
+func (r *Recorder) OnRunFinished(fn workflow.RunFinishedFunc) error {
+	if rn, ok := r.inner.(workflow.RunNotifier); ok {
+		return rn.OnRunFinished(fn)
+	}
+	return workflow.Unsupported("OnRunFinished", "the client under the Recorder does not implement workflow.RunNotifier")
+}

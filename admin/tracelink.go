@@ -29,11 +29,15 @@ import (
 // link. The UI keeps its Content-Security-Policy: the link is a plain
 // navigation that opens in a new tab without a referrer. Nil, the
 // default, shows no link.
+//
+//ds:def id=admin-withtracelink-rwcnu3e6 owner=@khanakia stability=stable
 func WithTraceLink(fn func(workflow.RunInfo) string) HandlerOption {
 	return func(c *handlerConfig) { c.traceLink = fn }
 }
 
 // traceURL returns the run's checked trace link, or "".
+//
+//ds:def id=admin-handler-traceurl-x89t3656 owner=@khanakia stability=stable
 func (h *handler[P]) traceURL(info workflow.RunInfo) string {
 	if h.cfg.traceLink == nil {
 		return ""
@@ -59,6 +63,8 @@ func (h *handler[P]) traceURL(info workflow.RunInfo) string {
 
 // safeLink reports whether s is an absolute http or https URL with a host
 // and no control characters.
+//
+//ds:def id=admin-safelink-g9znk3p8 owner=@khanakia stability=stable
 func safeLink(s string) bool {
 	if strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return false

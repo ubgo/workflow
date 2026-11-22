@@ -1,0 +1,3 @@
+func scopedRateLimitExpr(static, expr string) string {
+	return strconv.Quote(static+idemKeySep) + " + string(" + expr + ")"
+}

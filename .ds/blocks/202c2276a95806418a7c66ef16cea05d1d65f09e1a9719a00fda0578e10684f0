@@ -1,0 +1,14 @@
+func checkBatch(b Batch) error {
+	if len(b.Jobs) == 0 {
+		return fmt.Errorf("%w: batch %q has no jobs", workflow.ErrInvalid, b.Name)
+	}
+	if err := refuseBatchLabels(b.Name, "Labels", b.Labels); err != nil {
+		return err
+	}
+	switch b.DiscardedAs {
+	case "", workflow.StatusFailed, workflow.StatusCancelled, workflow.StatusSucceeded:
+	default:
+		return fmt.Errorf("%w: batch %q: DiscardedAs %q; use StatusFailed, StatusCancelled or StatusSucceeded", workflow.ErrInvalid, b.Name, b.DiscardedAs)
+	}
+	return checkJobs(b.Name, "job ", b.Jobs)
+}

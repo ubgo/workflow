@@ -20,6 +20,8 @@ var (
 // keep their outputs (workflow.RunResetter). The client must have the
 // run's workflow registered to know which steps are downstream; otherwise
 // it returns an error wrapping ErrInvalid.
+//
+//ds:def id=redis-client-resetrun-ax2tev3t owner=@khanakia stability=stable
 func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string) (workflow.RunRef, error) {
 	return c.ResetRunWith(ctx, ref, step, workflow.ResetOptions{})
 }
@@ -32,6 +34,8 @@ func (c *Client) ResetRun(ctx context.Context, ref workflow.RunRef, step string)
 // ended the run succeeded, so it is not handed on again; a succeeded run
 // that still holds a chain (its handoff failed) is refused with
 // ErrWrongState.
+//
+//ds:def id=redis-client-resetrunwith-wmvvxtaj owner=@khanakia stability=stable
 func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ResetOptions) (workflow.RunRef, error) {
 	if step == "" {
 		return workflow.RunRef{}, fmt.Errorf("%w: ResetRun needs a step", workflow.ErrInvalid)
@@ -53,6 +57,8 @@ func (c *Client) ResetRunWith(ctx context.Context, ref workflow.RunRef, step str
 // hash) and writes its steps. The client must have the workflow
 // registered to know which steps are downstream; otherwise it returns an
 // error wrapping ErrInvalid.
+//
+//ds:def id=redis-client-forkrun-bvcdjaks owner=@khanakia stability=stable
 func (c *Client) ForkRun(ctx context.Context, ref workflow.RunRef, step string, opts workflow.ForkOptions) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err

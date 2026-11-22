@@ -1,0 +1,7 @@
+func WithTxAttempts(n int) Option {
+	return func(cl *Client) {
+		if n >= 1 {
+			cl.txAttempts = n
+		}
+	}
+}

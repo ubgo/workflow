@@ -1,0 +1,16 @@
+type Inbox interface {
+	// Claim takes key for the caller until now+lease and returns
+	// InboxClaimed with a fresh token, unless the key was processed and
+	// is still kept (InboxDone) or another claim holds it until after now
+	// (InboxBusy). An expired claim or an expired done entry is taken
+	// over.
+	Claim(ctx context.Context, key InboxKey, lease time.Duration, now time.Time) (InboxState, string, error)
+
+	// Complete marks key processed, kept until now+keep, when token still
+	// holds it; otherwise it returns ErrInboxLost and changes nothing.
+	Complete(ctx context.Context, key InboxKey, token string, keep time.Duration, now time.Time) error
+
+	// Release frees key when token still holds it, so the next delivery
+	// claims it. Releasing a claim that is gone is not an error.
+	Release(ctx context.Context, key InboxKey, token string) error
+}

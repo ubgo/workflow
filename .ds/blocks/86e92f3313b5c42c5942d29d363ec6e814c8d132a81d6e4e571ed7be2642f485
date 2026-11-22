@@ -1,0 +1,89 @@
+func proportional(cfg BalanceConfig, weight func(QueueLoad) float64, loads []QueueLoad) map[string]int {
+	if len(loads) == 0 {
+		return map[string]int{}
+	}
+	ls := slices.Clone(loads)
+	slices.SortFunc(ls, func(a, b QueueLoad) int { return cmp.Compare(a.Queue, b.Queue) })
+	total := cfg.Total
+	if total <= 0 {
+		total = 0
+		for _, l := range ls {
+			total += l.Workers
+		}
+	}
+	n := len(ls)
+	lo, hi, w, got := make([]int, n), make([]int, n), make([]float64, n), make([]int, n)
+	sumMin := 0
+	for i, l := range ls {
+		b, ok := cfg.Bounds[l.Queue]
+		if !ok {
+			b = cfg.Default
+		}
+		lo[i] = max(b.Min, 1)
+		sumMin += lo[i]
+		w[i] = max(weight(l), 0)
+		if math.IsNaN(w[i]) || math.IsInf(w[i], 0) {
+			w[i] = 0
+		}
+	}
+	total = max(total, sumMin)
+	for i, l := range ls {
+		b, ok := cfg.Bounds[l.Queue]
+		if !ok {
+			b = cfg.Default
+		}
+		hi[i] = b.Max
+		if hi[i] <= 0 {
+			hi[i] = total
+		}
+		hi[i] = max(hi[i], lo[i])
+		got[i] = lo[i]
+	}
+	rest := total - sumMin
+	for rest > 0 {
+		var active []int
+		sum := 0.0
+		for i := range ls {
+			if got[i] < hi[i] {
+				active = append(active, i)
+				sum += w[i]
+			}
+		}
+		if len(active) == 0 {
+			break
+		}
+		share := func(i int) float64 {
+			if sum == 0 {
+				return float64(rest) / float64(len(active))
+			}
+			return float64(rest) * w[i] / sum
+		}
+		given := 0
+		for _, i := range active {
+			add := min(int(share(i)), hi[i]-got[i])
+			got[i] += add
+			given += add
+		}
+		if given == 0 { // every share is below one: the largest takes one
+			best := active[0]
+			for _, i := range active[1:] {
+				if share(i) > share(best) {
+					best = i
+				}
+			}
+			got[best]++
+			given = 1
+		}
+		rest -= given
+	}
+	out := make(map[string]int, n)
+	for i, l := range ls {
+		d := got[i]
+		if cfg.MaxShift > 0 && l.Workers > 0 {
+			d = min(max(d, l.Workers-cfg.MaxShift), l.Workers+cfg.MaxShift)
+			d = min(max(d, lo[i]), hi[i])
+		}
+		out[l.Queue] = d
+	}
+	return out
+}

@@ -18,23 +18,31 @@ import (
 // batch ends. Five seconds matches DefaultPollInterval, the pace at which
 // the batch itself learns of job ends by polling. Change it with
 // AwaitPoll.
+//
+//ds:def id=batch-defaultawaitpoll-gynjh8ck owner=@khanakia stability=stable
 const DefaultAwaitPoll = 5 * time.Second
 
 // DefaultAwaitPolls is how many looks an await step makes before it
 // gives up: 720 at DefaultAwaitPoll is one hour. Change it with
 // AwaitPolls; an engine may cap a step's retries lower than the value
 // asked for, so check the engine's limit for a long batch.
+//
+//ds:def id=batch-defaultawaitpolls-muyng9sm owner=@khanakia stability=stable
 const DefaultAwaitPolls = 720
 
 // ErrBatchPending is the error an await step returns while its batch has
 // not finished, so the step's retry policy looks again after the poll
 // interval. It shows up as a failed attempt in an engine's run history and
 // in step metrics; that is the polling, not a fault.
+//
+//ds:def id=batch-errbatchpending-qe5qk678 owner=@khanakia stability=stable
 var ErrBatchPending = errors.New("batch: still running")
 
 // ErrBatchFailed is the permanent error an await step ends with when its
 // batch finished with a failed or cancelled job, or was cancelled, unless
 // AwaitAllowFailures was given.
+//
+//ds:def id=batch-errbatchfailed-8v9cn2x5 owner=@khanakia stability=stable
 var ErrBatchFailed = errors.New("batch: finished with failed or cancelled jobs")
 
 // AwaitOption configures Manager.AwaitStep.
@@ -49,6 +57,8 @@ type awaitConfig struct {
 // AwaitPoll sets the wait between two looks at the batch (see
 // DefaultAwaitPoll). A value that is not positive keeps the default. An
 // engine may round it (Hatchet uses whole seconds).
+//
+//ds:def id=batch-awaitpoll-9m6g9j83 owner=@khanakia stability=stable
 func AwaitPoll(d time.Duration) AwaitOption {
 	return func(c *awaitConfig) {
 		if d > 0 {
@@ -60,6 +70,8 @@ func AwaitPoll(d time.Duration) AwaitOption {
 // AwaitPolls sets how many looks the step makes before it fails with
 // ErrBatchPending (see DefaultAwaitPolls). A value below 1 keeps the
 // default.
+//
+//ds:def id=batch-awaitpolls-3gecwxn7 owner=@khanakia stability=stable
 func AwaitPolls(n int) AwaitOption {
 	return func(c *awaitConfig) {
 		if n > 0 {
@@ -71,6 +83,8 @@ func AwaitPolls(n int) AwaitOption {
 // AwaitAllowFailures makes the step succeed whatever the batch's outcome,
 // so the next step reads the Progress and decides; by default a batch
 // with a failed or cancelled job fails the step with ErrBatchFailed.
+//
+//ds:def id=batch-awaitallowfailures-pzk3m8bk owner=@khanakia stability=stable
 func AwaitAllowFailures() AwaitOption { return func(c *awaitConfig) { c.allowFailures = true } }
 
 // AwaitStep returns a run step that dispatches a batch and completes when
@@ -98,6 +112,8 @@ func AwaitAllowFailures() AwaitOption { return func(c *awaitConfig) { c.allowFai
 // The Manager must be attached and running in the worker process, since
 // the step reads the batch from the Manager's Store; with a shared Store
 // (sqlstore's BatchStore) any process may run the step.
+//
+//ds:def id=batch-manager-awaitstep-m6y9gj8c owner=@khanakia stability=stable
 func (m *Manager) AwaitStep(name string, build func(ctx context.Context, in []byte) (Batch, error), opts ...AwaitOption) workflow.Step {
 	cfg := awaitConfig{poll: DefaultAwaitPoll, polls: DefaultAwaitPolls}
 	for _, o := range opts {
@@ -113,6 +129,8 @@ func (m *Manager) AwaitStep(name string, build func(ctx context.Context, in []by
 }
 
 // await is one attempt of an AwaitStep.
+//
+//ds:def id=batch-manager-await-3qf56kjz owner=@khanakia stability=stable
 func (m *Manager) await(ctx context.Context, cfg awaitConfig, build func(context.Context, []byte) (Batch, error), in []byte) ([]byte, error) {
 	info, ok := workflow.StepInfoFrom(ctx)
 	if !ok || info.RunID.IsZero() {
@@ -154,6 +172,8 @@ func (m *Manager) await(ctx context.Context, cfg awaitConfig, build func(context
 // run: a hash of the two, so it is the same on every attempt, unique per
 // run and step, and made of characters every engine accepts in a label.
 // A test or an operator uses it to find that batch with Manager.Progress.
+//
+//ds:def id=batch-awaitid-sw2bkyj7 owner=@khanakia stability=stable
 func AwaitID(run workflow.RunID, step string) ID {
 	sum := sha256.Sum256([]byte(string(run) + "\x00" + step))
 	return ID("await-" + hex.EncodeToString(sum[:16]))

@@ -1,0 +1,16 @@
+func encodeLocation(loc *time.Location) (string, error) {
+	name := loc.String()
+	if loc == time.Local || name == "Local" {
+		return "", workflow.Unsupported("Schedule.Location", "time.Local differs from machine to machine; pass a named zone")
+	}
+	if l, err := time.LoadLocation(name); err == nil && sameOffsets(l, loc) {
+		return name, nil
+	}
+	_, off := zoneProbes[0].In(loc).Zone()
+	for _, t := range zoneProbes {
+		if _, o := t.In(loc).Zone(); o != off {
+			return "", workflow.Unsupported("Schedule.Location", "zone "+name+" is neither loadable by name nor a fixed offset")
+		}
+	}
+	return fixedZonePrefix + strconv.Itoa(off) + ":" + name, nil
+}

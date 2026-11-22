@@ -1,0 +1,7 @@
+func New(client workflow.Client, store Store, opts ...Option) *Manager {
+	m := &Manager{client: client, store: store, clk: clock.Real{}, log: slog.New(slog.DiscardHandler), pollEvery: DefaultPollInterval, callbackRetry: DefaultCallbackRetry, dispatchLease: DefaultDispatchLease, newID: newID}
+	for _, o := range opts {
+		o(m)
+	}
+	return m
+}

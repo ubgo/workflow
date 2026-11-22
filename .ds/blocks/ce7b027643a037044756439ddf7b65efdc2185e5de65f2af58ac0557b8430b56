@@ -1,0 +1,4 @@
+type SignalHarness struct {
+	Start    func(t *testing.T, wfs ...workflow.Workflow) workflow.Client
+	Promises func(t *testing.T, c workflow.Client) workflow.PromiseStore
+}

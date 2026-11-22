@@ -1,0 +1,7 @@
+func WithFingerprint(fn func(workflow.Failure) []string) Option {
+	return func(r *Reporter) {
+		if fn != nil {
+			r.fingerprint = fn
+		}
+	}
+}

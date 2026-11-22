@@ -14,17 +14,25 @@ import (
 // more matches repeats the call (BulkResult.Truncated says so). It is a
 // floor on request cost, not on what an operator can clear: each repeat
 // takes the next runs, because the ones acted on no longer match.
+//
+//ds:def id=admin-defaultmaxbulk-dtm2uzhk owner=@khanakia stability=stable
 const DefaultMaxBulk = 1000
 
 // BulkSample is how many matched refs a BulkResult carries, so a dry run
 // shows which runs it would touch without sending thousands of refs.
+//
+//ds:def id=admin-bulksample-2h3ycdxx owner=@khanakia stability=stable
 const BulkSample = 20
 
 // WithMaxBulk bounds how many runs one RetryAll or DeleteAll call acts
 // on. Zero or less keeps DefaultMaxBulk.
+//
+//ds:def id=admin-withmaxbulk-ety2e74q owner=@khanakia stability=stable
 func WithMaxBulk(n int) Option { return func(a *Admin) { a.maxBulk = n } }
 
 // BulkOptions shape one bulk call.
+//
+//ds:def id=admin-bulkoptions-3pen88tj owner=@khanakia stability=stable
 type BulkOptions struct {
 	// DryRun lists what the call would act on and changes nothing.
 	DryRun bool
@@ -34,6 +42,8 @@ type BulkOptions struct {
 }
 
 // BulkResult is what a bulk call matched and did.
+//
+//ds:def id=admin-bulkresult-729ufgs8 owner=@khanakia stability=stable
 type BulkResult struct {
 	// Matched is how many runs the filter matched, up to the bound.
 	Matched int
@@ -63,6 +73,8 @@ var retryStatuses = []workflow.Status{workflow.StatusFailed}
 // then retried one by one, so a run that changes in between is counted
 // in Skipped; any other error stops the call and is returned with the
 // result so far.
+//
+//ds:def id=admin-admin-retryall-ww5d4435 owner=@khanakia stability=stable
 func (a *Admin) RetryAll(ctx context.Context, q workflow.RunQuery, opts BulkOptions) (BulkResult, error) {
 	if err := a.check(OpRetryAll); err != nil {
 		return BulkResult{}, err
@@ -87,6 +99,8 @@ func (a *Admin) RetryAll(ctx context.Context, q workflow.RunQuery, opts BulkOpti
 // (discarded only with CapRunStates). It needs OpDeleteAll: RunQuerier and
 // RunDeleter. Runs that changed between listing and deleting are Skipped;
 // any other error stops the call.
+//
+//ds:def id=admin-admin-deleteall-hfykz854 owner=@khanakia stability=stable
 func (a *Admin) DeleteAll(ctx context.Context, q workflow.RunQuery, opts BulkOptions) (BulkResult, error) {
 	if err := a.check(OpDeleteAll); err != nil {
 		return BulkResult{}, err
@@ -114,6 +128,8 @@ func (a *Admin) DeleteAll(ctx context.Context, q workflow.RunQuery, opts BulkOpt
 // nothing. It needs OpCancelAll and OpRuns. The count is a moment's
 // snapshot: runs that start before the real call are no longer cancelled
 // by its default statuses.
+//
+//ds:def id=admin-admin-previewcancelall-dfwr9umf owner=@khanakia stability=stable
 func (a *Admin) PreviewCancelAll(ctx context.Context, q workflow.RunQuery) (BulkResult, error) {
 	if err := a.check(OpCancelAll); err != nil {
 		return BulkResult{}, err
@@ -135,6 +151,8 @@ func (a *Admin) PreviewCancelAll(ctx context.Context, q workflow.RunQuery) (Bulk
 // bulk lists the runs q matches up to the bound, then applies act to each
 // unless opts.DryRun. Listing first and acting second keeps paging stable:
 // a delete or retry changes the set a cursor walks.
+//
+//ds:def id=admin-admin-bulk-gpvvt9wd owner=@khanakia stability=stable
 func (a *Admin) bulk(ctx context.Context, q workflow.RunQuery, opts BulkOptions, act func(context.Context, workflow.RunRef) error) (BulkResult, error) {
 	if q.Cursor != "" || q.Limit != 0 {
 		return BulkResult{}, fmt.Errorf("%w: admin: a bulk call covers every match; Limit and Cursor are not used", workflow.ErrInvalid)

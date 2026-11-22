@@ -1,0 +1,7 @@
+func NewBucketStore(rdb goredis.UniversalClient, prefix string) (*BucketStore, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &BucketStore{rdb: rdb, base: base}, nil
+}

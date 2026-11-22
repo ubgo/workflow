@@ -15,6 +15,8 @@ import (
 // Retention says how long finished runs are kept before Prune deletes them.
 // It is opt-in: without WithRetention nothing is ever deleted, because
 // deleting history is a decision only the app can make.
+//
+//ds:def id=sql-retention-eh72esa7 owner=@khanakia stability=stable
 type Retention struct {
 	// Succeeded, Failed and Cancelled are how long a run that ended with
 	// that status is kept after it finished. Zero keeps it forever. A
@@ -47,6 +49,8 @@ type Retention struct {
 
 // FinishedRun is one run Prune is about to delete, as the archive hook
 // sees it.
+//
+//ds:def id=sql-finishedrun-exkhvx6z owner=@khanakia stability=stable
 type FinishedRun struct {
 	Ref        workflow.RunRef
 	Workflow   string
@@ -64,6 +68,8 @@ type FinishedRun struct {
 // ArchiveFunc receives each chunk of runs before it is deleted. Returning
 // an error keeps the chunk (and stops the prune), so history can be copied
 // to cold storage first and is never lost to a failed copy.
+//
+//ds:def id=sql-archivefunc-xpbwfzf2 owner=@khanakia stability=stable
 type ArchiveFunc func(ctx context.Context, runs []FinishedRun) error
 
 // Defaults of the retention options.
@@ -71,10 +77,12 @@ const (
 	// defaultPruneInterval is how often a client with WithRetention tries to
 	// prune. Retention is measured in hours or days, so an hourly pass keeps
 	// the tables near their target without adding load.
+	//ds:def id=sql-defaultpruneinterval-vheuphq3 owner=@khanakia stability=stable
 	defaultPruneInterval = time.Hour
 	// defaultPruneChunk is how many runs one delete transaction removes
 	// (WithPruneChunk), so a prune holds its row locks briefly and never
 	// blocks the queue for long, however much history has piled up.
+	//ds:def id=sql-defaultprunechunk-7c3jdqyv owner=@khanakia stability=stable
 	defaultPruneChunk = 100
 	// pruneLockName is the lock row whose lease picks the one client of a
 	// cluster that prunes in a given interval.
@@ -82,12 +90,16 @@ const (
 )
 
 // WithRetention turns on deletion of finished runs per r (see Retention).
+//
+//ds:def id=sql-withretention-dk86xzbt owner=@khanakia stability=stable
 func WithRetention(r Retention) Option {
 	return func(cl *Client) { cl.retention = &r }
 }
 
 // WithPruneInterval sets how often the background prune runs. Values of
 // zero or less are ignored.
+//
+//ds:def id=sql-withpruneinterval-t4z7sbmu owner=@khanakia stability=stable
 func WithPruneInterval(d time.Duration) Option {
 	return func(cl *Client) {
 		if d > 0 {
@@ -100,6 +112,8 @@ func WithPruneInterval(d time.Duration) Option {
 // (and the archive hook receives at once); default 100. Smaller chunks hold
 // row locks for less time; larger ones finish a big backlog in fewer
 // round trips. Values below 1 are ignored.
+//
+//ds:def id=sql-withprunechunk-sp8smwfb owner=@khanakia stability=stable
 func WithPruneChunk(n int) Option {
 	return func(cl *Client) {
 		if n >= 1 {
@@ -110,14 +124,20 @@ func WithPruneChunk(n int) Option {
 
 // WithoutAutoPrune turns off the background prune; the app calls Prune
 // from its own scheduler instead.
+//
+//ds:def id=sql-withoutautoprune-84z54ert owner=@khanakia stability=stable
 func WithoutAutoPrune() Option { return func(cl *Client) { cl.noAutoPrune = true } }
 
 // WithArchive sets the hook each chunk of runs passes through before it is
 // deleted.
+//
+//ds:def id=sql-witharchive-wk4xpfe4 owner=@khanakia stability=stable
 func WithArchive(fn ArchiveFunc) Option { return func(cl *Client) { cl.archive = fn } }
 
 // pruneLoop prunes every pruneEvery on whichever client wins the prune
 // lock's lease for that interval, so N clients do not all prune at once.
+//
+//ds:def id=sql-client-pruneloop-ehzb5kct owner=@khanakia stability=stable
 func (c *Client) pruneLoop() {
 	defer c.wg.Done()
 	for {
@@ -164,6 +184,8 @@ func terminalArgs() []any { return []any{runSucceeded, runFailed, runCancelled, 
 // status, by age on the scheduling clock; per workflow with a KeepLast,
 // everything that finished before its KeepLast-th newest run. Each rule's
 // cutoff is fixed when Prune starts, so the delete can repeat the rule.
+//
+//ds:def id=sql-client-prunerules-dtx6z9su owner=@khanakia stability=stable
 func (c *Client) pruneRules(ctx context.Context) ([]pruneRule, error) {
 	r := c.retention
 	now := c.nowNanos()
@@ -247,6 +269,8 @@ func (c *Client) keepLastRule(ctx context.Context, workflowName string, keep int
 // guards are the conditions every deleted run meets, whatever the rule:
 // it holds no idempotency key and, unless Retention.Undelivered, its end
 // was delivered. The batch guard is checked in Go (batchOpen).
+//
+//ds:def id=sql-client-guards-raaht9rz owner=@khanakia stability=stable
 func (c *Client) guards() string {
 	g := "idem_active IS NULL"
 	if !c.retention.Undelivered {
@@ -258,6 +282,8 @@ func (c *Client) guards() string {
 // PruneResult is what one Prune did. The Held counts are runs old enough
 // to delete that a guard kept, so a setup that can never delete anything
 // shows up as a number rather than as silence.
+//
+//ds:def id=sql-pruneresult-9hg2h6bm owner=@khanakia stability=stable
 type PruneResult struct {
 	// Deleted is how many runs were deleted (with their steps).
 	Deleted int
@@ -283,6 +309,8 @@ type PruneResult struct {
 // BatchStore that is still open (State.Open). Without WithRetention it deletes
 // nothing. It needs Migrate, not Start, so an app can run it from its own
 // scheduler (with WithoutAutoPrune).
+//
+//ds:def id=sql-client-prune-ybwksw5e owner=@khanakia stability=stable
 func (c *Client) Prune(ctx context.Context) (PruneResult, error) {
 	var res PruneResult
 	if c.retention == nil {
@@ -322,6 +350,8 @@ func (c *Client) Prune(ctx context.Context) (PruneResult, error) {
 
 // countHeld adds the runs rule selects that the SQL guards keep: those
 // holding an idempotency key, and those whose end is undelivered.
+//
+//ds:def id=sql-client-countheld-fh99t2nc owner=@khanakia stability=stable
 func (c *Client) countHeld(ctx context.Context, rule pruneRule, res *PruneResult) error {
 	var n int64
 	q := "SELECT COUNT(*) FROM {runs} WHERE " + rule.where + " AND idem_active IS NOT NULL"
@@ -397,6 +427,8 @@ func (c *Client) pruneCandidates(ctx context.Context, rule pruneRule, skip map[s
 // client's BatchStore that is still open (State.Open). A batch kept in
 // another store cannot be seen here, which is why the package doc tells apps with
 // retention on to keep batches in Client.BatchStore.
+//
+//ds:def id=sql-client-batchopen-tspv3wev owner=@khanakia stability=stable
 func (c *Client) batchOpen(ctx context.Context, labels map[string]string) (bool, error) {
 	id := labels[batch.LabelBatch]
 	if id == "" {
@@ -416,6 +448,8 @@ func (c *Client) batchOpen(ctx context.Context, labels map[string]string) (bool,
 // consumed markers in one transaction. The delete repeats the rule and the
 // guards, so a run that changed since it was read (its key taken again, its
 // end not yet delivered) is left alone.
+//
+//ds:def id=sql-client-deletechunk-hw8hk3br owner=@khanakia stability=stable
 func (c *Client) deleteChunk(ctx context.Context, rule pruneRule, runs []FinishedRun) (int, error) {
 	ids := make([]any, len(runs))
 	idx := map[string]int{}
@@ -474,6 +508,8 @@ func (c *Client) deleteChunk(ctx context.Context, rule pruneRule, runs []Finishe
 // those runs are gone: step attempt counts, steps, consumed-signal markers,
 // run_ext rows, label index rows, attempt error history and captured output. A run among ids that still exists (a guard kept it) is
 // left whole.
+//
+//ds:def id=sql-client-deleteorphans-w6zn7vsw owner=@khanakia stability=stable
 func (c *Client) deleteOrphans(ctx context.Context, tx *sql.Tx, ids []any) error {
 	in := "(" + inList(len(ids)) + ")"
 	gone := " AND run_id NOT IN (SELECT id FROM {runs})"

@@ -1,0 +1,52 @@
+func TestCronTickFiresOnceAcrossClients(t *testing.T) {
+	rdb := redisClient(t)
+	prefix := testPrefix(t, rdb)
+	clk := clock.NewFake(start)
+	var mu sync.Mutex
+	runs := 0
+	wf := workflow.Workflow{Name: "tick", Steps: []workflow.Step{{Name: "only", Run: func(_ context.Context, in []byte) ([]byte, error) {
+		mu.Lock()
+		runs++
+		mu.Unlock()
+		return in, nil
+	}}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	var first *wfredis.Client
+	for i := range 3 {
+		c := newClient(t, rdb, prefix, wfredis.WithClock(clk))
+		if err := c.Register(wf); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			first = c
+		}
+	}
+	if _, err := first.Schedule(ctx, workflow.Schedule{Name: "every", Workflow: "tick", Cron: "* * * * *", Location: time.UTC}); err != nil {
+		t.Fatal(err)
+	}
+	const ticks = 5
+	for i := 1; i <= ticks; i++ {
+		time.Sleep(50 * time.Millisecond) // every client has armed its timers
+		clk.Advance(time.Minute)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			mu.Lock()
+			n := runs
+			mu.Unlock()
+			if n >= i || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if runs != ticks {
+		t.Fatalf("%d ticks made %d runs across three clients, want %d", ticks, runs, ticks)
+	}
+}

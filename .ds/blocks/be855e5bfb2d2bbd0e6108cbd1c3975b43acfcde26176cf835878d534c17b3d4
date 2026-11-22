@@ -1,0 +1,32 @@
+func (r *Reporter) Report(ctx context.Context, f workflow.Failure) {
+	hub := r.hub
+	if hub == nil {
+		hub = sentrygo.GetHubFromContext(ctx)
+	}
+	if hub == nil {
+		hub = sentrygo.CurrentHub()
+	}
+	client := hub.Client()
+	if client == nil {
+		return
+	}
+	err := f.Err
+	if err == nil {
+		err = errors.New("workflow: run " + string(f.Status))
+	}
+	event := client.EventFromException(err, r.level(f))
+	event.Tags = r.tags(f)
+	event.Contexts = map[string]sentrygo.Context{ContextName: workflowContext(f)}
+	event.Fingerprint = r.fingerprint(f)
+	if !f.At.IsZero() {
+		event.Timestamp = f.At
+	}
+	if r.event != nil {
+		if event = r.event(event, f); event == nil {
+			return
+		}
+	}
+	// A clone, so the event gets the app's scope data (user, release
+	// tags) without this report touching the shared scope.
+	hub.Clone().CaptureEvent(event)
+}

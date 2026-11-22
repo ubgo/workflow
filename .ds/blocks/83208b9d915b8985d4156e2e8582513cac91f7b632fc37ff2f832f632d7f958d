@@ -1,0 +1,6 @@
+func CheckFork(step string, opts ForkOptions) error {
+	if step == "" {
+		return invalidf("ForkRun needs a step")
+	}
+	return ValidateLabels(opts.Labels)
+}

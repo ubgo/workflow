@@ -1,0 +1,7 @@
+func JobOf[T any](workflow string, v T) (Job, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return Job{}, invalidf("job for %q: encode payload: %v", workflow, err)
+	}
+	return Job{Workflow: workflow, Payload: b}, nil
+}

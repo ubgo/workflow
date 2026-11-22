@@ -1,0 +1,5 @@
+func (s *store) outputMigrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(OutputMigrationOwner), Name: "001_output", Script: s.script(s.render(outputDefs(typesFor(s.engine))))},
+	}
+}

@@ -1,0 +1,18 @@
+func TestTenantScope_RefusedWithoutCapTenant(t *testing.T) {
+	c := noTenant{memory.New()}
+	h := NewHandler(New(c), scopedAuth(), WithTenantScope(byName))
+	for _, r := range routes {
+		for _, who := range []string{"a", "ops"} {
+			rec := as(t, h, who, r.method, r.path, r.body)
+			if rec.Code != http.StatusNotImplemented || errCode(t, rec) != CodeUnsupported || !strings.Contains(rec.Body.String(), "Tenant") {
+				t.Errorf("%s %s %s = %d %s, want 501 naming CapTenant", who, r.method, r.path, rec.Code, rec.Body)
+			}
+		}
+	}
+	// A WithRunQuerier querier without CapTenant is refused the same way.
+	ts := newTenants(t)
+	h = NewHandler(New(ts.c, WithRunQuerier(ts.c, workflow.CapRunQuery)), scopedAuth(), WithTenantScope(byName))
+	if rec := as(t, h, "a", "GET", "/runs", ""); rec.Code != http.StatusNotImplemented {
+		t.Fatalf("querier without CapTenant = %d", rec.Code)
+	}
+}

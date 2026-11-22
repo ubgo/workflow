@@ -1,0 +1,25 @@
+func (h *handler[P]) status(w http.ResponseWriter, r *http.Request) {
+	ref, info, ok := h.open(w, r, ActionStatus)
+	if !ok {
+		return
+	}
+	st, err := h.c.Status(r.Context(), ref)
+	if err != nil {
+		h.fail(w, ActionStatus, err)
+		return
+	}
+	out := h.statusJSON(ref, st, info)
+	if st == workflow.StatusSucceeded && h.hasResults() {
+		res, err := h.c.(workflow.ResultReader).Result(r.Context(), ref)
+		switch {
+		case err == nil:
+			out.setResult(res)
+		case errors.Is(err, workflow.ErrNotFound), errors.Is(err, workflow.ErrWrongState):
+			// pruned between the two calls: the status still stands
+		default:
+			h.fail(w, ActionStatus, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}

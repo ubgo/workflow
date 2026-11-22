@@ -1,0 +1,13 @@
+func New(primary, secondary workflow.Client, opts ...Option) *Client {
+	f := &Client{
+		primary:   primary,
+		secondary: secondary,
+		classify:  DefaultClassifier,
+		clk:       clock.Real{},
+		wfs:       map[string]workflow.Workflow{},
+	}
+	for _, o := range opts {
+		o(f)
+	}
+	return f
+}

@@ -22,6 +22,7 @@ const (
 	// client with the coordinator on registers it, so any of their
 	// workers can run any batch's coordinator; it triggers its children
 	// by name, so the worker that runs it need not register them.
+	//ds:def id=hatchet-coordinatorworkflow-6484chhr owner=@khanakia stability=stable
 	coordinatorWorkflow = "ubgo-workflow-batch-coordinator"
 
 	// coordinatorKeyTTL is how long the engine refuses a second
@@ -36,11 +37,15 @@ const (
 // DefaultBatchCoordinatorTimeout is the default
 // Config.BatchCoordinatorTimeout: starting a thousand children is one bulk
 // call, so a batch of tens of thousands of jobs starts well within it.
+//
+//ds:def id=hatchet-defaultbatchcoordinatortimeout-76ab65pt owner=@khanakia stability=stable
 const DefaultBatchCoordinatorTimeout = 5 * time.Minute
 
 // DefaultBatchCoordinatorMaxInput is the default
 // Config.BatchCoordinatorMaxInput: one trigger's JSON under the engine's
 // default 4 MiB gRPC message, with room for framing.
+//
+//ds:def id=hatchet-defaultbatchcoordinatormaxinput-b29nb5pz owner=@khanakia stability=stable
 const DefaultBatchCoordinatorMaxInput = 2 << 20
 
 // DefaultBatchCoordinatorRetry returns the default
@@ -50,6 +55,8 @@ const DefaultBatchCoordinatorMaxInput = 2 << 20
 // again with the same child keys, and the engine returns the existing
 // child for a key it has seen (checked live: same run IDs), so no job runs
 // twice however many retries are allowed.
+//
+//ds:def id=hatchet-defaultbatchcoordinatorretry-gvwnme9q owner=@khanakia stability=stable
 func DefaultBatchCoordinatorRetry() *workflow.RetryPolicy {
 	return &workflow.RetryPolicy{Max: 10, Backoff: workflow.Backoff{Initial: 2 * time.Second, Factor: 2, Max: 2 * time.Minute}}
 }
@@ -58,11 +65,15 @@ func DefaultBatchCoordinatorRetry() *workflow.RetryPolicy {
 // before recording the jobs the engine never listed as cancelled: the run
 // list lags behind triggers by up to lag (Config.VisibilityLag), and twice
 // that absorbs a slow read side.
+//
+//ds:def id=hatchet-coordinatorsettle-hjw33fbs owner=@khanakia stability=stable
 func coordinatorSettle(lag time.Duration) time.Duration { return 2 * lag }
 
 // coordinatorRetry maps p onto the coordinator task's retry options. The
 // coordinator's errors are engine errors, so a NoRetryOn filter has
 // nothing meaningful to match and is refused rather than ignored.
+//
+//ds:def id=hatchet-coordinatorretry-vwkwrvrd owner=@khanakia stability=stable
 func coordinatorRetry(p workflow.RetryPolicy) ([]hatchetsdk.TaskOption, error) {
 	if p.Max < 0 {
 		return nil, fmt.Errorf("%w: Max %d is negative", workflow.ErrInvalid, p.Max)
@@ -109,6 +120,8 @@ var _ batch.GroupSpawner = (*Client)(nil)
 
 // SpawnsGroups implements batch.GroupSpawner: true when
 // Config.BatchCoordinator is set.
+//
+//ds:def id=hatchet-client-spawnsgroups-8fdpa7cd owner=@khanakia stability=stable
 func (c *Client) SpawnsGroups() bool { return c.cfg.BatchCoordinator }
 
 // SpawnGroup implements batch.GroupSpawner: it triggers the coordinator
@@ -125,6 +138,8 @@ func (c *Client) SpawnsGroups() bool { return c.cfg.BatchCoordinator }
 // Dispatch starts them as bulk triggers instead; and workflow.ErrInvalid
 // when Config.BatchCoordinator is off, because no worker of this client
 // runs the coordinator then.
+//
+//ds:def id=hatchet-client-spawngroup-gqf5rmbq owner=@khanakia stability=stable
 func (c *Client) SpawnGroup(ctx context.Context, group string, jobs []workflow.Job) (workflow.RunRef, error) {
 	if !c.cfg.BatchCoordinator {
 		return workflow.RunRef{}, fmt.Errorf("%w: hatchet driver: Config.BatchCoordinator is off", workflow.ErrInvalid)
@@ -174,6 +189,8 @@ func (c *Client) SpawnGroup(ctx context.Context, group string, jobs []workflow.J
 // bulk cancel by metadata. The engine does not cancel children with their
 // parent (checked live on hatchet-lite v0.110.5, for a running and for a
 // completed parent), so the label is what reaches them.
+//
+//ds:def id=hatchet-client-cancelgroup-m5wws29a owner=@khanakia stability=stable
 func (c *Client) CancelGroup(ctx context.Context, group string, parent workflow.RunRef, since time.Time) error {
 	sdk, err := c.ready()
 	if err != nil {
@@ -214,6 +231,8 @@ func (c *Client) declareCoordinator() (*hatchetsdk.Workflow, error) {
 // coordinatorIdempotencyExpression is the CEL key of a coordinator
 // trigger: the coordinator's name and the batch ID, which SpawnGroup puts
 // in the run's metadata under batch.LabelBatch.
+//
+//ds:def id=hatchet-coordinatoridempotencyexpression-nzzx32n2 owner=@khanakia stability=stable
 func coordinatorIdempotencyExpression() string {
 	return strconv.Quote(coordinatorWorkflow+idemKeySep) + " + string(additional_metadata[" + strconv.Quote(batch.LabelBatch) + "])"
 }

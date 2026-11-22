@@ -1,0 +1,3 @@
+func (c *Client) DisableStore() *DisableStore {
+	return &DisableStore{st: c.st, clk: c.clk, names: strings.NewReplacer("{"+tblDisabled+"}", c.st.table(tblDisabled))}
+}

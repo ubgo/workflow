@@ -1,0 +1,8 @@
+func Report(r workflow.Reporter, cfg ReportConfig) workflow.Plugin {
+	p := observerPlugin{name: "report", fn: ReportFailures(r, cfg)}
+	if cfg.Attempts {
+		p.mw = []workflow.Middleware{ReportAttempts(r, cfg)}
+		return stepObserverPlugin{p}
+	}
+	return p
+}

@@ -1,0 +1,1 @@
+var refusedOps = map[Operation]bool{OpQueues: true, OpPause: true, OpNodes: true, OpHealth: true, OpSignalWaiting: true}

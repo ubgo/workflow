@@ -1,0 +1,15 @@
+func Encrypt(key []byte, oldKeys ...[]byte) (Codec, error) {
+	aead, err := newGCM(key)
+	if err != nil {
+		return nil, err
+	}
+	g := gcmCodec{aead: aead}
+	for i, k := range oldKeys {
+		old, err := newGCM(k)
+		if err != nil {
+			return nil, fmt.Errorf("old key %d: %w", i, err)
+		}
+		g.old = append(g.old, old)
+	}
+	return g, nil
+}

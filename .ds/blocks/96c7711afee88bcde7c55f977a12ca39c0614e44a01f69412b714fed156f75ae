@@ -1,0 +1,29 @@
+func (m *Manager) enqueueCallbacks(ctx context.Context, st State, claimed []PendingCallback) error {
+	if len(claimed) == 0 {
+		return nil
+	}
+	var errs []error
+	landed := map[callbackID]bool{}
+	failed := map[callbackID]string{}
+	for _, cb := range claimed {
+		if err := m.callback(ctx, st, cb); err != nil {
+			errs = append(errs, err)
+			failed[cb.id()] = err.Error()
+			continue
+		}
+		landed[cb.id()] = true
+	}
+	_, err := m.store.Update(ctx, st.ID, func(s *State) error {
+		s.Pending = slices.DeleteFunc(s.Pending, func(p PendingCallback) bool { return landed[p.id()] })
+		for i := range s.Pending {
+			if msg, ok := failed[s.Pending[i].id()]; ok {
+				s.Pending[i].LastError = msg
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		errs = append(errs, fmt.Errorf("batch %s: record callback outcome: %w", st.ID, err))
+	}
+	return errors.Join(errs...)
+}

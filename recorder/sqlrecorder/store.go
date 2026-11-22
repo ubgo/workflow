@@ -63,8 +63,11 @@ type Store struct {
 	prefix    string
 	clk       clock.Clock
 	retention recorder.Retention
-	attempts  int
-	retryable func(error) bool
+	// archiveTable is WithArchiveTable: stage two moves runs into
+	// <prefix>archive in the delete's transaction.
+	archiveTable bool
+	attempts     int
+	retryable    func(error) bool
 
 	// sqliteMu serializes this process's write transactions on SQLite,
 	// which has one writer per database anyway: without it two of our own

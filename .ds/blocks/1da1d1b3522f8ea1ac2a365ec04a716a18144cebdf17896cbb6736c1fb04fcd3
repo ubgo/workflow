@@ -1,0 +1,15 @@
+type Options struct {
+	// Stdout gets results; Stderr gets errors and usage. Nil discards.
+	Stdout, Stderr io.Writer
+	// Getenv reads EnvURL, EnvToken and EnvHeader; nil reads nothing (an
+	// embedding app passes os.Getenv, or its own lookup).
+	Getenv func(string) string
+	// HTTPClient sends the requests; nil is a client with DefaultTimeout.
+	HTTPClient *http.Client
+	// Now and Sleep drive drain's polling; nil means the wall clock.
+	// Sleep returns early with ctx's error when ctx ends.
+	Now   func() time.Time
+	Sleep func(ctx context.Context, d time.Duration) error
+	// Name is the program name in usage text; empty means "workflow".
+	Name string
+}

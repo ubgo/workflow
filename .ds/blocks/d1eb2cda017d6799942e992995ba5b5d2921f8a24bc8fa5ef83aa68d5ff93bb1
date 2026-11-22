@@ -1,0 +1,18 @@
+func (c *Client) reporter() {
+	defer c.wg.Done()
+	for {
+		c.reportIn(c.ctx)
+		t := c.leaseClk.NewTimer(c.lease / 3)
+		select {
+		case <-c.ctx.Done():
+			t.Stop()
+			if !c.isCrashed() {
+				ctx, cancel := context.WithTimeout(context.WithoutCancel(c.ctx), releaseTimeout)
+				_ = c.rdb.HDel(ctx, c.base+":nodes", c.node).Err()
+				cancel()
+			}
+			return
+		case <-t.C():
+		}
+	}
+}

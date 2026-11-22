@@ -21,6 +21,8 @@ import (
 // Apply it to one step's handler (Run: middleware.Check(pre, post)(run))
 // or through the driver's step middleware for every step. It runs on
 // every driver.
+//
+//ds:def id=mw-check-4cs4nmby owner=@khanakia stability=stable
 func Check(pre func(ctx context.Context, in []byte) error, post func(ctx context.Context, in, out []byte) error) workflow.Middleware {
 	return func(next workflow.Handler) workflow.Handler {
 		return func(ctx context.Context, in []byte) ([]byte, error) {

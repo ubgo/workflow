@@ -1,0 +1,36 @@
+func (o *Outbox) pgTrigger(spec TriggerSpec) TriggerSQL {
+	qual := func(name string) string {
+		if spec.TableSchema == "" {
+			return o.d.QuoteIdent(name)
+		}
+		return o.d.QuoteIdent(spec.TableSchema) + "." + o.d.QuoteIdent(name)
+	}
+	table, fn, trg := qual(spec.Table), qual(spec.Name+"_fn"), o.d.QuoteIdent(spec.Name)
+	key := "NULL"
+	if spec.KeyColumn != "" {
+		key = "r." + o.d.QuoteIdent(spec.KeyColumn) + "::text"
+	}
+	payload := "convert_to(json_build_object(" + o.jsonPairs(spec, "r", "lower(TG_OP)") + ")::text, 'UTF8')"
+	insert := o.triggerInsert(spec, "'obx_' || replace(gen_random_uuid()::text, '-', '')", payload, key,
+		"(extract(epoch from clock_timestamp()) * 1000000000)::bigint")
+	body := "CREATE OR REPLACE FUNCTION " + fn + "() RETURNS trigger LANGUAGE plpgsql AS $ubgo_outbox$\n" +
+		"DECLARE r record;\nBEGIN\n" +
+		"\tIF TG_OP = 'DELETE' THEN r := OLD; ELSE r := NEW; END IF;\n" +
+		"\t" + insert + ";\n" +
+		"\tRETURN NULL;\nEND\n$ubgo_outbox$"
+	ops := make([]string, len(spec.Ops))
+	for i, op := range spec.Ops {
+		ops[i] = string(op)
+	}
+	return TriggerSQL{
+		Create: []string{
+			body,
+			"DROP TRIGGER IF EXISTS " + trg + " ON " + table,
+			"CREATE TRIGGER " + trg + " AFTER " + strings.Join(ops, " OR ") + " ON " + table + " FOR EACH ROW EXECUTE FUNCTION " + fn + "()",
+		},
+		Drop: []string{
+			"DROP TRIGGER IF EXISTS " + trg + " ON " + table,
+			"DROP FUNCTION IF EXISTS " + fn + "()",
+		},
+	}
+}

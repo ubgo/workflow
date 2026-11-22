@@ -1,0 +1,67 @@
+func New(cfg Config) *Client {
+	if cfg.WorkerName == "" {
+		cfg.WorkerName = DefaultWorkerName
+	}
+	if cfg.StepTimeout <= 0 {
+		cfg.StepTimeout = DefaultStepTimeout
+	}
+	if cfg.ScheduleTimeout <= 0 {
+		cfg.ScheduleTimeout = DefaultScheduleTimeout
+	}
+	if cfg.IdempotencyMaxHold <= 0 {
+		cfg.IdempotencyMaxHold = DefaultIdempotencyMaxHold
+	}
+	if cfg.BatchCoordinatorTimeout <= 0 {
+		cfg.BatchCoordinatorTimeout = DefaultBatchCoordinatorTimeout
+	}
+	if cfg.RunFinishedPoll <= 0 {
+		cfg.RunFinishedPoll = DefaultRunFinishedPoll
+	}
+	if cfg.RunFinishedWindow <= 0 {
+		cfg.RunFinishedWindow = DefaultRunFinishedWindow
+	}
+	if cfg.BatchCoordinatorRetry == nil {
+		cfg.BatchCoordinatorRetry = DefaultBatchCoordinatorRetry()
+	}
+	if cfg.BatchCoordinatorMaxInput <= 0 {
+		cfg.BatchCoordinatorMaxInput = DefaultBatchCoordinatorMaxInput
+	}
+	if cfg.GroupChunkRuns <= 0 {
+		cfg.GroupChunkRuns = DefaultGroupChunkRuns
+	}
+	if cfg.GroupChunkBytes <= 0 {
+		cfg.GroupChunkBytes = DefaultGroupChunkBytes
+	}
+	if cfg.RegisterTimeout <= 0 {
+		cfg.RegisterTimeout = DefaultRegisterTimeout
+	}
+	if cfg.VisibilityLag <= 0 {
+		cfg.VisibilityLag = DefaultVisibilityLag
+	}
+	if cfg.FailedSettle <= 0 {
+		cfg.FailedSettle = DefaultFailedSettle
+	}
+	if cfg.ScheduleHistoryWindow <= 0 {
+		cfg.ScheduleHistoryWindow = DefaultScheduleHistoryWindow
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.DiscardHandler)
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = clock.Real{}
+	}
+	if cfg.NodeID == "" {
+		cfg.NodeID = workflow.DefaultNodeID()
+	}
+	if cfg.PayloadLimit <= 0 {
+		cfg.PayloadLimit = DefaultPayloadLimit
+	}
+	return &Client{
+		cfg:       cfg,
+		specs:     map[string]workflow.Workflow{},
+		workflows: map[string]*hatchetsdk.Workflow{},
+		delayed:   map[string]*hatchetsdk.Workflow{},
+		sdk:       cfg.Client,
+		done:      make(chan struct{}),
+	}
+}

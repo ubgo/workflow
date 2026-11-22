@@ -1,0 +1,1 @@
+	ErrDiscarded = errors.New("workflow: run discarded")

@@ -1,0 +1,1 @@
+func KeyExpr(expr string) ConcurrencyKey { return ConcurrencyKey{Expr: expr} }

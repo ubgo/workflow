@@ -1,0 +1,1 @@
+var ErrSecretInPayload = fmt.Errorf("%w: job carries a secret; pass a SecretRef instead", ErrInvalid)

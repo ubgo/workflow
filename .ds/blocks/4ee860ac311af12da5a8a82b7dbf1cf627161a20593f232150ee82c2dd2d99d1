@@ -1,0 +1,7 @@
+func NewInbox(rdb goredis.UniversalClient, prefix string) (*Inbox, error) {
+	base, err := storeBase(rdb, prefix)
+	if err != nil {
+		return nil, err
+	}
+	return &Inbox{rdb: rdb, base: base}, nil
+}

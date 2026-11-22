@@ -1,0 +1,1 @@
+	DefaultRegisterTimeout = 30 * time.Second

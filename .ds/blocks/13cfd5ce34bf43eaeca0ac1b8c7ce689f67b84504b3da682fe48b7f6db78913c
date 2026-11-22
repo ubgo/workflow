@@ -1,0 +1,15 @@
+func leavesExcept(steps []Step, skip string) []string {
+	hasChild := map[string]bool{}
+	for _, s := range steps {
+		for _, p := range s.After {
+			hasChild[p] = true
+		}
+	}
+	var out []string
+	for _, s := range steps {
+		if s.Name != skip && !hasChild[s.Name] {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}
