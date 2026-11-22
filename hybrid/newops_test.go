@@ -73,6 +73,30 @@ func TestNewOps_ReachTheJobsClient(t *testing.T) {
 	}
 }
 
+// TestReschedule_NowReturnsTheRunID: Reschedule to now reaches the jobs
+// client through Forward and hands back the ref it returns, which carries
+// the admitted run's RunID (workflow.RunRescheduler).
+func TestReschedule_NowReturnsTheRunID(t *testing.T) {
+	echo := workflow.Workflow{Name: "echo", Steps: []workflow.Step{{Name: "s", Run: func(_ context.Context, in []byte) ([]byte, error) { return in, nil }}}}
+	jobs := memory.New()
+	c := startOver(t, memory.New(), jobs, echo)
+	ctx := t.Context()
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "echo", Payload: []byte(`"x"`), RunAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Reschedule(ctx, ref, time.Now())
+	if err != nil {
+		t.Fatalf("Reschedule: %v", err)
+	}
+	if got.RunID.IsZero() {
+		t.Fatalf("Reschedule to now returned %+v, want the run's RunID", got)
+	}
+	if _, err := workflow.AwaitResult(ctx, jobs, workflow.RunRef{RunID: got.RunID}, workflow.AwaitOptions{Poll: 2 * time.Millisecond}); err != nil {
+		t.Fatalf("the rescheduled run on the jobs client: %v", err)
+	}
+}
+
 // bareClient hides every optional interface of the client it wraps.
 type bareClient struct{ workflow.Client }
 

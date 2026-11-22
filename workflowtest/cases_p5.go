@@ -517,6 +517,35 @@ var rescheduleCases = []testCase{
 			}
 		}
 	}},
+	// The RunRescheduler doc promises that a time of now or earlier admits
+	// the run, so the returned ref carries its RunID, as EditRun's does: a
+	// caller that keeps only the RunID (or hands it to RunInfo, Signal, a
+	// log line) must not get a zero one back. Memory and sqlstore once
+	// returned the ScheduledID-only ref they held before admission.
+	{"Reschedule to now or earlier admits the run and returns its RunID", func(e *env) {
+		e.need(workflow.CapDelayedStart)
+		resch := asOpt[workflow.RunRescheduler](e, "workflow.RunRescheduler")
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		for i, at := range []time.Time{e.now(), e.now().Add(-time.Hour)} {
+			ref := e.enqueue(workflow.Job{Workflow: wf.Name, Payload: []byte(strconv.Itoa(i)), RunAt: e.now().Add(24 * time.Hour)})
+			ctx, cancel := e.callCtx()
+			got, err := resch.Reschedule(ctx, ref, at)
+			cancel()
+			e.skipUnsupported(err, "Reschedule")
+			if err != nil {
+				e.t.Fatalf("Reschedule to %s: %v", at, err)
+			}
+			if got.RunID.IsZero() {
+				e.t.Fatalf("Reschedule to now (run %d) returned %+v, want a ref carrying the admitted run's RunID", i, got)
+			}
+			e.waitStatus(workflow.RunRef{RunID: got.RunID}, workflow.StatusSucceeded, e.tm.unit)
+		}
+		if c.count() != 2 {
+			e.t.Fatalf("the step ran %d time(s), want twice (once per run)", c.count())
+		}
+	}},
 	{"Reschedule of a run that is not scheduled is refused", func(e *env) {
 		resch := asOpt[workflow.RunRescheduler](e, "workflow.RunRescheduler")
 		var c counter

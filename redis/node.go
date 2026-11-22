@@ -205,7 +205,9 @@ func (c *Client) Result(ctx context.Context, ref workflow.RunRef) ([]byte, error
 }
 
 // Reschedule moves a delayed run that has not started to at (now when at
-// is zero or past), keeping its RunRef (workflow.RunRescheduler).
+// is zero or past), keeping its RunRef (workflow.RunRescheduler); moved to
+// now, the run is queued before Reschedule returns and the ref carries its
+// RunID.
 //
 //ds:def id=redis-client-reschedule-j5u3fw5f owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {

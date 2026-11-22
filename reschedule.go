@@ -11,8 +11,10 @@ import (
 // Reschedule needs a run in StatusScheduled (a Job.RunAt enqueue not yet
 // due): it runs at `at` instead, keeps its RunRef, payload, labels and
 // idempotency key, and RunInfo.RunAt reads `at`. An `at` in the past (or
-// zero) means now. Any other status returns ErrWrongState, an unknown ref
-// ErrNotFound. A client without it returns an UnsupportedError from the
+// zero) means now: the run is admitted before Reschedule returns, so the
+// RunRef returned carries its RunID (as RunEditor's does); a later `at`
+// returns a ref that holds the ScheduledID until the run starts. Any other
+// status returns ErrWrongState, an unknown ref ErrNotFound. A client without it returns an UnsupportedError from the
 // Forward wrapper; the fallback is Cancel plus Enqueue.
 //
 //ds:def id=runrescheduler-rmgramx6 owner=@khanakia stability=stable

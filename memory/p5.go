@@ -188,7 +188,10 @@ func (c *Client) armRunTimeoutLocked(r *run) {
 }
 
 // Reschedule moves a delayed run that has not started to at (see
-// workflow.RunRescheduler).
+// workflow.RunRescheduler). An at of now or earlier admits the run before
+// Reschedule returns, so the ref carries its RunID.
+//
+//ds:def id=memory-client-reschedule-ennyvcq7 owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	if err := ctx.Err(); err != nil {
 		return workflow.RunRef{}, err
@@ -210,7 +213,19 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		at = now
 	}
 	r.runAt = at
-	c.armDelayLocked(r, at.Sub(now))
+	if at.After(now) {
+		c.armDelayLocked(r, at.Sub(now))
+		return r.ref(), nil
+	}
+	// Due now: admit it here rather than through a zero timer, so the
+	// returned ref carries the RunID readyLocked gives it (the
+	// workflow.RunRescheduler promise, as EditRun). Closing rearm retires
+	// the old timer's goroutine.
+	if r.rearm != nil {
+		close(r.rearm)
+		r.rearm = nil
+	}
+	c.readyLocked(r)
 	return r.ref(), nil
 }
 

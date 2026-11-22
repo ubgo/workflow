@@ -181,8 +181,11 @@ func (c *Client) progressReporter(a *attempt) workflow.ProgressFunc {
 
 // Reschedule moves a scheduled run's start to at (workflow.RunRescheduler).
 // The RunRef, payload, labels and key stay; RunInfo.RunAt becomes at; a
-// zero or past at starts it now. A run that is not scheduled returns
-// ErrWrongState, an unknown one ErrNotFound.
+// zero or past at starts it now, promoting the row to pending in the same
+// statement, so the returned ref carries the RunID. A run that is not
+// scheduled returns ErrWrongState, an unknown one ErrNotFound.
+//
+//ds:def id=sql-client-reschedule-xpqtkgcm owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
 	r, err := c.lookup(ctx, ref)
 	if err != nil {
@@ -190,10 +193,21 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 	}
 	now := c.nowNanos()
 	when := at.UnixNano()
-	if at.IsZero() || when < now {
+	stmt, args := "UPDATE {runs} SET run_at = ?", []any{}
+	due := at.IsZero() || when <= now
+	if due {
+		// What promote does for a row whose RunAt has come, done in the
+		// same guarded UPDATE, so the returned ref carries the RunID (the
+		// workflow.RunRescheduler promise, as EditRun) and a worker admits
+		// it.
 		when = now
+		stmt += ", status = ?"
+		args = append(args, when, runPending)
+	} else {
+		args = append(args, when)
 	}
-	n, err := c.st.execN(ctx, c.st.db, "UPDATE {runs} SET run_at = ? WHERE id = ? AND status = ?", when, r.id, runScheduled)
+	args = append(args, r.id, runScheduled)
+	n, err := c.st.execN(ctx, c.st.db, stmt+" WHERE id = ? AND status = ?", args...)
 	if err != nil {
 		return workflow.RunRef{}, err
 	}
@@ -201,6 +215,9 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		return workflow.RunRef{}, fmt.Errorf("%w: run %s is not scheduled", workflow.ErrWrongState, r.id)
 	}
 	c.nudge()
+	if due {
+		r.status = runPending
+	}
 	return r.ref(), nil
 }
 

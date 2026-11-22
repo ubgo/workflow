@@ -492,7 +492,7 @@ due in the next hour:
   r-30m due at +30m0s, scheduled
 ```
 
-Only a run in `StatusScheduled` can move ([`RunRescheduler`](ds:block?id=runrescheduler-rmgramx6)). Any other status returns `ErrWrongState`, since a run that has started or ended has no start time left to change, and an unknown ref returns `ErrNotFound`. An `at` in the past, or zero, means now. On a client without the interface, the fallback in `moveRun` is `Cancel` plus a new `Enqueue` with the new `RunAt`, which gives the run a new ref; the example's `TestMoveRunFallback` drives that path through a client that hides the interface.
+Only a run in `StatusScheduled` can move ([`RunRescheduler`](ds:block?id=runrescheduler-rmgramx6)). Any other status returns `ErrWrongState`, since a run that has started or ended has no start time left to change, and an unknown ref returns `ErrNotFound`. An `at` in the past, or zero, means now: the run is admitted before `Reschedule` returns, so the ref it returns carries the run's `RunID` as well as its `ScheduledID` on every driver ([memory](ds:block?id=memory-client-reschedule-ennyvcq7), [SQL](ds:block?id=sql-client-reschedule-xpqtkgcm), [Redis](ds:block?id=redis-client-reschedule-j5u3fw5f), [Hatchet](ds:block?id=hatchet-client-startnow-upqvz45e)); a later `at` returns a ref that holds only the `ScheduledID` until the run starts. On a client without the interface, the fallback in `moveRun` is `Cancel` plus a new `Enqueue` with the new `RunAt`, which gives the run a new ref; the example's `TestMoveRunFallback` drives that path through a client that hides the interface.
 
 ## Cancel one step
 
@@ -571,6 +571,7 @@ Every line comes from one run of the program: a failed run listed with its step 
 - **Error history grows each run's record.** Twenty entries ([`DefaultErrorHistory`](ds:block?id=defaulterrorhistory-cexsqn9u)) with 8 KiB stacks ([`MaxErrorStack`](ds:block?id=maxerrorstack-99dw4vyj)) are up to about 160 KiB per run on a durable driver; lower `WithErrorHistory` for workflows that retry many times.
 - **`CancelStep` only asks.** Like a run cancel, it cancels the attempt's `ctx`; a handler that ignores it runs on, and its output, if it returns one, still counts as the step's ([`StepCanceller`](ds:block?id=stepcanceller-gp5urxfn)).
 - **A fallback output looks like success to everything after it.** The run ends `succeeded` ([`StepCanceller`](ds:block?id=stepcanceller-gp5urxfn)); if downstream code must know the data is stale, put that in the output.
+- **Keep the ref `Reschedule` returns.** Moved to now or earlier, the run has started, and the returned ref carries its `RunID` ([`RunRescheduler`](ds:block?id=runrescheduler-rmgramx6)); the ref you passed holds only the `ScheduledID`. Both still find the run, but code that logs, signals or stores the `RunID` must take it from the returned ref.
 - **`DueFrom` and `DueTo` skip runs with no `RunAt`.** A run enqueued to start now is never "due" in this sense, even while it waits for a worker ([`RunQuery.Match`](ds:block?id=runquery-match-rbndsdhq)).
 - **A paused workflow still accepts enqueues.** A deploy that pauses before a migration and forgets to resume leaves runs piling up silently; alert on [`Paused`](ds:block?id=pauser-5p4t8yg6) being non-empty.
 

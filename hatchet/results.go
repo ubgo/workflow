@@ -177,10 +177,12 @@ var errRescheduleGated = workflow.Unsupported("Reschedule", "of a delayed start 
 // payload, labels, priority and key are kept: the driver creates the
 // scheduled run again at the new time with the same token and metadata,
 // plus the new due time (metaRunAt), then deletes the old one, so the
-// run's ScheduledID is unchanged. A run that has fired, or is due within
-// dueGuard (15s), returns ErrWrongState; an unknown or cancelled
-// one ErrNotFound. A delayed start with an idempotency key, which has a
-// RunID and waits in its start gate, is refused with an UnsupportedError.
+// run's ScheduledID is unchanged. An at of now or earlier starts the run
+// instead (startNow), so the ref returned carries its RunID as well. A
+// run that has fired, or is due within dueGuard (15s), returns
+// ErrWrongState; an unknown or cancelled one ErrNotFound. A delayed start
+// with an idempotency key, which has a RunID and waits in its start gate,
+// is refused with an UnsupportedError.
 //
 //ds:def id=hatchet-client-reschedule-3nfqbter owner=@khanakia stability=stable
 func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
@@ -223,8 +225,8 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 	if old.TriggerAt.Sub(now) < dueGuard {
 		return workflow.RunRef{}, fmt.Errorf("%w: scheduled run %s is due within %s and may already be firing", workflow.ErrWrongState, ref.ScheduledID, dueGuard)
 	}
-	if at.Before(now) {
-		at = now
+	if !at.After(now) {
+		return c.startNow(ctx, sdk, ref, old, now)
 	}
 	md := metadataStrings(old.AdditionalMetadata)
 	md[metaRunAt] = strconv.FormatInt(at.UnixMilli(), 10)
@@ -246,6 +248,53 @@ func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Ti
 		return workflow.RunRef{}, c.undoReschedule(ctx, sdk, sid.token, old.Metadata.Id, err)
 	}
 	return ref, nil
+}
+
+// startNow is Reschedule to now or earlier. A scheduled run fires only
+// from the engine's ticker, so creating it again at now would return
+// before the run exists and the ref could not carry its RunID (the
+// workflow.RunRescheduler promise). Instead the scheduled run is deleted
+// (old is at least dueGuard from firing, so the ticker cannot start it)
+// and the run is started at once by name with the same input, priority
+// and metadata, the token included, so the ScheduledID still resolves to
+// it (findRunByToken) and RunInfo.RunAt reads now (metaRunAt). If the
+// start fails, the scheduled run is created again at its old time; if
+// that fails too, the error says the start is gone and must be enqueued
+// again.
+//
+//ds:def id=hatchet-client-startnow-upqvz45e owner=@khanakia stability=stable
+func (c *Client) startNow(ctx context.Context, sdk *hatchetsdk.Client, ref workflow.RunRef, old *rest.ScheduledWorkflows, now time.Time) (workflow.RunRef, error) {
+	if err := deleteScheduled(ctx, sdk, old.Metadata.Id); err != nil {
+		return workflow.RunRef{}, engineErr(err, "reschedule: delete the run at the old time")
+	}
+	var input map[string]any
+	if old.Input != nil {
+		input = map[string]any(*old.Input)
+	}
+	md := metadataStrings(old.AdditionalMetadata)
+	md[metaRunAt] = strconv.FormatInt(now.UnixMilli(), 10)
+	opts := []hatchetsdk.RunOptFunc{hatchetsdk.WithRunMetadata(md)}
+	if old.Priority != nil {
+		opts = append(opts, hatchetsdk.WithRunPriority(hatchetsdk.RunPriority(*old.Priority)))
+	}
+	run, err := sdk.RunNoWait(ctx, old.WorkflowName, input, opts...)
+	if err == nil {
+		return workflow.RunRef{RunID: workflow.RunID(run.RunId), ScheduledID: ref.ScheduledID}, nil
+	}
+	cause := engineErr(err, "reschedule: start the run now")
+	back := features.CreateScheduledRunTrigger{
+		TriggerAt:          old.TriggerAt.UTC(),
+		Input:              input,
+		AdditionalMetadata: labelsAny(metadataStrings(old.AdditionalMetadata)),
+	}
+	if old.Priority != nil {
+		p := features.RunPriority(*old.Priority)
+		back.Priority = &p
+	}
+	if _, rerr := sdk.Schedules().Create(ctx, old.WorkflowName, back); rerr != nil {
+		return workflow.RunRef{}, fmt.Errorf("%w; putting the start back at its old time failed too (%v), so the run will not start: Enqueue it again", cause, rerr)
+	}
+	return workflow.RunRef{}, cause
 }
 
 // undoReschedule removes the copy Reschedule created when the old
