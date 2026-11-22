@@ -1,0 +1,34 @@
+func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	r, err := c.lookup(ctx, ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	now := c.nowNanos()
+	when := at.UnixNano()
+	stmt, args := "UPDATE {runs} SET run_at = ?", []any{}
+	due := at.IsZero() || when <= now
+	if due {
+		// What promote does for a row whose RunAt has come, done in the
+		// same guarded UPDATE, so the returned ref carries the RunID (the
+		// workflow.RunRescheduler promise, as EditRun) and a worker admits
+		// it.
+		when = now
+		stmt += ", status = ?"
+		args = append(args, when, runPending)
+	} else {
+		args = append(args, when)
+	}
+	args = append(args, r.id, runScheduled)
+	n, err := c.st.execN(ctx, c.st.db, stmt+" WHERE id = ? AND status = ?", args...)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if n == 0 {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %s is not scheduled", workflow.ErrWrongState, r.id)
+	}
+	c.nudge()
+	if due {
+		r.status = runPending
+	}
+	return r.ref(), nil
+}

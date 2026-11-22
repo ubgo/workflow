@@ -1,0 +1,33 @@
+func (c *Client) startNow(ctx context.Context, sdk *hatchetsdk.Client, ref workflow.RunRef, old *rest.ScheduledWorkflows, now time.Time) (workflow.RunRef, error) {
+	if err := deleteScheduled(ctx, sdk, old.Metadata.Id); err != nil {
+		return workflow.RunRef{}, engineErr(err, "reschedule: delete the run at the old time")
+	}
+	var input map[string]any
+	if old.Input != nil {
+		input = map[string]any(*old.Input)
+	}
+	md := metadataStrings(old.AdditionalMetadata)
+	md[metaRunAt] = strconv.FormatInt(now.UnixMilli(), 10)
+	opts := []hatchetsdk.RunOptFunc{hatchetsdk.WithRunMetadata(md)}
+	if old.Priority != nil {
+		opts = append(opts, hatchetsdk.WithRunPriority(hatchetsdk.RunPriority(*old.Priority)))
+	}
+	run, err := sdk.RunNoWait(ctx, old.WorkflowName, input, opts...)
+	if err == nil {
+		return workflow.RunRef{RunID: workflow.RunID(run.RunId), ScheduledID: ref.ScheduledID}, nil
+	}
+	cause := engineErr(err, "reschedule: start the run now")
+	back := features.CreateScheduledRunTrigger{
+		TriggerAt:          old.TriggerAt.UTC(),
+		Input:              input,
+		AdditionalMetadata: labelsAny(metadataStrings(old.AdditionalMetadata)),
+	}
+	if old.Priority != nil {
+		p := features.RunPriority(*old.Priority)
+		back.Priority = &p
+	}
+	if _, rerr := sdk.Schedules().Create(ctx, old.WorkflowName, back); rerr != nil {
+		return workflow.RunRef{}, fmt.Errorf("%w; putting the start back at its old time failed too (%v), so the run will not start: Enqueue it again", cause, rerr)
+	}
+	return workflow.RunRef{}, cause
+}

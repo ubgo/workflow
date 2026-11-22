@@ -1,0 +1,36 @@
+func (c *Client) Reschedule(ctx context.Context, ref workflow.RunRef, at time.Time) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	r, err := c.lookupLocked(ref)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if r.status != workflow.StatusScheduled {
+		return workflow.RunRef{}, fmt.Errorf("%w: run %+v is %s, not scheduled", workflow.ErrWrongState, ref, r.statusLocked())
+	}
+	now := c.clk.Now()
+	if at.IsZero() || !at.After(now) {
+		at = now
+	}
+	r.runAt = at
+	if at.After(now) {
+		c.armDelayLocked(r, at.Sub(now))
+		return r.ref(), nil
+	}
+	// Due now: admit it here rather than through a zero timer, so the
+	// returned ref carries the RunID readyLocked gives it (the
+	// workflow.RunRescheduler promise, as EditRun). Closing rearm retires
+	// the old timer's goroutine.
+	if r.rearm != nil {
+		close(r.rearm)
+		r.rearm = nil
+	}
+	c.readyLocked(r)
+	return r.ref(), nil
+}

@@ -1,0 +1,6 @@
+func defaultStatuses(caps workflow.Caps) []workflow.Status {
+	if caps.Has(workflow.CapRunStates) {
+		return slices.Clone(UnfinishedStatuses)
+	}
+	return slices.DeleteFunc(slices.Clone(UnfinishedStatuses), func(s workflow.Status) bool { return s == workflow.StatusRetrying })
+}
