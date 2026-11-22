@@ -4,6 +4,10 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-22
+
+The core `v0.2.2` and every separate module at `v0.2.2`: `admin`, `cli`, `hatchet`, `otel`, `recorder`, `recorder/sqlrecorder`, `redis`, `sentry`, `sqlstore`, `sqlstore/pgnotify` and `sqlstore/pgxtx`. Each separate module requires the core `v0.2.2` (and `recorder/sqlrecorder` requires `recorder/v0.2.2`). `admin`, `cli`, `otel`, `sentry`, `sqlstore/pgnotify` and `sqlstore/pgxtx` have no code change since v0.2.1 beyond doc comments and formatting; they move to v0.2.2 so the set moves together. This is a patch release: every change below adds API, fixes behaviour to match what the docs promised, or documents. No exported identifier of any module was removed or changed (checked with `apidiff` against v0.2.1); the one difference `apidiff` reports is that `workflow.ReplayCtx`, an opaque type with only unexported fields that handlers receive as `*ReplayCtx`, is no longer comparable as a value. Capabilities keep their numbers and no capability is new; sqlstore adds no migration. The behaviour changes a running app can notice are listed under Changed.
+
 ### Added
 
 - `workflow.WithTimeoutClaim` and `workflow.ClaimTimeout`, the driver-author handshake that lets step middleware turn the attempt's own timeout into its result.
@@ -15,6 +19,23 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 - `hatchet`: a delayed start with an idempotency key (`Job.RunAt` with `Job.IdempotencyKey`, so also `workflow.Spawn` with `RunAt`) is taken instead of refused: it starts at once on the workflow's delayed variant (`<name>__wf_delayed`, declared by `Start` beside every workflow without `IdempotencyOff` or a `Concurrency`), whose durable start gate sleeps until `RunAt`; the engine holds the key until then, the run reads `StatusScheduled`, a duplicate gets the same `RunRef`, and `Cancel`, `CancelAll`, `CancelChildren` and workflow pause act on it. Still refused on a workflow with a `Concurrency`, past `Config.IdempotencyMaxHold`, and on a client that did not register the workflow; `Reschedule` of such a start returns an `UnsupportedError`. A step named `wf__start` and a workflow name ending in `__wf_delayed` are now refused (`ErrInvalid`).
 - `sqlrecorder.WithArchiveTable` moves each pruned run, whole, into `<prefix>archive` in the transaction that deletes it, so the archive is exactly once; read it back with `ArchivedRun` and `ArchivedRuns` (`ArchiveQuery`, `ArchivePage`, keyset paging that never skips a tie). The table is opt-in: `Migrate` creates it only for a store with the option and `SchemaVersion` stays 1. `Retention.Archive` keeps its at-least-once contract beside it.
 - `middleware.LatestOnlyConfig.DefaultMisfire`, the misfire policy `LatestOnly` assumes for a schedule that names none (zero is `MisfireFireOnce`, the memory, SQL and Redis default; set `MisfireSkip` on Hatchet).
+
+### Changed
+
+Each of these corrects behaviour to what its doc promised; the details are in the Fixed entry it names.
+
+- `middleware.LatestOnly` counts a tick as newer only when the schedule really fires it (windows, active period, pause, `OverlapSkip`, the misfire policy). On sqlstore, Redis and Hatchet a run late past its next tick under `MisfireSkip` or a `Within` deadline now does its work instead of skipping it, and runs with `LabelTrigger` always do their work.
+- `hatchet`: the worker enforces `Step.Timeout` and `Workflow.Timeout` itself, so a timed-out step fails with `ErrStepTimeout`'s text instead of the engine's message, and the engine's own execution timeout is the step's timeout rounded up to whole seconds plus 5 s.
+- `hatchet`: a wait step lasts until its event, `Timeout` or `Deadline` (a shorter `Step.Timeout` or `Workflow.Timeout` no longer ends it early), and an expired wait fails with `workflow: wait expired` (`ErrWaitTimeout`) as on the other drivers.
+- `hatchet`: a delayed start with an idempotency key is taken instead of refused, and a step named `wf__start` or a workflow name ending in `__wf_delayed` is now refused with `ErrInvalid`.
+- `CancelChildren` also cancels scheduled (delayed) children, and on Hatchet it works at all.
+- `events`: on a client without `CapRunStates` (Hatchet) a cancel subscription's default statuses leave out `StatusRetrying`, and `SubscribeCancel` refuses a `Statuses` naming it with an `UnsupportedError`.
+- `EditRun` and `Reschedule` to now or earlier admit the run before they return on memory, SQL and Hatchet, so the returned ref carries its `RunID`; on Hatchet `Reschedule` starts the run at once instead of leaving it to the engine's ticker.
+- `redis`: a run abandoned past `WithMaxReclaims` runs `OnFailure` once, as on sqlstore.
+- `sqlstore`: a `WithoutScheduler` client never leads, whether given `WithLeaderElection` or a custom `WithElector`, so it fires no cron ticks and runs no leader housekeeping.
+- `batch.WithCompletionSource` replaces the Sources (the last option wins, an empty one means none) instead of appending to them.
+- `workflowtest`: the default `Fake` claims `CapDiscardExhausted`, `CapSlotCost` and `CapRoundRobin` and no longer claims `CapPayloadSearch`; `NewRecorder(nil)` claims every capability but `CapRunFinished`. A test that branches on these capabilities may take the other branch.
+- `ResetRun`'s wrong-state error text changed ("only a failed run can be reset").
 
 ### Fixed
 
