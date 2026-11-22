@@ -3,7 +3,7 @@ module github.com/ubgo/workflow/otel
 go 1.25.0
 
 require (
-	github.com/ubgo/workflow v0.2.1
+	github.com/ubgo/workflow v0.2.2
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0

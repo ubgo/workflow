@@ -10,8 +10,8 @@ replace (
 )
 
 require (
-	github.com/ubgo/workflow v0.2.1
-	github.com/ubgo/workflow/otel v0.2.1
+	github.com/ubgo/workflow v0.2.2
+	github.com/ubgo/workflow/otel v0.2.2
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
