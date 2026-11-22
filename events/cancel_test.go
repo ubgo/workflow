@@ -3,6 +3,7 @@ package events_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -261,4 +262,91 @@ func TestSubscribeCancelRefusals(t *testing.T) {
 	if err := b.SubscribeCancel(events.CancelSubscription{Name: "y", Event: "e", Label: "order"}); !errors.Is(err, workflow.ErrInvalid) {
 		t.Errorf("SubscribeCancel reusing a subscription's name: %v", err)
 	}
+}
+
+// noRunStates is a client without workflow.CapRunStates whose CancelAll
+// refuses StatusRetrying as Hatchet's does, and records each query.
+type noRunStates struct {
+	workflow.Client
+	queries *[]workflow.RunQuery
+}
+
+func (n noRunStates) Capabilities() workflow.Caps {
+	return n.Client.Capabilities().Without(workflow.CapRunStates)
+}
+
+func (n noRunStates) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	*n.queries = append(*n.queries, q)
+	for _, s := range q.Statuses {
+		if s == workflow.StatusRetrying {
+			return 0, &workflow.UnsupportedError{Field: "RunQuery.Statuses", Missing: workflow.CapRunStates}
+		}
+	}
+	return n.Client.(workflow.BulkCanceller).CancelAll(ctx, q)
+}
+
+// TestCancelStatusesFollowCapabilities: on a client without CapRunStates
+// (Hatchet) the default statuses leave out StatusRetrying, which that
+// client cannot filter (a run in retry backoff reads queued or running
+// there and is still matched), so a publish cancels instead of failing;
+// a subscription that names StatusRetrying itself is refused at
+// SubscribeCancel with an UnsupportedError naming CapRunStates. A client
+// with the capability keeps the full UnfinishedStatuses.
+func TestCancelStatusesFollowCapabilities(t *testing.T) {
+	ctx := context.Background()
+	c := started(t, holdWorkflow(t, "fulfil"))
+	ref, err := c.Enqueue(ctx, workflow.Job{Workflow: "fulfil", Labels: map[string]string{"order": "42"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, c, ref, workflow.StatusRunning)
+
+	var queries []workflow.RunQuery
+	b, err := events.New(noRunStates{Client: c, queries: &queries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ue *workflow.UnsupportedError
+	err = b.SubscribeCancel(events.CancelSubscription{Name: "retrying", Event: "order.cancelled", Label: "order", Statuses: []workflow.Status{workflow.StatusRetrying}})
+	if !errors.As(err, &ue) || ue.Missing != workflow.CapRunStates {
+		t.Fatalf("SubscribeCancel naming StatusRetrying without CapRunStates = %v, want UnsupportedError for CapRunStates", err)
+	}
+	if err := b.SubscribeCancel(events.CancelSubscription{Name: "stop", Event: "order.cancelled", Label: "order"}); err != nil {
+		t.Fatal(err)
+	}
+	p, err := b.Publish(ctx, events.Message{ID: "c1", Name: "order.cancelled", Key: "42"})
+	if err != nil || len(p.Cancellations) != 1 || p.Cancellations[0].Err != nil || p.Cancellations[0].Cancelled != 1 {
+		t.Fatalf("publish = %+v, %v; want one run cancelled", p.Cancellations, err)
+	}
+	waitStatus(t, c, ref, workflow.StatusCancelled)
+	if len(queries) != 1 || slices.Contains(queries[0].Statuses, workflow.StatusRetrying) {
+		t.Fatalf("CancelAll queries = %+v; want one without StatusRetrying", queries)
+	}
+
+	// With CapRunStates the default is the whole UnfinishedStatuses.
+	var full []workflow.RunQuery
+	fb, err := events.New(recordCancels{Client: c, queries: &full})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fb.SubscribeCancel(events.CancelSubscription{Name: "stop", Event: "order.cancelled", Label: "order"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fb.Publish(ctx, events.Message{ID: "c2", Name: "order.cancelled", Key: "43"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(full) != 1 || !slices.Equal(full[0].Statuses, events.UnfinishedStatuses) {
+		t.Fatalf("CancelAll queries = %+v; want one with every UnfinishedStatuses status", full)
+	}
+}
+
+// recordCancels records each CancelAll query and passes it on.
+type recordCancels struct {
+	workflow.Client
+	queries *[]workflow.RunQuery
+}
+
+func (r recordCancels) CancelAll(ctx context.Context, q workflow.RunQuery) (int, error) {
+	*r.queries = append(*r.queries, q)
+	return r.Client.(workflow.BulkCanceller).CancelAll(ctx, q)
 }

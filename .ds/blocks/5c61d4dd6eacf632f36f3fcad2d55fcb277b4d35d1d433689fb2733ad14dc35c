@@ -1,0 +1,1 @@
+var allCaps = workflow.AllCaps().Without(workflow.CapRunFinished)

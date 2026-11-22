@@ -137,7 +137,7 @@ type ended struct {
 func (c *Client) emitFinished(ctx context.Context, list []ended) {
 	for _, e := range list {
 		ev := workflow.LifecycleEvent{Kind: workflow.LifecycleFinished, Ref: workflow.RunRef{RunID: workflow.RunID(e.id)},
-			Workflow: e.workflow, Status: runStatus(e.status, nil), Step: ""}
+			Workflow: e.workflow, Status: runStatus(e.status, nil), Step: e.step} // Step: the failed step, as RunEvent.Step
 		ev.Err = runError(e.id, e.workflow, e.step, e.status, e.msg, e.kind, false, false)
 		c.emit(ctx, ev)
 	}

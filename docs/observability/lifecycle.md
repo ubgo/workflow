@@ -41,7 +41,7 @@ if err := ln.OnLifecycle(func(_ context.Context, ev workflow.LifecycleEvent) {
 | [`LifecycleRetrying`](ds:block?id=lifecycleretrying-y3jsmjmh) (`retrying`) | An attempt failed and the step will run again after its backoff | `Step`, `Attempt` (the failed one), `Err` |
 | [`LifecycleSnoozed`](ds:block?id=lifecyclesnoozed-k96yqmmm) (`snoozed`) | A step called `workflow.Snooze` and runs again later, without spending an attempt | `Step`, `Attempt`, `Err` |
 | [`LifecycleProgress`](ds:block?id=lifecycleprogress-yvqxcvp5) (`progress`) | A step called `workflow.ReportProgress` | `Step`, `Attempt`, `Progress` |
-| [`LifecycleFinished`](ds:block?id=lifecyclefinished-3p3kttag) (`finished`) | The run reached a terminal status, the same moment the run-finished hook reports | `Status`, `Err` for a failure |
+| [`LifecycleFinished`](ds:block?id=lifecyclefinished-3p3kttag) (`finished`) | The run reached a terminal status, the same moment the run-finished hook reports | `Status`, `Err` and `Step` (the failed step) for a failure |
 
 Every event also carries ([`LifecycleEvent`](ds:block?id=lifecycleevent-369x8exj)) `Ref`, `Workflow`, `Queue`, `Tenant`, the run's `Labels` (read-only), `Node` (the node it happened on, on a driver with `CapNodeIdentity`, see [Nodes and health](../operations/nodes.md)) and `At`, on the driver's clock. `Status` is the run's status after the event.
 
@@ -85,7 +85,7 @@ Anything that must not miss an end (a unique lock, a batch's progress, a billing
 - **It is not ordered across runs.** For one run, the events of one process arrive in the order they happened ([`LifecycleNotifier`](ds:block?id=lifecyclenotifier-3vtxxku9)); events of different runs interleave.
 - **A panic is recovered and logged** ([`LifecycleNotifier`](ds:block?id=lifecyclenotifier-3vtxxku9)). It never changes a run, and the observer is called again for the next event.
 - **Labels are shared.** [`LifecycleEvent.Labels`](ds:block?id=lifecycleevent-369x8exj) must not be modified; copy it first.
-- **`Step` on a finished event.** The finished event names no attempt (`Attempt` is zero); the [memory driver](ds:block?id=memory-client-queueendedlocked-w8yb438q) still fills `Step` with the step that ended the run, while the [SQL driver](ds:block?id=sql-client-emitfinished-xaqvpkwt) and the [Redis driver](ds:block?id=redis-client-finish-3awqe53u) leave it empty, so read it as a hint, not as an attempt; [`RunEvent.Step`](ds:block?id=runevent-upvhdx59) from the run-finished hook is the field to rely on.
+- **`Step` on a finished event.** The finished event names no attempt (`Attempt` is zero), but `Step` is the step whose failure ended the run, as [`RunEvent.Step`](ds:block?id=runevent-upvhdx59) is, on the [memory](ds:block?id=memory-client-queueendedlocked-w8yb438q), [SQL](ds:block?id=sql-client-emitfinished-xaqvpkwt) and [Redis](ds:block?id=redis-client-finish-3awqe53u) drivers alike.
 
 ## Related
 

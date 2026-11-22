@@ -83,7 +83,7 @@ PASS
 
 - A job the inner client refused is not recorded: it was not enqueued ([`Enqueue`](ds:block?id=workflowtest-recorder-enqueue-khypubeh)). A job deduplicated onto an existing run by its key is recorded, because the inner client accepted the call.
 - [`OnRunFinished`](ds:block?id=workflowtest-recorder-onrunfinished-2jedux7k) on a Recorder over a client without `workflow.RunNotifier` returns an `UnsupportedError` rather than registering an observer that would never be called.
-- [`NewRecorder(nil)`](ds:block?id=workflowtest-newrecorder-r3wxkycy) is the older standalone fake. It claims [the core's original capabilities](ds:block?id=workflowtest-allcaps-mpwq2a5e) (durable through cron zone, without `CapRunFinished`; none added since) and refuses nothing, so it tests the double rather than the app; it is kept only for compatibility. Use [`NewFake`](fake.md) for a client that runs nothing.
+- [`NewRecorder(nil)`](ds:block?id=workflowtest-newrecorder-r3wxkycy) is the older standalone fake. It claims [every capability the core defines but `CapRunFinished`](ds:block?id=workflowtest-allcaps-mpwq2a5e), the ones added later included, and refuses nothing, so it tests the double rather than the app; it is kept only for compatibility. Use [`NewFake`](fake.md) for a client that runs nothing.
 
 ## Related
 

@@ -1,0 +1,44 @@
+func (c *Client) finish(h *held, st workflow.Status, failedStep string, cause error) {
+	if c.isCrashed() {
+		return
+	}
+	ctx, cancel := c.writeCtx()
+	defer cancel()
+	msg := ""
+	if cause != nil {
+		msg = cause.Error()
+	}
+	args := []any{c.base, h.id, h.token, string(st),
+		c.clk.Now().UnixNano(), msg, failedStep, encodeSteps(h), h.attempts,
+		strconv.FormatInt(c.retention.Milliseconds(), 10), encodeErrs(h)}
+	output := ""
+	if st == workflow.StatusSucceeded {
+		outs := make(map[string][]byte, len(h.steps))
+		for name, rec := range h.steps {
+			outs[name] = rec.Out
+		}
+		output = string(workflow.RunOutput(h.reg.wf, outs))
+	}
+	args = append(args, output)
+	if st == workflow.StatusSucceeded {
+		next, err := c.chainArgs(h.chain, c.clk.Now())
+		if err != nil {
+			c.log.Error("redis: hand a chain on (the chain stops here)", "run", h.id, "error", err)
+		}
+		args = append(args, next...)
+	}
+	if _, err := finishScript.Run(ctx, c.rdb, c.keys(), args...).Result(); err != nil {
+		c.log.Error("redis: record a finished run (it runs again once its lease expires)", "run", h.id, "status", st, "error", err)
+		return
+	}
+	c.drainTrack.RunFinished(workflow.RunID(h.id))
+	c.pokeNotifier()
+	ev := workflow.LifecycleEvent{Kind: workflow.LifecycleFinished, Ref: refOf(h.id, st, h.sid), Workflow: h.wf, Queue: h.queue,
+		Tenant: h.tenant, Status: st, Labels: h.labels, At: c.clk.Now(), Step: failedStep} // Step: the failed step, as RunEvent.Step
+	if st != workflow.StatusSucceeded {
+		r := *h.stored
+		r.status, r.err, r.failedStep = st, msg, failedStep
+		ev.Err = r.runError()
+	}
+	c.emit(ev)
+}

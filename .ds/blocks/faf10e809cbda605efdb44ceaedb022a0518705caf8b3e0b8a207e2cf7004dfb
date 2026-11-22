@@ -1,0 +1,8 @@
+var fakeUnserved = workflow.CapsOf(
+	workflow.CapRunFinished, workflow.CapRunQuery, workflow.CapCancelAll,
+	workflow.CapSchedulePause, workflow.CapScheduleList, workflow.CapTickEvents, workflow.CapDrain,
+	workflow.CapWorkerScale, workflow.CapLabelPrefix,
+	workflow.CapScheduleHistory, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapEnqueueOnly,
+	workflow.CapSnooze, workflow.CapNodeIdentity, workflow.CapDueQuery, workflow.CapResult, workflow.CapTickTime,
+	workflow.CapQueueLimitGlobal, workflow.CapDrainReport, workflow.CapPayloadSearch,
+)

@@ -17,7 +17,9 @@ var _ workflow.RunEditor = (*Client)(nil)
 // payload limit (WithPayloadLimit) applies to a new payload, and the run's
 // concurrency and rate keys are computed again from it (left for the
 // admitting worker when this client does not register the workflow, as
-// an enqueue-only client's runs are).
+// an enqueue-only client's runs are). A RunAt of now or earlier promotes
+// the row to pending in the same statement, so the returned ref carries
+// the RunID.
 //
 //ds:def id=sql-client-editrun-fwr9u4yr owner=@khanakia stability=stable
 func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow.JobEdit) (workflow.RunRef, error) {
@@ -58,14 +60,22 @@ func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow
 	}
 	stmt := "UPDATE {runs} SET payload = ?, priority = ?, bucket = ?, rate_keys = ?"
 	args := []any{job.Payload, job.Priority, bucket, rk}
+	due := false // the edit moves the start to now: promote the row here
 	if edit.RunAt != nil {
 		now := c.nowNanos()
 		runAt := edit.RunAt.UnixNano()
-		if edit.RunAt.IsZero() || runAt < now {
-			runAt = now
+		if edit.RunAt.IsZero() || runAt <= now {
+			runAt, due = now, true
 		}
 		stmt += ", run_at = ?"
 		args = append(args, runAt)
+		if due {
+			// What promote does for a row whose RunAt has come, done in the
+			// same guarded UPDATE, so the returned ref carries the RunID
+			// (the workflow.RunEditor promise) and a worker admits it.
+			stmt += ", status = ?"
+			args = append(args, runPending)
+		}
 	}
 	args = append(args, r.id, runScheduled)
 	err = c.st.tx(ctx, func(tx *sql.Tx) error {
@@ -82,5 +92,8 @@ func (c *Client) EditRun(ctx context.Context, ref workflow.RunRef, edit workflow
 		return workflow.RunRef{}, err
 	}
 	c.nudge()
+	if due {
+		r.status = runPending
+	}
 	return r.ref(), nil
 }

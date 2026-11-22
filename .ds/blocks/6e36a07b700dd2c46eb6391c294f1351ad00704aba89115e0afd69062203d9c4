@@ -1,0 +1,56 @@
+func (b *Bus) runCancels(ctx context.Context, cancels []CancelSubscription, m Message) ([]Cancellation, []error) {
+	var out []Cancellation
+	var errs []error
+	var divert []int // indexes in out whose cancel succeeded and that divert
+	var divertSubs []CancelSubscription
+	for _, s := range cancels {
+		if s.Event != m.Name || (s.Filter != nil && !s.Filter(m)) {
+			continue
+		}
+		c := Cancellation{Subscription: s.Name}
+		diverts := s.Divert != "" || s.DivertJob != nil
+		if diverts {
+			ref, found, err := b.findDivert(ctx, s, m)
+			if err != nil || found {
+				c.Diverted = ref
+				if err != nil {
+					c.Err = fmt.Errorf("events: cancel subscription %q: look for an earlier divert: %w", s.Name, err)
+					errs = append(errs, c.Err)
+				}
+				out = append(out, c)
+				continue
+			}
+		}
+		key := m.Key
+		if s.Key != nil {
+			key = s.Key(m)
+		}
+		bc, ok := b.client.(workflow.BulkCanceller)
+		switch {
+		case key == "":
+			c.Err = fmt.Errorf("%w: label %q value from message %q is empty", workflow.ErrInvalid, s.Label, m.ID)
+		case !ok:
+			c.Err = &workflow.UnsupportedError{Field: "events.CancelSubscription", Missing: workflow.CapCancelAll}
+		default:
+			c.Cancelled, c.Err = bc.CancelAll(ctx, cancelQuery(s, key, b.client.Capabilities()))
+		}
+		if c.Err != nil {
+			c.Err = fmt.Errorf("events: cancel subscription %q: %w", s.Name, c.Err)
+			errs = append(errs, c.Err)
+		} else if diverts {
+			divert = append(divert, len(out))
+			divertSubs = append(divertSubs, s)
+		}
+		out = append(out, c)
+	}
+	for i, idx := range divert {
+		s := divertSubs[i]
+		ref, err := b.deliver(ctx, Subscription{Name: s.Name, Event: s.Event, Workflow: s.Divert, Job: s.DivertJob}, m, "")
+		if err != nil {
+			err = fmt.Errorf("events: cancel subscription %q: divert: %w", s.Name, err)
+			errs = append(errs, err)
+		}
+		out[idx].Diverted, out[idx].Err = ref, err
+	}
+	return out, errs
+}

@@ -101,7 +101,7 @@ Pick the app's cap below the driver's, so an oversized job fails at the caller w
 c := memory.New(memory.WithClock(clk), memory.WithPayloadLimit(4096)) // what production's engine takes
 ```
 
-Code that sizes its work against the real number (a batch splitter, the claim check) reads it through the interface. Every wrapper built on [`workflow.Forward`](ds:block?id=forward-payloadlimit-g7zey23z) (middleware, `workflow.Use`, `hybrid`) forwards it, reporting zero when the client inside has no cap; the [`failover`](ds:block?id=failover-client-payloadlimit-2enw664j) and [`regional`](ds:block?id=regional-client-payloadlimit-2a8uvxs3) clients report the smallest cap of their backends, since a job may land on any of them. The `cutover` client does not implement it:
+Code that sizes its work against the real number (a batch splitter, the claim check) reads it through the interface. Every wrapper built on [`workflow.Forward`](ds:block?id=forward-payloadlimit-g7zey23z) (middleware, `workflow.Use`, `hybrid`) forwards it, reporting zero when the client inside has no cap; the [`failover`](ds:block?id=failover-client-payloadlimit-2enw664j), [`regional`](ds:block?id=regional-client-payloadlimit-2a8uvxs3) and [`cutover`](ds:block?id=cutover-client-payloadlimit-jfymsjru) clients report the smallest cap of their backends, since a payload may land on any of them (a cutover sends new work to the new backend and keeps an edited run's payload on the backend that holds it). Read it with a type assertion:
 
 <!-- snippet: examples/typed-payloads/main.go#limiter -->
 ```go

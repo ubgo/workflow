@@ -1054,7 +1054,7 @@ func (c *Client) finish(h *held, st workflow.Status, failedStep string, cause er
 	c.drainTrack.RunFinished(workflow.RunID(h.id))
 	c.pokeNotifier()
 	ev := workflow.LifecycleEvent{Kind: workflow.LifecycleFinished, Ref: refOf(h.id, st, h.sid), Workflow: h.wf, Queue: h.queue,
-		Tenant: h.tenant, Status: st, Labels: h.labels, At: c.clk.Now()}
+		Tenant: h.tenant, Status: st, Labels: h.labels, At: c.clk.Now(), Step: failedStep} // Step: the failed step, as RunEvent.Step
 	if st != workflow.StatusSucceeded {
 		r := *h.stored
 		r.status, r.err, r.failedStep = st, msg, failedStep

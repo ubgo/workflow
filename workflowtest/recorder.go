@@ -15,16 +15,12 @@ import (
 // allCaps is what the Recorder's fake mode claims: every capability the
 // core defines except CapRunFinished. It refuses nothing because it runs
 // nothing, but it implements no RunNotifier, and no run of it ever ends,
-// so claiming guaranteed run-finished delivery would be false.
+// so claiming guaranteed run-finished delivery would be false. It is
+// built from workflow.AllCaps, so a capability added to the core is
+// claimed without an edit here.
 //
 //ds:def id=workflowtest-allcaps-mpwq2a5e owner=@khanakia stability=stable
-var allCaps = workflow.CapsOf(
-	workflow.CapDurable, workflow.CapDelayedStart, workflow.CapWaitForEvent,
-	workflow.CapDurableSleep, workflow.CapConcurrencyKey, workflow.CapRateLimit,
-	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel,
-	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
-	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
-)
+var allCaps = workflow.AllCaps().Without(workflow.CapRunFinished)
 
 // Recorder is a workflow.Client that records every successful Enqueue so
 // an app test can assert what its code enqueued.

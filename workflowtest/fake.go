@@ -21,8 +21,10 @@ import (
 // fakeDefaultCaps is what the memory driver claims minus fakeUnserved:
 // the driver apps test against, so a test on a default Fake accepts what
 // the memory driver accepts. It includes the declarative fields the Fake
-// only validates (queues, per-job retry, Discard, schedule conditions)
-// and the calls it records (RunRetrier, RunDeleter, Pauser).
+// only validates (queues, per-job retry, Discard, DiscardOnExhaust,
+// Step.Slots, round-robin concurrency, schedule conditions) and the calls
+// it records (RunRetrier, RunDeleter, Pauser). TestFakeDefaultCapsFollowMemory
+// fails when memory claims a capability that is in neither list.
 //
 //ds:def id=workflowtest-fakedefaultcaps-cgj8yc2b owner=@khanakia stability=stable
 var fakeDefaultCaps = workflow.CapsOf(
@@ -40,11 +42,12 @@ var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapTenant, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
 	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun, workflow.CapKeyWeights,
+	workflow.CapDiscardExhausted, workflow.CapSlotCost, workflow.CapRoundRobin,
 )
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
 // FakeCaps says: it reports no run ends (no RunNotifier), and it answers
-// the run query (with its label prefix filter), bulk cancel, schedule pause, schedule listing, tick and
+// the run query (with its label prefix and payload filters), bulk cancel, schedule pause, schedule listing, tick and
 // drain and worker-scaling interfaces only by forwarding to a pass-through
 // client, or refusing without one, so claiming them would be false. It
 // also keeps no schedule history or error history (nothing fires or
@@ -59,7 +62,7 @@ var fakeUnserved = workflow.CapsOf(
 	workflow.CapWorkerScale, workflow.CapLabelPrefix,
 	workflow.CapScheduleHistory, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapEnqueueOnly,
 	workflow.CapSnooze, workflow.CapNodeIdentity, workflow.CapDueQuery, workflow.CapResult, workflow.CapTickTime,
-	workflow.CapQueueLimitGlobal, workflow.CapDrainReport,
+	workflow.CapQueueLimitGlobal, workflow.CapDrainReport, workflow.CapPayloadSearch,
 )
 
 // FakeOption configures a Fake.

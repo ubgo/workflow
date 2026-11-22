@@ -33,10 +33,11 @@ type Client interface {
 	Start(ctx context.Context) error
 
 	// Enqueue starts a run now, or later when job.RunAt is set (which
-	// needs CapDelayedStart). A delayed run's RunRef may hold only a
-	// ScheduledID until it starts (memory sets both IDs, and a keyed
-	// delayed start on Hatchet only the RunID); pass back the RunRef you
-	// were given. With an idempotency key held by an
+	// needs CapDelayedStart). A delayed run's RunRef holds only a
+	// ScheduledID until it starts (memory, sqlstore and Redis; a keyed
+	// delayed start on Hatchet holds only the RunID); pass back the RunRef
+	// you were given, and read the RunID later from RunInfo or the
+	// run-finished event. With an idempotency key held by an
 	// unfinished run, it starts nothing and returns that run's RunRef.
 	//ds:def id=client-enqueue-mafr75se owner=@khanakia stability=stable
 	Enqueue(ctx context.Context, job Job) (RunRef, error)

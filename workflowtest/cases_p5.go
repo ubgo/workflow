@@ -679,6 +679,44 @@ var lifecycleEventCases = []testCase{
 			e.t.Fatalf("lifecycle = %v, want %v", kinds, want)
 		}
 	}},
+	// LifecycleEvent.Step on a Finished event is the step whose failure
+	// ended the run, as RunEvent.Step: a dashboard that shows "failed at
+	// charge" reads it there. Only memory once filled it.
+	{"a failed run's finished event names the failed step", func(e *env) {
+		ln := asOpt[workflow.LifecycleNotifier](e, "workflow.LifecycleNotifier")
+		var c counter
+		wf := workflow.Workflow{Name: e.name("w"), Steps: []workflow.Step{
+			{Name: "reserve", Run: c.echo()},
+			{Name: "charge", Run: func(context.Context, []byte) ([]byte, error) { return nil, workflow.Permanent(errBoom) }},
+		}}
+		var mu sync.Mutex
+		var finished []workflow.LifecycleEvent
+		err := ln.OnLifecycle(func(_ context.Context, ev workflow.LifecycleEvent) {
+			if ev.Workflow != wf.Name || ev.Kind != workflow.LifecycleFinished {
+				return
+			}
+			mu.Lock()
+			finished = append(finished, ev)
+			mu.Unlock()
+		})
+		e.skipUnsupported(err, "OnLifecycle")
+		if err != nil {
+			e.t.Fatalf("OnLifecycle: %v", err)
+		}
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name})
+		e.waitStatus(ref, workflow.StatusFailed, e.tm.unit)
+		e.eventually("the finished event", e.tm.unit, func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(finished) > 0
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		if ev := finished[0]; ev.Step != "charge" || ev.Attempt != 0 || ev.Status != workflow.StatusFailed {
+			e.t.Fatalf("finished event = step %q, attempt %d, status %s; want step \"charge\", attempt 0, failed", ev.Step, ev.Attempt, ev.Status)
+		}
+	}},
 	{"OnLifecycle after Start is refused", func(e *env) {
 		ln := asOpt[workflow.LifecycleNotifier](e, "workflow.LifecycleNotifier")
 		var c counter

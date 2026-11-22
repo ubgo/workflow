@@ -11,7 +11,10 @@ import (
 // UnfinishedStatuses is the statuses a CancelSubscription cancels by
 // default: every status that is not terminal, so a run that is running
 // or waiting is cut short too (workflow.CancelAll alone cancels only runs
-// not yet started).
+// not yet started). On a client without workflow.CapRunStates (Hatchet)
+// the default leaves out StatusRetrying, which that client has no way to
+// filter: a run in retry backoff reads queued or running there, so it is
+// still cancelled.
 //
 //ds:def id=events-unfinishedstatuses-h9ta9rw2 owner=@khanakia stability=stable
 var UnfinishedStatuses = []workflow.Status{
@@ -69,7 +72,9 @@ type CancelSubscription struct {
 	Workflow string
 
 	// Statuses are the statuses cancelled; nil means
-	// UnfinishedStatuses. A terminal status is refused.
+	// UnfinishedStatuses (without StatusRetrying on a client that lacks
+	// workflow.CapRunStates). A terminal status is refused, and so is
+	// StatusRetrying on a client without CapRunStates.
 	Statuses []workflow.Status
 
 	// Divert, when set, is the workflow started after the cancel, with
@@ -103,11 +108,13 @@ type Cancellation struct {
 // SubscribeCancel adds a cancel subscription (EV-05, WX-14). It refuses,
 // with an UnsupportedError naming CapCancelAll, a client that does not
 // declare workflow.CapCancelAll and implement workflow.BulkCanceller
-// (memory, sqlstore and Redis do; Hatchet does not), so a cancel is never
-// emulated or dropped, and a divert on a client without CapRunQuery and
+// (memory, sqlstore, Redis and Hatchet do), so a cancel is never
+// emulated or dropped; a divert on a client without CapRunQuery and
 // workflow.RunQuerier (naming CapRunQuery; every driver with CapCancelAll
-// has it). It returns an error wrapping ErrInvalid when s has
-// no Name, Event or Label, reuses a Name, or asks for a terminal status.
+// has it); and Statuses holding StatusRetrying on a client without
+// CapRunStates (naming CapRunStates), whose CancelAll would refuse every
+// publish. It returns an error wrapping ErrInvalid when s has no Name,
+// Event or Label, reuses a Name, or asks for a terminal status.
 //
 // Publish runs cancels before it starts any run, so the runs a message
 // starts are never cancelled by the same message, and Replay never runs
@@ -128,7 +135,12 @@ func (b *Bus) SubscribeCancel(s CancelSubscription) error {
 				Reason: "a divert looks up its earlier run so a republish does not cancel it"}
 		}
 	}
-	if err := workflow.ValidateCancelQuery(cancelQuery(s, "x")); err != nil {
+	caps := b.client.Capabilities()
+	if !caps.Has(workflow.CapRunStates) && slices.Contains(s.Statuses, workflow.StatusRetrying) {
+		return &workflow.UnsupportedError{Field: "events.CancelSubscription.Statuses", Missing: workflow.CapRunStates,
+			Reason: "this client has no retrying status to filter on (a run in retry backoff reads queued or running)"}
+	}
+	if err := workflow.ValidateCancelQuery(cancelQuery(s, "x", caps)); err != nil {
 		return fmt.Errorf("events: cancel subscription %q: %w", s.Name, err)
 	}
 	b.mu.Lock()
@@ -140,15 +152,29 @@ func (b *Bus) SubscribeCancel(s CancelSubscription) error {
 	return nil
 }
 
-// cancelQuery is the CancelAll query s runs for label value key.
+// cancelQuery is the CancelAll query s runs for label value key on a
+// client with caps.
 //
 //ds:def id=events-cancelquery-ndzcm36d owner=@khanakia stability=stable
-func cancelQuery(s CancelSubscription, key string) workflow.RunQuery {
-	st := s.Statuses
+func cancelQuery(s CancelSubscription, key string, caps workflow.Caps) workflow.RunQuery {
+	st := slices.Clone(s.Statuses)
 	if len(st) == 0 {
-		st = UnfinishedStatuses
+		st = defaultStatuses(caps)
 	}
-	return workflow.RunQuery{Workflow: s.Workflow, Statuses: slices.Clone(st), Labels: map[string]string{s.Label: key}}
+	return workflow.RunQuery{Workflow: s.Workflow, Statuses: st, Labels: map[string]string{s.Label: key}}
+}
+
+// defaultStatuses is UnfinishedStatuses as a client with caps can filter
+// it: StatusRetrying only with CapRunStates, as workflow.CancelChildren
+// asks, because a driver without it reports that moment as queued or
+// running and refuses a filter on a status it does not have.
+//
+//ds:def id=events-defaultstatuses-47yjsmx3 owner=@khanakia stability=stable
+func defaultStatuses(caps workflow.Caps) []workflow.Status {
+	if caps.Has(workflow.CapRunStates) {
+		return slices.Clone(UnfinishedStatuses)
+	}
+	return slices.DeleteFunc(slices.Clone(UnfinishedStatuses), func(s workflow.Status) bool { return s == workflow.StatusRetrying })
 }
 
 // runCancels runs every cancel subscription matching m, then every
@@ -189,7 +215,7 @@ func (b *Bus) runCancels(ctx context.Context, cancels []CancelSubscription, m Me
 		case !ok:
 			c.Err = &workflow.UnsupportedError{Field: "events.CancelSubscription", Missing: workflow.CapCancelAll}
 		default:
-			c.Cancelled, c.Err = bc.CancelAll(ctx, cancelQuery(s, key))
+			c.Cancelled, c.Err = bc.CancelAll(ctx, cancelQuery(s, key, b.client.Capabilities()))
 		}
 		if c.Err != nil {
 			c.Err = fmt.Errorf("events: cancel subscription %q: %w", s.Name, c.Err)

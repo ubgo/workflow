@@ -675,7 +675,7 @@ without a reporter: workflow: ReportProgress unsupported by this driver: the dri
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 195 are skipped, each naming why, across the 70 groups of [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p) ([`p5Groups`](ds:block?id=workflowtest-p5groups-svs5kb3f), [`p3Groups`](ds:block?id=workflowtest-p3groups-hzv36c8h), [`attemptErrorGroups`](ds:block?id=workflowtest-attempterrorgroups-pckw5r63)):
+43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 197 are skipped, each naming why, across the 70 groups of [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p) ([`p5Groups`](ds:block?id=workflowtest-p5groups-svs5kb3f), [`p3Groups`](ds:block?id=workflowtest-p3groups-hzv36c8h), [`attemptErrorGroups`](ds:block?id=workflowtest-attempterrorgroups-pckw5r63)):
 
 ```text
     cases_basic.go:164: driver lacks IdempotencyKey

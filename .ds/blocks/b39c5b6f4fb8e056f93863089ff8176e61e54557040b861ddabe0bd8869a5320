@@ -1,0 +1,7 @@
+func cancelQuery(s CancelSubscription, key string, caps workflow.Caps) workflow.RunQuery {
+	st := slices.Clone(s.Statuses)
+	if len(st) == 0 {
+		st = defaultStatuses(caps)
+	}
+	return workflow.RunQuery{Workflow: s.Workflow, Statuses: st, Labels: map[string]string{s.Label: key}}
+}

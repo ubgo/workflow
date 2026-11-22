@@ -31,6 +31,34 @@ var editCases = []testCase{
 			e.t.Fatalf("the step ran %d time(s) with %s, want once with the edited payload", c.count(), c.input())
 		}
 	}},
+	// The RunEditor doc promises that a RunAt of now or earlier admits the
+	// run, so the returned ref carries its RunID: a caller that keeps only
+	// the RunID (or hands it to RunInfo, Signal, a log line) must not get a
+	// zero one back. Memory and sqlstore once returned the ref they held
+	// before admission.
+	{"EditRun with a RunAt of now admits the run and returns its RunID", func(e *env) {
+		e.need(workflow.CapDelayedStart)
+		ed := asOpt[workflow.RunEditor](e, "workflow.RunEditor")
+		var c counter
+		wf := oneStep(e.name("w"), c.echo())
+		e.up(wf)
+		ref := e.enqueue(workflow.Job{Workflow: wf.Name, Payload: []byte(`1`), RunAt: e.now().Add(24 * time.Hour)})
+		ctx, cancel := e.callCtx()
+		defer cancel()
+		now := e.now()
+		got, err := ed.EditRun(ctx, ref, workflow.JobEdit{RunAt: &now})
+		e.skipUnsupported(err, "EditRun")
+		if err != nil {
+			e.t.Fatalf("EditRun: %v", err)
+		}
+		if got.RunID.IsZero() {
+			e.t.Fatalf("EditRun with RunAt now returned %+v, want a ref carrying the admitted run's RunID", got)
+		}
+		e.waitStatus(workflow.RunRef{RunID: got.RunID}, workflow.StatusSucceeded, e.tm.unit)
+		if c.count() != 1 {
+			e.t.Fatalf("the step ran %d time(s), want once", c.count())
+		}
+	}},
 	{"EditRun refuses an empty edit and a run that is not scheduled", func(e *env) {
 		ed := asOpt[workflow.RunEditor](e, "workflow.RunEditor")
 		var c counter

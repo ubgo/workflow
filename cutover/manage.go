@@ -31,7 +31,32 @@ var (
 	_ workflow.RunResetter        = (*Client)(nil)
 	_ workflow.TransientSignaller = (*Client)(nil)
 	_ workflow.OpProber           = (*Client)(nil)
+	_ workflow.PayloadLimiter     = (*Client)(nil)
 )
+
+// PayloadLimit is the smaller of the backends' hard payload caps (a
+// backend without one counts as no cap; zero when neither has one), so a
+// claim check or batch splitter above the cutover sizes against a cap
+// both take: new work goes to the new backend, while an edited, reset or
+// redone run keeps its payload on the backend that holds it.
+//
+//ds:def id=cutover-client-payloadlimit-jfymsjru owner=@khanakia stability=stable
+func (c *Client) PayloadLimit() int {
+	limit := func(b workflow.Client) int {
+		if l, ok := b.(workflow.PayloadLimiter); ok {
+			return l.PayloadLimit()
+		}
+		return 0
+	}
+	o, n := limit(c.old), limit(c.new)
+	switch {
+	case o == 0:
+		return n
+	case n == 0:
+		return o
+	}
+	return min(o, n)
+}
 
 // both returns the two backends as I, or an UnsupportedError naming caps
 // when Capabilities lacks it or either backend does not implement I.

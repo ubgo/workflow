@@ -25,8 +25,8 @@ const leapYear = 2024
 // new format, so every driver keeps parsing one syntax and the result can
 // be stored, logged and read back as text. Most frequencies emit five
 // plain fields, which every driver takes (Hatchet refuses macros);
-// EverySeconds emits "@every <n>s", which the memory and SQL drivers take
-// and Hatchet refuses.
+// EverySeconds emits "@every <n>s", which the memory, SQL and Redis
+// drivers take and Hatchet refuses.
 //
 // A Builder is an immutable value: each method returns a new one, so a
 // base frequency can be shared and refined. Invalid input does not panic

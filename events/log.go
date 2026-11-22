@@ -211,10 +211,10 @@ type ReplayResult struct {
 // Repeating a replay with the same ID starts nothing twice: while the
 // first replay's runs are unfinished the idempotency key holds them on
 // every driver; on a client that also implements workflow.RunQuerier
-// (CapRunQuery: memory, sqlstore, Redis) Replay first looks for a run
-// labelled with the message, subscription and replay ID in any status
-// and reports it as Existing, so a finished replayed run is not started
-// again either, until retention deletes it.
+// (CapRunQuery: memory, sqlstore, Redis and Hatchet) Replay first looks
+// for a run labelled with the message, subscription and replay ID in any
+// status and reports it as Existing, so a finished replayed run is not
+// started again either, until retention deletes it.
 //
 // It needs WithLog, else it returns ErrInvalid, as it does for From not
 // before To and for an unknown subscription name. Every other failure is
