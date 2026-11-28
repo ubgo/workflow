@@ -15,7 +15,7 @@ The core module holds the contract (`workflow.Client`, the specs, capabilities, 
 go get github.com/ubgo/workflow@latest
 ```
 
-Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints a single line, the module's own Go version (`github.com/ubgo/workflow@v0.2.3 go@1.24.0`) and no other module: the core module requires no other module ([`TestGuard_CoreModuleIsStdlibOnly`](ds:block?id=testguard-coremoduleisstdlibonly-pje3bjqj) in the repository's `deps_test.go` fails the build if its `go.mod` ever gains a `require` line).
+Check: `go list -m github.com/ubgo/workflow` prints a tagged version (`v0.1.0` or later), and `go mod graph | grep '^github.com/ubgo/workflow@'` prints a single line, the module's own Go version (`github.com/ubgo/workflow@v0.2.5 go@1.24.0`) and no other module: the core module requires no other module ([`TestGuard_CoreModuleIsStdlibOnly`](ds:block?id=testguard-coremoduleisstdlibonly-pje3bjqj) in the repository's `deps_test.go` fails the build if its `go.mod` ever gains a `require` line).
 
 ## Step 2 — Check the install with a program
 
@@ -70,7 +70,7 @@ go run .
 
 ```text
 go: creating new go.mod: module example.com/hello
-go: added github.com/ubgo/workflow v0.2.3
+go: added github.com/ubgo/workflow v0.2.5
 hello Ada
 ```
 
