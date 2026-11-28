@@ -6,7 +6,7 @@
 task check
 ```
 
-That runs the gofmt check, `go vet` and race tests of every module in `go.work`, then `gomin` (each module vetted under the Go version its `go.mod` declares: core and sqlstore 1.24, otel 1.25, hatchet 1.26) and `docs:drift` (the docsync check, which needs the `ds` CLI). Everything must be green before a change is proposed. `task check` is the real gate: the GitHub Actions workflow in `.github/workflows/test.yml` is `workflow_dispatch` only, because Actions minutes are metered on this repository, so nothing runs automatically on a push or pull request.
+That runs the gofmt check, `bin:check` (no compiled program in the tree), `go vet` and race tests of every module in `go.work`, then `gomin` (each module vetted under the Go version its `go.mod` declares: core and sqlstore 1.24, otel 1.25, hatchet 1.26) and `docs:drift` (the docsync check, which needs the `ds` CLI). Everything must be green before a change is proposed. `task check` is the real gate: the GitHub Actions workflow in `.github/workflows/test.yml` is `workflow_dispatch` only, because Actions minutes are metered on this repository, so nothing runs automatically on a push or pull request.
 
 The backend suites skip without their server; [Tasks while you work](#tasks-while-you-work) lists the tasks that start one.
 
@@ -26,6 +26,7 @@ The backend suites skip without their server; [Tasks while you work](#tasks-whil
 |---|---|---|
 | `task fmt` | `gofmt -w .`: formats every Go file in place | After editing Go code |
 | `task fmt:check` | Fails and lists every Go file that is not gofmt clean (`gofmt -l .`); changes nothing | Before proposing; `check` runs it first |
+| `task bin:check` | Fails and names every file git tracks or would track that is a compiled program (ELF, Mach-O, PE or WebAssembly, by its first bytes): `go build` in a folder with a main package writes one named after the folder. `.gitignore` lists every such folder; a new main folder gets its line there | Before proposing; `check` runs it second |
 | `task build` | `go build` of every package of every module in `go.work` | After a change to an exported API, to see every module that uses it still compiles |
 | `task vet` | `go vet` over every module in `go.work` | After any Go change; `check` runs it |
 
@@ -83,7 +84,7 @@ go run ./examples/internal/doccheck/snippets -root . -sync docs/reliability/fail
 
 ## The gate in detail
 
-`task check` runs, in order: `fmt:check`, `vet`, `test`, `gomin`, `deps:check`, `docs:wrap`, `docs:links`, `docs:snippets`, `docs:words`, `docs:drift`. It stops at the first failure.
+`task check` runs, in order: `fmt:check`, `bin:check`, `vet`, `test`, `gomin`, `deps:check`, `docs:wrap`, `docs:links`, `docs:snippets`, `docs:words`, `docs:drift`. It stops at the first failure.
 
 ## The rules a change is reviewed against
 
@@ -118,6 +119,7 @@ Describe what changed and why. The repository history is read by people deciding
 ## Pitfalls
 
 - `task test` and `task check` take minutes (the SQLite engine suite alone takes about five minutes under `-race`); run the package you touched while you work and the gate once before proposing.
+- `go build` inside a folder with a main package leaves a program named after the folder; build with `go build -o /dev/null` or `go vet` instead. `.gitignore` lists every main folder, and `bin:check` fails on a compiled program that git would add.
 - `task fmt` rewrites files in place; `fmt:check` only reports. A gate failure on `fmt:check` is fixed by `task fmt`, not by hand.
 - `docs:snippets:sync` rewrites every block that copies a changed region, in any guide. Renaming or changing the meaning of a region another guide copies changes that guide too: grep `docs/` for `snippet: examples/<name>/` first.
 - The live tasks start and remove Docker containers on fixed local ports (Redis 36379, MySQL 33072, Postgres 35432); a server already on that port makes the start fail.

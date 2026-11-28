@@ -4,6 +4,15 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+### Fixed
+
+- The secret scanner's exceptions point at the right places again: two in `flow_test.go` and `examples/hatchet-pause` had drifted a line and no longer excused anything, while the docsync files were flagged with no exception. The `SecretGuard` test now uses documented fake keys, the hatchet-pause output line no longer looks like a key assignment, the remaining exceptions are pinned to content-addressed files or to the commit that published them, and the docsync ledger's generated ids are allowed by their shape in `.gitleaks.toml`, so the list does not go stale when lines move.
+- `examples/saga-choreography` failed now and then (18 of 300 runs under `-race`): it printed `RunAll`'s report as each order's run count, but that report covers only runs still unfinished when `RunAll` is called, and the started client's workers can finish the first hop before that. The example now counts each order's runs from its trail.
+
+### Added
+
+- `task bin:check`, part of `task check`: fails when a file git tracks or would track is a compiled program, and `.gitignore` lists the program a `go build` writes in every folder with a main package, so a stray build cannot be committed again.
+
 ## [0.2.3] - 2026-11-28
 
 ### Added
