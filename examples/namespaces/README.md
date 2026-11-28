@@ -1,6 +1,6 @@
 # namespaces
 
-Two environments on one database. A staging and a production client of the SQL driver share one SQLite file, each under its own table prefix (`staging_`, `prod_`), so each has its own 42 tables and its own migration ledger. A run and a schedule created in staging are seen by a second staging client and not at all by production. `sqlstore.New` refuses a prefix that breaks the naming rule and `WithSchema` on SQLite. With `REDIS_URL` set, the same isolation is shown on Redis with two key prefixes.
+Two environments on one database. A staging and a production client of the SQL driver share one SQLite file, each under its own table prefix (`staging_`, `prod_`), so each has its own 44 tables and its own migration ledger. A run and a schedule created in staging are seen by a second staging client and not at all by production. `sqlstore.New` refuses a prefix that breaks the naming rule and `WithSchema` on SQLite. With `REDIS_URL` set, the same isolation is shown on Redis with two key prefixes.
 
 ```sh
 cd examples
@@ -8,7 +8,7 @@ go run ./namespaces
 ```
 
 ```text
-tables: 42 staging_*, 42 prod_*
+tables: 44 staging_*, 44 prod_*
 staging worker: staging run scheduled, 1 schedule(s)
 prod: staging run not found, 0 schedule(s)
 bad prefix: invalid true

@@ -332,6 +332,15 @@
 // and takes no weight: Concurrency.Weight is refused (no CapKeyWeights),
 // and CapRoundRobin is not declared until a live test measures the
 // engine's turns the way the workflowtest "fair" group does.
+// Workflow.ConcurrencyLimits are refused at Register (no
+// CapConcurrencyLimits): the SDK takes several concurrency expressions per
+// workflow, but that the engine admits a run on all of them at once and
+// never lets a later run overtake a waiting one on a shared key is not
+// proven against a live engine, so the driver refuses them rather than
+// honour part of the contract. Concurrency.Hold set to HoldWhileRunning is
+// refused at Register too (no CapHoldWhileRunning): the engine holds a
+// run's concurrency slot until the run ends, retry backoffs and durable
+// waits included, and has no way to give it back while the run waits.
 //
 // Reschedule (workflow.RunRescheduler) creates the delayed start again at
 // the new time with the same token, payload, labels and priority, then

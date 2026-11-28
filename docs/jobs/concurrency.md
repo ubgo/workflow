@@ -1,10 +1,10 @@
 # Concurrency and rate limits
 
-Some work must not run too much at once: one report per tenant, so a big customer cannot take every worker; one sync per account, because two would fight over the same rows; no more than two emails a minute to one domain, because the receiving server throttles. A concurrency limit caps how many runs execute at the same time per key; a rate limit caps how many start per window of time per key. Both hold runs back; neither loses one unless you pick a strategy that drops.
+Some work must not run too much at once: one report per tenant, so a big customer cannot take every worker; one sync per account, because two would fight over the same rows; no more than two emails a minute to one domain, because the receiving server throttles. A concurrency limit caps how many runs execute at the same time per key, on one key or on several at once; a rate limit caps how many start per window of time per key. Both hold runs back; neither loses one unless you pick a strategy that drops.
 
 ## Before you start
 
-- Concurrency needs `workflow.CapConcurrencyKey` and rate limits `workflow.CapRateLimit` ([`Requires`](ds:block?id=requires-6tcjbcfj)). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have both, with the key forms noted under [Limit runs per key](#limit-runs-per-key).
+- Concurrency needs `workflow.CapConcurrencyKey`, more keys per workflow `workflow.CapConcurrencyLimits`, and rate limits `workflow.CapRateLimit` ([`Requires`](ds:block?id=requires-6tcjbcfj)). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have concurrency and rate limits, with the key forms noted under [Limit runs per key](#limit-runs-per-key); only the memory and SQL drivers have more keys per workflow ([Limit runs on several keys](#limit-runs-on-several-keys)).
 - The example is [`examples/concurrency`](../../examples/concurrency). It runs on the memory driver with a fake clock, so a one-minute rate window passes when the program moves the clock. Run it with `go run ./concurrency` from `examples/`.
 
 ## Limit runs per key
@@ -128,7 +128,85 @@ The rules:
 - FIFO needs `workflow.CapKeyFIFO` ([`Requires`](ds:block?id=requires-6tcjbcfj)), and a driver without it refuses the workflow rather than starting runs in another order. The [memory](ds:block?id=memory-caps-yxkuq583), [Redis](ds:block?id=redis-caps-bfgdst9t), [SQL](ds:block?id=sql-p5caps-wggh6esn) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have it.
 - It works only with `ConcurrencyQueueNewest`, the default: the other strategies drop, cancel or rotate runs, so there is no order to keep. `Register` refuses another strategy with `ErrInvalid` ([`validatePolicies`](ds:block?id=validatepolicies-x88m4hwu)).
 - `Job.Priority` still goes first: a higher-priority run of the key starts before older ones ([`Concurrency.FIFO`](ds:block?id=concurrency-h4md62gd)). Leave priorities equal on a workflow that must keep order.
-- A run holds its slot until it ends, retries and backoffs included, so the next run of the key waits for the previous one to finish, not just for its current attempt.
+- A run holds its slot until it ends, retries and backoffs included, so the next run of the key waits for the previous one to finish, not just for its current attempt. That is the default hold policy, and the only one FIFO accepts: `Register` refuses `FIFO` with `Hold: HoldWhileRunning` ([`validateHold`](ds:block?id=validatehold-q4m7ze2s)), because a later run of the key would start while an earlier one waits to retry. See [Choose how long a run holds its slot](#choose-how-long-a-run-holds-its-slot).
+
+## Choose how long a run holds its slot
+
+By default a run keeps its concurrency slot from the moment it is admitted until it ends, retry backoffs, snoozes, durable sleeps and waits for an event included ([`HoldWholeRun`](ds:block?id=holdwholerun-p7d2xn4c)). With `MaxRuns: 1` and a step whose API says "come back in an hour", the account is blocked for that hour while nothing executes. [`Concurrency.Hold`](ds:block?id=concurrency-h4md62gd) (and `ConcurrencyLimit.Hold` for each [limit](#limit-runs-on-several-keys)) set to [`HoldWhileRunning`](ds:block?id=holdwhilerunning-r9f5mt6b) gives the slot back while the run waits:
+
+<!-- snippet: examples/concurrency/main.go#release-while-waiting -->
+```go
+syncAccount := workflow.Workflow{
+	Name: "sync-account",
+	Concurrency: &workflow.Concurrency{
+		Key:     account,
+		MaxRuns: 1,                         // one sync per account at a time
+		Hold:    workflow.HoldWhileRunning, // but not while one waits to retry
+	},
+	Steps: []workflow.Step{{Name: "pull", Run: pull, Retry: &workflow.RetryPolicy{
+		Max:     3,
+		Backoff: workflow.Backoff{Initial: time.Hour}, // the API asks to come back in an hour
+	}}},
+}
+```
+
+The example runs the same two syncs of one account under each policy. acme-1's first call is rate limited, so its retry is an hour away; acme-2 is enqueued during that hour:
+
+```text
+release while waiting:
+  whole_run: acme-1 retrying in an hour; acme-2 queued
+    an hour later: acme-1 succeeded, then acme-2 succeeded
+  while_running: acme-1 retrying in an hour; acme-2 succeeded at once
+    an hour later: acme-1 succeeded
+```
+
+Which to choose:
+
+- **`HoldWholeRun`** (the default, the zero value) when the key protects something the whole run owns: a sequence per key (`FIFO`), a run whose later steps rely on no other run of the key having touched the data since its first step, or a downstream system that must see one run of the key at a time from start to end.
+- **`HoldWhileRunning`** when the key only caps work done at once (sessions open against an API, load on a database) and a run that waits holds nothing: a retry backoff, a [snooze](retries.md#snooze-a-step-that-is-not-ready), a durable sleep, a wait for an approval or a webhook. The key's other runs use the time the waiting run does not.
+
+How `HoldWhileRunning` works ([`ConcurrencyHold`](ds:block?id=concurrencyhold-k3v8qw2m)):
+
+- **When the slot is given back.** A run that has nothing executing and nothing waiting for a worker gives back the slot of every key set to `HoldWhileRunning`: every unfinished step is in a retry backoff, snoozed, in a durable sleep, or waiting for an event or signal. A run with any step executing or queued for a worker keeps its slots, so a run whose steps run in parallel holds them while one step executes and another waits in its backoff. Keys left at `HoldWholeRun` stay held.
+- **When it is taken back.** Once its parked work is ready again (the backoff, snooze or sleep ends, the event arrives), the run must have its slots back before the ready step runs. It takes every one of its `HoldWhileRunning` slots in one step, only when all of those keys have room; until then the step waits, and the run reports `StatusQueued`. Taking a slot back never exceeds `MaxRuns`, on any number of workers or nodes.
+- **Where it waits.** It rejoins admission at its original place: higher `Job.Priority` first, then the order runs were enqueued, as when it was first admitted, not at the back of the line. A run enqueued before it never waits behind it, so it cannot jump ahead unfairly; a run enqueued after it, even one that has waited longer for its first start, goes after it. Back of the line was rejected because a run that retries several times would queue behind the whole backlog of its key on every retry, so under a steady stream of new runs it could take hours to finish what it started; its original place bounds its wait to the runs ahead of it, which all finish or park.
+- **Priority.** The original `Job.Priority` still goes first: a parked run of priority 0 ready again waits behind a higher-priority run enqueued later, as any run does.
+- **Rate limits.** Taking the slot back is not a new start: `RateLimits` are counted once, at the run's first admission, and do not hold a rejoining run back.
+- **Several keys.** The [fairness rule](#limit-runs-on-several-keys) holds for a rejoining run like for a new one: a waiting run is never overtaken on any of its keys by a run behind it, so a rejoining run holds later runs off the keys it waits for, and an earlier waiting run holds it off its keys. Only the keys it gave back count; the `HoldWholeRun` keys it kept are not asked for again.
+- **Ending while parked.** A run cancelled while parked, or failed while parked (a wait timed out, a run timeout passed), ends without taking its slots back, so the slots it gave back are not given back twice. Its `OnFailure` handler runs outside the cap.
+- **Child runs.** A child run is a run of its own workflow, admitted on its own keys like any run (buckets are scoped to the workflow). A parent whose step waits for the child inside its handler is executing and keeps its slots; a parent that waits for the child durably, in a wait step for the child's signal, is parked and gives its `HoldWhileRunning` slots back.
+- **Conflicts.** `Register` refuses, with `ErrInvalid` naming the fields ([`validateHold`](ds:block?id=validatehold-q4m7ze2s)), `Concurrency.Hold: HoldWhileRunning` with `Concurrency.FIFO` (a later run of the key would start while an earlier one is parked, breaking the sequence) and with any `Strategy` but `ConcurrencyQueueNewest` (dropping or cancelling the newest run, cancelling the oldest holder and handing out round-robin turns are decided when a run is first admitted and have no meaning for a run taking its slot back). `FIFO` beside a limit set to `HoldWhileRunning` is accepted: the FIFO key itself is held for the whole run.
+- **Drivers.** `HoldWhileRunning` needs `workflow.CapHoldWhileRunning` ([`Requires`](ds:block?id=requires-6tcjbcfj), [`CapHoldWhileRunning`](ds:block?id=capholdwhilerunning-h6t3nb8d)); the zero value and `HoldWholeRun` need nothing new, and [`HoldsWhileRunning`](ds:block?id=holdswhilerunning-w2c8ka5t) tells whether a workflow sets the policy on any key. The [memory](ds:block?id=memory-caps-yxkuq583) and [SQL](ds:block?id=sql-p5caps-wggh6esn) drivers have it (the SQL driver from migration `013_run_hold`). Redis and Hatchet do not, and refuse such a workflow (Redis at `Start`, Hatchet at `Register`, [`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)) rather than hold the slot for the whole run.
+
+## Limit runs on several keys
+
+One key is not always enough: a sync may need to stay under two at once per connection, because the connection's API allows two parallel sessions, and one at a time per account, because two syncs of one account would fight over the same rows. [`Workflow.ConcurrencyLimits`](ds:block?id=concurrencylimit-5anrp8rw) adds keys beside `Concurrency`, each with its own `MaxRuns`:
+
+<!-- snippet: examples/concurrency/main.go#several-keys -->
+```go
+label := func(name string) workflow.ConcurrencyKey {
+	return workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[name] })
+}
+syncAccount := workflow.Workflow{
+	Name: "sync-account",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{
+		{Key: label("connection"), MaxRuns: 2}, // two syncs per connection
+		{Key: label("account"), MaxRuns: 1},    // and one per account
+	},
+	Steps: []workflow.Step{{Name: "pull", Run: g.handler}},
+}
+```
+
+The example enqueues acme on `conn-1` and `conn-2` and widgets on `conn-1` and `conn-2`. acme-1 and widgets-1 start (`conn-1` has two slots); acme-2 and widgets-2 wait for their account, and each starts when the run of its account finishes.
+
+The rules ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw)):
+
+- A run is admitted only when every one of its buckets has room: its `Concurrency` bucket when the workflow has one, and its bucket of each limit. It takes all of them in one step and gives them all back when it ends (succeeded, failed, cancelled or discarded), so a run never holds one key while it waits for another, and two runs cannot deadlock on each other's keys.
+- Each limit has its own buckets, scoped to the workflow like `Concurrency`'s: the value `"acme"` under one limit and `"acme"` under another are two buckets.
+- A run that finds a bucket full waits; it is never dropped or cancelled for it. So beside a limit, `Concurrency.Strategy` may only be `ConcurrencyQueueNewest`, the default; `Register` refuses another strategy with `ErrInvalid` ([`validateConcurrencyLimits`](ds:block?id=validateconcurrencylimits-dyxqw4nf)). `Concurrency.FIFO` still works.
+- Fairness: in admission order (higher `Job.Priority` first, then enqueue order), a waiting run is never overtaken on any of its keys by a run behind it. A run that needs two keys is therefore not starved by a stream of runs that need only one of them. The price is head-of-line waiting: a later run that shares a key with an earlier waiting run waits behind it even when that key has room.
+- By default slots are held for the whole run, as with one key: a run in its retry backoff keeps every key until it ends. Each limit has its own `Hold`, so a parked run can give back the keys set to `HoldWhileRunning` and keep the others (see [Choose how long a run holds its slot](#choose-how-long-a-run-holds-its-slot)).
+- Limits need `workflow.CapConcurrencyLimits` ([`Requires`](ds:block?id=requires-6tcjbcfj), [`CapConcurrencyLimits`](ds:block?id=capconcurrencylimits-585ybb9u)). The [memory](ds:block?id=memory-caps-yxkuq583) and [SQL](ds:block?id=sql-p5caps-wggh6esn) drivers have it. Redis and Hatchet do not, and refuse such a workflow (Redis at `Start`, Hatchet at `Register`, [`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)) rather than enforce one key only; the example prints Hatchet's refusal.
 
 ## Share the workers fairly between keys
 
@@ -218,6 +296,16 @@ rate limit:
   a minute later, started mail-3
 priority:
   password-reset, normal, backfill
+several keys:
+  started acme-1 and widgets-1; acme-2 queued, widgets-2 queued
+  acme-1 finished, started: acme-2
+  widgets-1 finished, started: widgets-2
+  hatchet: true | missing: ConcurrencyLimits
+release while waiting:
+  whole_run: acme-1 retrying in an hour; acme-2 queued
+    an hour later: acme-1 succeeded, then acme-2 succeeded
+  while_running: acme-1 retrying in an hour; acme-2 succeeded at once
+    an hour later: acme-1 succeeded
 refusals:
   memory, KeyExpr: workflow: Workflow.Concurrency.Key.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow report
   hatchet, KeyFunc: workflow: Workflow.Concurrency.Key.Func unsupported by this driver: workflow report: Hatchet evaluates concurrency keys on the engine; use workflow.KeyExpr with a CEL expression | unsupported: true
@@ -234,6 +322,8 @@ The `priority` lines belong to [Enqueue › Priority](enqueue.md#priority).
 - **FIFO orders starts, not ends** ([`Concurrency.FIFO`](ds:block?id=concurrency-h4md62gd)). With `MaxRuns` above 1, runs of one key start in order but can finish in any order; use `MaxRuns: 1` for a strict sequence.
 - **A failed run does not stop the sequence** ([`Concurrency.FIFO`](ds:block?id=concurrency-h4md62gd)). The next run of the key starts once the failed one has ended; if later runs depend on earlier ones, check for that in the step.
 - **The weight function runs when a run is admitted** ([`Concurrency.Weight`](ds:block?id=concurrency-h4md62gd)). It is called once per run, in the worker that admits it (on SQL and Redis that may be another process than the one that enqueued it), so every client must register the same `Weight`, and it should be fast; a weight change applies to runs admitted after it.
+- **Keys shared with a waiting run wait behind it** ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw)). With `ConcurrencyLimits`, a run that waits for one key also keeps later runs off its other keys, so a run is never starved; if most runs of a key wait on another, busy key, give that key more room or split the workflow.
+- **A parked run under `HoldWhileRunning` may find its key taken** ([`ConcurrencyHold`](ds:block?id=concurrencyhold-k3v8qw2m)). When its backoff ends it waits for room like any queued run, so its retry can start later than the backoff says; with `HoldWholeRun` it starts on time but blocks the key meanwhile.
 - **Concurrency caps runs, not workers** ([`Concurrency`](ds:block?id=concurrency-h4md62gd)). A capped bucket holds runs queued but uses no worker while it waits; how many steps run at once overall is the driver's worker count (`memory.WithWorkers`, `sqlstore.WithWorkers`, Hatchet `Config.Slots`).
 
 ## Related

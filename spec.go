@@ -85,6 +85,15 @@ type Workflow struct {
 	// Needs CapConcurrencyKey.
 	Concurrency *Concurrency
 
+	// ConcurrencyLimits cap simultaneous runs on further keys, each with
+	// its own MaxRuns (one per connection and one per account, say). A run
+	// is admitted only when Concurrency's bucket (when set) and its bucket
+	// of every limit have room, and it takes all of them in one step, so
+	// no run holds one key while it waits for another. With a limit set,
+	// Concurrency may only use ConcurrencyQueueNewest. Needs
+	// CapConcurrencyLimits; a driver without it refuses the workflow.
+	ConcurrencyLimits []ConcurrencyLimit
+
 	// RateLimits cap how often runs may start. Needs CapRateLimit.
 	RateLimits []RateLimit
 
@@ -596,6 +605,107 @@ type Concurrency struct {
 	// config, but should be fast. KeyWeights builds one from a map. Only
 	// with ConcurrencyRoundRobin; needs CapKeyWeights.
 	Weight func(key string) int
+
+	// Hold says how long a run keeps its slot in this bucket. Empty means
+	// HoldWholeRun: from admission until the run ends, retry backoffs,
+	// snoozes, sleeps and waits included. HoldWhileRunning gives the slot
+	// back while the run has nothing executing and nothing waiting for a
+	// worker, and takes it again before its next step runs (see
+	// ConcurrencyHold). HoldWhileRunning needs CapHoldWhileRunning and
+	// only goes with ConcurrencyQueueNewest and without FIFO.
+	Hold ConcurrencyHold
+}
+
+// ConcurrencyHold is how long a run keeps its concurrency slot
+// (Concurrency.Hold, ConcurrencyLimit.Hold).
+//
+// Under HoldWhileRunning a run that has nothing executing and nothing
+// waiting for a worker (every unfinished step is in a retry backoff,
+// snoozed, in a durable sleep or waiting for an event or signal) gives
+// back the slot of every key set to HoldWhileRunning, so the runs waiting
+// on those keys can start. When its parked work becomes ready again (the
+// backoff, snooze or sleep ends, the event arrives) it rejoins admission
+// at its original place in admission order (higher Job.Priority first,
+// then enqueue order), not at the back of the line, and takes the slots
+// of all those keys in one step only when every one of them has room;
+// until then its ready step does not run. The several-keys fairness rule
+// (ConcurrencyLimit) applies to it there like to a new run. Rejoining is
+// not a new start, so rate limits are not counted again. A run with any
+// step executing or queued for a worker keeps its slots, so a run with
+// one step running and another in backoff holds them. A run that ends
+// while parked (cancelled, a wait timed out) ends without taking its
+// slots back; its OnFailure handler runs outside the cap. Keys set to
+// HoldWholeRun stay held while the run is parked.
+//
+//ds:def id=concurrencyhold-k3v8qw2m owner=@khanakia stability=stable
+type ConcurrencyHold string
+
+// The hold policies. The zero value is HoldWholeRun.
+const (
+	// HoldWholeRun keeps the slot from admission until the run ends.
+	//ds:def id=holdwholerun-p7d2xn4c owner=@khanakia stability=stable
+	HoldWholeRun ConcurrencyHold = "whole_run"
+	// HoldWhileRunning keeps the slot only while the run has a step
+	// executing or waiting for a worker (CapHoldWhileRunning).
+	//ds:def id=holdwhilerunning-r9f5mt6b owner=@khanakia stability=stable
+	HoldWhileRunning ConcurrencyHold = "while_running"
+)
+
+// Valid reports whether h is empty or one of the hold constants.
+func (h ConcurrencyHold) Valid() bool {
+	return h == "" || h == HoldWholeRun || h == HoldWhileRunning
+}
+
+// WhileRunning reports whether h is HoldWhileRunning.
+func (h ConcurrencyHold) WhileRunning() bool { return h == HoldWhileRunning }
+
+// HoldsWhileRunning reports whether any concurrency key of wf
+// (Concurrency or a ConcurrencyLimits entry) is HoldWhileRunning: the
+// workflow's runs give back slots while they are parked.
+//
+//ds:def id=holdswhilerunning-w2c8ka5t owner=@khanakia stability=stable
+func HoldsWhileRunning(wf Workflow) bool {
+	if wf.Concurrency != nil && wf.Concurrency.Hold.WhileRunning() {
+		return true
+	}
+	for _, l := range wf.ConcurrencyLimits {
+		if l.Hold.WhileRunning() {
+			return true
+		}
+	}
+	return false
+}
+
+// ConcurrencyLimit is one more concurrency key of a workflow
+// (Workflow.ConcurrencyLimits): each distinct key value is its own bucket
+// of MaxRuns, counted apart from Workflow.Concurrency and from the other
+// limits, and scoped to the workflow like Concurrency's buckets.
+//
+// A run that finds any of its buckets full waits; it is never dropped or
+// cancelled for it. Admission is all or nothing: a run takes a slot in
+// every one of its buckets at once and gives them all back when it ends.
+// The fairness every driver with CapConcurrencyLimits keeps: in admission
+// order (higher Job.Priority first, then enqueue order), a waiting run is
+// never overtaken on any of its keys by a run behind it, so a run that
+// needs two keys is not starved by a stream of runs that need only one of
+// them. The price is head-of-line waiting: a later run that shares a key
+// with an earlier waiting run waits behind it even when that key has room.
+//
+//ds:def id=concurrencylimit-5anrp8rw owner=@khanakia stability=stable
+type ConcurrencyLimit struct {
+	// Key derives the bucket. A zero Key puts every run of the workflow
+	// in one bucket of this limit.
+	Key ConcurrencyKey
+
+	// MaxRuns is the cap per bucket; it must be at least 1.
+	MaxRuns int
+
+	// Hold says how long a run keeps its slot in this limit's bucket, as
+	// Concurrency.Hold does. Empty means HoldWholeRun; HoldWhileRunning
+	// needs CapHoldWhileRunning. Each limit has its own: a run parked in
+	// a backoff gives back the keys set to HoldWhileRunning and keeps the
+	// others.
+	Hold ConcurrencyHold
 }
 
 // MaxKeyWeight is the largest Concurrency.Weight a driver honours; larger

@@ -87,6 +87,8 @@ var p5Caps = workflow.CapsOf(
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
 	workflow.CapWorkflowVersion,                    // run_version (migration 010)
 	workflow.CapRoundRobin, workflow.CapKeyWeights, // fair_keys and run_fair (migration 011)
+	workflow.CapConcurrencyLimits, // run_limits (migration 012)
+	workflow.CapHoldWhileRunning,  // run_hold (migration 013)
 )
 
 // Run states as stored in runs.status. Scheduled, the three terminal ones
@@ -548,6 +550,7 @@ type Client struct {
 	rateWake time.Time                    // earliest moment a rate-limited run may start
 	names    []any                        // registered workflow names, the IN list of every query
 	fairAny  bool                         // a registered workflow is ConcurrencyRoundRobin: claims hand turns (fair.go)
+	holdAny  bool                         // a registered workflow has a HoldWhileRunning key: claims skip parked runs (hold.go)
 	// queues is WithQueues: empty means every queue from one pool. tiers
 	// is the same list grouped by Priority, highest first, as the claim
 	// walks it; served is the names as IN-list arguments.
@@ -847,6 +850,11 @@ func exprKeys(wf workflow.Workflow) error {
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
 		return workflow.Unsupported("Workflow.Concurrency.Key.Expr", reason)
 	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.Key.Expr != "" {
+			return workflow.Unsupported(fmt.Sprintf("Workflow.ConcurrencyLimits[%d].Key.Expr", i), reason)
+		}
+	}
 	for i, r := range wf.RateLimits {
 		if r.Key.Expr != "" {
 			return workflow.Unsupported(fmt.Sprintf("Workflow.RateLimits[%d].Key.Expr", i), reason)
@@ -895,6 +903,7 @@ func (c *Client) Start(ctx context.Context) error {
 	for name, reg := range c.wfs {
 		c.names = append(c.names, name)
 		c.fairAny = c.fairAny || roundRobin(reg.wf)
+		c.holdAny = c.holdAny || holdWhileRunning(reg.wf)
 	}
 	c.verFilter = c.buildVersionFilter()
 	c.mu.Unlock()
@@ -967,7 +976,7 @@ func (c *Client) prepare(ctx context.Context) error {
 		}
 	}
 	for _, reg := range c.wfs {
-		if reg.wf.Concurrency != nil || len(reg.wf.RateLimits) > 0 {
+		if hasAdmissionPolicy(reg.wf) {
 			if err := c.ensureLock(ctx, lockName(reg.wf.Name)); err != nil {
 				return err
 			}

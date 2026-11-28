@@ -80,6 +80,8 @@ func (s *store) migrations() []migrate.Migration {
 		{Owner: s.owner(MigrationOwner), Name: "009_schedule_tenant", Script: s.script(s.render(scheduleTenantDefs(typesFor(s.engine))))},
 		{Owner: s.owner(MigrationOwner), Name: "010_run_version", Script: s.script(s.render(runVersionDefs(typesFor(s.engine))))},
 		{Owner: s.owner(MigrationOwner), Name: "011_fair_turns", Script: s.script(s.render(fairDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "012_concurrency_limits", Script: s.script(s.render(limitDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "013_run_hold", Script: s.script(s.render(holdDefs(typesFor(s.engine))))},
 	}
 }
 

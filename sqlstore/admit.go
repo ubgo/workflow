@@ -1,10 +1,12 @@
 package sqlstore
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/ubgo/workflow"
 )
@@ -16,7 +18,7 @@ import (
 // admits under its lock row, so the bucket counts and rate windows a
 // decision reads cannot change until it commits, on any node.
 func (c *Client) admit(ctx context.Context, reg *registered) error {
-	if reg.wf.Concurrency == nil && len(reg.wf.RateLimits) == 0 {
+	if !hasAdmissionPolicy(reg.wf) {
 		return c.admitFree(ctx, reg)
 	}
 	var out txOut
@@ -59,7 +61,7 @@ func (c *Client) admitInline(ctx context.Context, tx *sql.Tx, reg *registered, r
 	if c.st.engine == engineSQLite {
 		return nil
 	}
-	if row.status != runPending || reg.stub || reg.wf.Concurrency != nil || len(reg.wf.RateLimits) > 0 {
+	if row.status != runPending || reg.stub || hasAdmissionPolicy(reg.wf) {
 		return nil
 	}
 	n, err := c.st.execN(ctx, tx, "UPDATE {runs} SET status = ?, ver = ver + 1 WHERE id = ? AND status = ?", runActive, row.id, runPending)
@@ -128,7 +130,7 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 		return 0, err
 	}
 	pending, err := c.pendingRuns(ctx, tx, wf)
-	if err != nil || len(pending) == 0 {
+	if err != nil {
 		return 0, err
 	}
 	for _, r := range pending {
@@ -136,13 +138,39 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 			return 0, err
 		}
 	}
+	// Parked runs whose next step is ready rejoin at their original place
+	// (priority, then seq) and need only their HoldWhileRunning keys
+	// (hold.go).
+	hold := holdWhileRunning(wf)
+	rejoin := map[string]bool{}
+	if hold {
+		back, err := c.rejoinRuns(ctx, tx, wf)
+		if err != nil {
+			return 0, err
+		}
+		for _, r := range back {
+			rejoin[r.id] = true
+		}
+		pending = append(pending, back...)
+		slices.SortStableFunc(pending, func(a, b *runRow) int {
+			return cmp.Or(cmp.Compare(b.priority, a.priority), cmp.Compare(a.seq, b.seq))
+		})
+	}
+	if len(pending) == 0 {
+		return 0, nil
+	}
 	now := c.nowNanos()
 
-	// The runs holding a slot, oldest first per bucket.
+	// The runs holding a slot, oldest first per bucket. A parked run does
+	// not hold a HoldWhileRunning bucket.
 	active := map[string][]*runRow{}
 	if wf.Concurrency != nil {
 		var r runRow
-		err := c.st.each(ctx, tx, "SELECT "+runCols+" FROM {runs} WHERE workflow = ? AND status IN (?, ?) ORDER BY seq",
+		q := "SELECT " + runCols + " FROM {runs} r WHERE workflow = ? AND status IN (?, ?)"
+		if wf.Concurrency.Hold.WhileRunning() {
+			q += " AND NOT EXISTS (SELECT 1 FROM {run_hold} h WHERE h.run_id = r.id AND h.parked = 1)"
+		}
+		err := c.st.each(ctx, tx, q+" ORDER BY seq",
 			[]any{wf.Name, runActive, runFailing}, func() error { cp := r; active[r.bucket] = append(active[r.bucket], &cp); return nil },
 			r.targets()...)
 		if err != nil {
@@ -174,9 +202,33 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 	// this pass: no later run of the bucket may start before it.
 	held := map[string]bool{}
 	fifo := wf.Concurrency != nil && wf.Concurrency.FIFO
+	var limits *limitPass // the ConcurrencyLimits and hold view; nil without either
+	if len(wf.ConcurrencyLimits) > 0 || hold {
+		if limits, err = c.limitBegin(ctx, tx, wf); err != nil {
+			return 0, err
+		}
+	}
 	for _, r := range pending {
+		if rejoin[r.id] {
+			if err := c.rejoinOne(ctx, tx, limits, active, r, out); err != nil {
+				return 0, err
+			}
+			continue
+		}
 		if fifo && held[r.bucket] {
 			continue
+		}
+		var lkeys []string
+		if limits != nil {
+			if lkeys, err = limitKeys(wf, r); err != nil {
+				return 0, err
+			}
+			full := wf.Concurrency != nil && len(active[r.bucket]) >= wf.Concurrency.MaxRuns
+			if limits.blocked(r.bucket, full, lkeys) {
+				limits.hold(r.bucket, lkeys)
+				held[r.bucket] = true
+				continue
+			}
 		}
 		if conc := wf.Concurrency; conc != nil && len(active[r.bucket]) >= conc.MaxRuns {
 			switch conc.Strategy {
@@ -207,6 +259,9 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 				wake = at
 			}
 			held[r.bucket] = true
+			if limits != nil {
+				limits.hold(r.bucket, lkeys)
+			}
 			continue
 		}
 		for i := range wf.RateLimits {
@@ -220,6 +275,16 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 			return 0, err
 		}
 		active[r.bucket] = append(active[r.bucket], r)
+		if limits != nil {
+			if err := c.limitTake(ctx, tx, limits, r, lkeys); err != nil {
+				return 0, err
+			}
+		}
+		if hold {
+			if err := c.holdStart(ctx, tx, r.id); err != nil {
+				return 0, err
+			}
+		}
 		if roundRobin(wf) {
 			if fair == nil {
 				if fair, err = c.fairBegin(ctx, tx, wf.Name); err != nil {
@@ -253,4 +318,40 @@ func rateAllows(limits []workflow.RateLimit, windows []map[string][]int64, keys 
 		}
 	}
 	return at, ok
+}
+
+// rejoinOne is admitLocked's step for a parked run r whose next step is
+// ready: it unparks r when every HoldWhileRunning key of r has room and no
+// earlier waiting run holds one of them, else it holds those keys against
+// the runs behind it. Its HoldWholeRun keys are still its own, so they are
+// neither checked nor held. Rate limits are not counted again: a rejoin is
+// not a start.
+//
+//ds:def id=sql-client-rejoinone-z4h8ps6w owner=@khanakia stability=stable
+func (c *Client) rejoinOne(ctx context.Context, tx *sql.Tx, lp *limitPass, active map[string][]*runRow, r *runRow, out *txOut) error {
+	wf := lp.wf
+	keys, err := c.storedLimitKeys(ctx, tx, wf, r.id)
+	if err != nil {
+		return err
+	}
+	need := func(limit int) bool { return holdOf(wf, limit).WhileRunning() }
+	full := wf.Concurrency != nil && len(active[r.bucket]) >= wf.Concurrency.MaxRuns
+	if lp.blockedNeed(r.bucket, full, keys, need) {
+		lp.holdNeed(r.bucket, keys, need)
+		return nil
+	}
+	ok, err := c.unpark(ctx, tx, r.id)
+	if err != nil || !ok {
+		return err
+	}
+	if wf.Concurrency != nil && need(-1) {
+		active[r.bucket] = append(active[r.bucket], r)
+	}
+	for i, k := range keys {
+		if need(i) {
+			lp.count[limitBucket{lim: i, key: k}]++
+		}
+	}
+	out.changed = true // its ready step is claimable again
+	return nil
 }

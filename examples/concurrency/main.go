@@ -1,7 +1,9 @@
 // Command concurrency caps how many runs of a workflow execute at once per
 // key (one report per tenant at a time), shows what each strategy does to
 // the run over the cap, rate-limits starts per key, orders waiting work by
-// priority, and shows which key form each driver refuses.
+// priority, caps one workflow on two keys at once, lets a run waiting to
+// retry give its slot back (Concurrency.Hold), and shows which key form
+// each driver refuses.
 //
 // It runs on the in-memory driver with a fake clock, so a one-minute rate
 // window passes when the program moves the clock. It is the program behind
@@ -18,6 +20,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ubgo/workflow"
@@ -198,7 +201,196 @@ func run(ctx context.Context) error {
 	if err := priority(ctx); err != nil {
 		return err
 	}
+	if err := severalKeys(ctx); err != nil {
+		return err
+	}
+	if err := releaseWhileWaiting(ctx); err != nil {
+		return err
+	}
 	return refusals(ctx)
+}
+
+// severalKeys caps one workflow on two keys at once: two syncs per
+// connection and one per account. A run starts only when both of its
+// keys have room, and takes both at once.
+func severalKeys(ctx context.Context) error {
+	fmt.Println("several keys:")
+	g := gated{started: make(chan string, 8), gates: map[string]chan struct{}{}}
+	for _, n := range []string{"acme-1", "acme-2", "widgets-1", "widgets-2"} {
+		g.gates[n] = make(chan struct{})
+	}
+	// snippet:several-keys
+	label := func(name string) workflow.ConcurrencyKey {
+		return workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[name] })
+	}
+	syncAccount := workflow.Workflow{
+		Name: "sync-account",
+		ConcurrencyLimits: []workflow.ConcurrencyLimit{
+			{Key: label("connection"), MaxRuns: 2}, // two syncs per connection
+			{Key: label("account"), MaxRuns: 1},    // and one per account
+		},
+		Steps: []workflow.Step{{Name: "pull", Run: g.handler}},
+	}
+	// snippet:end
+	c := memory.New()
+	if err := c.Register(syncAccount); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer c.Stop()
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	refs := map[string]workflow.RunRef{}
+	for _, j := range []struct{ name, account, connection string }{
+		{"acme-1", "acme", "conn-1"},
+		{"acme-2", "acme", "conn-2"},       // acme already has its one sync
+		{"widgets-1", "widgets", "conn-1"}, // conn-1 has a second slot
+		{"widgets-2", "widgets", "conn-2"}, // widgets already has its one sync
+	} {
+		ref, err := c.Enqueue(ctx, workflow.Job{Workflow: syncAccount.Name, Labels: map[string]string{
+			"name": j.name, "account": j.account, "connection": j.connection,
+		}})
+		if err != nil {
+			return err
+		}
+		refs[j.name] = ref
+	}
+	first := []string{<-g.started, <-g.started}
+	slices.Sort(first) // the two start on two workers, in either order
+	st := func(name string) workflow.Status { s, _ := c.Status(ctx, refs[name]); return s }
+	fmt.Printf("  started %s; acme-2 %s, widgets-2 %s\n", strings.Join(first, " and "), st("acme-2"), st("widgets-2"))
+	close(g.gates["acme-1"])
+	fmt.Println("  acme-1 finished, started:", <-g.started)
+	close(g.gates["widgets-1"])
+	fmt.Println("  widgets-1 finished, started:", <-g.started)
+	close(g.gates["acme-2"])
+	close(g.gates["widgets-2"])
+
+	// The Hatchet driver refuses the workflow at Register instead of
+	// honouring one key only.
+	byExpr := syncAccount
+	byExpr.ConcurrencyLimits = []workflow.ConcurrencyLimit{
+		{Key: workflow.KeyExpr("input.connection"), MaxRuns: 2},
+		{Key: workflow.KeyExpr("input.account"), MaxRuns: 1},
+	}
+	err := hatchet.New(hatchet.Config{}).Register(byExpr)
+	fmt.Println("  hatchet:", errors.Is(err, workflow.ErrUnsupported), "| missing:", missingOf(err))
+	return nil
+}
+
+// missingOf is the capabilities an UnsupportedError names, or "" for any
+// other error.
+func missingOf(err error) string {
+	var ue *workflow.UnsupportedError
+	if errors.As(err, &ue) {
+		return ue.Missing.String()
+	}
+	return ""
+}
+
+// releaseWhileWaiting runs one sync per account under each hold policy.
+// acme-1's first call is rate limited and its retry is an hour away. With
+// the default (HoldWholeRun) acme-1 keeps the account through the hour and
+// acme-2 waits for it; with HoldWhileRunning acme-1 gives the account back
+// while it waits, acme-2 runs at once, and acme-1 takes the account back
+// when its hour has passed.
+func releaseWhileWaiting(ctx context.Context) error {
+	fmt.Println("release while waiting:")
+	for _, hold := range []workflow.ConcurrencyHold{workflow.HoldWholeRun, workflow.HoldWhileRunning} {
+		if err := holdPolicy(ctx, hold); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// holdPolicy is one half of releaseWhileWaiting.
+func holdPolicy(ctx context.Context, hold workflow.ConcurrencyHold) error {
+	attempts := map[string]int{}
+	var mu sync.Mutex
+	failed := make(chan struct{}, 1)
+	pull := func(ctx context.Context, _ []byte) ([]byte, error) {
+		info, _ := workflow.StepInfoFrom(ctx)
+		name := info.Labels["name"]
+		mu.Lock()
+		attempts[name]++
+		first := attempts[name] == 1
+		mu.Unlock()
+		if name == "acme-1" && first {
+			failed <- struct{}{}
+			return nil, errors.New("rate limited: come back in an hour")
+		}
+		return nil, nil
+	}
+	account := workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["account"] })
+	// snippet:release-while-waiting
+	syncAccount := workflow.Workflow{
+		Name: "sync-account",
+		Concurrency: &workflow.Concurrency{
+			Key:     account,
+			MaxRuns: 1,                         // one sync per account at a time
+			Hold:    workflow.HoldWhileRunning, // but not while one waits to retry
+		},
+		Steps: []workflow.Step{{Name: "pull", Run: pull, Retry: &workflow.RetryPolicy{
+			Max:     3,
+			Backoff: workflow.Backoff{Initial: time.Hour}, // the API asks to come back in an hour
+		}}},
+	}
+	// snippet:end
+	syncAccount.Concurrency.Hold = hold
+	clk := clock.NewFake(start)
+	c := memory.New(memory.WithClock(clk))
+	if err := c.Register(syncAccount); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer c.Stop()
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	enqueue := func(name string) (workflow.RunRef, error) {
+		return c.Enqueue(ctx, workflow.Job{Workflow: syncAccount.Name, Labels: map[string]string{"name": name, "account": "acme"}})
+	}
+	// wait polls ref until it is terminal or a few seconds pass.
+	wait := func(ref workflow.RunRef) workflow.Status {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			st, _ := c.Status(ctx, ref)
+			if st.IsTerminal() || time.Now().After(deadline) {
+				return st
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	timers := clk.Pending()
+	a1, err := enqueue("acme-1")
+	if err != nil {
+		return err
+	}
+	<-failed
+	bctx, bcancel := context.WithTimeout(ctx, 5*time.Second)
+	defer bcancel()
+	if err := clk.BlockUntil(bctx, timers+1); err != nil { // acme-1's backoff timer
+		return err
+	}
+	a2, err := enqueue("acme-2")
+	if err != nil {
+		return err
+	}
+	if hold.WhileRunning() {
+		fmt.Printf("  %s: acme-1 retrying in an hour; acme-2 %s at once\n", hold, wait(a2))
+		clk.Advance(time.Hour)
+		fmt.Printf("    an hour later: acme-1 %s\n", wait(a1))
+		return nil
+	}
+	st, _ := c.Status(ctx, a2)
+	fmt.Printf("  %s: acme-1 retrying in an hour; acme-2 %s\n", hold, st)
+	clk.Advance(time.Hour)
+	fmt.Printf("    an hour later: acme-1 %s, then acme-2 %s\n", wait(a1), wait(a2))
+	return nil
 }
 
 // priority runs one worker, holds it busy, enqueues three jobs with

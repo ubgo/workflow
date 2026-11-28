@@ -36,7 +36,7 @@ The lines after the refusal come from `helpers.go`: the core helpers a driver ca
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass and 198 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on), across the 70 groups of [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p). `TestStepTimeoutHandshake` runs the `attemptcause` and `toleratedtimeout` groups again with `StepTimeoutHandshake` set on the [`workflowtest.Harness`](ds:block?id=workflowtest-harness-7uqe9srm), so their step-timeout cases run on `Tiny` too:
+43 cases pass and 220 are skipped, each naming the capability it needs (`driver lacks IdempotencyKey`, `driver lacks Cancel`, and so on), across the 72 groups of [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p). `TestStepTimeoutHandshake` runs the `attemptcause` and `toleratedtimeout` groups again with `StepTimeoutHandshake` set on the [`workflowtest.Harness`](ds:block?id=workflowtest-harness-7uqe9srm), so their step-timeout cases run on `Tiny` too:
 
 ```sh
 go test ./custom-driver -run TestStepTimeoutHandshake -v | grep -E '^(--- |    --- |ok)'

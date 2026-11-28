@@ -42,7 +42,14 @@
 // (512 MiB, the largest value Redis stores; WithPayloadLimit lowers it).
 // It does not declare CapSlotCost: a worker claims a whole run and runs its
 // parallel steps beside it, so a worker slot is a run, not a step attempt,
-// and a workflow with Step.Slots above one is refused at Start.
+// and a workflow with Step.Slots above one is refused at Start. Nor does
+// it declare CapConcurrencyLimits: its admission script counts one
+// concurrency bucket per run, so a workflow with
+// Workflow.ConcurrencyLimits is refused at Start rather than capped on
+// one key only, nor CapHoldWhileRunning: a worker claims the whole run
+// and keeps its concurrency slot while the run sits in a backoff, a
+// sleep or a wait, so a workflow with a key set to HoldWhileRunning is
+// refused at Start rather than held for the whole run.
 //
 // Not declared, so Start, Enqueue or Schedule refuse what needs them with
 // an UnsupportedError instead of ignoring it: closures (a closure cannot

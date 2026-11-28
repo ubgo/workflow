@@ -1,0 +1,35 @@
+func New(opts ...Option) *Client {
+	c := &Client{
+		clk:       clock.Real{},
+		retention: DefaultRunRetention,
+		errHist:   workflow.DefaultErrorHistory,
+		workers:   defaultWorkers,
+		log:       slog.New(slog.DiscardHandler),
+		parse:     cron.Parse,
+		wfs:       map[string]*registered{},
+		runs:      map[workflow.RunID]*run{},
+		delayed:   map[workflow.ScheduledID]*run{},
+		idem:      map[idemKey]*run{},
+		waiters:   map[eventKey][]*waiter{},
+		signals:   map[eventKey][]signal{},
+		buckets:   map[bucketKey][]*run{},
+		limitRuns: map[limitKey]int{},
+		rates:     map[rateKey][]time.Time{},
+		scheds:    map[workflow.ScheduleID]*schedule{},
+
+		queueExec: map[string]int{},
+		pauses:    map[workflow.PauseTarget]bool{},
+		done:      make(chan struct{}),
+
+		endedPoke: make(chan struct{}, 1),
+		hurry:     make(chan struct{}),
+	}
+	c.taskCond = sync.NewCond(&c.mu)
+	for _, o := range opts {
+		o(c)
+	}
+	if c.node == "" {
+		c.node = workflow.DefaultNodeID()
+	}
+	return c
+}

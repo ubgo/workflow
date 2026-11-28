@@ -1,0 +1,30 @@
+func (c *Client) deleteOrphans(ctx context.Context, tx *sql.Tx, ids []any) error {
+	in := "(" + inList(len(ids)) + ")"
+	gone := " AND run_id NOT IN (SELECT id FROM {runs})"
+	for _, q := range []string{
+		"DELETE FROM {step_ext} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id IN " + in + gone + ")",
+		"DELETE FROM {step_err} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id IN " + in + gone + ")",
+		"DELETE FROM {step_cancel} WHERE step_id IN (SELECT id FROM {steps} WHERE run_id IN " + in + gone + ")",
+		"DELETE FROM {steps} WHERE run_id IN " + in + gone,
+		"DELETE FROM {consumed} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_ext} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_labels} WHERE run_id IN " + in + gone,
+		"DELETE FROM {attempt_errors} WHERE run_id IN " + in + gone,
+		"DELETE FROM {attempt_err_node} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_info} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_version} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_fair} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_limits} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_hold} WHERE run_id IN " + in + gone,
+		"DELETE FROM {outputs} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_forced} WHERE run_id IN " + in + gone,
+		// A chain waiting for a handoff (next_wf set) outlives its run: the
+		// next job has not been enqueued yet.
+		"DELETE FROM {run_chain} WHERE run_id IN " + in + gone + " AND next_wf = ''",
+	} {
+		if _, err := c.st.exec(ctx, tx, q, ids...); err != nil {
+			return err
+		}
+	}
+	return nil
+}

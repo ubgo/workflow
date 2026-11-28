@@ -70,7 +70,7 @@ It [declares](ds:block?id=redis-caps-bfgdst9t), each proven by the conformance s
 
 The client also implements the interfaces that have no capability bit: `RunRescheduler` (`Reschedule`), `StepCanceller` (`CancelStep`), `HealthChecker` (`Health`), `NodeLister` (`Nodes`), `LifecycleNotifier` (`OnLifecycle`) and `PayloadLimiter`, whose limit is [512 MiB](ds:block?id=redis-maxpayloadbytes-gucdax4w), the largest value Redis stores, lowered with [`WithPayloadLimit`](ds:block?id=redis-withpayloadlimit-5yc26vec).
 
-`CapWorkerScale` means [`QueueLoads`](ds:block?id=redis-client-queueloads-fjy4pejd) and [`SetWorkers`](ds:block?id=redis-client-setworkers-d4dn726u) over the [`WithQueues`](ds:block?id=redis-withqueues-4gdxbhqh) list ([Worker balancing](../operations/balancing.md)). It does not declare `CapClosure`, `CapQueueLimitGlobal` or `CapSlotCost` (a worker claims a whole run, so a workflow with `Step.Slots` above one is refused at [`Start`](ds:block?id=redis-client-start-tmas9yaz)), and it refuses three things with an `UnsupportedError` at `Start`, `Enqueue` or `Schedule` instead of ignoring them:
+`CapWorkerScale` means [`QueueLoads`](ds:block?id=redis-client-queueloads-fjy4pejd) and [`SetWorkers`](ds:block?id=redis-client-setworkers-d4dn726u) over the [`WithQueues`](ds:block?id=redis-withqueues-4gdxbhqh) list ([Worker balancing](../operations/balancing.md)). It does not declare `CapClosure`, `CapQueueLimitGlobal`, `CapSlotCost` (a worker claims a whole run, so a workflow with `Step.Slots` above one is refused at [`Start`](ds:block?id=redis-client-start-tmas9yaz)), `CapConcurrencyLimits` (its admission script counts one concurrency bucket per run, so a workflow with `ConcurrencyLimits` is refused at `Start` rather than capped on one key only) or `CapHoldWhileRunning` (a worker claims the whole run and keeps its slot while the run sits in a backoff, a sleep or a wait, so a key set to `HoldWhileRunning` is refused at `Start`), and it refuses three things with an `UnsupportedError` at `Start`, `Enqueue` or `Schedule` instead of ignoring them:
 
 - **Closures** (`CapClosure`): a Go closure cannot be stored in Redis. Register a workflow, or use [functions by name](../jobs/functions.md).
 - **A queue limit across clients** (`CapQueueLimitGlobal`): a run is claimed whole, so the driver keeps no count of a queue's in-flight step attempts across clients, and a non-zero `QueueConfig.Limit` is refused at [`Start`](ds:block?id=redis-client-start-tmas9yaz). `QueueConfig.Workers` still caps one client; see [Named queues](../jobs/queues.md#cap-a-queue-across-every-worker).
@@ -89,7 +89,7 @@ for _, cp := range []workflow.Caps{
 	workflow.CapQueue, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
 	workflow.CapRunFinished, workflow.CapChain, workflow.CapScheduleWhen,
 	workflow.CapShutdownRequeue,
-	workflow.CapClosure, workflow.CapQueueLimitGlobal, // two it does not declare; CapSlotCost is the third
+	workflow.CapClosure, workflow.CapQueueLimitGlobal, // two it does not declare; CapSlotCost, CapConcurrencyLimits and CapHoldWhileRunning are the others
 } {
 	fmt.Fprintf(w, "%v: %v\n", cp, c.Capabilities().Has(cp))
 }

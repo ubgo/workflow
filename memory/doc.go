@@ -77,9 +77,18 @@
 //     priority with the earliest turn, so a key with a backlog does not
 //     delay the others behind it; DropNewest and
 //     CancelNewest record the new run as StatusCancelled; CancelInProgress
-//     cancels the bucket's oldest running run to make room. A cancelled
-//     run releases its slot at once, even if a handler that ignores its
-//     context is still returning.
+//     cancels the bucket's oldest running run to make room. With
+//     Workflow.ConcurrencyLimits (CapConcurrencyLimits) a run is admitted
+//     only when its Concurrency bucket and its bucket of every limit have
+//     room, taking them all at once, and an admission pass lets no later
+//     run take a key an earlier waiting run needs. A key set to
+//     HoldWhileRunning (CapHoldWhileRunning) is given back when the run's
+//     coordinator finds nothing executing, nothing queued for a worker and
+//     no result to apply (every step in a backoff, snoozed, asleep or
+//     waiting); a step that becomes ready then waits in the admission
+//     queue at the run's original place until every such key has room
+//     again. A cancelled run releases its slot at once, even if a handler
+//     that ignores its context is still returning.
 //   - Rate limits: a sliding window of start times per key on the injected
 //     clock; a limited run waits queued until the window frees.
 //   - Cron: Workflow.Cron fires in its CronLocation (UTC when nil) and

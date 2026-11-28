@@ -1,6 +1,6 @@
 # concurrency
 
-One run at a time per tenant, what each strategy does to the run over the cap, a rate limit per recipient domain, priorities among waiting runs, and the key form each driver refuses. It runs on the in-memory driver with a fake clock, so the one-minute rate window passes when the program moves the clock; the Hatchet refusal needs no server, because the Hatchet client connects only at `Start`.
+One run at a time per tenant, what each strategy does to the run over the cap, a rate limit per recipient domain, priorities among waiting runs, one workflow capped on two keys at once, a run that waits to retry giving its slot back, and the key form each driver refuses. It runs on the in-memory driver with a fake clock, so the one-minute rate window passes when the program moves the clock; the Hatchet refusal needs no server, because the Hatchet client connects only at `Start`.
 
 ```sh
 cd examples
@@ -20,6 +20,16 @@ rate limit:
   a minute later, started mail-3
 priority:
   password-reset, normal, backfill
+several keys:
+  started acme-1 and widgets-1; acme-2 queued, widgets-2 queued
+  acme-1 finished, started: acme-2
+  widgets-1 finished, started: widgets-2
+  hatchet: true | missing: ConcurrencyLimits
+release while waiting:
+  whole_run: acme-1 retrying in an hour; acme-2 queued
+    an hour later: acme-1 succeeded, then acme-2 succeeded
+  while_running: acme-1 retrying in an hour; acme-2 succeeded at once
+    an hour later: acme-1 succeeded
 refusals:
   memory, KeyExpr: workflow: Workflow.Concurrency.Key.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow report
   hatchet, KeyFunc: workflow: Workflow.Concurrency.Key.Func unsupported by this driver: workflow report: Hatchet evaluates concurrency keys on the engine; use workflow.KeyExpr with a CEL expression | unsupported: true
@@ -97,6 +107,41 @@ for _, j := range []workflow.Job{
 }
 ```
 
+Two syncs per connection and one per account, both enforced at once:
+
+<!-- snippet: examples/concurrency/main.go#several-keys -->
+```go
+label := func(name string) workflow.ConcurrencyKey {
+	return workflow.KeyFunc(func(j workflow.Job) string { return j.Labels[name] })
+}
+syncAccount := workflow.Workflow{
+	Name: "sync-account",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{
+		{Key: label("connection"), MaxRuns: 2}, // two syncs per connection
+		{Key: label("account"), MaxRuns: 1},    // and one per account
+	},
+	Steps: []workflow.Step{{Name: "pull", Run: g.handler}},
+}
+```
+
+One sync per account, except while a sync waits an hour to retry: under `HoldWhileRunning` it gives the account back and takes it again when the hour has passed. The program runs the same two syncs under each policy and prints the default first:
+
+<!-- snippet: examples/concurrency/main.go#release-while-waiting -->
+```go
+syncAccount := workflow.Workflow{
+	Name: "sync-account",
+	Concurrency: &workflow.Concurrency{
+		Key:     account,
+		MaxRuns: 1,                         // one sync per account at a time
+		Hold:    workflow.HoldWhileRunning, // but not while one waits to retry
+	},
+	Steps: []workflow.Step{{Name: "pull", Run: pull, Retry: &workflow.RetryPolicy{
+		Max:     3,
+		Backoff: workflow.Backoff{Initial: time.Hour}, // the API asks to come back in an hour
+	}}},
+}
+```
+
 Each driver refuses the key form it cannot evaluate:
 
 <!-- snippet: examples/concurrency/main.go#key-forms -->
@@ -124,9 +169,9 @@ err = hatchet.New(hatchet.Config{}).Register(byFunc)
 fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflow.ErrUnsupported))
 ```
 
-`main_test.go` runs the program and compares its whole output with the block above. The two rate-limited runs that start together are printed sorted, since they start on two workers in either order.
+`main_test.go` runs the program and compares its whole output with the block above. The two rate-limited runs that start together, and the two first syncs of the several-keys part, are printed sorted, since they start on two workers in either order.
 
 ## Guides
 
-- [Concurrency and rate limits](../../docs/jobs/concurrency.md)
+- [Concurrency and rate limits](../../docs/jobs/concurrency.md), [Choose how long a run holds its slot](../../docs/jobs/concurrency.md#choose-how-long-a-run-holds-its-slot)
 - [Enqueue › Priority](../../docs/jobs/enqueue.md#priority)

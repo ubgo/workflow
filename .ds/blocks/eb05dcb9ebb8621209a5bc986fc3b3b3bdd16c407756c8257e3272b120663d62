@@ -1,0 +1,87 @@
+func (c *Client) admitLocked() {
+	if c.stopped || len(c.pending) == 0 {
+		return
+	}
+	slices.SortStableFunc(c.pending, func(a, b *run) int {
+		if a.job.Priority != b.job.Priority {
+			return cmp.Compare(b.job.Priority, a.job.Priority)
+		}
+		return cmp.Compare(a.seq, b.seq)
+	})
+	now := c.clk.Now()
+	var wake time.Time
+	fairNow := map[string]int64{} // per round-robin workflow, read once per pass; see fairTagLocked
+	// held are the keys of a workflow with ConcurrencyLimits that an
+	// earlier run of this pass waits for: no later run may take a slot on
+	// them, so a run that needs several keys is never overtaken on one of
+	// them (workflow.ConcurrencyLimit).
+	var held *limitHolds
+	kept := c.pending[:0]
+	for _, r := range c.pending {
+		wf := r.reg.wf
+		bk := bucketKey{workflow: wf.Name, key: r.bucket}
+		// A run that gave its slots back while parked rejoins here, at
+		// its original place (priority, then enqueue order), needing only
+		// its HoldWhileRunning keys: it is not started again and its rate
+		// limits are not counted again (workflow.ConcurrencyHold).
+		rejoin := r.admitted && r.released
+		limited := len(wf.ConcurrencyLimits) > 0 || workflow.HoldsWhileRunning(wf)
+		if limited {
+			if held == nil {
+				held = newLimitHolds()
+			}
+			if held.any(r, bk) || !c.limitRoomLocked(r, bk) {
+				held.hold(r, bk)
+				kept = append(kept, r)
+				continue
+			}
+		} else if wf.Concurrency != nil && len(c.buckets[bk]) >= wf.Concurrency.MaxRuns {
+			kept = append(kept, r)
+			continue
+		}
+		if rejoin {
+			c.takeLocked(r, true)
+			r.released = false
+			for _, t := range r.deferred {
+				r.queued++
+				c.tasks = append(c.tasks, t)
+			}
+			r.deferred = nil
+			c.taskCond.Broadcast()
+			continue
+		}
+		if at, ok := c.rateCheckLocked(r, now); !ok {
+			if wake.IsZero() || at.Before(wake) {
+				wake = at
+			}
+			if limited {
+				held.hold(r, bk)
+			}
+			kept = append(kept, r)
+			continue
+		}
+		for i := range wf.RateLimits {
+			rk := rateKey{workflow: wf.Name, limit: i, key: r.rateKeys[i]}
+			c.rates[rk] = append(c.rates[rk], now)
+		}
+		c.takeLocked(r, false)
+		c.fairTagLocked(r, bk, fairNow)
+		r.admitted = true
+		c.armRunTimeoutLocked(r)
+		// Ready Run steps (the roots, or after Retry the steps whose
+		// parents all succeeded) are queued here, not in drive, so a run's
+		// first attempts are in the queue by the time Enqueue returns.
+		for _, s := range wf.Steps {
+			if s.Kind() == workflow.StepRun && r.readyLocked(s) {
+				c.pushTaskLocked(r, s, r.inputLocked(s), 1)
+			}
+		}
+		c.wg.Add(1)
+		go c.drive(r)
+	}
+	clear(c.pending[len(kept):])
+	c.pending = kept
+	if !wake.IsZero() {
+		c.armRateLocked(wake)
+	}
+}
