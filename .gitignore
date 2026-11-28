@@ -24,3 +24,6 @@
 
 # compiled benchmark binary (go build in bench/)
 /bench/bench
+
+# build output of scripts/admin-screenshots
+/scripts/admin-screenshots/admin-screenshots
