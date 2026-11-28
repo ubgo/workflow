@@ -55,7 +55,8 @@ var fakeDefaultCaps = workflow.CapsOf(
 // also keeps no schedule history or error history (nothing fires or
 // fails), cannot be stopped mid-step, and has no enqueue-only mode. Nor
 // does it run steps, so it cannot snooze one, name a node, keep a result,
-// list due runs or stamp a tick time.
+// list due runs or stamp a tick time, keep a step's checkpoint, hold a run
+// back behind a coalesced key, or key a schedule's fires.
 //
 //ds:def id=workflowtest-fakeunserved-jwdtfx8n owner=@khanakia stability=stable
 var fakeUnserved = workflow.CapsOf(
@@ -65,6 +66,7 @@ var fakeUnserved = workflow.CapsOf(
 	workflow.CapScheduleHistory, workflow.CapErrorHistory, workflow.CapShutdownRequeue, workflow.CapEnqueueOnly,
 	workflow.CapSnooze, workflow.CapNodeIdentity, workflow.CapDueQuery, workflow.CapResult, workflow.CapTickTime,
 	workflow.CapQueueLimitGlobal, workflow.CapDrainReport, workflow.CapPayloadSearch,
+	workflow.CapScheduleKey, workflow.CapCheckpoint, workflow.CapCoalesce,
 )
 
 // FakeOption configures a Fake.

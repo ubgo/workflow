@@ -48,7 +48,8 @@ Past step 13, [Extending](#extending) shows how to write a plugin, middleware, a
 | Pause a run until a payment or an approval arrives | [Wait for an event](workflows/signals.md) | [signals-and-sleep](../examples/signals-and-sleep/) |
 | Save an order and enqueue its job atomically | [Transactional enqueue](reliability/transactional-enqueue.md), [Outbox](reliability/outbox.md) | [transactional-enqueue](../examples/transactional-enqueue/), [outbox](../examples/outbox/) |
 | Allow one export per user at a time | [Unique jobs](reliability/unique-jobs.md) | [unique-jobs](../examples/unique-jobs/) |
-| Reindex once after a burst of edits | [Debounce](reliability/debounce.md) | [debounce](../examples/debounce/) |
+| Reindex once after a burst of edits | [Coalescing runs](reliability/coalesce.md) | `Workflow.Coalesce`: one run kept pending beside the running one for a key, later enqueues folded into it | [coalesce](../examples/coalesce/) |
+| [Debounce](reliability/debounce.md) | [debounce](../examples/debounce/) |
 | Process 10,000 rows and know when all are done | [Batches](batches/batches.md) | [batches](../examples/batches/) |
 | Send payloads too big for the queue | [Claim check](reliability/claim-check.md) | [claim-check](../examples/claim-check/) |
 | Keep personal data out of the queue tables | [Payload codecs](middleware/codecs.md) | [encrypted-payloads](../examples/encrypted-payloads/) |
@@ -72,7 +73,8 @@ Past step 13, [Extending](#extending) shows how to write a plugin, middleware, a
 | Run a small Go function in the background so it survives a restart | [Functions by name](jobs/functions.md) | [functions](../examples/functions/) |
 | Keep what a nightly task logged in a file, and mail it when the task fails | [Task output](schedules/output.md) | [task-output](../examples/task-output/) |
 | Restart a worker after so many jobs, so long, or above a memory size | [Worker recycling](operations/recycling.md) | [worker-recycling](../examples/worker-recycling/) |
-| Keep a slow hourly job from starting again while it still runs, and run it now by hand | [Overlap, trigger now and last fire](schedules/overlap.md) | [schedule-overlap](../examples/schedule-overlap/) |
+| Keep a slow hourly job from starting again while it still runs, and run it now by hand | [Idempotency keys on schedules](schedules/schedule-keys.md) | `Schedule.IdempotencyKey` and `OnHeld`: fired runs, triggers and hand enqueues of the same work deduplicated, a key per fire or per period | [schedule-keys](../examples/schedule-keys/) |
+| [Overlap, trigger now and last fire](schedules/overlap.md) | [schedule-overlap](../examples/schedule-overlap/) |
 | Be told once when runs keep failing, and send their errors to Sentry | [Failure alerts and error reporting](observability/failure-alerts.md) | [failure-alerts](../examples/failure-alerts/), [sentry-reporting](../examples/sentry-reporting/) |
 | See every attempt's error, or end a stuck run by hand | [Manage runs › Error history](jobs/manage-runs.md#error-history), [Force a run to an end](jobs/manage-runs.md#force-a-run-to-an-end) | [run-repair](../examples/run-repair/) |
 | Let web servers enqueue without running workers | [Deploy workers › Web nodes that only enqueue](operations/deploy.md#web-nodes-that-only-enqueue) | [enqueue-only](../examples/enqueue-only/) |
@@ -195,6 +197,7 @@ Past step 13, [Extending](#extending) shows how to write a plugin, middleware, a
 | [Start a run over HTTP and follow it live](jobs/http-start.md) | `httprun`: 202 and `Location`, status and result, Server-Sent Events, streamed step output | [http-status](../examples/http-status/) |
 | [Push delivery to an HTTP endpoint](jobs/push-delivery.md) | `push.Deliver` signed with Standard Webhooks, and `push.Handler` on the receiving side | [push-delivery](../examples/push-delivery/) |
 | [Typed payloads](jobs/payloads.md) | `JobOf`, `DecodePayload`, payload size limits, payload versions with upcasters | [typed-payloads](../examples/typed-payloads/) |
+| [Checkpoints](jobs/checkpoints.md) | `SaveCheckpoint`, `LoadCheckpoint`, `DefineCheckpoint`: a step resumes where its last attempt stopped, fenced against a stale worker | [step-checkpoint](../examples/step-checkpoint/) |
 | [Progress and heartbeats](jobs/progress.md) | `ReportProgress`, `RunInfo.Progress`, progress events, `Heartbeat` and `Step.HeartbeatTimeout` | [results-progress](../examples/results-progress/), [snooze-heartbeat](../examples/snooze-heartbeat/) |
 | [Results and awaiting a run](jobs/results.md) | A run's result, `Await`, `AwaitResult`, `RunFailedError` | [results-progress](../examples/results-progress/) |
 | [Timeouts](jobs/timeouts.md) | The four deadlines, `Workflow.RunTimeout`, `OnTimeout`, the `ErrTimeout` family | [snooze-heartbeat](../examples/snooze-heartbeat/) |
@@ -311,7 +314,7 @@ Past step 13, [Extending](#extending) shows how to write a plugin, middleware, a
 | [Outbox](reliability/outbox.md) | Jobs written in your transaction and relayed to any client | [outbox](../examples/outbox/) |
 | [Failover](reliability/failover.md) | A second backend for enqueues, outage classification, cool-off, an observer, reset, edit and signals on either backend | [failover-observer](../examples/failover-observer/), [failover](../examples/failover/), [failover-manage](../examples/failover-manage/), [failover-schedules](../examples/failover-schedules/) |
 | [Pools, critical sections and auto-disable](reliability/pools.md) | `middleware.Pool` across processes, `CriticalSection`, `AutoDisable` for a failing endpoint | [job-guards](../examples/job-guards/) |
-| [Complete inside your transaction](reliability/complete-in-transaction.md) | `CompleteTx`: a step's success written in the app's transaction, fenced by its lease | [complete-in-transaction](../examples/complete-in-transaction/) |
+| [Complete inside your transaction](reliability/complete-in-transaction.md) | `CompleteTx`: a step's success written in the app's transaction, fenced by its lease; `workflow.TxCompleter` for the same on any driver that has it | [complete-in-transaction](../examples/complete-in-transaction/), [complete-in-tx-any-driver](../examples/complete-in-tx-any-driver/) |
 | [Change triggers](reliability/change-triggers.md) | `outbox.ChangeTrigger`: row changes become outbox entries through generated triggers | [change-triggers](../examples/change-triggers/) |
 | [Aggregation and chunked fan-out](reliability/aggregate.md) | `Aggregate`: many jobs become one run per group and window; `EnqueueChunked` fan-out that resumes | [aggregate-digest](../examples/aggregate-digest/) |
 | [Secrets in payloads](reliability/secrets.md) | `SecretGuard` refusing credentials at enqueue, `SecretRef` resolved in the step | [secret-guard](../examples/secret-guard/) |

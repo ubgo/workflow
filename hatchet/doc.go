@@ -57,7 +57,13 @@
 // worker enforces Step.Timeout instead, see below),
 // Step.HeartbeatTimeout (see below; no CapHeartbeat) and a
 // QueueConfig.Weight (refused at Start: each queue is its own worker, so
-// no worker picks between queues). The core's
+// no worker picks between queues), Schedule.IdempotencyKey (refused at
+// Schedule: the engine fires crons itself, so no key can be put on a
+// fired run; no CapScheduleKey), Workflow.Coalesce (refused at Start: the
+// engine has no run pending behind a held key; no CapCoalesce) and step
+// checkpoints (workflow.SaveCheckpoint returns an UnsupportedError; no
+// CapCheckpoint). The client does not implement workflow.TxCompleter: the
+// engine shares no transaction with the app's database. The core's
 // cron parser is the only one: the driver checks expressions with
 // cron.Parse and has no option for another dialect, since the engine
 // parses them itself. Start refuses Config tunings past the SDK's limits

@@ -58,6 +58,12 @@
 // queue's in-flight step attempts is not kept; Workers is the per-client
 // cap). Concurrency, rate and wait keys are Go
 // functions (workflow.KeyFunc); Start refuses an expression key (KeyExpr).
+// Nor are CapScheduleKey (Schedule refuses Schedule.IdempotencyKey),
+// CapCoalesce (Start refuses Workflow.Coalesce) or CapCheckpoint
+// (workflow.SaveCheckpoint and LoadCheckpoint return an UnsupportedError
+// in its steps) declared, and the client does not implement
+// workflow.TxCompleter: none of the three is proven against Redis yet, and
+// Redis shares no transaction with the app's database.
 // QueueConfig.Weight orders queues of equal priority by a weighted draw
 // (workflow.PickWeighted on the jitter source). Under
 // ConcurrencyRoundRobin the keys take turns (CapRoundRobin) in proportion

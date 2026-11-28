@@ -1,0 +1,71 @@
+func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	reg, err := c.enqueueReg(job.Workflow)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := workflow.CheckJobLabels(ctx, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.checkJob(reg, job); err != nil {
+		return workflow.RunRef{}, err
+	}
+	key, err := idemKey(reg, job)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	if key != "" && reg.wf.Coalesce != nil {
+		return c.enqueueCoalesced(ctx, reg, job, key)
+	}
+	for range maxIdemAttempts {
+		var row *runRow
+		var out txOut
+		var held string // the run whose lifecycle events wait for its Inserted
+		err := c.st.tx(ctx, func(tx *sql.Tx) error {
+			var err error
+			out = txOut{}
+			if row, err = c.insertRun(ctx, tx, reg, job, key, ""); err != nil {
+				return err
+			}
+			held = row.id
+			c.holdEvents(held)
+			return c.admitInline(ctx, tx, reg, row, &out)
+		})
+		if err == nil {
+			c.releaseEvents(ctx, held, c.insertedEvent(row, job, runQueue(reg, job)))
+		} else if held != "" {
+			c.releaseEvents(ctx, held, nil)
+		}
+		if err == nil {
+			if row.status == runPending {
+				if err := c.admitEnqueued(ctx, reg); err != nil {
+					return workflow.RunRef{}, err
+				}
+			}
+			c.afterTx(ctx, out)
+			c.nudge()
+			workflow.MarkInserted(ctx)
+			return row.ref(), nil
+		}
+		if key == "" || !c.st.isUnique(err) {
+			return workflow.RunRef{}, err
+		}
+		var holder runRow
+		err = c.st.one(ctx, c.st.db, "SELECT "+runCols+" FROM {runs} WHERE workflow = ? AND idem_active = ?",
+			[]any{reg.wf.Name, key}, holder.targets()...)
+		if err == nil {
+			workflow.MarkDuplicate(ctx)
+			return holder.ref(), nil
+		}
+		if !errors.Is(err, sqlb.ErrNoRows) {
+			return workflow.RunRef{}, fmt.Errorf("sqlstore: read idempotency holder: %w", err)
+		}
+		// The holder finished between the insert and the read: try again.
+	}
+	return workflow.RunRef{}, fmt.Errorf("%w: key %q of workflow %q kept changing hands", workflow.ErrDuplicate, key, reg.wf.Name)
+}

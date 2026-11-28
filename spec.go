@@ -101,6 +101,17 @@ type Workflow struct {
 	// IdempotencyOptional.
 	Idempotency IdempotencyPolicy
 
+	// Coalesce changes what an enqueue does whose idempotency key is held
+	// by a run that has already left the queue (admitted by the driver,
+	// so running or about to): instead of returning that run, it starts
+	// one more run that waits until the holder ends, so work that arrives
+	// while the holder runs is not lost. At most one such run waits per
+	// key; further enqueues fold into it (Coalesce.Payload picks which
+	// payload it keeps). A holder still in the queue absorbs enqueues as
+	// usual. Nil keeps the plain behaviour. Needs CapCoalesce and
+	// CapIdempotencyKey; see Coalesce.
+	Coalesce *Coalesce
+
 	// Retry is the default for steps whose Retry is nil. Its zero value
 	// means no retries.
 	Retry RetryPolicy
@@ -488,6 +499,29 @@ type Schedule struct {
 	// It must pass ValidateTenant and is stored with the schedule. Needs
 	// CapTenant.
 	Tenant string
+
+	// IdempotencyKey is a key template applied to every run the schedule
+	// fires, by tick and by TriggerSchedule, as that run's
+	// Job.IdempotencyKey, with the same semantics: while a run of the
+	// workflow holding the key is unfinished, the fire starts nothing (a
+	// tick is reported fired with the holder as its run). A fixed text
+	// keeps one run of the schedule's work at a time, shared with jobs
+	// enqueued by hand under the same key; a placeholder gives one key per
+	// fire or per period (see ExpandScheduleKey for the placeholders:
+	// {fire} and the calendar periods {day}, {week}, {month}, {quarter},
+	// {year} on Location's wall clock). The workflow's Idempotency policy
+	// applies as for any key. Empty means none. Needs CapScheduleKey and
+	// CapIdempotencyKey.
+	IdempotencyKey string
+
+	// OnHeld says what TriggerSchedule does when the key IdempotencyKey
+	// expands to is held by an unfinished run: HeldReturnExisting (the
+	// default, also the empty value) returns that run's RunRef as
+	// Enqueue does, marking the EnqueueOutcome a duplicate; HeldRefuse
+	// returns an error wrapping ErrDuplicate. Ticks always behave as
+	// HeldReturnExisting: a tick has no caller to refuse. It needs
+	// IdempotencyKey.
+	OnHeld HeldPolicy
 }
 
 // MisfirePolicy is what a scheduler does with cron ticks it missed: ticks

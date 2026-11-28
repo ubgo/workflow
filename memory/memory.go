@@ -42,6 +42,7 @@ var caps = workflow.CapsOf(
 	workflow.CapWaitOwnRun,
 	workflow.CapRoundRobin, workflow.CapKeyWeights,
 	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning,
+	workflow.CapScheduleKey, workflow.CapCheckpoint, workflow.CapCoalesce,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
@@ -205,15 +206,16 @@ type Client struct {
 	rnd     func() float64 // jitter draws; nil means math/rand/v2
 	errHist int            // RunInfo.Errors bound (WithErrorHistory)
 
-	retention    RunRetention
-	queueCfg     []workflow.QueueConfig          // as given to WithQueues
-	queues       map[string]workflow.QueueConfig // by name, built at Start; nil serves every queue
-	idleGrace    time.Duration
-	stopWhenIdle bool
-	recycle      workflow.Recycle // WithRecycle; zero never recycles
-	node         string           // WithNodeID; StepInfo.Node
-	payloadLimit int              // WithPayloadLimit; zero means none
-	schedHeap    bool             // WithScheduleHeap: one scheduler goroutine and timer for every schedule
+	retention     RunRetention
+	queueCfg      []workflow.QueueConfig          // as given to WithQueues
+	queues        map[string]workflow.QueueConfig // by name, built at Start; nil serves every queue
+	idleGrace     time.Duration
+	stopWhenIdle  bool
+	recycle       workflow.Recycle // WithRecycle; zero never recycles
+	node          string           // WithNodeID; StepInfo.Node
+	payloadLimit  int              // WithPayloadLimit; zero means none
+	schedHeap     bool             // WithScheduleHeap: one scheduler goroutine and timer for every schedule
+	maxCheckpoint int              // WithMaxCheckpoint; zero means workflow.DefaultMaxCheckpoint
 
 	mu       sync.Mutex
 	taskCond *sync.Cond // signalled when tasks are pushed or the client stops
@@ -228,11 +230,16 @@ type Client struct {
 	runs    map[workflow.RunID]*run
 	delayed map[workflow.ScheduledID]*run
 	idem    map[idemKey]*run
-	waiters map[eventKey][]*waiter
-	signals map[eventKey][]signal // kept for runs that reach their wait later; see Signal
-	tasks   []*task               // step attempts waiting for a worker; see pickLocked
-	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
-	buckets map[bucketKey][]*run
+	// next is the run pending behind each held key of a Workflow.Coalesce
+	// workflow (coalesce.go), and checkpoints each run's saved checkpoints
+	// by step (checkpoint.go); both are created on first use.
+	next        map[idemKey]*run
+	checkpoints map[*run]map[string]checkpoint
+	waiters     map[eventKey][]*waiter
+	signals     map[eventKey][]signal // kept for runs that reach their wait later; see Signal
+	tasks       []*task               // step attempts waiting for a worker; see pickLocked
+	pending     []*run                // ready runs not yet admitted (concurrency or rate limit)
+	buckets     map[bucketKey][]*run
 	// limitRuns counts the admitted runs holding each bucket of each
 	// Workflow.ConcurrencyLimits entry; see admitLocked and finishLocked.
 	limitRuns map[limitKey]int
@@ -683,6 +690,9 @@ func (c *Client) enqueueLocked(ctx context.Context, job workflow.Job) (workflow.
 	ik := idemKey{workflow: reg.wf.Name, key: key}
 	if key != "" {
 		if holder, ok := c.idem[ik]; ok {
+			if reg.wf.Coalesce != nil {
+				return c.coalesceLocked(ctx, reg, job, ik, holder), nil
+			}
 			workflow.MarkDuplicate(ctx)
 			return holder.ref(), nil
 		}

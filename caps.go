@@ -308,6 +308,21 @@ var (
 	// next step runs, never exceeding MaxRuns (see ConcurrencyHold).
 	//ds:def id=capholdwhilerunning-h6t3nb8d owner=@khanakia stability=stable
 	CapHoldWhileRunning = defineCap(68, "HoldWhileRunning")
+	// CapScheduleKey: Schedule.IdempotencyKey is honoured: every run the
+	// schedule fires, by tick or by TriggerSchedule, carries the key the
+	// template expands to, with Job.IdempotencyKey's semantics, and
+	// Schedule.OnHeld decides what a trigger does while the key is held.
+	CapScheduleKey = defineCap(69, "ScheduleKey")
+	// CapCheckpoint: a running step can save a checkpoint
+	// (SaveCheckpoint) and read it back on a later attempt of the same
+	// run and step (LoadCheckpoint); the driver drops it when the run
+	// ends and refuses a save from an attempt that no longer owns its
+	// step. Whether it survives a restart is CapDurable's claim.
+	CapCheckpoint = defineCap(70, "Checkpoint")
+	// CapCoalesce: Workflow.Coalesce is honoured: a key held by a run
+	// that already left the queue admits one more run, which waits until
+	// that run ends; further enqueues for the key fold into it.
+	CapCoalesce = defineCap(71, "Coalesce")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -360,6 +375,9 @@ func Requires(wf Workflow) Caps {
 	}
 	if wf.Idempotency == IdempotencyRequired {
 		c = c.With(CapIdempotencyKey)
+	}
+	if wf.Coalesce != nil {
+		c = c.With(CapCoalesce, CapIdempotencyKey)
 	}
 	if wf.Queue != "" && wf.Queue != DefaultQueue {
 		c = c.With(CapQueue)
@@ -435,7 +453,8 @@ func misfireCaps(m Misfire) Caps {
 // written: CapCron, CapCronZone for a zone other than UTC, the capability
 // of its misfire policy, CapScheduleWindow for windows, CapOverlapSkip
 // for OverlapSkip, CapCronSeconds for Seconds, CapScheduleActive for an
-// Active period, CapScheduleKeep for KeepRuns and CapTenant for Tenant.
+// Active period, CapScheduleKeep for KeepRuns, CapTenant for Tenant and
+// CapScheduleKey with CapIdempotencyKey for IdempotencyKey.
 //
 //ds:def id=requiresschedule-wk3hrhfy owner=@khanakia stability=stable
 func RequiresSchedule(s Schedule) Caps {
@@ -458,14 +477,17 @@ func RequiresSchedule(s Schedule) Caps {
 	if s.Tenant != "" {
 		c = c.With(CapTenant)
 	}
+	if s.IdempotencyKey != "" {
+		c = c.With(CapScheduleKey, CapIdempotencyKey)
+	}
 	return c
 }
 
 // CheckScheduleCaps returns an UnsupportedError when have lacks what s
 // needs, and nil otherwise. Its Field names the cause ("Schedule",
 // "Schedule.Location", "Schedule.Windows", "Schedule.Overlap",
-// "Schedule.Seconds", "Schedule.Active", "Schedule.KeepRuns" or
-// "Schedule.Misfire") and its Reason the workflow.
+// "Schedule.Seconds", "Schedule.Active", "Schedule.KeepRuns",
+// "Schedule.Tenant", "Schedule.IdempotencyKey" or "Schedule.Misfire") and its Reason the workflow.
 // Drivers call it from Schedule, after ValidateSchedule.
 //
 //ds:def id=checkschedulecaps-45emsz38 owner=@khanakia stability=stable
@@ -491,6 +513,8 @@ func CheckScheduleCaps(have Caps, s Schedule) error {
 		field = "Schedule.KeepRuns"
 	case missing.HasAny(CapTenant):
 		field = "Schedule.Tenant"
+	case missing.HasAny(CapsOf(CapScheduleKey, CapIdempotencyKey)):
+		field = "Schedule.IdempotencyKey"
 	default:
 		field = "Schedule.Misfire"
 	}

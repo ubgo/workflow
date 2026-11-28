@@ -24,10 +24,15 @@ var (
 )
 
 // Supports reports an operation as done only when both backends do it,
-// since a run, or a node, may sit on either.
+// since a run, or a node, may sit on either. OpCompleteInTx is false: this
+// client does not implement workflow.TxCompleter (a step's handler runs on
+// one backend and completes through that backend's client).
 //
 //ds:def id=failover-client-supports-ngjgf3fg owner=@khanakia stability=stable
 func (f *Client) Supports(op workflow.Op) bool {
+	if op == workflow.OpCompleteInTx {
+		return false
+	}
 	return workflow.Supports(f.primary, op) && workflow.Supports(f.secondary, op)
 }
 

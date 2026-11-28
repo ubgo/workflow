@@ -731,10 +731,15 @@ func (c *Client) StopCause() error {
 }
 
 // Supports reports an operation as done only when every region does it,
-// since a run, or a node, may sit in any of them.
+// since a run, or a node, may sit in any of them. OpCompleteInTx is false:
+// this client does not implement workflow.TxCompleter (a step's handler
+// runs in one region and completes through that region's client).
 //
 //ds:def id=regional-client-supports-uuvevscq owner=@khanakia stability=stable
 func (c *Client) Supports(op workflow.Op) bool {
+	if op == workflow.OpCompleteInTx {
+		return false
+	}
 	for _, name := range c.names {
 		if !workflow.Supports(c.regions[name], op) {
 			return false

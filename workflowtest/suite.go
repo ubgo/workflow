@@ -128,7 +128,7 @@ func allGroups() []suiteGroup {
 		{"discardexhaust", discardExhaustCases},
 		{"drainreport", drainReportCases},
 	}
-	return append(append(append(groups, p5Groups...), p3Groups...), attemptErrorGroups...)
+	return append(append(append(append(groups, p5Groups...), p3Groups...), attemptErrorGroups...), gapGroups...)
 }
 
 // testCase is one named assertion.

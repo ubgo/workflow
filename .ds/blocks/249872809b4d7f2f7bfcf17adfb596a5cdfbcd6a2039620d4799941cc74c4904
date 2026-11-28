@@ -1,0 +1,6 @@
+func (f *Client) Supports(op workflow.Op) bool {
+	if op == workflow.OpCompleteInTx {
+		return false
+	}
+	return workflow.Supports(f.primary, op) && workflow.Supports(f.secondary, op)
+}

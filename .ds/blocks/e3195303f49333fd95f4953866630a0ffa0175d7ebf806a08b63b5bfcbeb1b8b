@@ -1,0 +1,33 @@
+func (c *Client) insertKeyed(ctx context.Context, tx *sql.Tx, reg *registered, job workflow.Job, key string) (ref workflow.RunRef, done bool, err error) {
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+idemSavepoint); err != nil {
+		return workflow.RunRef{}, false, fmt.Errorf("sqlstore: savepoint: %w", err)
+	}
+	if reg.wf.Coalesce != nil {
+		return c.placeKeyedTx(ctx, tx, reg, job, key)
+	}
+	row, err := c.insertRun(ctx, tx, reg, job, key, "")
+	if err == nil {
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+idemSavepoint); err != nil {
+			return workflow.RunRef{}, false, fmt.Errorf("sqlstore: release savepoint: %w", err)
+		}
+		workflow.MarkInserted(ctx)
+		return row.ref(), true, nil
+	}
+	if !c.st.isUnique(err) {
+		return workflow.RunRef{}, false, err
+	}
+	if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+idemSavepoint); err != nil {
+		return workflow.RunRef{}, false, fmt.Errorf("sqlstore: roll back to savepoint: %w", err)
+	}
+	var holder runRow
+	err = c.st.one(ctx, tx, "SELECT "+runCols+" FROM {runs} WHERE workflow = ? AND idem_active = ?"+c.st.lockingRead(),
+		[]any{reg.wf.Name, key}, holder.targets()...)
+	if errors.Is(err, sqlb.ErrNoRows) {
+		return workflow.RunRef{}, false, nil
+	}
+	if err != nil {
+		return workflow.RunRef{}, false, fmt.Errorf("sqlstore: read idempotency holder: %w", err)
+	}
+	workflow.MarkDuplicate(ctx)
+	return holder.ref(), true, nil
+}

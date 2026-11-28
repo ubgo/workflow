@@ -364,6 +364,26 @@
 // given: step middleware that rewrites outputs (codecs, Encrypt, claim
 // check) does not run on it.
 //
+// CompleteInTx (workflow.TxCompleter) is the same completion behind the
+// core interface: it opens the transaction itself on the client's
+// *sql.DB, hands it to the app's function (workflow.CompletionTx), and
+// commits only when both the function and the completion succeed.
+//
+// Migration 014_checkpoints_coalesce_schedule_idempotency adds three side tables:
+// <prefix>checkpoints (step checkpoints, CapCheckpoint: a save is fenced
+// by the step's lease token in its own transaction, and a run's rows are
+// deleted in the transaction that ends it; WithMaxCheckpoint caps their
+// size), <prefix>run_next (the run pending behind a held key of a
+// Workflow.Coalesce workflow, CapCoalesce: stored scheduled and never due
+// until the holder's end promotes it in the same transaction, then
+// admitted like any run under its concurrency keys, ConcurrencyLimits and
+// rate limits; a fold under CoalesceKeepLast rewrites its payload,
+// priority and stored concurrency and rate keys; EnqueueTx coalesces,
+// EnqueueMany refuses a keyed job of such a workflow) and
+// <prefix>schedule_key (Schedule.IdempotencyKey and OnHeld,
+// CapScheduleKey: a fire or trigger whose key is held records the tick
+// with the holder as its run).
+//
 // # Uniqueness locks
 //
 // UniqueStore is a durable middleware.UniqueStore (ADR-0005): locks are

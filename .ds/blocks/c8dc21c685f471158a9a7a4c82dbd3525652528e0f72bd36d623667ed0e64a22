@@ -1,0 +1,75 @@
+func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	if err := c.usable(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	for range c.st.txAttempts {
+		d, err := c.loadSchedule(ctx, string(id))
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		reg := c.reg(d.workflow)
+		if reg == nil {
+			return workflow.RunRef{}, fmt.Errorf("%w: schedule %s: workflow %q is not registered on this client", workflow.ErrNotFound, id, d.workflow)
+		}
+		blocked, st, err := c.overlapBlocks(ctx, d)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		if blocked {
+			return workflow.RunRef{}, workflow.OverlapRefusal(id, workflow.RunRef{RunID: workflow.RunID(d.lastRun)}, st)
+		}
+		var labels map[string]string
+		if err := json.Unmarshal([]byte(d.labels), &labels); err != nil {
+			c.log.Error("sqlstore: stored schedule labels do not decode", "schedule", d.id, "error", err)
+		}
+		runID, err := c.st.newID(IDRun)
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		now := c.clk.Now()
+		loc, lerr := decodeLocation(d.loc)
+		if lerr != nil {
+			loc = now.Location()
+		}
+		var ref workflow.RunRef
+		dup := false
+		err = c.st.tx(ctx, func(tx *sql.Tx) error {
+			dup = false
+			job := workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: workflow.TriggeredLabelsAt(labels, id, d.tickName(), c.clk.Now()), Tenant: d.tenant}
+			p, err := c.placeFired(ctx, tx, reg, d, job, now, loc, runID)
+			if err != nil {
+				return err
+			}
+			ref, dup = p.row.ref(), p.dup
+			if dup {
+				if d.onHeld == workflow.HeldRefuse {
+					return fmt.Errorf("%w: schedule %s: its idempotency key is held by run %s", workflow.ErrDuplicate, id, p.row.id)
+				}
+				return nil // the holder answers; the last fire stays
+			}
+			return c.moveLast(ctx, tx, d, now.UnixNano(), p.row.id)
+		})
+		if errors.Is(err, errLastMoved) || errors.Is(err, errHolderGone) || c.st.isUnique(err) {
+			continue // another fire landed first: decide again on the new last run
+		}
+		if err != nil {
+			return workflow.RunRef{}, err
+		}
+		if dup {
+			workflow.MarkDuplicate(ctx)
+		} else {
+			workflow.MarkInserted(ctx)
+		}
+		if err := c.admit(ctx, reg); err != nil {
+			return ref, err
+		}
+		c.nudge()
+		c.emitTicks(ctx, []workflow.Tick{{ScheduleID: id, Name: d.tickName(), Workflow: d.workflow, Declared: d.declared,
+			At: now.In(loc), Location: loc, Labels: labels, Outcome: workflow.TickFired, Run: ref, Manual: true}})
+		return ref, nil
+	}
+	return workflow.RunRef{}, fmt.Errorf("sqlstore: schedule %s kept firing elsewhere while it was triggered; try again", id)
+}

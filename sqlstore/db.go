@@ -113,7 +113,8 @@ const (
 
 var allTables = []string{tblRuns, tblSteps, tblSignals, tblConsumed, tblSchedules, tblTicks, tblLocks, tblStarts, tblBatches, tblUnique, tblMisfire, tblDebounce,
 	tblRunExt, tblStepExt, tblPauses, tblScheduleExt, tblRunChain, tblStepErr, tblRunLabels, tblScheduleLast, tblAttemptErr, tblRunForced, tblOutputs,
-	tblLeaders, tblRunsArchive, tblStepsArchive, tblRunInfo, tblAttemptNode, tblNodes, tblStepCancel, tblScheduleSpec, tblUniqueHolder, tblScheduleTenant, tblJournal, tblBuckets, tblData, tblInbox, tblRunVersion, tblFairKeys, tblRunFair, tblRunLimits, tblRunHold}
+	tblLeaders, tblRunsArchive, tblStepsArchive, tblRunInfo, tblAttemptNode, tblNodes, tblStepCancel, tblScheduleSpec, tblUniqueHolder, tblScheduleTenant, tblJournal, tblBuckets, tblData, tblInbox, tblRunVersion, tblFairKeys, tblRunFair, tblRunLimits, tblRunHold,
+	tblCheckpoints, tblRunNext, tblScheduleKey}
 
 // store is the database half of the client: the handle, the dialect, the
 // statement text rewriting and the database-facing policies (error

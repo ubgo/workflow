@@ -22,6 +22,10 @@ const (
 	OpLifecycle Op = "lifecycle" // LifecycleNotifier
 	//ds:def id=oprunsignals-tmgz66m8 owner=@khanakia stability=stable
 	OpRunSignals Op = "run-signals" // RunSignalReader
+	// OpCompleteInTx: the client completes a step together with the
+	// caller's writes (TxCompleter). memory and sqlstore do; Redis and
+	// Hatchet do not.
+	OpCompleteInTx Op = "complete-in-tx" // TxCompleter
 )
 
 // OpProber is implemented by a client wrapper whose optional methods
@@ -72,6 +76,9 @@ func Supports(c Client, op Op) bool {
 		return ok
 	case OpRunSignals:
 		_, ok := c.(RunSignalReader)
+		return ok
+	case OpCompleteInTx:
+		_, ok := c.(TxCompleter)
 		return ok
 	}
 	return false

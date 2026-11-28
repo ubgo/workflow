@@ -1,0 +1,51 @@
+func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (workflow.RunRef, error) {
+	if err := ctx.Err(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return workflow.RunRef{}, err
+	}
+	s, ok := c.scheds[id]
+	if !ok || s.halted {
+		return workflow.RunRef{}, fmt.Errorf("%w: schedule %q", workflow.ErrNotFound, id)
+	}
+	if st := c.lastStatusLocked(s); s.overlap.Blocks(st) {
+		return workflow.RunRef{}, workflow.OverlapRefusal(id, s.last.Run, st)
+	}
+	now := c.clk.Now()
+	job := workflow.Job{Workflow: s.workflow, Payload: s.input, Labels: workflow.TriggeredLabelsAt(s.labels, s.id, s.name, now), Tenant: s.tenant}
+	key, err := s.keyAt(now)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	job.IdempotencyKey = key
+	if key != "" && s.onHeld == workflow.HeldRefuse {
+		if holder, held := c.idem[idemKey{workflow: s.workflow, key: key}]; held && c.keyHonouredLocked(s.workflow) {
+			return workflow.RunRef{}, fmt.Errorf("%w: schedule %s: key %q is held by run %s", workflow.ErrDuplicate, id, key, holder.ref().RunID)
+		}
+	}
+	ectx, outcome := workflow.WithEnqueueOutcome(ctx)
+	ref, err := c.enqueueLocked(ectx, job)
+	if err == nil && outcome.Duplicate {
+		// The key's holder answered: nothing new was enqueued, so the
+		// schedule's last fire stays as it was.
+		workflow.MarkDuplicate(ctx)
+		return ref, nil
+	}
+	if err == nil {
+		workflow.MarkInserted(ctx)
+	}
+	if err == nil {
+		c.trackFiredLocked(s, ref)
+	}
+	tk := s.tick(now, workflow.TickFired, "")
+	tk.Manual, tk.Run, tk.Err = true, ref, err
+	c.queueTickLocked(tk)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	s.last = workflow.ScheduleLast{Fire: now, Run: ref}
+	return ref, nil
+}

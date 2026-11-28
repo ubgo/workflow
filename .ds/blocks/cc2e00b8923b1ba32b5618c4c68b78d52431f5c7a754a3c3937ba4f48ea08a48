@@ -1,0 +1,66 @@
+func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := workflow.ValidateSchedule(s); err != nil {
+		return "", err
+	}
+	if err := workflow.CheckScheduleCaps(caps, s); err != nil {
+		return "", err
+	}
+	parsed, err := c.parseCronFor(s.Cron, s.Seconds)
+	if err != nil {
+		return "", fmt.Errorf("%w: schedule for %q: %w", workflow.ErrInvalid, s.Workflow, err)
+	}
+	parsed = bounded(parsed, s.Active)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.usableLocked(); err != nil {
+		return "", err
+	}
+	if _, ok := c.wfs[s.Workflow]; !ok {
+		return "", fmt.Errorf("%w: workflow %q is not registered", workflow.ErrNotFound, s.Workflow)
+	}
+	var id workflow.ScheduleID
+	paused := false
+	var last workflow.ScheduleLast
+	if s.Name != "" {
+		for oid, old := range c.scheds {
+			if !old.declared && old.workflow == s.Workflow && old.name == s.Name {
+				id, paused, last = oid, old.paused && !old.halted, old.last
+				old.halt()
+				c.pokeSchedulerLocked()
+				break
+			}
+		}
+	}
+	if id.IsZero() {
+		id = workflow.ScheduleID(c.nextID("schedule"))
+	}
+	name := s.Name
+	sc := &schedule{
+		id:       id,
+		name:     name,
+		expr:     s.Cron,
+		s:        parsed,
+		loc:      s.Location,
+		misfire:  s.Misfire,
+		windows:  s.Windows,
+		workflow: s.Workflow,
+		input:    s.Input,
+		labels:   maps.Clone(s.Labels),
+		paused:   paused,
+		overlap:  s.Overlap,
+		last:     last,
+		stop:     make(chan struct{}),
+		seconds:  s.Seconds,
+		active:   s.Active,
+		keep:     s.KeepRuns,
+		tenant:   s.Tenant,
+		key:      s.IdempotencyKey,
+		onHeld:   s.OnHeld,
+	}
+	c.scheds[id] = sc
+	c.startSchedule(sc)
+	return id, nil
+}

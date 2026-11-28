@@ -154,7 +154,7 @@ unknown run: true
 Specs are checked before anything runs, by functions every driver calls, so a spec means the same on every driver:
 
 - [`workflow.Validate(wf)`](ds:block?id=validate-mnthpzkp), called by every driver's `Register`: a name, at least one step, unique non-empty step names, exactly one of `Run`, `Wait` and `Sleep` per step, `After` naming existing steps with no cycle, and every policy within its range (retry counts and jitter, concurrency strategy, rate limits, misfire policy, `CronLocation` not `time.Local`).
-- [`workflow.ValidateSchedule(s)`](ds:block?id=validateschedule-knj437ed), called by every driver's `Schedule`: a workflow, an expression, an explicit `Location` (use `time.UTC` for UTC; `time.Local` is refused), well-formed windows, misfire and overlap policies, active period, `KeepRuns` and tenant, and no label under a [reserved prefix](labels.md#reserved-prefixes).
+- [`workflow.ValidateSchedule(s)`](ds:block?id=validateschedule-knj437ed), called by every driver's `Schedule`: a workflow, an expression, an explicit `Location` (use `time.UTC` for UTC; `time.Local` is refused), well-formed windows, misfire and overlap policies, active period, `KeepRuns`, tenant, an `IdempotencyKey` template with known placeholders and `OnHeld` only with a key, and no label under a [reserved prefix](labels.md#reserved-prefixes).
 
 Every error wraps `workflow.ErrInvalid` and names the step or field. Cron expressions themselves are parsed by the driver's cron parser at `Register` ([memory](ds:block?id=memory-client-register-ngcr2sck), [SQL](ds:block?id=sql-client-register-buvwt9ee), [Redis](ds:block?id=redis-client-register-zy9gzzxh)) so a typo fails at start-up, not at the first fire.
 
