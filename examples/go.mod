@@ -15,14 +15,14 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
 	github.com/ubgo/sqlb/contrib/migrate v0.1.1
-	github.com/ubgo/workflow v0.2.2
-	github.com/ubgo/workflow/admin v0.2.2
-	github.com/ubgo/workflow/cli v0.2.2
-	github.com/ubgo/workflow/hatchet v0.2.2
-	github.com/ubgo/workflow/otel v0.2.2
-	github.com/ubgo/workflow/recorder v0.2.2
-	github.com/ubgo/workflow/recorder/sqlrecorder v0.2.2
-	github.com/ubgo/workflow/sqlstore v0.2.2
+	github.com/ubgo/workflow v0.2.3
+	github.com/ubgo/workflow/admin v0.2.3
+	github.com/ubgo/workflow/cli v0.2.3
+	github.com/ubgo/workflow/hatchet v0.2.3
+	github.com/ubgo/workflow/otel v0.2.3
+	github.com/ubgo/workflow/recorder v0.2.3
+	github.com/ubgo/workflow/recorder/sqlrecorder v0.2.3
+	github.com/ubgo/workflow/sqlstore v0.2.3
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.46.0
 	go.opentelemetry.io/otel/sdk v1.46.0
@@ -95,9 +95,9 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/ubgo/workflow/redis v0.2.2
-	github.com/ubgo/workflow/sentry v0.2.2
-	github.com/ubgo/workflow/sqlstore/pgnotify v0.2.2
+	github.com/ubgo/workflow/redis v0.2.3
+	github.com/ubgo/workflow/sentry v0.2.3
+	github.com/ubgo/workflow/sqlstore/pgnotify v0.2.3
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

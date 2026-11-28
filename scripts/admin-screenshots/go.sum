@@ -16,10 +16,10 @@ github.com/ledongthuc/pdf v0.0.0-20220302134840-0c2507a12d80 h1:6Yzfa6GP0rIo/kUL
 github.com/ledongthuc/pdf v0.0.0-20220302134840-0c2507a12d80/go.mod h1:imJHygn/1yfhB7XSJJKlFZKl/J+dCPAknuiaGOshXAs=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde h1:x0TT0RDC7UhAVbbWWBzr41ElhJx5tXPWkIHA2HWPRuw=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
-github.com/ubgo/workflow v0.2.2 h1:m+yJ5RoD4bOGl/m3HmDWWcNxKqG2vJuHr/fr2R1ipx0=
-github.com/ubgo/workflow v0.2.2/go.mod h1:E7QXQG7/er73Vrx7dX767IhFEpokIxqV5u8rYQaH534=
-github.com/ubgo/workflow/admin v0.2.2 h1:ZItIgwhngy+7duINlTFtgF+Hrp3IqaFUqJiKJnQmXxQ=
-github.com/ubgo/workflow/admin v0.2.2/go.mod h1:kMhHekpbpU7V+G8DUVIrGzLJFWRz3YYUdVqcFA5T30M=
+github.com/ubgo/workflow v0.2.3 h1:fNK87ooqDxIYEr/WWJO/w37KUt+2be4fiQPWvJJBp0s=
+github.com/ubgo/workflow v0.2.3/go.mod h1:E7QXQG7/er73Vrx7dX767IhFEpokIxqV5u8rYQaH534=
+github.com/ubgo/workflow/admin v0.2.3 h1:zsU65yNWu03ak5PAwLobH6sc9mtrKO+rl4Efxsj6PB8=
+github.com/ubgo/workflow/admin v0.2.3/go.mod h1:t2nm1EWcZ1jE+uHYpQuI5YHsgpdjUZMqxdIqE4mUZEM=
 golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.34.0 h1:H5Y5sJ2L2JRdyv7ROF1he/lPdvFsd0mJHFw2ThKHxLA=
 golang.org/x/sys v0.34.0/go.mod h1:BJP2sWEmIv4KK5OTEluFJCKSidICx8ciO85XgH3Ak8k=
