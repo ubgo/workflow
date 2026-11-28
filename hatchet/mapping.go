@@ -330,6 +330,12 @@ func checkSupported(wf workflow.Workflow) error {
 		if c.Weight != nil {
 			return unsupported("Workflow.Concurrency.Weight", workflow.CapKeyWeights, "workflow "+wf.Name+": Hatchet's GROUP_ROUND_ROBIN serves keys in equal turns and takes no weight per key")
 		}
+		if c.Hold.WhileRunning() {
+			return unsupported("Workflow.Concurrency.Hold", workflow.CapHoldWhileRunning, "workflow "+wf.Name+": the engine holds a run's concurrency slot until the run ends, retry backoffs and durable waits included, and offers no way to give it back while the run waits")
+		}
+	}
+	if len(wf.ConcurrencyLimits) > 0 {
+		return unsupported("Workflow.ConcurrencyLimits", workflow.CapConcurrencyLimits, "workflow "+wf.Name+": the engine takes several concurrency expressions per workflow, but that it admits a run on all of them at once and never lets a later run overtake a waiting one on a shared key is not proven against a live engine, so the driver refuses them rather than honour only part of the contract")
 	}
 	for i, r := range wf.RateLimits {
 		if _, err := rateLimit(r, wf.Name, i); err != nil {

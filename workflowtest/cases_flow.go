@@ -378,6 +378,12 @@ var capsCases = []testCase{
 			{workflow.CapRateLimit, func(w *workflow.Workflow) {
 				w.RateLimits = []workflow.RateLimit{{Key: e.h.keyFromLabel("k"), Limit: 1, Per: time.Second}}
 			}},
+			{workflow.CapConcurrencyLimits, func(w *workflow.Workflow) {
+				w.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: e.h.keyFromLabel("k"), MaxRuns: 1}, {Key: e.h.keyFromLabel("j"), MaxRuns: 1}}
+			}},
+			{workflow.CapHoldWhileRunning, func(w *workflow.Workflow) {
+				w.Concurrency = &workflow.Concurrency{Key: e.h.keyFromLabel("k"), MaxRuns: 1, Hold: workflow.HoldWhileRunning}
+			}},
 			{workflow.CapIdempotencyKey, func(w *workflow.Workflow) { w.Idempotency = workflow.IdempotencyRequired }},
 			{workflow.CapWaitForEvent, func(w *workflow.Workflow) {
 				w.Steps = []workflow.Step{{Name: "wait", Wait: &workflow.WaitSpec{Event: "e"}}}

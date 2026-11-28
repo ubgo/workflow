@@ -12,7 +12,7 @@ go run ./driver-conformance
 ```text
 share 1: lifecycle run retry timeout onfailure
 share 2: cron misfire schedule overlap trigger
-share 3: every other group (60 of 70)
+share 3: every other group (62 of 72)
 ```
 
 ```sh
@@ -40,6 +40,6 @@ go test ./driver-conformance -run 'TestConformance|TestCoreHelperFlows' -v | gre
 ok  	github.com/ubgo/workflow/examples/driver-conformance	3.249s
 ```
 
-The `grep` keeps the top two levels; `-v` alone prints every case. Only the first share runs here, to keep the examples' test run short; a driver runs every share, each from a small test package of its own. The counts in the last line of the plan follow the suite: 70 groups in [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p) today, 10 of them named by the first two shares.
+The `grep` keeps the top two levels; `-v` alone prints every case. Only the first share runs here, to keep the examples' test run short; a driver runs every share, each from a small test package of its own. The counts in the last line of the plan follow the suite: 72 groups in [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p) today, 10 of them named by the first two shares.
 
 The guide that copies this program is [Write a driver](../../docs/extending/writing-a-driver.md#run-the-suite-in-shares). `go test ./driver-conformance` checks the plan and runs the tests.

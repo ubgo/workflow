@@ -464,7 +464,26 @@
 // and priority with the earliest turn and the two swap run_seq, so the
 // workflow keeps its place among other workflows; and the admission read
 // skips runs whose bucket is full, so one key's backlog never fills the
-// fetch window (WithFetchBatch).
+// fetch window (WithFetchBatch). Migration 012 adds run_limits
+// (CapConcurrencyLimits; climits.go): for each admitted run of a workflow
+// with Workflow.ConcurrencyLimits, its key value under each limit,
+// written by the admission transaction under the workflow's lock row. A
+// bucket's count is the rows whose run is active or failing, so a run
+// that ends gives back every key at once; a waiting run is admitted only
+// when all of its buckets have room, and no later run of the pass takes a
+// key an earlier waiting run needs. Migration 013 adds run_hold
+// (CapHoldWhileRunning; hold.go): each admitted run of a workflow with a
+// key set to HoldWhileRunning gets a row, and the run parks (parked 1)
+// once it has no step running and none claimable now, in the transaction
+// after the one that recorded its attempt, or on the dispatcher's next
+// pass. A parked run does not count in its HoldWhileRunning buckets and no
+// worker claims its steps; when one of its steps is claimable again the
+// admission pass unparks it at its original place (priority, then seq)
+// once those buckets have room. A claim of such a workflow's step writes
+// the run's row in its claim transaction and gives up when the run is
+// parked, and parking writes the row before it checks the run, so a park
+// and a claim of one run are serialised by the row's lock on every
+// engine.
 //
 // # Database policies
 //

@@ -1,0 +1,58 @@
+func (c *Client) pass(ctx context.Context, n int) int64 {
+	steps := []struct {
+		what       string
+		fn         func(context.Context) error
+		leaderOnly bool // with an elector, only the leader runs it
+	}{
+		{"fire cron ticks", c.fireSchedules, true},
+		{"start delayed runs", c.promote, false},
+		{"hand on chains", c.handoffChains, false},
+		{"park idle runs", c.parkIdle, false},
+		{"admit runs", c.admitAll, false},
+		{"end sleeps", c.wakeSleeps, false},
+		{"expire waits", c.expireWaits, false},
+		{"deliver signals", c.deliver, false},
+		{"readmit parked runs", c.admitHeld, false},
+		{"recover failing runs", c.recoverFailing, false},
+		{"fail runs past their RunTimeout", c.expireRuns, false},
+		{"notify run ends", c.notifyFinished, false},
+	}
+	leader := c.IsLeader()
+	for _, s := range steps {
+		if ctx.Err() != nil {
+			return 0
+		}
+		if s.leaderOnly && !c.firesSchedules(leader) {
+			continue
+		}
+		if err := s.fn(ctx); err != nil && ctx.Err() == nil {
+			c.log.Error("sqlstore: dispatcher could not "+s.what, "error", err)
+		}
+	}
+	if err := c.touchNode(ctx); err != nil && ctx.Err() == nil {
+		c.log.Error("sqlstore: dispatcher could not report this node", "error", err)
+	}
+	if n%c.housekeepEvery == 0 && leader {
+		if err := c.prune(ctx); err != nil && ctx.Err() == nil {
+			c.log.Error("sqlstore: dispatcher could not prune", "error", err)
+		}
+		if err := c.pruneNodes(ctx); err != nil && ctx.Err() == nil {
+			c.log.Error("sqlstore: dispatcher could not prune silent nodes", "error", err)
+		}
+		if err := c.trimHistories(ctx); err != nil && ctx.Err() == nil {
+			c.log.Error("sqlstore: dispatcher could not trim schedule histories", "error", err)
+		}
+	}
+	next, err := c.nextDue(ctx)
+	if err != nil && ctx.Err() == nil {
+		c.log.Error("sqlstore: dispatcher could not read the next due time", "error", err)
+	}
+	idle, err := c.checkIdle(ctx)
+	if err != nil && ctx.Err() == nil {
+		c.log.Error("sqlstore: dispatcher could not check for idleness", "error", err)
+	}
+	if idle > 0 && (next == 0 || idle < next) {
+		next = idle
+	}
+	return next
+}

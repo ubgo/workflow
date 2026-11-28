@@ -93,6 +93,8 @@ func allGroups() []suiteGroup {
 		{"wait", waitCases},
 		{"sleep", sleepCases},
 		{"concurrency", concurrencyCases},
+		{"concurrencylimits", concurrencyLimitCases},
+		{"concurrencyhold", concurrencyHoldCases},
 		{"ratelimit", rateLimitCases},
 		{"cron", cronCases},
 		{"misfire", misfireCases},

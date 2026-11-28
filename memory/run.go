@@ -22,6 +22,14 @@ type eventKey struct{ name, key string }
 // bucketKey is one concurrency bucket of one workflow.
 type bucketKey struct{ workflow, key string }
 
+// limitKey is one bucket of one Workflow.ConcurrencyLimits entry: the
+// workflow, the index of the limit and the key value.
+type limitKey struct {
+	workflow string
+	limit    int
+	key      string
+}
+
 // rateKey is one rate-limit bucket: the workflow, the index of the limit in
 // Workflow.RateLimits and the key value.
 type rateKey struct {
@@ -46,6 +54,14 @@ type run struct {
 	admitted  bool
 	idem      *idemKey
 	bucket    string   // concurrency key value
+	limitKeys []string // one key value per Workflow.ConcurrencyLimits entry
+	// released is set while the run has given back the slots of its
+	// HoldWhileRunning keys (workflow.ConcurrencyHold): it had nothing
+	// executing and nothing waiting for a worker. deferred holds the step
+	// attempts that became ready meanwhile; they reach the worker queue
+	// when admitLocked gives the run its slots back.
+	released  bool
+	deferred  []*task
 	fair      int64    // fair tag under ConcurrencyRoundRobin, set on admission (FC-05/FC-06)
 	rateKeys  []string // one per Workflow.RateLimits entry
 	seq       uint64
@@ -112,6 +128,13 @@ func (c *Client) newRunLocked(reg *registered, job workflow.Job) *run {
 	c.idleEpoch++
 	if conc := reg.wf.Concurrency; conc != nil && conc.Key.Func != nil {
 		r.bucket = conc.Key.Func(job)
+	}
+	for _, l := range reg.wf.ConcurrencyLimits {
+		k := ""
+		if l.Key.Func != nil {
+			k = l.Key.Func(job)
+		}
+		r.limitKeys = append(r.limitKeys, k)
 	}
 	for _, rl := range reg.wf.RateLimits {
 		k := ""
@@ -186,13 +209,10 @@ func (c *Client) finishLocked(r *run, st workflow.Status) {
 		delete(c.idem, *r.idem)
 	}
 	c.pending = slices.DeleteFunc(c.pending, func(p *run) bool { return p == r })
-	if r.admitted && r.reg.wf.Concurrency != nil {
-		bk := bucketKey{workflow: r.reg.wf.Name, key: r.bucket}
-		c.buckets[bk] = slices.DeleteFunc(c.buckets[bk], func(p *run) bool { return p == r })
-		if len(c.buckets[bk]) == 0 {
-			delete(c.buckets, bk)
-		}
+	if r.admitted {
+		c.giveBackLocked(r, false)
 	}
+	r.deferred = nil
 	cause := workflow.ErrCancelled
 	if st == workflow.StatusSucceeded {
 		cause = errRunDone
@@ -224,17 +244,51 @@ func (c *Client) admitLocked() {
 	now := c.clk.Now()
 	var wake time.Time
 	fairNow := map[string]int64{} // per round-robin workflow, read once per pass; see fairTagLocked
+	// held are the keys of a workflow with ConcurrencyLimits that an
+	// earlier run of this pass waits for: no later run may take a slot on
+	// them, so a run that needs several keys is never overtaken on one of
+	// them (workflow.ConcurrencyLimit).
+	var held *limitHolds
 	kept := c.pending[:0]
 	for _, r := range c.pending {
 		wf := r.reg.wf
 		bk := bucketKey{workflow: wf.Name, key: r.bucket}
-		if wf.Concurrency != nil && len(c.buckets[bk]) >= wf.Concurrency.MaxRuns {
+		// A run that gave its slots back while parked rejoins here, at
+		// its original place (priority, then enqueue order), needing only
+		// its HoldWhileRunning keys: it is not started again and its rate
+		// limits are not counted again (workflow.ConcurrencyHold).
+		rejoin := r.admitted && r.released
+		limited := len(wf.ConcurrencyLimits) > 0 || workflow.HoldsWhileRunning(wf)
+		if limited {
+			if held == nil {
+				held = newLimitHolds()
+			}
+			if held.any(r, bk) || !c.limitRoomLocked(r, bk) {
+				held.hold(r, bk)
+				kept = append(kept, r)
+				continue
+			}
+		} else if wf.Concurrency != nil && len(c.buckets[bk]) >= wf.Concurrency.MaxRuns {
 			kept = append(kept, r)
+			continue
+		}
+		if rejoin {
+			c.takeLocked(r, true)
+			r.released = false
+			for _, t := range r.deferred {
+				r.queued++
+				c.tasks = append(c.tasks, t)
+			}
+			r.deferred = nil
+			c.taskCond.Broadcast()
 			continue
 		}
 		if at, ok := c.rateCheckLocked(r, now); !ok {
 			if wake.IsZero() || at.Before(wake) {
 				wake = at
+			}
+			if limited {
+				held.hold(r, bk)
 			}
 			kept = append(kept, r)
 			continue
@@ -243,9 +297,7 @@ func (c *Client) admitLocked() {
 			rk := rateKey{workflow: wf.Name, limit: i, key: r.rateKeys[i]}
 			c.rates[rk] = append(c.rates[rk], now)
 		}
-		if wf.Concurrency != nil {
-			c.buckets[bk] = append(c.buckets[bk], r)
-		}
+		c.takeLocked(r, false)
 		c.fairTagLocked(r, bk, fairNow)
 		r.admitted = true
 		c.armRunTimeoutLocked(r)
@@ -264,6 +316,152 @@ func (c *Client) admitLocked() {
 	c.pending = kept
 	if !wake.IsZero() {
 		c.armRateLocked(wake)
+	}
+}
+
+// limitRoomLocked reports whether every concurrency bucket of r has room:
+// its Workflow.Concurrency bucket (when set) and its bucket of each
+// Workflow.ConcurrencyLimits entry. Admission takes them all at once.
+//
+//ds:def id=memory-client-limitroomlocked-xgp4r9tg owner=@khanakia stability=stable
+func (c *Client) limitRoomLocked(r *run, bk bucketKey) bool {
+	wf := r.reg.wf
+	if wf.Concurrency != nil && r.needs(-1) && len(c.buckets[bk]) >= wf.Concurrency.MaxRuns {
+		return false
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if r.needs(i) && c.limitRuns[limitKey{workflow: wf.Name, limit: i, key: r.limitKeys[i]}] >= l.MaxRuns {
+			return false
+		}
+	}
+	return true
+}
+
+// needs reports whether admission must find room for r on key limit (-1:
+// Workflow.Concurrency, else the index in Workflow.ConcurrencyLimits): a
+// new run needs every key, a run rejoining after it parked only the keys
+// it gave back, the HoldWhileRunning ones.
+func (r *run) needs(limit int) bool {
+	if !r.admitted || !r.released {
+		return true
+	}
+	return holdOf(r.reg.wf, limit).WhileRunning()
+}
+
+// holdOf is the hold policy of key limit of wf (-1: Concurrency).
+func holdOf(wf workflow.Workflow, limit int) workflow.ConcurrencyHold {
+	if limit < 0 {
+		if wf.Concurrency == nil {
+			return ""
+		}
+		return wf.Concurrency.Hold
+	}
+	return wf.ConcurrencyLimits[limit].Hold
+}
+
+// takeLocked gives r a slot on its keys: every key at its first
+// admission, only the HoldWhileRunning ones when it rejoins (rejoin).
+func (c *Client) takeLocked(r *run, rejoin bool) {
+	wf := r.reg.wf
+	if wf.Concurrency != nil && (!rejoin || holdOf(wf, -1).WhileRunning()) {
+		bk := bucketKey{workflow: wf.Name, key: r.bucket}
+		c.buckets[bk] = append(c.buckets[bk], r)
+	}
+	for i, k := range r.limitKeys {
+		if !rejoin || holdOf(wf, i).WhileRunning() {
+			c.limitRuns[limitKey{workflow: wf.Name, limit: i, key: k}]++
+		}
+	}
+}
+
+// giveBackLocked removes r from the keys it holds. When parking it gives
+// back only its HoldWhileRunning keys; otherwise the run ends and gives
+// back every key it still holds (all of them, or only the HoldWholeRun
+// ones when it ends parked). Call it before changing r.released.
+func (c *Client) giveBackLocked(r *run, parking bool) {
+	wf := r.reg.wf
+	drop := func(limit int) bool {
+		while := holdOf(wf, limit).WhileRunning()
+		holding := !r.released || !while
+		return holding && (!parking || while)
+	}
+	if wf.Concurrency != nil && drop(-1) {
+		bk := bucketKey{workflow: wf.Name, key: r.bucket}
+		c.buckets[bk] = slices.DeleteFunc(c.buckets[bk], func(p *run) bool { return p == r })
+		if len(c.buckets[bk]) == 0 {
+			delete(c.buckets, bk)
+		}
+	}
+	for i, k := range r.limitKeys {
+		if !drop(i) {
+			continue
+		}
+		lk := limitKey{workflow: wf.Name, limit: i, key: k}
+		if c.limitRuns[lk]--; c.limitRuns[lk] <= 0 {
+			delete(c.limitRuns, lk)
+		}
+	}
+}
+
+// parkLocked gives back r's HoldWhileRunning slots when it has nothing
+// executing, nothing waiting for a worker and no attempt result waiting to
+// be applied: every unfinished step is in a backoff, snoozed, asleep or
+// waiting for an event (workflow.ConcurrencyHold). The coordinator calls
+// it each time it is about to wait for the run's next event, so a run
+// whose attempt just returned is judged only after the result is applied
+// (a next step queued keeps the slot). It admits whatever the freed slots
+// let in.
+//
+//ds:def id=memory-client-parklocked-v5n2gx7e owner=@khanakia stability=stable
+func (c *Client) parkLocked(r *run) {
+	if r.released || !r.admitted || r.status.IsTerminal() || !workflow.HoldsWhileRunning(r.reg.wf) {
+		return
+	}
+	if r.executing > 0 || r.queued > 0 || r.resultsPending > 0 || len(r.deferred) > 0 {
+		return
+	}
+	c.giveBackLocked(r, true)
+	r.released = true
+	c.admitLocked()
+}
+
+// limitHolds is one admission pass's set of keys that an earlier waiting
+// run of a workflow with ConcurrencyLimits needs: its Concurrency bucket
+// and its bucket of every limit.
+type limitHolds struct {
+	buckets map[bucketKey]bool
+	limits  map[limitKey]bool
+}
+
+func newLimitHolds() *limitHolds {
+	return &limitHolds{buckets: map[bucketKey]bool{}, limits: map[limitKey]bool{}}
+}
+
+// any reports whether an earlier waiting run holds one of r's keys.
+// Only the keys r needs count (run.needs): a run rejoining after it parked
+// still holds its HoldWholeRun keys and asks for none of them.
+func (h *limitHolds) any(r *run, bk bucketKey) bool {
+	if r.reg.wf.Concurrency != nil && r.needs(-1) && h.buckets[bk] {
+		return true
+	}
+	for i, k := range r.limitKeys {
+		if r.needs(i) && h.limits[limitKey{workflow: r.reg.wf.Name, limit: i, key: k}] {
+			return true
+		}
+	}
+	return false
+}
+
+// hold reserves every key r needs, as it waits, against the runs behind
+// it.
+func (h *limitHolds) hold(r *run, bk bucketKey) {
+	if r.reg.wf.Concurrency != nil && r.needs(-1) {
+		h.buckets[bk] = true
+	}
+	for i, k := range r.limitKeys {
+		if r.needs(i) {
+			h.limits[limitKey{workflow: r.reg.wf.Name, limit: i, key: k}] = true
+		}
 	}
 }
 
@@ -422,6 +620,9 @@ func (c *Client) drive(r *run) {
 	}
 	for {
 		c.resultHandled(r, &owed) // the previous pass is over: its result, if any, is applied
+		c.mu.Lock()
+		c.parkLocked(r)
+		c.mu.Unlock()
 		var ev runEvent
 		select {
 		case <-r.ctx.Done():
@@ -848,8 +1049,19 @@ type task struct {
 
 func (c *Client) pushTaskLocked(r *run, s workflow.Step, in []byte, attempt int) {
 	c.seq++
+	t := &task{r: r, step: s, in: in, attempt: attempt, priority: r.job.Priority, seq: c.seq, readyAt: c.clk.Now()}
+	if r.released {
+		// The run gave its slots back while parked: the attempt waits
+		// until admission gives them back (workflow.ConcurrencyHold).
+		r.deferred = append(r.deferred, t)
+		if !slices.Contains(c.pending, r) {
+			c.pending = append(c.pending, r)
+		}
+		c.admitLocked()
+		return
+	}
 	r.queued++
-	c.tasks = append(c.tasks, &task{r: r, step: s, in: in, attempt: attempt, priority: r.job.Priority, seq: c.seq, readyAt: c.clk.Now()})
+	c.tasks = append(c.tasks, t)
 	c.taskCond.Broadcast() // a worker idle on a full queue cannot take it, so wake them all
 }
 

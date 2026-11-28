@@ -22,9 +22,10 @@ import (
 // the driver apps test against, so a test on a default Fake accepts what
 // the memory driver accepts. It includes the declarative fields the Fake
 // only validates (queues, per-job retry, Discard, DiscardOnExhaust,
-// Step.Slots, round-robin concurrency, schedule conditions) and the calls
-// it records (RunRetrier, RunDeleter, Pauser). TestFakeDefaultCapsFollowMemory
-// fails when memory claims a capability that is in neither list.
+// Step.Slots, round-robin concurrency, concurrency limits and hold
+// policies, schedule conditions) and the calls it records (RunRetrier, RunDeleter, Pauser).
+// TestFakeDefaultCapsFollowMemory fails when memory claims a capability
+// that is in neither list.
 //
 //ds:def id=workflowtest-fakedefaultcaps-cgj8yc2b owner=@khanakia stability=stable
 var fakeDefaultCaps = workflow.CapsOf(
@@ -43,6 +44,7 @@ var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
 	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun, workflow.CapKeyWeights,
 	workflow.CapDiscardExhausted, workflow.CapSlotCost, workflow.CapRoundRobin,
+	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning,
 )
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
@@ -353,6 +355,11 @@ func refuseKeyExpr(wf workflow.Workflow) error {
 	reason := "the Fake was built without FakeKeyExpr; workflow " + wf.Name
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
 		return workflow.Unsupported("Workflow.Concurrency.Key.Expr", reason)
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.Key.Expr != "" {
+			return workflow.Unsupported("Workflow.ConcurrencyLimits["+strconv.Itoa(i)+"].Key.Expr", reason)
+		}
 	}
 	for i, r := range wf.RateLimits {
 		if r.Key.Expr != "" {

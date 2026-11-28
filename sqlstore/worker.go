@@ -98,8 +98,12 @@ func (c *Client) claimFilter(queues []any) string {
 		q = " AND " + queueOf + " IN (" + inList(len(queues)) + ")"
 	}
 	vw, _ := c.versionWhere("st.run_id", "st.workflow")
+	hold := ""
+	if c.holdAny {
+		hold = " AND " + notParked // a parked run's steps wait for admission (hold.go)
+	}
 	return "st.workflow IN (" + inList(len(c.names)) + ") AND ((st.status IN (?, ?) AND st.due <= ?) OR (st.status = ? AND st.lease_until < ?))" +
-		q + c.limitSQL() + " AND " + notPaused + " AND " + vw
+		q + c.limitSQL() + " AND " + notPaused + hold + " AND " + vw
 }
 
 func (c *Client) claimArgs(queues []any) []any {
@@ -246,6 +250,11 @@ func (c *Client) claimFrom(ctx context.Context, queues []any) (*attempt, error) 
 			return fmt.Errorf("sqlstore: read claimed step: %w", err)
 		}
 		cand.tenant, cand.version = tenant.String, int(version.Int64)
+		if c.holdAny {
+			if err := c.holdClaim(ctx, tx, cand); err != nil {
+				return err // errClaimParked rolls the claim back
+			}
+		}
 		if nodes.Valid {
 			if err := c.addRunNode(ctx, tx, cand.runID, nodes.String); err != nil {
 				return err
@@ -254,6 +263,9 @@ func (c *Client) claimFrom(ctx context.Context, queues []any) (*attempt, error) 
 		a = cand
 		return nil
 	})
+	if errors.Is(err, errClaimParked) {
+		return nil, nil
+	}
 	if err != nil || a == nil {
 		return nil, err
 	}
@@ -711,6 +723,7 @@ func (c *Client) record(a *attempt, reg *registered, step workflow.Step, out []b
 		return
 	}
 	c.afterTx(ctx, o)
+	c.parkAfter(ctx, reg, a.runID) // nothing of the run may be left running or claimable (hold.go)
 }
 
 // addLocal and removeLocal track the attempts running here, so a Cancel or

@@ -675,7 +675,7 @@ without a reporter: workflow: ReportProgress unsupported by this driver: the dri
 go test ./custom-driver -run TestConformance -v
 ```
 
-43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 198 are skipped, each naming why, across the 70 groups of [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p) ([`p5Groups`](ds:block?id=workflowtest-p5groups-svs5kb3f), [`p3Groups`](ds:block?id=workflowtest-p3groups-hzv36c8h), [`attemptErrorGroups`](ds:block?id=workflowtest-attempterrorgroups-pckw5r63)):
+43 cases pass (lifecycle, runs and DAG inputs, retries and `StepInfo`, timeouts, `OnFailure`, job retry policies, chains, closures, tenants, versions and the refusal cases) and 220 are skipped, each naming why, across the 72 groups of [`allGroups`](ds:block?id=workflowtest-allgroups-uk4d9m6p) ([`p5Groups`](ds:block?id=workflowtest-p5groups-svs5kb3f), [`p3Groups`](ds:block?id=workflowtest-p3groups-hzv36c8h), [`attemptErrorGroups`](ds:block?id=workflowtest-attempterrorgroups-pckw5r63)):
 
 ```text
     cases_basic.go:164: driver lacks IdempotencyKey
@@ -705,10 +705,10 @@ go run ./driver-conformance
 ```text
 share 1: lifecycle run retry timeout onfailure
 share 2: cron misfire schedule overlap trigger
-share 3: every other group (60 of 70)
+share 3: every other group (62 of 72)
 ```
 
-The last share's count follows the suite: 70 groups in [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p) today, 10 of them named by the first two shares.
+The last share's count follows the suite: 72 groups in [`workflowtest.GroupNames()`](ds:block?id=workflowtest-allgroups-uk4d9m6p) today, 10 of them named by the first two shares.
 
 ```sh
 go test ./driver-conformance -run 'TestConformance|TestCoreHelperFlows' -v | grep -E '^(--- |    --- |ok)'
@@ -742,6 +742,8 @@ ok  	github.com/ubgo/workflow/examples/driver-conformance	3.249s
 - Refuse in `Register` or `Start`, not on the first run: a refusal at start-up fails the deploy, a refusal at run time fails a customer's job.
 - [`Enqueue`](ds:block?id=client-enqueue-mafr75se) with an idempotency key held by an unfinished run returns that run's `RunRef` and a nil error, not `ErrDuplicate`. The suite accepts either, but apps expect the first.
 - A skipped subtest is not a passed one. Read the skip lines: each is a capability you have not declared, and therefore a field your driver refuses.
+- `CapConcurrencyLimits` is not "check each key": a run must take all of its buckets in one atomic step, and an admission pass must keep later runs off every key an earlier waiting run needs ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw)). Checking keys one by one, or admitting runs that skip past a waiting one on a shared key, passes simple tests and starves a run that needs two keys; the `concurrencylimits` conformance group checks both. A driver that cannot do it leaves the capability out, and `CheckCaps` refuses the workflow.
+- `CapHoldWhileRunning` is not "decrement the count during a backoff": a step of a parked run that becomes ready must not execute until its run has taken every `HoldWhileRunning` slot back, atomically and at its original place in admission order, and a run that ends while parked must not give those slots back a second time ([`ConcurrencyHold`](ds:block?id=concurrencyhold-k3v8qw2m)). A durable driver must also make the park and a concurrent claim of the run's step exclusive, so two workers claiming at once, or a worker dying while the run parks or rejoins, can never put more than `MaxRuns` runs of a key in execution (the SQL driver serialises both on one row, [`park`](ds:block?id=sql-client-park-x2n6dq8v)). The `concurrencyhold` conformance group ([`concurrencyHoldCases`](ds:block?id=workflowtest-concurrencyholdcases-t8w3vq5n)) checks each of these, with a crash while parked and a lease reclaim right after the rejoin.
 - Never read `time.Now` in driver logic; the suite on a fake clock will hang or fail the timing cases.
 - Apply a step's chain edits only after the attempt succeeds. A retried attempt makes a new `ChainEdits` ([`NewChainEdits`](ds:block?id=newchainedits-5sfrvcrs)); applying the edits of a failed attempt would add its jobs once per try.
 - A share filter that names a group the suite does not have runs nothing for that name and still passes. Check the table against [`workflowtest.GroupNames()`](ds:block?id=workflowtest-groupnames-7jhfskgz), and let the last share take every group the others do not name.

@@ -506,7 +506,7 @@ func (c *Client) deleteChunk(ctx context.Context, rule pruneRule, runs []Finishe
 
 // deleteOrphans deletes, in tx, the rows that hang off the runs ids once
 // those runs are gone: step attempt counts, steps, consumed-signal markers,
-// run_ext rows, label index rows, attempt error history and captured output. A run among ids that still exists (a guard kept it) is
+// run_ext rows, label index rows, attempt error history, concurrency limit keys, hold state and captured output. A run among ids that still exists (a guard kept it) is
 // left whole.
 //
 //ds:def id=sql-client-deleteorphans-w6zn7vsw owner=@khanakia stability=stable
@@ -526,6 +526,8 @@ func (c *Client) deleteOrphans(ctx context.Context, tx *sql.Tx, ids []any) error
 		"DELETE FROM {run_info} WHERE run_id IN " + in + gone,
 		"DELETE FROM {run_version} WHERE run_id IN " + in + gone,
 		"DELETE FROM {run_fair} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_limits} WHERE run_id IN " + in + gone,
+		"DELETE FROM {run_hold} WHERE run_id IN " + in + gone,
 		"DELETE FROM {outputs} WHERE run_id IN " + in + gone,
 		"DELETE FROM {run_forced} WHERE run_id IN " + in + gone,
 		// A chain waiting for a handoff (next_wf set) outlives its run: the

@@ -293,6 +293,21 @@ var (
 	// proportion to its weight (FC-06).
 	//ds:def id=capkeyweights-vqknb9qc owner=@khanakia stability=stable
 	CapKeyWeights = defineCap(66, "KeyWeights")
+	// CapConcurrencyLimits: Workflow.ConcurrencyLimits are enforced: a run
+	// is admitted only when every one of its concurrency keys has room,
+	// taking them all at once, and a waiting run is never overtaken on any
+	// of its keys by a run behind it (see ConcurrencyLimit). A driver that
+	// enforces one key only refuses such a workflow instead of honouring
+	// part of it.
+	//ds:def id=capconcurrencylimits-585ybb9u owner=@khanakia stability=stable
+	CapConcurrencyLimits = defineCap(67, "ConcurrencyLimits")
+	// CapHoldWhileRunning: Concurrency.Hold and ConcurrencyLimit.Hold set
+	// to HoldWhileRunning are honoured: a run with nothing executing and
+	// nothing waiting for a worker gives back those slots and takes them
+	// all again, at its original place in admission order, before its
+	// next step runs, never exceeding MaxRuns (see ConcurrencyHold).
+	//ds:def id=capholdwhilerunning-h6t3nb8d owner=@khanakia stability=stable
+	CapHoldWhileRunning = defineCap(68, "HoldWhileRunning")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -327,6 +342,12 @@ func Requires(wf Workflow) Caps {
 		if wf.Concurrency.Weight != nil {
 			c = c.With(CapKeyWeights)
 		}
+	}
+	if len(wf.ConcurrencyLimits) > 0 {
+		c = c.With(CapConcurrencyLimits)
+	}
+	if HoldsWhileRunning(wf) {
+		c = c.With(CapHoldWhileRunning)
 	}
 	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
 		c = c.With(CapRunTimeout)

@@ -1,0 +1,8 @@
+var p5Caps = workflow.CapsOf(
+	workflow.CapTenant, workflow.CapResult, workflow.CapDueQuery, workflow.CapNodeIdentity, workflow.CapSnooze, workflow.CapHeartbeat, workflow.CapRunTimeout, workflow.CapKeyFIFO,
+	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep, workflow.CapTickTime,
+	workflow.CapWorkflowVersion,                    // run_version (migration 010)
+	workflow.CapRoundRobin, workflow.CapKeyWeights, // fair_keys and run_fair (migration 011)
+	workflow.CapConcurrencyLimits, // run_limits (migration 012)
+	workflow.CapHoldWhileRunning,  // run_hold (migration 013)
+)

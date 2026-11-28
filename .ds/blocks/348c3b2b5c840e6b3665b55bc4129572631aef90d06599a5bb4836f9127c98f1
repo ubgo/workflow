@@ -1,0 +1,37 @@
+type Concurrency struct {
+	// Key derives the bucket. A zero Key puts every run in one bucket.
+	Key ConcurrencyKey
+
+	// MaxRuns is the cap per bucket; it must be at least 1.
+	MaxRuns int
+
+	// Strategy applies when a bucket is full. Empty means
+	// ConcurrencyQueueNewest.
+	Strategy ConcurrencyStrategy
+
+	// FIFO promises that the runs queued on one key start in the order
+	// they were enqueued (higher Job.Priority still goes first). With
+	// MaxRuns 1 that is a per-key sequence: one at a time, in insert
+	// order. Only with ConcurrencyQueueNewest (the default). Needs
+	// CapKeyFIFO.
+	FIFO bool
+
+	// Weight gives each key its share of the workers under
+	// ConcurrencyRoundRobin (FC-06): while keys have work waiting, a key
+	// of weight 3 gets three turns for every turn of a key of weight 1.
+	// nil gives every key weight 1; a result below 1 counts as 1 and one
+	// above MaxKeyWeight as MaxKeyWeight. The driver calls it in Go when
+	// it admits a run of the key, so it may read a plan table or a
+	// config, but should be fast. KeyWeights builds one from a map. Only
+	// with ConcurrencyRoundRobin; needs CapKeyWeights.
+	Weight func(key string) int
+
+	// Hold says how long a run keeps its slot in this bucket. Empty means
+	// HoldWholeRun: from admission until the run ends, retry backoffs,
+	// snoozes, sleeps and waits included. HoldWhileRunning gives the slot
+	// back while the run has nothing executing and nothing waiting for a
+	// worker, and takes it again before its next step runs (see
+	// ConcurrencyHold). HoldWhileRunning needs CapHoldWhileRunning and
+	// only goes with ConcurrencyQueueNewest and without FIFO.
+	Hold ConcurrencyHold
+}

@@ -53,7 +53,7 @@ func (c *Client) enqueueReg(name string) (*registered, error) {
 // client holds no admission lock rows (Start never ran prepare), so a
 // workflow with a policy is admitted by its workers.
 func (c *Client) admitEnqueued(ctx context.Context, reg *registered) error {
-	if reg.stub || (c.enqueueOnly && (reg.wf.Concurrency != nil || len(reg.wf.RateLimits) > 0)) {
+	if reg.stub || (c.enqueueOnly && hasAdmissionPolicy(reg.wf)) {
 		return nil
 	}
 	return c.admit(ctx, reg)

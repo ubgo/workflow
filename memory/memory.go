@@ -41,6 +41,7 @@ var caps = workflow.CapsOf(
 	workflow.CapSlotCost,
 	workflow.CapWaitOwnRun,
 	workflow.CapRoundRobin, workflow.CapKeyWeights,
+	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
@@ -232,6 +233,9 @@ type Client struct {
 	tasks   []*task               // step attempts waiting for a worker; see pickLocked
 	pending []*run                // ready runs not yet admitted (concurrency or rate limit)
 	buckets map[bucketKey][]*run
+	// limitRuns counts the admitted runs holding each bucket of each
+	// Workflow.ConcurrencyLimits entry; see admitLocked and finishLocked.
+	limitRuns map[limitKey]int
 	// fairPass is where each ConcurrencyRoundRobin bucket's last admitted
 	// run ends in virtual time, and fairMax the largest of them per
 	// workflow (workflow.FairTurn); see fairTagLocked.
@@ -313,6 +317,7 @@ func New(opts ...Option) *Client {
 		waiters:   map[eventKey][]*waiter{},
 		signals:   map[eventKey][]signal{},
 		buckets:   map[bucketKey][]*run{},
+		limitRuns: map[limitKey]int{},
 		rates:     map[rateKey][]time.Time{},
 		scheds:    map[workflow.ScheduleID]*schedule{},
 
@@ -409,6 +414,11 @@ func exprKeys(wf workflow.Workflow) error {
 	reason := "the memory driver evaluates only KeyFunc keys; workflow " + wf.Name
 	if wf.Concurrency != nil && wf.Concurrency.Key.Expr != "" {
 		return workflow.Unsupported("Workflow.Concurrency.Key.Expr", reason)
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.Key.Expr != "" {
+			return workflow.Unsupported(fmt.Sprintf("Workflow.ConcurrencyLimits[%d].Key.Expr", i), reason)
+		}
 	}
 	for i, r := range wf.RateLimits {
 		if r.Key.Expr != "" {

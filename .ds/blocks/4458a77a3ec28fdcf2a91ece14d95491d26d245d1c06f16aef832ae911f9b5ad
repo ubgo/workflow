@@ -1,0 +1,90 @@
+func (c *Client) Start(ctx context.Context) error {
+	if c.enqueueOnly {
+		return c.syncClock(ctx) // nothing runs here (WithEnqueueOnly)
+	}
+	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return workflow.ErrAlreadyStarted
+	}
+	if err := workflow.ValidateRecycle(c.recycle); err != nil {
+		c.mu.Unlock()
+		return err
+	}
+	for _, reg := range c.wfs {
+		if err := workflow.CheckCaps(caps, reg.wf); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+		if err := exprKeys(reg.wf); err != nil {
+			c.mu.Unlock()
+			return err
+		}
+	}
+	c.started = true
+	for name, reg := range c.wfs {
+		c.names = append(c.names, name)
+		c.fairAny = c.fairAny || roundRobin(reg.wf)
+		c.holdAny = c.holdAny || holdWhileRunning(reg.wf)
+	}
+	c.verFilter = c.buildVersionFilter()
+	c.mu.Unlock()
+
+	if err := c.syncClock(ctx); err != nil {
+		return err
+	}
+	if err := c.checkSchema(ctx); err != nil {
+		return err
+	}
+	if err := c.checkVersion(ctx); err != nil {
+		return err
+	}
+	if err := c.prepare(ctx); err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	context.AfterFunc(c.ctx, c.shutdown)
+	c.startedAt = c.leaseNanos()
+	workers := c.workers
+	if c.schedulerOnly {
+		workers = 0
+	}
+	c.slots = workflow.NewSlotPool(c.workers)
+	c.wg.Add(1 + workers)
+	go c.dispatcher()
+	if c.retention != nil && !c.noAutoPrune {
+		c.wg.Add(1)
+		go c.pruneLoop()
+	}
+	for range workers {
+		go c.worker()
+	}
+	if c.dbClock != nil {
+		c.wg.Add(1)
+		go c.clockLoop()
+	}
+	if c.leaderRun != nil {
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			c.leaderRun.Run(c.ctx)
+		}()
+	}
+	c.startRecycleLocked()
+	c.startNotifierLocked()
+	go func() {
+		<-c.ctx.Done()
+		c.wg.Wait()
+		// Marked stopped before Done closes, on every path (Drain, the Start
+		// ctx, Stop, stop-when-idle, a recycle): the AfterFunc that also
+		// runs shutdown may not have run yet, and a caller woken by Done
+		// must already get ErrNotStarted from Enqueue.
+		c.shutdown()
+		c.forgetNode()
+		close(c.done)
+	}()
+	return nil
+}

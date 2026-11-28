@@ -20,6 +20,16 @@ rate limit:
   a minute later, started mail-3
 priority:
   password-reset, normal, backfill
+several keys:
+  started acme-1 and widgets-1; acme-2 queued, widgets-2 queued
+  acme-1 finished, started: acme-2
+  widgets-1 finished, started: widgets-2
+  hatchet: true | missing: ConcurrencyLimits
+release while waiting:
+  whole_run: acme-1 retrying in an hour; acme-2 queued
+    an hour later: acme-1 succeeded, then acme-2 succeeded
+  while_running: acme-1 retrying in an hour; acme-2 succeeded at once
+    an hour later: acme-1 succeeded
 refusals:
   memory, KeyExpr: workflow: Workflow.Concurrency.Key.Expr unsupported by this driver: the memory driver evaluates only KeyFunc keys; workflow report
   hatchet, KeyFunc: workflow: Workflow.Concurrency.Key.Func unsupported by this driver: workflow report: Hatchet evaluates concurrency keys on the engine; use workflow.KeyExpr with a CEL expression | unsupported: true

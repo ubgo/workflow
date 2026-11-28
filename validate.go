@@ -193,6 +193,12 @@ func validatePolicies(wf Workflow) error {
 			return invalidf("workflow %q: Concurrency.Weight needs ConcurrencyRoundRobin, not %q", wf.Name, c.Strategy)
 		}
 	}
+	if err := validateConcurrencyLimits(wf); err != nil {
+		return err
+	}
+	if err := validateHold(wf); err != nil {
+		return err
+	}
 	for i, r := range wf.RateLimits {
 		if r.Limit < 1 || r.Per <= 0 {
 			return invalidf("workflow %q: RateLimits[%d] needs Limit >= 1 and a positive Per", wf.Name, i)
@@ -360,4 +366,60 @@ func ValidateJob(job Job) error {
 		}
 	}
 	return validateChain(job)
+}
+
+// validateConcurrencyLimits checks Workflow.ConcurrencyLimits. Each limit
+// needs MaxRuns of at least 1 and one key form. Several keys are admitted
+// all or nothing and a full one makes the run wait, so Concurrency beside
+// them may only queue: dropping, cancelling or rotating runs on one key
+// while another holds them back has no single meaning.
+//
+//ds:def id=validateconcurrencylimits-dyxqw4nf owner=@khanakia stability=stable
+func validateConcurrencyLimits(wf Workflow) error {
+	if len(wf.ConcurrencyLimits) == 0 {
+		return nil
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.MaxRuns < 1 {
+			return invalidf("workflow %q: ConcurrencyLimits[%d].MaxRuns must be at least 1", wf.Name, i)
+		}
+		if l.Key.Func != nil && l.Key.Expr != "" {
+			return invalidf("workflow %q: ConcurrencyLimits[%d].Key sets both Func and Expr", wf.Name, i)
+		}
+	}
+	if c := wf.Concurrency; c != nil && c.Strategy != "" && c.Strategy != ConcurrencyQueueNewest {
+		return invalidf("workflow %q: ConcurrencyLimits need Concurrency.Strategy ConcurrencyQueueNewest, not %q", wf.Name, c.Strategy)
+	}
+	return nil
+}
+
+// validateHold checks Concurrency.Hold and every ConcurrencyLimit.Hold.
+// HoldWhileRunning on Concurrency is refused beside a strategy other than
+// ConcurrencyQueueNewest, whose decisions (drop or cancel the newest,
+// cancel the oldest holder, hand out round-robin turns) are taken when a
+// run is admitted and have no meaning for a run that takes its slot back
+// later, and beside FIFO, which promises one key's runs as a sequence: a
+// later run would start while an earlier one is parked.
+//
+//ds:def id=validatehold-q4m7ze2s owner=@khanakia stability=stable
+func validateHold(wf Workflow) error {
+	if c := wf.Concurrency; c != nil {
+		if !c.Hold.Valid() {
+			return invalidf("workflow %q: unknown Concurrency.Hold %q", wf.Name, c.Hold)
+		}
+		if c.Hold.WhileRunning() {
+			if c.Strategy != "" && c.Strategy != ConcurrencyQueueNewest {
+				return invalidf("workflow %q: Concurrency.Hold %q needs Concurrency.Strategy ConcurrencyQueueNewest, not %q", wf.Name, c.Hold, c.Strategy)
+			}
+			if c.FIFO {
+				return invalidf("workflow %q: Concurrency.Hold %q cannot go with Concurrency.FIFO: a later run of the key would start while an earlier one is parked", wf.Name, c.Hold)
+			}
+		}
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if !l.Hold.Valid() {
+			return invalidf("workflow %q: unknown ConcurrencyLimits[%d].Hold %q", wf.Name, i, l.Hold)
+		}
+	}
+	return nil
 }
