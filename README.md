@@ -12,7 +12,7 @@
 
 `ubgo/workflow` is an open-source Go job queue, cron scheduler and durable workflow library in one. The same handlers run on an in-memory driver in tests, on SQLite, Postgres or MySQL 8 through `database/sql` and [`ubgo/sqlb`](https://github.com/ubgo/sqlb), on Redis, or on the [Hatchet](https://github.com/hatchet-dev/hatchet) engine, and changing the backend is a constructor change rather than a rewrite. It covers cron with time zones, delayed and one-off jobs, retries with backoff, idempotency keys, concurrency keys and rate limits, durable sleeps and wait-for-event steps, batches with callbacks, unique and debounced jobs, transactional enqueue and a transactional outbox, failover between two backends, cron overlap control and trigger-now, failure alerts and Sentry reporting, an admin API and web UI, and OpenTelemetry tracing and metrics.
 
-Status: early (`v0.x`). The API is not stable yet. Every module is tagged on its own: `v0.2.2` for the core, `sqlstore/v0.2.2` for the `sqlstore` module, and the same for the others.
+Status: early (`v0.x`). The API is not stable yet. Every module is tagged on its own: `v0.2.3` for the core, `sqlstore/v0.2.3` for the `sqlstore` module, and the same for the others.
 
 **Start here.** New to it: follow the [learning path](docs/README.md#learning-path), thirteen steps from a first job to a production setup, each with a guide and a runnable example. Deciding what to use: the [choosing guides](docs/choosing/README.md) answer which driver, which method and which setup for your kind of app. Looking for one feature: the [feature index](docs/reference/features.md) lists every one with its guide section and example.
 
