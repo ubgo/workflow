@@ -174,6 +174,14 @@ func validatePolicies(wf Workflow) error {
 	default:
 		return invalidf("workflow %q: unknown Idempotency %q", wf.Name, wf.Idempotency)
 	}
+	if wf.Coalesce != nil {
+		if !wf.Coalesce.Payload.Valid() {
+			return invalidf("workflow %q: unknown Coalesce.Payload %q", wf.Name, wf.Coalesce.Payload)
+		}
+		if wf.Idempotency == IdempotencyOff {
+			return invalidf("workflow %q: Coalesce works on idempotency keys, which IdempotencyOff ignores", wf.Name)
+		}
+	}
 	if c := wf.Concurrency; c != nil {
 		if c.MaxRuns < 1 {
 			return invalidf("workflow %q: Concurrency.MaxRuns must be at least 1", wf.Name)
@@ -328,6 +336,9 @@ func ValidateSchedule(s Schedule) error {
 		}
 	}
 	if err := ValidateLabels(s.Labels); err != nil {
+		return fmt.Errorf("schedule for %q: %w", s.Workflow, err)
+	}
+	if err := validateScheduleKey(s); err != nil {
 		return fmt.Errorf("schedule for %q: %w", s.Workflow, err)
 	}
 	return nil

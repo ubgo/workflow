@@ -1,0 +1,1 @@
+var ErrLeaseLost = fmt.Errorf("sqlstore: step lease lost: %w", workflow.ErrAttemptLost)

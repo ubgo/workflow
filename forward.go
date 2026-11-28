@@ -10,8 +10,8 @@ import (
 // RunRetrier, RunDeleter, BulkCanceller, Pauser, SchedulePauser,
 // ScheduleLister, ScheduleTriggerer, TickNotifier, Drainer, StopCauser,
 // WorkerScaler, ClosureEnqueuer, RunForcer, RunRescheduler, StepCanceller,
-// ResultReader, NodeLister, HealthChecker, LifecycleNotifier and
-// PayloadLimiter) by forwarding to Inner, and refuses with an UnsupportedError
+// ResultReader, NodeLister, HealthChecker, LifecycleNotifier,
+// PayloadLimiter and TxCompleter) by forwarding to Inner, and refuses with an UnsupportedError
 // naming the capability when Inner does not implement one. A client
 // wrapper embeds it beside the Client it wraps, so stacking a wrapper
 // never hides what the inner client can do:
@@ -56,6 +56,7 @@ var (
 	_ HealthChecker     = Forward{}
 	_ LifecycleNotifier = Forward{}
 	_ PayloadLimiter    = Forward{}
+	_ TxCompleter       = Forward{}
 )
 
 // lacks is the refusal for an inner client without an interface.
@@ -307,4 +308,13 @@ func (f Forward) PayloadLimit() int {
 		return i.PayloadLimit()
 	}
 	return 0
+}
+
+// CompleteInTx forwards to Inner's TxCompleter, so a step completes in a
+// transaction through any wrapper.
+func (f Forward) CompleteInTx(ctx context.Context, output []byte, fn func(ctx context.Context) error) error {
+	if i, ok := f.Inner.(TxCompleter); ok {
+		return i.CompleteInTx(ctx, output, fn)
+	}
+	return lacks("CompleteInTx", Caps{})
 }

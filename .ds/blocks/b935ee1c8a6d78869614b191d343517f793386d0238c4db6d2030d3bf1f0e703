@@ -1,0 +1,88 @@
+func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
+	h := t.r.reg.handlers[t.step.Name]
+	var edits *workflow.ChainEdits
+	ctx := t.r.ctx
+	if !t.r.reg.closure {
+		c.mu.Lock()
+		edits = workflow.NewChainEdits(caps, t.r.chain)
+		c.mu.Unlock()
+		ctx = workflow.WithChainEditor(ctx, edits)
+	}
+	rctx := workflow.WithStepInfo(ctx, workflow.StepInfo{
+		Workflow: t.r.reg.wf.Name,
+		Step:     t.step.Name,
+		RunID:    t.r.id,
+		Attempt:  t.attempt,
+		Labels:   t.r.job.Labels,
+		Queue:    t.r.queue,
+		ReadyAt:  t.readyAt,
+		Tenant:   t.r.job.Tenant,
+		Node:     c.nodeID(),
+		// One process holds one definition of each workflow, so every
+		// run's version is the registered one (LO-11).
+		Version: t.r.reg.wf.Version,
+	})
+	actx, cancel := context.WithCancelCause(rctx)
+	defer cancel(nil)
+	c.mu.Lock()
+	if t.r.running == nil {
+		t.r.running = map[string]context.CancelCauseFunc{}
+	}
+	t.r.running[t.step.Name] = cancel
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(t.r.running, t.step.Name)
+		c.mu.Unlock()
+	}()
+	actx = workflow.WithProgressReporter(actx, workflow.ProgressFunc(func(_ context.Context, p workflow.Progress) error {
+		return c.reportProgress(t, p)
+	}))
+	actx, attempt := c.withAttemptState(actx, t) // checkpoints and CompleteInTx
+	// The attempt's own deadlines cancel it with the timeout errors it
+	// fails with, so context.Cause in the handler matches
+	// workflow.ErrStepTimeout or ErrHeartbeatTimeout; the driver tells them
+	// from any other cause (a failing run's *RunError around another
+	// step's timeout) by identity.
+	d := t.step.Timeout
+	if d == 0 {
+		d = t.r.reg.wf.Timeout
+	}
+	errStep := workflow.TimeoutError(workflow.ErrStepTimeout,
+		fmt.Sprintf("memory: step %q attempt %d after %s", t.step.Name, t.attempt, d))
+	errHeartbeat := workflow.TimeoutError(workflow.ErrHeartbeatTimeout,
+		fmt.Sprintf("memory: step %q attempt %d went %s without a heartbeat", t.step.Name, t.attempt, t.step.HeartbeatTimeout))
+	beat := c.watchHeartbeat(actx, cancel, t.step.HeartbeatTimeout, errHeartbeat)
+	actx = workflow.WithHeartbeater(actx, beat)
+	if d > 0 {
+		tm := c.clk.NewTimer(d)
+		c.wg.Add(1)
+		go func() {
+			defer c.wg.Done()
+			select {
+			case <-tm.C():
+				cancel(errStep)
+			case <-actx.Done():
+				tm.Stop()
+			}
+		}()
+	}
+	hctx, claimed := workflow.WithTimeoutClaim(actx)
+	out, err := safeCall(h, hctx, t.in)
+	if settled, ok := attempt.finish(); ok {
+		// CompleteInTx recorded the step's success: what the handler
+		// returned afterwards is ignored, as on sqlstore.
+		return settled, edits, nil
+	}
+	switch cause := context.Cause(actx); {
+	case (cause == errStep || cause == errHeartbeat) && claimed():
+		// Step middleware (a tolerated step) turned the timeout into its
+		// result (workflow.ClaimTimeout).
+		return out, edits, err
+	case cause == errStep:
+		return nil, edits, fmt.Errorf("%w: %w", errStep, context.DeadlineExceeded)
+	case cause == errHeartbeat:
+		return nil, edits, errHeartbeat
+	}
+	return out, edits, err
+}

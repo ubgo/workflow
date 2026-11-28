@@ -66,7 +66,7 @@ _, err = c.Status(ctx, ref)
 fmt.Println("run after rollback is ErrNotFound:", errors.Is(err, workflow.ErrNotFound))
 ```
 
-Idempotency keys follow the workflow's policy, as for `Enqueue`. A key held by an unfinished run, committed or written earlier in the same transaction, returns that run's `RunRef` and writes nothing. The keyed insert runs under a savepoint ([`insertKeyed`](ds:block?id=sql-client-insertkeyed-rgpk37df)), so a duplicate key never aborts the caller's transaction, which stays usable for the app's next write ([`TestEnqueueTxIdempotency`](ds:block?id=enginetest-testenqueuetxidempotency-4bwneyt2)):
+Idempotency keys follow the workflow's policy, as for `Enqueue`. A key held by an unfinished run, committed or written earlier in the same transaction, returns that run's `RunRef` and writes nothing; on a [coalescing workflow](coalesce.md) whose holder has left the queue, it stores one run pending behind the holder, or returns the one already pending. The keyed insert runs under a savepoint ([`insertKeyed`](ds:block?id=sql-client-insertkeyed-rgpk37df)), so a duplicate key never aborts the caller's transaction, which stays usable for the app's next write ([`TestEnqueueTxIdempotency`](ds:block?id=enginetest-testenqueuetxidempotency-4bwneyt2)):
 
 <!-- snippet: examples/transactional-enqueue/main.go#same-key -->
 ```go

@@ -246,4 +246,15 @@
 // (finished or waiting for an event), with a RunAllReport, or with
 // ErrRunAllStalled when runs are left that only the clock, a resume or a
 // free slot can move. Timeouts keep following the clock.
+//
+// Schedule.IdempotencyKey keys every fired and triggered run
+// (CapScheduleKey); Workflow.Coalesce keeps one run pending behind a key
+// held by an admitted run, scheduled without a timer until the holder
+// ends and then admitted like any run (CapCoalesce); a fold under
+// CoalesceKeepLast evaluates its concurrency and rate keys again from the
+// new payload. Steps keep checkpoints in memory (CapCheckpoint,
+// WithMaxCheckpoint), dropped when the run ends; a save after the run
+// ended or the handler returned matches workflow.ErrAttemptLost.
+// CompleteInTx implements workflow.TxCompleter with a function-scoped unit
+// of work, so a test takes the code path production takes on sqlstore.
 package memory

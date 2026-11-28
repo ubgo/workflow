@@ -1,6 +1,6 @@
 # Idempotency keys
 
-The same job often arrives twice: a client retries an HTTP request that timed out, a broker redelivers a message, a user double-clicks "pay". An idempotency key makes the second enqueue a no-op: while a run holding the key has not finished, `Enqueue` with the same key starts nothing and returns that run's `RunRef` (on memory, [`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)).
+The same job often arrives twice: a client retries an HTTP request that timed out, a broker redelivers a message, a user double-clicks "pay". An idempotency key makes the second enqueue a no-op: while a run holding the key has not finished, `Enqueue` with the same key starts nothing and returns that run's `RunRef` (on memory, [`enqueueLocked`](ds:block?id=memory-client-enqueuelocked-z3x2cytk)); a [coalescing workflow](../reliability/coalesce.md) keeps one more run pending behind a holder that has left the queue instead.
 
 ## Before you start
 

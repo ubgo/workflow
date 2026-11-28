@@ -275,7 +275,11 @@ func (f *Client) backend(s side) workflow.Client {
 // key), and the worker counts scaled are the primary's (balance the
 // secondary with a BalanceLoop of its own).
 // CapRunFinished also needs both backends to implement
-// workflow.RunNotifier, which OnRunFinished requires.
+// workflow.RunNotifier, which OnRunFinished requires. CapScheduleKey is
+// never declared: a schedule's fires are enqueued on the backend holding
+// the schedule while a hand enqueue under the same key may land on the
+// other one, so the key could not make them one run; Schedule refuses
+// Schedule.IdempotencyKey.
 //
 //ds:def id=failover-client-capabilities-cb8n9pqm owner=@khanakia stability=stable
 func (f *Client) Capabilities() workflow.Caps {
@@ -288,7 +292,7 @@ func (f *Client) Capabilities() workflow.Caps {
 	if _, _, ok := f.notifiers(); !ok {
 		caps = caps.Without(workflow.CapRunFinished)
 	}
-	return caps
+	return caps.Without(workflow.CapScheduleKey)
 }
 
 // notifiers returns both backends as RunNotifiers, and false unless both
@@ -564,10 +568,17 @@ func (f *Client) Signal(ctx context.Context, ev workflow.Event) error {
 // Schedule registers s on the primary, or on both under
 // WithSchedulesOnBoth. It never fails over: a schedule made on the
 // secondary during an outage would fire beside the primary's copies once
-// the app retries it there.
+// the app retries it there. A schedule with IdempotencyKey is refused
+// with an UnsupportedError naming CapScheduleKey (see Capabilities).
 //
 //ds:def id=failover-client-schedule-unuxqxtf owner=@khanakia stability=stable
 func (f *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.ScheduleID, error) {
+	if s.IdempotencyKey != "" {
+		// Refused whatever the backends declare (see Capabilities).
+		if err := workflow.CheckScheduleCaps(f.Capabilities(), s); err != nil {
+			return "", err
+		}
+	}
 	pid, err := f.primary.Schedule(ctx, s)
 	if err != nil {
 		return "", err

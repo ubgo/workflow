@@ -382,6 +382,7 @@ func (c *Client) call(ctx context.Context, reg *registered, step workflow.Step, 
 		Version:  a.version,
 	})
 	ctx = c.withAttempt(ctx, a) // for CompleteTx
+	ctx = workflow.WithCheckpointer(ctx, checkpointer{c: c, a: a})
 	ctx = workflow.WithProgressReporter(ctx, c.progressReporter(a))
 	a.edits = c.newChainEditor(a.runID)
 	ctx = workflow.WithChainEditor(ctx, a.edits)
@@ -542,9 +543,11 @@ func (c *Client) watchHeartbeat(ctx context.Context, a *attempt, hb time.Duratio
 // Its outcome is not written; the step runs again once the lease expires
 // for the other clients (WithLeaseSkew later), and the takeover counts
 // toward WithMaxReclaims. A handler can tell it apart with context.Cause.
+// It wraps workflow.ErrAttemptLost, so code written against the core
+// interface (a refused SaveCheckpoint or CompleteInTx) matches it too.
 //
 //ds:def id=sql-errleaselost-qhvxyrbf owner=@khanakia stability=stable
-var ErrLeaseLost = errors.New("sqlstore: step lease lost")
+var ErrLeaseLost = fmt.Errorf("sqlstore: step lease lost: %w", workflow.ErrAttemptLost)
 
 // heartbeat renews a's lease every third of the lease until done closes.
 // A renewal that changes no row means the step is no longer this

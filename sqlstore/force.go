@@ -35,6 +35,9 @@ func (c *Client) ForceComplete(ctx context.Context, ref workflow.RunRef) error {
 		if err := c.cancelSteps(ctx, tx, row.id); err != nil {
 			return err
 		}
+		if err := c.runEnded(ctx, tx, row.id, o); err != nil {
+			return err
+		}
 		row.status = runSucceeded
 		o.ended = append(o.ended, row.id)
 		return c.handoffChain(ctx, tx, row, o)

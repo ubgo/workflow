@@ -41,6 +41,8 @@ type schedule struct {
 	keep    int                   // Schedule.KeepRuns; zero keeps every run
 	tenant  string                // Schedule.Tenant: Job.Tenant of every fired run
 	fired   []*run                // the runs it fired, oldest first, while KeepRuns is set
+	key     string                // Schedule.IdempotencyKey: the key template of every fired run
+	onHeld  workflow.HeldPolicy   // Schedule.OnHeld
 	caught  time.Time             // when it last caught up: its next tick is the first after this
 }
 
@@ -292,8 +294,14 @@ func (c *Client) fire(s *schedule, reg *registered, ticks []time.Time, windows w
 			continue
 		}
 		job := workflow.Job{Workflow: s.workflow, Payload: input, Labels: workflow.FiredLabelsAt(labels, s.id, s.name, at), Tenant: s.tenant}
-		ref, err := c.enqueueLocked(context.Background(), job)
+		var ref workflow.RunRef
+		key, err := s.keyAt(at)
+		job.IdempotencyKey = key
+		ectx, outcome := workflow.WithEnqueueOutcome(context.Background())
 		if err == nil {
+			ref, err = c.enqueueLocked(ectx, job)
+		}
+		if err == nil && !outcome.Duplicate {
 			s.last = workflow.ScheduleLast{Fire: at, Run: ref}
 			c.trackFiredLocked(s, ref)
 		}
@@ -390,6 +398,8 @@ func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.Sc
 		active:   s.Active,
 		keep:     s.KeepRuns,
 		tenant:   s.Tenant,
+		key:      s.IdempotencyKey,
+		onHeld:   s.OnHeld,
 	}
 	c.scheds[id] = sc
 	c.startSchedule(sc)
@@ -557,7 +567,27 @@ func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (w
 	}
 	now := c.clk.Now()
 	job := workflow.Job{Workflow: s.workflow, Payload: s.input, Labels: workflow.TriggeredLabelsAt(s.labels, s.id, s.name, now), Tenant: s.tenant}
-	ref, err := c.enqueueLocked(ctx, job)
+	key, err := s.keyAt(now)
+	if err != nil {
+		return workflow.RunRef{}, err
+	}
+	job.IdempotencyKey = key
+	if key != "" && s.onHeld == workflow.HeldRefuse {
+		if holder, held := c.idem[idemKey{workflow: s.workflow, key: key}]; held && c.keyHonouredLocked(s.workflow) {
+			return workflow.RunRef{}, fmt.Errorf("%w: schedule %s: key %q is held by run %s", workflow.ErrDuplicate, id, key, holder.ref().RunID)
+		}
+	}
+	ectx, outcome := workflow.WithEnqueueOutcome(ctx)
+	ref, err := c.enqueueLocked(ectx, job)
+	if err == nil && outcome.Duplicate {
+		// The key's holder answered: nothing new was enqueued, so the
+		// schedule's last fire stays as it was.
+		workflow.MarkDuplicate(ctx)
+		return ref, nil
+	}
+	if err == nil {
+		workflow.MarkInserted(ctx)
+	}
 	if err == nil {
 		c.trackFiredLocked(s, ref)
 	}
@@ -569,4 +599,20 @@ func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (w
 	}
 	s.last = workflow.ScheduleLast{Fire: now, Run: ref}
 	return ref, nil
+}
+
+// keyAt is the idempotency key of a run s fires at at: "" without a key
+// template (Schedule.IdempotencyKey).
+func (s *schedule) keyAt(at time.Time) (string, error) {
+	if s.key == "" {
+		return "", nil
+	}
+	return workflow.ExpandScheduleKey(s.key, at, s.loc)
+}
+
+// keyHonouredLocked reports whether the workflow named wf honours
+// idempotency keys (its policy is not IdempotencyOff).
+func (c *Client) keyHonouredLocked(wf string) bool {
+	reg, ok := c.wfs[wf]
+	return ok && reg.wf.Idempotency != workflow.IdempotencyOff
 }

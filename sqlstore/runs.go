@@ -220,6 +220,9 @@ func (c *Client) Enqueue(ctx context.Context, job workflow.Job) (workflow.RunRef
 	if err != nil {
 		return workflow.RunRef{}, err
 	}
+	if key != "" && reg.wf.Coalesce != nil {
+		return c.enqueueCoalesced(ctx, reg, job, key)
+	}
 	for range maxIdemAttempts {
 		var row *runRow
 		var out txOut
@@ -422,6 +425,9 @@ func (c *Client) finishRun(ctx context.Context, tx *sql.Tx, row *runRow, status,
 	if err := c.cancelSteps(ctx, tx, row.id); err != nil {
 		return false, err
 	}
+	if err := c.runEnded(ctx, tx, row.id, out); err != nil {
+		return false, err
+	}
 	row.status = status
 	out.ended = append(out.ended, row.id)
 	out.finished = append(out.finished, ended{id: row.id, workflow: row.workflow, status: status, msg: msg, schedule: row.scheduleLabel()})
@@ -491,9 +497,17 @@ func (c *Client) finalizeFailure(ctx context.Context, f failClaim) {
 			}
 		}
 	}
-	if _, err := c.st.exec(ctx, c.st.db, `UPDATE {runs} SET status = ?, finished_at = ?, idem_active = NULL, fail_token = NULL
+	var promoted txOut
+	if err := c.st.tx(ctx, func(tx *sql.Tx) error {
+		promoted = txOut{}
+		n, err := c.st.execN(ctx, tx, `UPDATE {runs} SET status = ?, finished_at = ?, idem_active = NULL, fail_token = NULL
 		WHERE id = ? AND status = ? AND fail_token = ?`,
-		runFailed, c.nowNanos(), f.runID, runFailing, f.token); err != nil {
+			runFailed, c.nowNanos(), f.runID, runFailing, f.token)
+		if err != nil || n == 0 {
+			return err
+		}
+		return c.runEnded(ctx, tx, f.runID, &promoted)
+	}); err != nil {
 		// Left failing: another client reruns OnFailure once the claim
 		// expires, which is the at-least-once the doc promises.
 		c.log.Error("sqlstore: mark run failed", "run", f.runID, "error", err)

@@ -150,33 +150,43 @@ func (c *Client) TriggerSchedule(ctx context.Context, id workflow.ScheduleID) (w
 			return workflow.RunRef{}, err
 		}
 		now := c.clk.Now()
+		loc, lerr := decodeLocation(d.loc)
+		if lerr != nil {
+			loc = now.Location()
+		}
 		var ref workflow.RunRef
+		dup := false
 		err = c.st.tx(ctx, func(tx *sql.Tx) error {
-			if err := c.moveLast(ctx, tx, d, now.UnixNano(), runID); err != nil {
-				return err
-			}
+			dup = false
 			job := workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: workflow.TriggeredLabelsAt(labels, id, d.tickName(), c.clk.Now()), Tenant: d.tenant}
-			row, err := c.insertRun(ctx, tx, reg, job, "", runID)
+			p, err := c.placeFired(ctx, tx, reg, d, job, now, loc, runID)
 			if err != nil {
 				return err
 			}
-			ref = row.ref()
-			return nil
+			ref, dup = p.row.ref(), p.dup
+			if dup {
+				if d.onHeld == workflow.HeldRefuse {
+					return fmt.Errorf("%w: schedule %s: its idempotency key is held by run %s", workflow.ErrDuplicate, id, p.row.id)
+				}
+				return nil // the holder answers; the last fire stays
+			}
+			return c.moveLast(ctx, tx, d, now.UnixNano(), p.row.id)
 		})
-		if errors.Is(err, errLastMoved) || c.st.isUnique(err) {
+		if errors.Is(err, errLastMoved) || errors.Is(err, errHolderGone) || c.st.isUnique(err) {
 			continue // another fire landed first: decide again on the new last run
 		}
 		if err != nil {
 			return workflow.RunRef{}, err
 		}
+		if dup {
+			workflow.MarkDuplicate(ctx)
+		} else {
+			workflow.MarkInserted(ctx)
+		}
 		if err := c.admit(ctx, reg); err != nil {
 			return ref, err
 		}
 		c.nudge()
-		loc, lerr := decodeLocation(d.loc)
-		if lerr != nil {
-			loc = now.Location()
-		}
 		c.emitTicks(ctx, []workflow.Tick{{ScheduleID: id, Name: d.tickName(), Workflow: d.workflow, Declared: d.declared,
 			At: now.In(loc), Location: loc, Labels: labels, Outcome: workflow.TickFired, Run: ref, Manual: true}})
 		return ref, nil

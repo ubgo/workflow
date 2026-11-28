@@ -1,0 +1,39 @@
+func (c *Client) finishLocked(r *run, st workflow.Status) {
+	if r.status.IsTerminal() {
+		return
+	}
+	r.status = st
+	r.finishedAt = c.clk.Now()
+	c.drainTrack.RunFinished(r.id)
+	c.resultsPending -= r.resultsPending // a finished run has nothing left to handle
+	r.resultsPending = 0
+	c.maybeDrainedLocked()
+	c.finished = append(c.finished, r)
+	c.pruneLocked()
+	c.live--
+	c.checkIdleLocked()
+	switch {
+	case st == workflow.StatusSucceeded:
+		r.err = nil
+	case st == workflow.StatusCancelled && !errors.Is(r.err, workflow.ErrCancelled):
+		r.err = workflow.ErrCancelled
+	}
+	c.queueEndedLocked(r)
+	if r.idem != nil && c.idem[*r.idem] == r {
+		delete(c.idem, *r.idem)
+	}
+	c.keyReleasedLocked(r)
+	c.pending = slices.DeleteFunc(c.pending, func(p *run) bool { return p == r })
+	if r.admitted {
+		c.giveBackLocked(r, false)
+	}
+	r.deferred = nil
+	cause := workflow.ErrCancelled
+	if st == workflow.StatusSucceeded {
+		cause = errRunDone
+	}
+	r.cancel(cause)
+	if r.sched != nil {
+		c.keepLocked(r.sched)
+	}
+}

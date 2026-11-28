@@ -119,7 +119,7 @@ go run ./namespaces
 ```
 
 ```text
-tables: 44 staging_*, 44 prod_*
+tables: 47 staging_*, 47 prod_*
 staging worker: staging run scheduled, 1 schedule(s)
 prod: staging run not found, 0 schedule(s)
 bad prefix: invalid true

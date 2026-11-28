@@ -1,0 +1,25 @@
+func RequiresSchedule(s Schedule) Caps {
+	c := CapsOf(CapCron, misfireCaps(s.Misfire), overlapCaps(s.Overlap))
+	if !IsUTC(s.Location) {
+		c = c.With(CapCronZone)
+	}
+	if !s.Windows.IsZero() {
+		c = c.With(CapScheduleWindow)
+	}
+	if s.Seconds {
+		c = c.With(CapCronSeconds)
+	}
+	if !s.Active.IsZero() {
+		c = c.With(CapScheduleActive)
+	}
+	if s.KeepRuns > 0 {
+		c = c.With(CapScheduleKeep)
+	}
+	if s.Tenant != "" {
+		c = c.With(CapTenant)
+	}
+	if s.IdempotencyKey != "" {
+		c = c.With(CapScheduleKey, CapIdempotencyKey)
+	}
+	return c
+}

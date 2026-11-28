@@ -126,24 +126,37 @@ func (c *Client) newRunLocked(reg *registered, job workflow.Job) *run {
 	}
 	c.live++
 	c.idleEpoch++
-	if conc := reg.wf.Concurrency; conc != nil && conc.Key.Func != nil {
+	r.evalKeys()
+	return r
+}
+
+// evalKeys evaluates r's concurrency key, its key under each
+// Workflow.ConcurrencyLimits entry and its rate-limit keys from r.job. It
+// runs when r is created and again when a Workflow.Coalesce enqueue with
+// CoalesceKeepLast replaces the payload of a run not yet admitted, so the
+// run is admitted under the keys of the payload it runs with.
+func (r *run) evalKeys() {
+	job, wf := r.job, r.reg.wf
+	r.bucket = ""
+	if conc := wf.Concurrency; conc != nil && conc.Key.Func != nil {
 		r.bucket = conc.Key.Func(job)
 	}
-	for _, l := range reg.wf.ConcurrencyLimits {
+	r.limitKeys = r.limitKeys[:0]
+	for _, l := range wf.ConcurrencyLimits {
 		k := ""
 		if l.Key.Func != nil {
 			k = l.Key.Func(job)
 		}
 		r.limitKeys = append(r.limitKeys, k)
 	}
-	for _, rl := range reg.wf.RateLimits {
+	r.rateKeys = r.rateKeys[:0]
+	for _, rl := range wf.RateLimits {
 		k := ""
 		if rl.Key.Func != nil {
 			k = rl.Key.Func(job)
 		}
 		r.rateKeys = append(r.rateKeys, k)
 	}
-	return r
 }
 
 func (r *run) ref() workflow.RunRef { return workflow.RunRef{RunID: r.id, ScheduledID: r.sid} }
@@ -208,6 +221,7 @@ func (c *Client) finishLocked(r *run, st workflow.Status) {
 	if r.idem != nil && c.idem[*r.idem] == r {
 		delete(c.idem, *r.idem)
 	}
+	c.keyReleasedLocked(r)
 	c.pending = slices.DeleteFunc(c.pending, func(p *run) bool { return p == r })
 	if r.admitted {
 		c.giveBackLocked(r, false)
@@ -1361,6 +1375,7 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 	actx = workflow.WithProgressReporter(actx, workflow.ProgressFunc(func(_ context.Context, p workflow.Progress) error {
 		return c.reportProgress(t, p)
 	}))
+	actx, attempt := c.withAttemptState(actx, t) // checkpoints and CompleteInTx
 	// The attempt's own deadlines cancel it with the timeout errors it
 	// fails with, so context.Cause in the handler matches
 	// workflow.ErrStepTimeout or ErrHeartbeatTimeout; the driver tells them
@@ -1391,6 +1406,11 @@ func (c *Client) exec(t *task) ([]byte, *workflow.ChainEdits, error) {
 	}
 	hctx, claimed := workflow.WithTimeoutClaim(actx)
 	out, err := safeCall(h, hctx, t.in)
+	if settled, ok := attempt.finish(); ok {
+		// CompleteInTx recorded the step's success: what the handler
+		// returned afterwards is ignored, as on sqlstore.
+		return settled, edits, nil
+	}
 	switch cause := context.Cause(actx); {
 	case (cause == errStep || cause == errHeartbeat) && claimed():
 		// Step middleware (a tolerated step) turned the timeout into its

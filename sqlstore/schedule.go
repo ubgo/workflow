@@ -227,6 +227,9 @@ func (c *Client) Schedule(ctx context.Context, s workflow.Schedule) (workflow.Sc
 			if err := c.writeTenant(ctx, tx, row.id, s.Tenant); err != nil {
 				return err
 			}
+			if err := c.writeScheduleKey(ctx, tx, row.id, s); err != nil {
+				return err
+			}
 			return c.insertSchedule(ctx, tx, row)
 		})
 	} else {
@@ -276,6 +279,9 @@ func (c *Client) upsertNamed(ctx context.Context, r scheduleRow) error {
 				return err
 			}
 			if err := c.writeTenant(ctx, tx, r.id, r.s.Tenant); err != nil {
+				return err
+			}
+			if err := c.writeScheduleKey(ctx, tx, r.id, r.s); err != nil {
 				return err
 			}
 			var have int64
@@ -349,17 +355,21 @@ type dueSchedule struct {
 	spec scheduleSpec
 	// tenant is the schedule_tenant row: Schedule.Tenant, "" for none.
 	tenant string
+	// key and onHeld are the schedule_key row: Schedule.IdempotencyKey
+	// ("" for none) and Schedule.OnHeld.
+	key    string
+	onHeld workflow.HeldPolicy
 }
 
 // scheduleCols is the column list fireSchedules and Schedules scan:
 // schedules s, schedule_misfire m, schedule_ext x and schedule_last l.
 const scheduleCols = "s.id, s.workflow, s.name, s.cron, s.location, s.in_data, s.labels, s.next_fire, s.declared, s.active," +
 	" m.policy, m.within_ns, m.max_fires, x.windows, x.paused, l.overlap, l.last_fire, l.last_run," +
-	" p.seconds, p.active_from, p.active_until, p.keep_runs, tn.tenant"
+	" p.seconds, p.active_from, p.active_until, p.keep_runs, tn.tenant, sk.template, sk.on_held"
 
 const scheduleFrom = " FROM {schedules} s LEFT JOIN {schedule_misfire} m ON m.schedule_id = s.id LEFT JOIN {schedule_ext} x ON x.schedule_id = s.id" +
 	" LEFT JOIN {schedule_last} l ON l.schedule_id = s.id LEFT JOIN {schedule_spec} p ON p.schedule_id = s.id" +
-	" LEFT JOIN {schedule_tenant} tn ON tn.schedule_id = s.id"
+	" LEFT JOIN {schedule_tenant} tn ON tn.schedule_id = s.id LEFT JOIN {schedule_key} sk ON sk.schedule_id = s.id"
 
 // scheduleScan reads one row of scheduleCols.
 type scheduleScan struct {
@@ -372,12 +382,13 @@ type scheduleScan struct {
 	seconds, from, until    sql.NullInt64
 	keep                    sql.NullInt64
 	tenant                  sql.NullString
+	keyTemplate, onHeld     sql.NullString
 }
 
 func (r *scheduleScan) targets() []any {
 	return []any{&r.d.id, &r.d.workflow, &r.d.name, &r.d.expr, &r.d.loc, &r.d.input, &r.d.labels, &r.d.next, &r.declared, &r.active,
 		&r.policy, &r.within, &r.maxFires, &r.windows, &r.pause, &r.overlap, &r.lastFire, &r.lastRun,
-		&r.seconds, &r.from, &r.until, &r.keep, &r.tenant}
+		&r.seconds, &r.from, &r.until, &r.keep, &r.tenant, &r.keyTemplate, &r.onHeld}
 }
 
 // row copies the scan into a dueSchedule the caller may keep.
@@ -398,6 +409,7 @@ func (r *scheduleScan) row(log func(string, ...any)) dueSchedule {
 	d.spec = scheduleSpec{seconds: r.seconds.Int64 == 1, active: workflow.Active{From: timeOrZero(r.from.Int64), Until: timeOrZero(r.until.Int64)},
 		keep: int(r.keep.Int64)}
 	d.tenant = r.tenant.String
+	d.key, d.onHeld = r.keyTemplate.String, workflow.HeldPolicy(r.onHeld.String)
 	return d
 }
 
@@ -577,18 +589,27 @@ func (c *Client) fireOne(ctx context.Context, d dueSchedule, now time.Time) (boo
 			return errTickTaken
 		}
 		for i, dec := range decisions {
-			if _, err := c.st.exec(ctx, tx, "INSERT INTO {ticks} (schedule_id, fire_at, run_id) VALUES (?, ?, ?)", d.id, dec.at, dec.runID); err != nil {
-				return err
-			}
 			if dec.runID == "" {
+				if _, err := c.st.exec(ctx, tx, "INSERT INTO {ticks} (schedule_id, fire_at, run_id) VALUES (?, ?, ?)", d.id, dec.at, dec.runID); err != nil {
+					return err
+				}
 				continue
 			}
 			runLabels := workflow.FiredLabelsAt(labels, workflow.ScheduleID(d.id), d.tickName(), unixTime(dec.at))
-			row, err := c.insertRun(ctx, tx, reg, workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: runLabels, Tenant: d.tenant}, "", dec.runID)
+			job := workflow.Job{Workflow: d.workflow, Payload: d.input, Labels: runLabels, Tenant: d.tenant}
+			p, err := c.placeFired(ctx, tx, reg, d, job, unixTime(dec.at), loc, dec.runID)
 			if err != nil {
 				return err
 			}
-			refs[i] = row.ref()
+			// The tick row names the run that does the tick's work: the
+			// new run, or the key's holder.
+			if _, err := c.st.exec(ctx, tx, "INSERT INTO {ticks} (schedule_id, fire_at, run_id) VALUES (?, ?, ?)", d.id, dec.at, p.row.id); err != nil {
+				return err
+			}
+			refs[i] = p.row.ref()
+			if p.dup {
+				continue // nothing new was enqueued: the last fire stays
+			}
 			if err := c.moveLast(ctx, tx, d, dec.at, dec.runID); err != nil {
 				return err
 			}
@@ -596,8 +617,8 @@ func (c *Client) fireOne(ctx context.Context, d dueSchedule, now time.Time) (boo
 		}
 		return nil
 	})
-	if errors.Is(err, errTickTaken) || errors.Is(err, errLastMoved) || c.st.isUnique(err) {
-		return false, nil // another client fired this tick
+	if errors.Is(err, errTickTaken) || errors.Is(err, errLastMoved) || errors.Is(err, errHolderGone) || c.st.isUnique(err) {
+		return false, nil // another client fired this tick, or a key moved: the next pass decides again
 	}
 	var ticks []workflow.Tick
 	if missed > 0 && err == nil {

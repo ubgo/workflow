@@ -1,0 +1,41 @@
+func Supports(c Client, op Op) bool {
+	if p, ok := c.(OpProber); ok {
+		return p.Supports(op)
+	}
+	switch op {
+	case OpReschedule:
+		_, ok := c.(RunRescheduler)
+		return ok
+	case OpCancelStep:
+		_, ok := c.(StepCanceller)
+		return ok
+	case OpEditRun:
+		_, ok := c.(RunEditor)
+		return ok
+	case OpResetRun:
+		_, ok := c.(RunResetter)
+		return ok
+	case OpResetSucceeded:
+		_, ok := c.(RunResetterWith)
+		return ok
+	case OpForkRun:
+		_, ok := c.(RunForker)
+		return ok
+	case OpSignalWaiting:
+		_, ok := c.(TransientSignaller)
+		return ok
+	case OpNodes:
+		_, ok := c.(NodeLister)
+		return ok
+	case OpLifecycle:
+		_, ok := c.(LifecycleNotifier)
+		return ok
+	case OpRunSignals:
+		_, ok := c.(RunSignalReader)
+		return ok
+	case OpCompleteInTx:
+		_, ok := c.(TxCompleter)
+		return ok
+	}
+	return false
+}

@@ -55,7 +55,7 @@ The stores that apps use without the queue have their own lists, under their own
 
 | Store | Owner constant | Migrations | Applied by |
 |---|---|---|---|
-| The queue | `sqlstore.MigrationOwner` | [`migrations`](ds:block?id=sql-store-migrations-sysbsdpd): `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version`, `011_fair_turns`, `012_concurrency_limits`, `013_run_hold` | `Client.Migrate` |
+| The queue | `sqlstore.MigrationOwner` | [`migrations`](ds:block?id=sql-store-migrations-sysbsdpd): `001_initial`, `002_schedule_misfire`, `003_queues_admin`, `004_run_states_chain`, `005_run_labels`, `006_schedule_history`, `007_leader_archive`, `008_run_info_nodes`, `009_schedule_tenant`, `010_run_version`, `011_fair_turns`, `012_concurrency_limits`, `013_run_hold`, `014_checkpoints_coalesce_schedule_idempotency` | `Client.Migrate` |
 | `UniqueStore` (durable unique jobs) | `sqlstore.UniqueMigrationOwner` | [`uniqueMigrations`](ds:block?id=sql-store-uniquemigrations-b2uddpwt): `001_unique`, `002_unique_holder` | `Client.Migrate` or `UniqueStore.Migrate` |
 | `DebounceStore` (durable debounce) | `sqlstore.DebounceMigrationOwner` | [`debounceMigrations`](ds:block?id=sql-store-debouncemigrations-gfww36g2): `001_debounce` | `Client.Migrate` or `DebounceStore.Migrate` |
 | `OutputStore` (captured step output) | `sqlstore.OutputMigrationOwner` (`ubgo/workflow/sqlstore/output`) | [`outputMigrations`](ds:block?id=sql-store-outputmigrations-v26pg56t): `001_output` | `Client.Migrate` or `OutputStore.Migrate` |
@@ -236,6 +236,7 @@ ledger after Migrate:
   ubgo/workflow/sqlstore 011_fair_turns
   ubgo/workflow/sqlstore 012_concurrency_limits
   ubgo/workflow/sqlstore 013_run_hold
+  ubgo/workflow/sqlstore 014_checkpoints_coalesce_schedule_idempotency
   ubgo/workflow/sqlstore/bucket 001_buckets
   ubgo/workflow/sqlstore/data 001_data
   ubgo/workflow/sqlstore/debounce 001_debounce
@@ -257,20 +258,21 @@ wrote 010_ubgo_workflow_sqlstore_010_run_version.sql
 wrote 011_ubgo_workflow_sqlstore_011_fair_turns.sql
 wrote 012_ubgo_workflow_sqlstore_012_concurrency_limits.sql
 wrote 013_ubgo_workflow_sqlstore_013_run_hold.sql
-wrote 014_ubgo_workflow_sqlstore_unique_001_unique.sql
-wrote 015_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
-wrote 016_ubgo_workflow_sqlstore_debounce_001_debounce.sql
-wrote 017_ubgo_workflow_sqlstore_output_001_output.sql
-wrote 018_ubgo_workflow_sqlstore_journal_001_journal.sql
-wrote 019_ubgo_workflow_sqlstore_bucket_001_buckets.sql
-wrote 020_ubgo_workflow_sqlstore_data_001_data.sql
-wrote 021_ubgo_workflow_sqlstore_inbox_001_inbox.sql
+wrote 014_ubgo_workflow_sqlstore_014_checkpoints_coalesce_schedule_idempotency.sql
+wrote 015_ubgo_workflow_sqlstore_unique_001_unique.sql
+wrote 016_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
+wrote 017_ubgo_workflow_sqlstore_debounce_001_debounce.sql
+wrote 018_ubgo_workflow_sqlstore_output_001_output.sql
+wrote 019_ubgo_workflow_sqlstore_journal_001_journal.sql
+wrote 020_ubgo_workflow_sqlstore_bucket_001_buckets.sql
+wrote 021_ubgo_workflow_sqlstore_data_001_data.sql
+wrote 022_ubgo_workflow_sqlstore_inbox_001_inbox.sql
 started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique
   ubgo/workflow/sqlstore/unique 002_unique_holder
 migrations per owner:
-  ubgo/workflow/sqlstore: 13 in Client.Migrate
+  ubgo/workflow/sqlstore: 14 in Client.Migrate
   ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
   ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
   ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate

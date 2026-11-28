@@ -103,6 +103,9 @@ func (c *Client) insertKeyed(ctx context.Context, tx *sql.Tx, reg *registered, j
 	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+idemSavepoint); err != nil {
 		return workflow.RunRef{}, false, fmt.Errorf("sqlstore: savepoint: %w", err)
 	}
+	if reg.wf.Coalesce != nil {
+		return c.placeKeyedTx(ctx, tx, reg, job, key)
+	}
 	row, err := c.insertRun(ctx, tx, reg, job, key, "")
 	if err == nil {
 		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+idemSavepoint); err != nil {

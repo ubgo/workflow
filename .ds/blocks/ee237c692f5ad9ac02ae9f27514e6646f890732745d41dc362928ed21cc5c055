@@ -1,0 +1,12 @@
+func (f *Client) Capabilities() workflow.Caps {
+	p, s := f.primary.Capabilities(), f.secondary.Capabilities()
+	caps := p.Intersect(s)
+	if !f.schedBoth {
+		caps = workflow.CapsOf(caps.Without(scheduleCaps), p.Intersect(scheduleCaps))
+	}
+	caps = workflow.CapsOf(caps.Without(primaryOnlyCaps), p.Intersect(primaryOnlyCaps))
+	if _, _, ok := f.notifiers(); !ok {
+		caps = caps.Without(workflow.CapRunFinished)
+	}
+	return caps.Without(workflow.CapScheduleKey)
+}

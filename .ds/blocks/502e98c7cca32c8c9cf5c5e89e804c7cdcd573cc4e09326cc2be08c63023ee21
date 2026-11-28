@@ -1,0 +1,77 @@
+func Requires(wf Workflow) Caps {
+	var c Caps
+	if len(wf.Cron) > 0 {
+		c = c.With(CapCron, misfireCaps(wf.Misfire), overlapCaps(wf.CronOverlap))
+		if !IsUTC(wf.CronLocation) {
+			c = c.With(CapCronZone)
+		}
+		if wf.CronSeconds {
+			c = c.With(CapCronSeconds)
+		}
+		if !wf.CronActive.IsZero() {
+			c = c.With(CapScheduleActive)
+		}
+		if wf.CronKeepRuns > 0 {
+			c = c.With(CapScheduleKeep)
+		}
+	}
+	if wf.Concurrency != nil {
+		c = c.With(CapConcurrencyKey)
+		if wf.Concurrency.FIFO {
+			c = c.With(CapKeyFIFO)
+		}
+		if wf.Concurrency.Weight != nil {
+			c = c.With(CapKeyWeights)
+		}
+	}
+	if len(wf.ConcurrencyLimits) > 0 {
+		c = c.With(CapConcurrencyLimits)
+	}
+	if HoldsWhileRunning(wf) {
+		c = c.With(CapHoldWhileRunning)
+	}
+	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
+		c = c.With(CapRunTimeout)
+	}
+	if wf.Version != 0 || wf.MinVersion != 0 {
+		c = c.With(CapWorkflowVersion)
+	}
+	if len(wf.RateLimits) > 0 {
+		c = c.With(CapRateLimit)
+	}
+	if wf.Idempotency == IdempotencyRequired {
+		c = c.With(CapIdempotencyKey)
+	}
+	if wf.Coalesce != nil {
+		c = c.With(CapCoalesce, CapIdempotencyKey)
+	}
+	if wf.Queue != "" && wf.Queue != DefaultQueue {
+		c = c.With(CapQueue)
+	}
+	if wf.ScheduleWhen != nil {
+		c = c.With(CapScheduleWhen)
+	}
+	if !wf.CronWindows.IsZero() {
+		c = c.With(CapScheduleWindow)
+	}
+	for _, s := range wf.Steps {
+		switch s.Kind() {
+		case StepRun:
+			c = c.With(retryCaps(EffectiveRetries(s, wf)))
+			if s.HeartbeatTimeout > 0 {
+				c = c.With(CapHeartbeat)
+			}
+			if s.Slots > 1 {
+				c = c.With(CapSlotCost)
+			}
+		case StepWait:
+			c = c.With(CapWaitForEvent)
+			if s.Wait.OwnRun {
+				c = c.With(CapWaitOwnRun)
+			}
+		case StepSleep:
+			c = c.With(CapDurableSleep)
+		}
+	}
+	return c
+}

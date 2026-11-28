@@ -30,7 +30,7 @@ var caps = workflow.CapsOf(
 	workflow.CapIdempotencyKey, workflow.CapCron, workflow.CapCancel, workflow.CapRunFinished,
 	workflow.CapRetryJitter, workflow.CapRetryDelay, workflow.CapCronZone,
 	workflow.CapMisfireSkip, workflow.CapMisfireFireOnce, workflow.CapMisfireFireAll,
-	workflow.CapLabelPrefix, workflow.CapQueueLimitGlobal, workflow.CapWaitOwnRun, parityCaps,
+	workflow.CapLabelPrefix, workflow.CapQueueLimitGlobal, workflow.CapWaitOwnRun, parityCaps, gapCaps,
 )
 
 // parityCaps are the queue, retry, admin, pause, schedule and drain
@@ -507,6 +507,8 @@ type Client struct {
 	schedulerOnly bool
 	noScheduler   bool
 	payloadLimit  int
+	// maxCheckpoint is WithMaxCheckpoint (0: workflow.DefaultMaxCheckpoint).
+	maxCheckpoint int
 	// lc holds the lifecycle observers (OnLifecycle).
 	lc lifecycle
 	// archiveTable is WithArchiveTable: Prune moves runs to the cold tables.

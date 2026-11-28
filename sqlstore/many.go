@@ -46,6 +46,10 @@ func (c *Client) EnqueueMany(ctx context.Context, jobs []workflow.Job) ([]workfl
 		if err != nil {
 			return nil, fmt.Errorf("jobs[%d]: %w", i, err)
 		}
+		if key != "" && reg.wf.Coalesce != nil {
+			return nil, fmt.Errorf("jobs[%d]: %w", i, &workflow.UnsupportedError{Field: "Workflow.Coalesce",
+				Reason: "EnqueueMany does not coalesce; enqueue keyed jobs of workflow " + reg.wf.Name + " one at a time with Enqueue or EnqueueTx"})
+		}
 		regs[i], keys[i] = reg, key
 	}
 	var refs []workflow.RunRef
