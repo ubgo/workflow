@@ -4,6 +4,10 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-28
+
+v0.2.4 was tagged by mistake from a commit that did not contain this release and is retracted; use v0.2.5.
+
 ### Fixed
 
 - `sqlstore` on SQLite: an enqueue on a coalescing workflow could fail with `SQLITE_BUSY` under concurrent writers (the `coalesce` conformance group failed 1 to 4 times in 20 runs). Its transaction read the key's holder before writing, and a SQLite read lock cannot be upgraded once another connection has committed; `busy_timeout` does not cover that upgrade. The transaction now opens with a write that changes nothing, so it waits for the write lock like every other enqueue (40 of 40 runs green).
