@@ -2,4 +2,6 @@ module github.com/ubgo/workflow/admin
 
 go 1.24.0
 
-require github.com/ubgo/workflow v0.2.3
+require github.com/ubgo/workflow v0.2.5
+
+retract v0.2.4
