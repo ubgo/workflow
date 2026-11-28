@@ -3,6 +3,8 @@ module github.com/ubgo/workflow/recorder/sqlrecorder
 go 1.24.0
 
 require (
-	github.com/ubgo/workflow v0.2.3
-	github.com/ubgo/workflow/recorder v0.2.3
+	github.com/ubgo/workflow v0.2.5
+	github.com/ubgo/workflow/recorder v0.2.5
 )
+
+retract v0.2.4

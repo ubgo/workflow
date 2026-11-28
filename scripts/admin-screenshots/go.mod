@@ -8,8 +8,8 @@ go 1.26.0
 require (
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327
 	github.com/chromedp/chromedp v0.14.2
-	github.com/ubgo/workflow v0.2.3
-	github.com/ubgo/workflow/admin v0.2.3
+	github.com/ubgo/workflow v0.2.5
+	github.com/ubgo/workflow/admin v0.2.5
 )
 
 require (
