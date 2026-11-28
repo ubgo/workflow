@@ -116,6 +116,9 @@ func TestCheckSupported(t *testing.T) {
 		{"Workflow.ConcurrencyLimits", func(w *workflow.Workflow) {
 			w.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: workflow.KeyExpr("input.connection"), MaxRuns: 1}, {Key: workflow.KeyExpr("input.account"), MaxRuns: 2}}
 		}},
+		{"Workflow.ConcurrencyLimits[1].Scope", func(w *workflow.Workflow) {
+			w.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: workflow.KeyExpr("input.connection"), MaxRuns: 1}, {Key: workflow.KeyExpr("input.account"), MaxRuns: 1, Scope: "account"}}
+		}},
 		{"WaitSpec.KeyFrom.Expr", func(w *workflow.Workflow) {
 			w.Steps = append(w.Steps, workflow.Step{Name: "wait", After: []string{"a"}, Wait: &workflow.WaitSpec{Event: "e", KeyFrom: workflow.KeyExpr("input.x")}})
 		}},

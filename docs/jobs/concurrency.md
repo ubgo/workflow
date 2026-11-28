@@ -4,7 +4,7 @@ Some work must not run too much at once: one report per tenant, so a big custome
 
 ## Before you start
 
-- Concurrency needs `workflow.CapConcurrencyKey`, more keys per workflow `workflow.CapConcurrencyLimits`, and rate limits `workflow.CapRateLimit` ([`Requires`](ds:block?id=requires-6tcjbcfj)). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have concurrency and rate limits, with the key forms noted under [Limit runs per key](#limit-runs-per-key); only the memory and SQL drivers have more keys per workflow ([Limit runs on several keys](#limit-runs-on-several-keys)).
+- Concurrency needs `workflow.CapConcurrencyKey`, more keys per workflow `workflow.CapConcurrencyLimits`, a limit shared by several workflows `workflow.CapConcurrencyScope`, and rate limits `workflow.CapRateLimit` ([`Requires`](ds:block?id=requires-6tcjbcfj)). The [memory](ds:block?id=memory-caps-yxkuq583), [SQL](ds:block?id=sql-caps-yu37ef2j), [Redis](ds:block?id=redis-caps-bfgdst9t) and [Hatchet](ds:block?id=hatchet-caps-d6x9fv8z) drivers have concurrency and rate limits, with the key forms noted under [Limit runs per key](#limit-runs-per-key); only the memory and SQL drivers have more keys per workflow ([Limit runs on several keys](#limit-runs-on-several-keys)) and limits shared between workflows ([Share a limit between workflows](#share-a-limit-between-workflows)).
 - The example is [`examples/concurrency`](../../examples/concurrency). It runs on the memory driver with a fake clock, so a one-minute rate window passes when the program moves the clock. Run it with `go run ./concurrency` from `examples/`.
 
 ## Limit runs per key
@@ -174,7 +174,7 @@ How `HoldWhileRunning` works ([`ConcurrencyHold`](ds:block?id=concurrencyhold-k3
 - **Rate limits.** Taking the slot back is not a new start: `RateLimits` are counted once, at the run's first admission, and do not hold a rejoining run back.
 - **Several keys.** The [fairness rule](#limit-runs-on-several-keys) holds for a rejoining run like for a new one: a waiting run is never overtaken on any of its keys by a run behind it, so a rejoining run holds later runs off the keys it waits for, and an earlier waiting run holds it off its keys. Only the keys it gave back count; the `HoldWholeRun` keys it kept are not asked for again.
 - **Ending while parked.** A run cancelled while parked, or failed while parked (a wait timed out, a run timeout passed), ends without taking its slots back, so the slots it gave back are not given back twice. Its `OnFailure` handler runs outside the cap.
-- **Child runs.** A child run is a run of its own workflow, admitted on its own keys like any run (buckets are scoped to the workflow). A parent whose step waits for the child inside its handler is executing and keeps its slots; a parent that waits for the child durably, in a wait step for the child's signal, is parked and gives its `HoldWhileRunning` slots back.
+- **Child runs.** A child run is a run of its own workflow, admitted on its own keys like any run (buckets are scoped to the workflow, unless a limit names a [scope](#share-a-limit-between-workflows) the parent's workflow names too). A parent whose step waits for the child inside its handler is executing and keeps its slots; a parent that waits for the child durably, in a wait step for the child's signal, is parked and gives its `HoldWhileRunning` slots back.
 - **Conflicts.** `Register` refuses, with `ErrInvalid` naming the fields ([`validateHold`](ds:block?id=validatehold-q4m7ze2s)), `Concurrency.Hold: HoldWhileRunning` with `Concurrency.FIFO` (a later run of the key would start while an earlier one is parked, breaking the sequence) and with any `Strategy` but `ConcurrencyQueueNewest` (dropping or cancelling the newest run, cancelling the oldest holder and handing out round-robin turns are decided when a run is first admitted and have no meaning for a run taking its slot back). `FIFO` beside a limit set to `HoldWhileRunning` is accepted: the FIFO key itself is held for the whole run.
 - **Drivers.** `HoldWhileRunning` needs `workflow.CapHoldWhileRunning` ([`Requires`](ds:block?id=requires-6tcjbcfj), [`CapHoldWhileRunning`](ds:block?id=capholdwhilerunning-h6t3nb8d)); the zero value and `HoldWholeRun` need nothing new, and [`HoldsWhileRunning`](ds:block?id=holdswhilerunning-w2c8ka5t) tells whether a workflow sets the policy on any key. The [memory](ds:block?id=memory-caps-yxkuq583) and [SQL](ds:block?id=sql-p5caps-wggh6esn) drivers have it (the SQL driver from migration `013_run_hold`). Redis and Hatchet do not, and refuse such a workflow (Redis at `Start`, Hatchet at `Register`, [`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)) rather than hold the slot for the whole run.
 
@@ -202,11 +202,71 @@ The example enqueues acme on `conn-1` and `conn-2` and widgets on `conn-1` and `
 The rules ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw)):
 
 - A run is admitted only when every one of its buckets has room: its `Concurrency` bucket when the workflow has one, and its bucket of each limit. It takes all of them in one step and gives them all back when it ends (succeeded, failed, cancelled or discarded), so a run never holds one key while it waits for another, and two runs cannot deadlock on each other's keys.
-- Each limit has its own buckets, scoped to the workflow like `Concurrency`'s: the value `"acme"` under one limit and `"acme"` under another are two buckets.
+- Each limit has its own buckets, scoped to the workflow like `Concurrency`'s: the value `"acme"` under one limit and `"acme"` under another are two buckets. A limit that names a `Scope` shares its buckets with other workflows instead ([Share a limit between workflows](#share-a-limit-between-workflows)).
 - A run that finds a bucket full waits; it is never dropped or cancelled for it. So beside a limit, `Concurrency.Strategy` may only be `ConcurrencyQueueNewest`, the default; `Register` refuses another strategy with `ErrInvalid` ([`validateConcurrencyLimits`](ds:block?id=validateconcurrencylimits-dyxqw4nf)). `Concurrency.FIFO` still works.
 - Fairness: in admission order (higher `Job.Priority` first, then enqueue order), a waiting run is never overtaken on any of its keys by a run behind it. A run that needs two keys is therefore not starved by a stream of runs that need only one of them. The price is head-of-line waiting: a later run that shares a key with an earlier waiting run waits behind it even when that key has room.
 - By default slots are held for the whole run, as with one key: a run in its retry backoff keeps every key until it ends. Each limit has its own `Hold`, so a parked run can give back the keys set to `HoldWhileRunning` and keep the others (see [Choose how long a run holds its slot](#choose-how-long-a-run-holds-its-slot)).
 - Limits need `workflow.CapConcurrencyLimits` ([`Requires`](ds:block?id=requires-6tcjbcfj), [`CapConcurrencyLimits`](ds:block?id=capconcurrencylimits-585ybb9u)). The [memory](ds:block?id=memory-caps-yxkuq583) and [SQL](ds:block?id=sql-p5caps-wggh6esn) drivers have it. Redis and Hatchet do not, and refuse such a workflow (Redis at `Start`, Hatchet at `Register`, [`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)) rather than enforce one key only; the example prints Hatchet's refusal.
+
+## Share a limit between workflows
+
+A limit's buckets belong to its workflow, so two workflows that call the same external account each get their own cap: with `{Key: account, MaxRuns: 1}` on a `sync` workflow and on a `check` workflow, one sync and one check of `acme` run at once. When the account must see one run of either at a time, give both limits the same [`ConcurrencyLimit.Scope`](ds:block?id=concurrencylimit-5anrp8rw): every workflow naming a scope counts against one set of buckets, one per key value.
+
+<!-- snippet: examples/concurrency/main.go#shared-scope -->
+```go
+account := workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["account"] })
+perAccount := workflow.ConcurrencyLimit{
+	Key:     account,
+	MaxRuns: 1,         // one run per account at a time
+	Scope:   "account", // counted across every workflow naming this scope
+}
+sync := workflow.Workflow{
+	Name:              "sync",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+	Steps:             []workflow.Step{{Name: "pull", Run: g.handler}},
+}
+check := workflow.Workflow{
+	Name:              "check",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+	Steps:             []workflow.Step{{Name: "verify", Run: g.handler}},
+}
+```
+
+The example runs a sync of acme, then a check of acme and a check of widgets: the check of acme waits for the sync, the check of widgets starts at once (another account), and the check of acme starts when the sync finishes:
+
+```text
+shared scope:
+  started sync-acme; check-acme queued; started check-widgets
+  sync-acme finished, started: check-acme
+```
+
+The rules ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw), [`CheckConcurrencyScopes`](ds:block?id=checkconcurrencyscopes-k6juwpv8)):
+
+- **The buckets.** A bucket of a scope is the scope plus a key value. Each workflow evaluates its own `Key` on its own jobs, so `sync` may read the account from a label and `check` from its payload; runs whose keys give the same value share the bucket. A limit without a `Scope` keeps today's behaviour: buckets per workflow, untouched by any scope.
+- **The settings belong to the scope.** `MaxRuns` and `Hold` are properties of the shared resource, not of the workflow that asks, so every workflow naming a scope must declare the same ones. `Register` refuses a workflow whose `MaxRuns` or `Hold` for a scope differs from a workflow already registered on the client, with `ErrInvalid` naming both workflows, the scope and the field. The rule "each workflow sees the bucket full at its own `MaxRuns`" was rejected: whether a run could start would depend on which workflow's runs happen to hold the bucket, so neither cap would mean what it says. One workflow names a scope at most once (`Validate` refuses a second limit naming it, which would take two slots of one bucket).
+
+<!-- snippet: examples/concurrency/main.go#scope-mismatch -->
+```go
+lighter := check
+lighter.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: account, MaxRuns: 2, Scope: "account"}}
+m := memory.New()
+if err := m.Register(sync); err != nil {
+	return err
+}
+err = m.Register(lighter) // the scope's cap is the account's, not the workflow's
+```
+
+```text
+  invalid: true
+  workflow: invalid spec: workflow "check": ConcurrencyLimits[0] names Scope "account" with MaxRuns 2, but workflow "sync" ConcurrencyLimits[0] names it with MaxRuns 1: workflows sharing a scope must declare the same MaxRuns
+```
+
+- **Admission order and fairness across workflows.** Admission order is one line across the workflows of a scope: higher `Job.Priority` first, then enqueue order. The [fairness rule](#limit-runs-on-several-keys) holds across it: a waiting run is never overtaken on a shared key by a run of any workflow behind it, so a sync that waits for its connection key keeps a stream of checks off the account key it also needs. A higher-priority check enqueued after a waiting sync goes first, as within one workflow. The conformance cases [`concurrencyScopeCases`](ds:block?id=workflowtest-concurrencyscopecases-4zgt6z8m) pin each of these on every driver that declares the capability.
+- **Hold.** `Hold` is per limit and part of the scope's settings. Under `HoldWhileRunning` a parked run of one workflow gives the shared slot to the runs of the other workflows, and when its parked work is ready it takes the slot back at its original place in the shared line, before a run of the other workflow enqueued after it.
+- **FIFO and strategies.** `Concurrency` has no `Scope`: its strategies (drop, cancel, round robin, weights) decide per workflow, and a shared meaning for them is not defined. Put the shared key in `ConcurrencyLimits`; one entry is enough, and `Concurrency` beside it may only queue, as with any limit. `Concurrency.FIFO` keeps its meaning on the workflow's own `Concurrency` key; on a shared key the fairness rule already starts the runs of one key value in admission order.
+- **Rate limits** stay per workflow: a scope shares concurrency slots, not `RateLimits` windows.
+- **Clients that know only one of the workflows.** On the SQL driver the shared counts and the waiting runs of every workflow are read from the database ([`tblRunScopes`](ds:block?id=sql-tblrunscopes-rv2shref), [`behind`](ds:block?id=sql-limitpass-behind-9upke76c)), so a worker that registers only `sync` still keeps the cap and the fairness rule against `check` runs that another node serves. Workflows registered on one client are checked against each other at `Register`; clients that each register only one of the workflows must be given the same `MaxRuns` and `Hold`, since nothing in the database records them (with different values each client admits its own workflow's runs at its own cap). A run enqueued by an [enqueue-only client](../operations/deploy.md#web-nodes-that-only-enqueue) takes its place in the shared line when the first worker that has its workflow reads it; until then it holds back no run of another workflow, and it cannot start either.
+- **Drivers.** A scope needs `workflow.CapConcurrencyScope` ([`CapConcurrencyScope`](ds:block?id=capconcurrencyscope-s7x7v2es)). The [memory](ds:block?id=memory-caps-yxkuq583) driver has it (one bucket per scope and key value, [`limitKeyOf`](ds:block?id=memory-limitkeyof-9nn9qdbp)) and the [SQL](ds:block?id=sql-p5caps-wggh6esn) driver from migration `015_run_scopes`. Redis refuses a scoped limit at `Start` and Hatchet at `Register` ([`checkSupported`](ds:block?id=hatchet-checksupported-733uwgsp)), rather than cap each workflow on its own under the name of a shared cap.
 
 ## Share the workers fairly between keys
 
@@ -301,6 +361,11 @@ several keys:
   acme-1 finished, started: acme-2
   widgets-1 finished, started: widgets-2
   hatchet: true | missing: ConcurrencyLimits
+shared scope:
+  started sync-acme; check-acme queued; started check-widgets
+  sync-acme finished, started: check-acme
+  invalid: true
+  workflow: invalid spec: workflow "check": ConcurrencyLimits[0] names Scope "account" with MaxRuns 2, but workflow "sync" ConcurrencyLimits[0] names it with MaxRuns 1: workflows sharing a scope must declare the same MaxRuns
 release while waiting:
   whole_run: acme-1 retrying in an hour; acme-2 queued
     an hour later: acme-1 succeeded, then acme-2 succeeded
@@ -323,6 +388,8 @@ The `priority` lines belong to [Enqueue › Priority](enqueue.md#priority).
 - **A failed run does not stop the sequence** ([`Concurrency.FIFO`](ds:block?id=concurrency-h4md62gd)). The next run of the key starts once the failed one has ended; if later runs depend on earlier ones, check for that in the step.
 - **The weight function runs when a run is admitted** ([`Concurrency.Weight`](ds:block?id=concurrency-h4md62gd)). It is called once per run, in the worker that admits it (on SQL and Redis that may be another process than the one that enqueued it), so every client must register the same `Weight`, and it should be fast; a weight change applies to runs admitted after it.
 - **Keys shared with a waiting run wait behind it** ([`ConcurrencyLimit`](ds:block?id=concurrencylimit-5anrp8rw)). With `ConcurrencyLimits`, a run that waits for one key also keeps later runs off its other keys, so a run is never starved; if most runs of a key wait on another, busy key, give that key more room or split the workflow.
+- **A waiting run of another workflow holds a shared key** ([`behind`](ds:block?id=sql-limitpass-behind-9upke76c)). With a scope, a check waiting for a worker that serves only `check` keeps later syncs of the same account waiting behind it, even while no check worker runs. Serve every workflow of a scope, or give the waiting work its own scope.
+- **A limit that gains a `Scope` counts new runs only** (SQL driver). Runs already admitted when a deploy adds a `Scope` to a limit have no row in the scope, so they do not count against the shared bucket until they end, and for that time a key can have more than `MaxRuns` runs. Add a scope while the workflows have no runs in flight, or accept the overlap during the deploy.
 - **A parked run under `HoldWhileRunning` may find its key taken** ([`ConcurrencyHold`](ds:block?id=concurrencyhold-k3v8qw2m)). When its backoff ends it waits for room like any queued run, so its retry can start later than the backoff says; with `HoldWholeRun` it starts on time but blocks the key meanwhile.
 - **Concurrency caps runs, not workers** ([`Concurrency`](ds:block?id=concurrency-h4md62gd)). A capped bucket holds runs queued but uses no worker while it waits; how many steps run at once overall is the driver's worker count (`memory.WithWorkers`, `sqlstore.WithWorkers`, Hatchet `Config.Slots`).
 

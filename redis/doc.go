@@ -46,7 +46,9 @@
 // it declare CapConcurrencyLimits: its admission script counts one
 // concurrency bucket per run, so a workflow with
 // Workflow.ConcurrencyLimits is refused at Start rather than capped on
-// one key only, nor CapHoldWhileRunning: a worker claims the whole run
+// one key only, nor CapConcurrencyScope: a limit shared by several
+// workflows (ConcurrencyLimit.Scope) is refused with them, naming both
+// capabilities, rather than capped per workflow, nor CapHoldWhileRunning: a worker claims the whole run
 // and keeps its concurrency slot while the run sits in a backoff, a
 // sleep or a wait, so a workflow with a key set to HoldWhileRunning is
 // refused at Start rather than held for the whole run.

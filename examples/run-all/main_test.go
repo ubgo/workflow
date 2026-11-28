@@ -17,7 +17,7 @@ func TestRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `succeeded=2 failed=0 waiting=1 sends=2 clock=Oct 14 09:00
-after the signal: succeeded=1 waiting=0
+after the signal: approve succeeded, waiting=0
 paused: stalled=true succeeded=0
 `
 	if got := out; got != want {

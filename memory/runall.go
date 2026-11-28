@@ -30,7 +30,12 @@ const (
 
 // RunAllReport counts what became of the runs RunAll covered: the runs
 // unfinished when it was called and the runs enqueued while it ran
-// (chained jobs, children, cron fires).
+// (chained jobs, children, cron fires). The client's workers run while a
+// test calls RunAll, so a run that could move on its own (not delayed, in
+// a backoff, snoozed, asleep or waiting for an event) may end before the
+// call and is then in no count: Waiting is exact, the other counts only
+// when nothing counted could end first. To check how one run ended, read
+// its Status.
 //
 //ds:def id=memory-runallreport-jfbkhxx2 owner=@khanakia stability=stable
 type RunAllReport struct {

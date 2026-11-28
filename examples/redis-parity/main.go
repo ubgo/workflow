@@ -115,7 +115,7 @@ func offline(ctx context.Context, w io.Writer) error {
 		workflow.CapQueue, workflow.CapPauseWorkflow, workflow.CapPauseQueue,
 		workflow.CapRunFinished, workflow.CapChain, workflow.CapScheduleWhen,
 		workflow.CapShutdownRequeue,
-		workflow.CapClosure, workflow.CapQueueLimitGlobal, // two it does not declare; CapSlotCost, CapConcurrencyLimits and CapHoldWhileRunning are the others
+		workflow.CapClosure, workflow.CapQueueLimitGlobal, // two it does not declare; CapSlotCost, CapConcurrencyLimits, CapConcurrencyScope and CapHoldWhileRunning are the others
 	} {
 		fmt.Fprintf(w, "%v: %v\n", cp, c.Capabilities().Has(cp))
 	}

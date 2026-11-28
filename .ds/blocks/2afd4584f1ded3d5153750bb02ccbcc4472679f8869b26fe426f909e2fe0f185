@@ -1,0 +1,81 @@
+func checkSupported(wf workflow.Workflow) error {
+	if strings.HasSuffix(wf.Name, delayedSuffix) {
+		return fmt.Errorf("%w: workflow %q: a name ending in %q is reserved by the Hatchet driver (its delayed variants)", workflow.ErrInvalid, wf.Name, delayedSuffix)
+	}
+	if wf.ScheduleWhen != nil {
+		return unsupported("Workflow.ScheduleWhen", workflow.CapScheduleWhen, "workflow "+wf.Name+": the Hatchet engine fires crons itself and asks no worker code first")
+	}
+	if !wf.CronWindows.IsZero() {
+		return unsupported("Workflow.CronWindows", workflow.CapScheduleWindow, "workflow "+wf.Name+": the Hatchet engine fires every tick of a cron and has no time-of-day window")
+	}
+	if !workflow.IsUTC(wf.CronLocation) {
+		return unsupported("Workflow.CronLocation", workflow.CapCronZone, "workflow "+wf.Name+": Hatchet evaluates crons in UTC only, not "+wf.CronLocation.String()+"; shifting the expression would break across DST")
+	}
+	if wf.CronOverlap == workflow.OverlapSkip {
+		return unsupported("Workflow.CronOverlap", workflow.CapOverlapSkip, "workflow "+wf.Name+": "+overlapReason)
+	}
+	if !wf.CronActive.IsZero() {
+		return unsupported("Workflow.CronActive", workflow.CapScheduleActive, "workflow "+wf.Name+": a Hatchet cron has no start or end, and the engine fires it without asking a worker")
+	}
+	if wf.CronKeepRuns > 0 {
+		return unsupported("Workflow.CronKeepRuns", workflow.CapScheduleKeep, "workflow "+wf.Name+": "+keepRunsReason)
+	}
+	if wf.RunTimeout > 0 || wf.OnTimeout != nil {
+		return unsupported("Workflow.RunTimeout", workflow.CapRunTimeout, "workflow "+wf.Name+": Hatchet times out each task, not a run, and reports a timeout with its own text, so neither a run deadline nor OnTimeout can be honoured")
+	}
+	if !wf.Misfire.IsZero() {
+		return unsupported("Workflow.Misfire", caps.Missing(workflow.Requires(workflow.Workflow{Cron: wf.Cron, Misfire: wf.Misfire})), "workflow "+wf.Name+": "+misfireReason)
+	}
+	if c := wf.Concurrency; c != nil {
+		if c.Key.Func != nil {
+			return workflow.Unsupported("Workflow.Concurrency.Key.Func", "workflow "+wf.Name+": Hatchet evaluates concurrency keys on the engine; use workflow.KeyExpr with a CEL expression")
+		}
+		if _, err := concurrencyStrategy(c.Strategy); err != nil {
+			return err
+		}
+		if c.Weight != nil {
+			return unsupported("Workflow.Concurrency.Weight", workflow.CapKeyWeights, "workflow "+wf.Name+": Hatchet's GROUP_ROUND_ROBIN serves keys in equal turns and takes no weight per key")
+		}
+		if c.Hold.WhileRunning() {
+			return unsupported("Workflow.Concurrency.Hold", workflow.CapHoldWhileRunning, "workflow "+wf.Name+": the engine holds a run's concurrency slot until the run ends, retry backoffs and durable waits included, and offers no way to give it back while the run waits")
+		}
+	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.Scope != "" {
+			return unsupported(fmt.Sprintf("Workflow.ConcurrencyLimits[%d].Scope", i), workflow.CapsOf(workflow.CapConcurrencyLimits, workflow.CapConcurrencyScope), "workflow "+wf.Name+": the driver gives the engine a workflow's concurrency expressions as part of that workflow, which the engine counts per workflow, so a cap shared with other workflows cannot be expressed; the driver refuses it rather than cap each workflow on its own")
+		}
+	}
+	if len(wf.ConcurrencyLimits) > 0 {
+		return unsupported("Workflow.ConcurrencyLimits", workflow.CapConcurrencyLimits, "workflow "+wf.Name+": the engine takes several concurrency expressions per workflow, but that it admits a run on all of them at once and never lets a later run overtake a waiting one on a shared key is not proven against a live engine, so the driver refuses them rather than honour only part of the contract")
+	}
+	for i, r := range wf.RateLimits {
+		if _, err := rateLimit(r, wf.Name, i); err != nil {
+			return err
+		}
+	}
+	if len(wf.RateLimits) > 0 && len(rootSteps(wf)) != 1 {
+		return workflow.Unsupported("Workflow.RateLimits", "workflow "+wf.Name+": Hatchet limits tasks, not runs, so a rate-limited workflow needs exactly one first step")
+	}
+	for i, expr := range wf.Cron {
+		if err := checkCron(expr, wf.CronSeconds); err != nil {
+			return fmt.Errorf("workflow %q: Cron[%d]: %w", wf.Name, i, err)
+		}
+	}
+	for _, s := range wf.Steps {
+		if s.Name == startGateTask {
+			return fmt.Errorf("%w: workflow %q: step name %q is reserved by the Hatchet driver (the start gate of its delayed variant)", workflow.ErrInvalid, wf.Name, startGateTask)
+		}
+		if s.Wait != nil && s.Wait.KeyFrom.Expr != "" {
+			return workflow.Unsupported("WaitSpec.KeyFrom.Expr", "workflow "+wf.Name+" step "+s.Name+": Hatchet has no API that evaluates a CEL expression to a string for the driver; use workflow.KeyFunc")
+		}
+		if s.HeartbeatTimeout > 0 {
+			return unsupported("Step.HeartbeatTimeout", workflow.CapHeartbeat, "workflow "+wf.Name+" step "+s.Name+": "+heartbeatReason)
+		}
+		if s.Kind() == workflow.StepRun {
+			if err := checkRetry(workflow.EffectiveRetries(s, wf)); err != nil {
+				return fmt.Errorf("workflow %q step %q: %w", wf.Name, s.Name, err)
+			}
+		}
+	}
+	return nil
+}

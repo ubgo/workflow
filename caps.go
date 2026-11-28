@@ -323,6 +323,16 @@ var (
 	// that already left the queue admits one more run, which waits until
 	// that run ends; further enqueues for the key fold into it.
 	CapCoalesce = defineCap(71, "Coalesce")
+	// CapConcurrencyScope: ConcurrencyLimit.Scope is honoured: the
+	// limits of every workflow naming one scope count against one set of
+	// buckets, admission order and the no-overtake rule of
+	// ConcurrencyLimit hold across those workflows, and Register refuses
+	// a workflow whose MaxRuns or Hold for the scope differs from a
+	// registered one (CheckConcurrencyScopes). A driver that keeps
+	// buckets per workflow refuses a scoped limit instead of enforcing it
+	// per workflow.
+	//ds:def id=capconcurrencyscope-s7x7v2es owner=@khanakia stability=stable
+	CapConcurrencyScope = defineCap(72, "ConcurrencyScope")
 )
 
 // Requires computes the capabilities a driver needs to run wf as written.
@@ -360,6 +370,12 @@ func Requires(wf Workflow) Caps {
 	}
 	if len(wf.ConcurrencyLimits) > 0 {
 		c = c.With(CapConcurrencyLimits)
+		for _, l := range wf.ConcurrencyLimits {
+			if l.Scope != "" {
+				c = c.With(CapConcurrencyScope)
+				break
+			}
+		}
 	}
 	if HoldsWhileRunning(wf) {
 		c = c.With(CapHoldWhileRunning)

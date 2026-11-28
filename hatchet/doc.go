@@ -343,7 +343,11 @@
 // workflow, but that the engine admits a run on all of them at once and
 // never lets a later run overtake a waiting one on a shared key is not
 // proven against a live engine, so the driver refuses them rather than
-// honour part of the contract. Concurrency.Hold set to HoldWhileRunning is
+// honour part of the contract. A limit with a Scope is refused the same
+// way, naming ConcurrencyLimits[i].Scope and CapConcurrencyScope: the
+// driver gives the engine a workflow's concurrency expressions as part of
+// that workflow, which the engine counts per workflow, so a cap shared by
+// several workflows cannot be expressed. Concurrency.Hold set to HoldWhileRunning is
 // refused at Register too (no CapHoldWhileRunning): the engine holds a
 // run's concurrency slot until the run ends, retry backoffs and durable
 // waits included, and has no way to give it back while the run waits.

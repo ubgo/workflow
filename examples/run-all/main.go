@@ -75,11 +75,16 @@ func run(ctx context.Context) error {
 		{Workflow: "trial-ending"},                                  // sleeps a week
 		{Workflow: "approve"},                                       // waits for an event
 	}
+	refs := map[string]workflow.RunRef{}
 	for _, job := range jobs {
-		if _, err := c.Enqueue(ctx, job); err != nil {
+		ref, err := c.Enqueue(ctx, job)
+		if err != nil {
 			return err
 		}
+		refs[job.Workflow] = ref
 	}
+	// The counts are exact here: no run can end before RunAll is called,
+	// since each is delayed, asleep or waiting for an event.
 	rep, err := c.RunAll(ctx) // returns when no run can move any further
 	if err != nil {
 		return err
@@ -98,7 +103,14 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
+	// The started client's workers may finish the woken run before RunAll
+	// is called, and the report leaves out a run already finished then:
+	// read the run's own status, not rep.Succeeded. Waiting is exact.
+	st, err := c.Status(ctx, refs["approve"])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("after the signal: approve %s, waiting=%d\n", st, rep.Waiting)
 	// snippet:end
 
 	// snippet:stalled

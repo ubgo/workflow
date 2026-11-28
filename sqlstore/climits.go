@@ -77,11 +77,17 @@ type limitPass struct {
 	count    map[limitBucket]int
 	held     map[limitBucket]bool
 	heldConc map[string]bool // Concurrency buckets held the same way
+	// scoped maps each Scope of wf's limits to the limit's index; the
+	// counts of those limits are the scope's, across workflows (scope.go).
+	scoped map[string]int
+	// ahead lists, per scoped bucket, where the waiting runs of other
+	// workflows stand (behind).
+	ahead map[limitBucket][]scopePos
 }
 
 // limitBegin reads, in tx, how many runs hold each bucket of wf's limits.
 func (c *Client) limitBegin(ctx context.Context, tx *sql.Tx, wf workflow.Workflow) (*limitPass, error) {
-	lp := &limitPass{wf: wf, count: map[limitBucket]int{}, held: map[limitBucket]bool{}, heldConc: map[string]bool{}}
+	lp := &limitPass{wf: wf, count: map[limitBucket]int{}, held: map[limitBucket]bool{}, heldConc: map[string]bool{}, ahead: map[limitBucket][]scopePos{}}
 	if len(wf.ConcurrencyLimits) == 0 {
 		return lp, nil
 	}
@@ -92,7 +98,10 @@ func (c *Client) limitBegin(ctx context.Context, tx *sql.Tx, wf workflow.Workflo
 	err := c.st.each(ctx, tx, "SELECT l.lim, l.lkey, COALESCE(h.parked, 0), COUNT(*) FROM {run_limits} l JOIN {runs} r ON r.id = l.run_id"+
 		" LEFT JOIN {run_hold} h ON h.run_id = l.run_id WHERE l.workflow = ? AND r.status IN (?, ?) GROUP BY l.lim, l.lkey, COALESCE(h.parked, 0)",
 		[]any{wf.Name, runActive, runFailing}, func() error {
-			if parked == 1 && b.lim >= 0 && b.lim < len(wf.ConcurrencyLimits) && wf.ConcurrencyLimits[b.lim].Hold.WhileRunning() {
+			if b.lim < 0 || b.lim >= len(wf.ConcurrencyLimits) || wf.ConcurrencyLimits[b.lim].Scope != "" {
+				return nil // a scoped limit counts across workflows (scopeBegin)
+			}
+			if parked == 1 && wf.ConcurrencyLimits[b.lim].Hold.WhileRunning() {
 				return nil
 			}
 			lp.count[b] += int(n)
@@ -170,6 +179,9 @@ func (c *Client) limitTake(ctx context.Context, tx *sql.Tx, lp *limitPass, r *ru
 			return err
 		}
 		lp.count[limitBucket{lim: i, key: k}]++
+	}
+	if len(lp.scoped) > 0 {
+		return c.scopeWrite(ctx, tx, lp.wf, r.id, keys)
 	}
 	return nil
 }

@@ -25,6 +25,7 @@ ledger after Migrate:
   ubgo/workflow/sqlstore 012_concurrency_limits
   ubgo/workflow/sqlstore 013_run_hold
   ubgo/workflow/sqlstore 014_checkpoints_coalesce_schedule_idempotency
+  ubgo/workflow/sqlstore 015_run_scopes
   ubgo/workflow/sqlstore/bucket 001_buckets
   ubgo/workflow/sqlstore/data 001_data
   ubgo/workflow/sqlstore/debounce 001_debounce
@@ -47,20 +48,21 @@ wrote 011_ubgo_workflow_sqlstore_011_fair_turns.sql
 wrote 012_ubgo_workflow_sqlstore_012_concurrency_limits.sql
 wrote 013_ubgo_workflow_sqlstore_013_run_hold.sql
 wrote 014_ubgo_workflow_sqlstore_014_checkpoints_coalesce_schedule_idempotency.sql
-wrote 015_ubgo_workflow_sqlstore_unique_001_unique.sql
-wrote 016_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
-wrote 017_ubgo_workflow_sqlstore_debounce_001_debounce.sql
-wrote 018_ubgo_workflow_sqlstore_output_001_output.sql
-wrote 019_ubgo_workflow_sqlstore_journal_001_journal.sql
-wrote 020_ubgo_workflow_sqlstore_bucket_001_buckets.sql
-wrote 021_ubgo_workflow_sqlstore_data_001_data.sql
-wrote 022_ubgo_workflow_sqlstore_inbox_001_inbox.sql
+wrote 015_ubgo_workflow_sqlstore_015_run_scopes.sql
+wrote 016_ubgo_workflow_sqlstore_unique_001_unique.sql
+wrote 017_ubgo_workflow_sqlstore_unique_002_unique_holder.sql
+wrote 018_ubgo_workflow_sqlstore_debounce_001_debounce.sql
+wrote 019_ubgo_workflow_sqlstore_output_001_output.sql
+wrote 020_ubgo_workflow_sqlstore_journal_001_journal.sql
+wrote 021_ubgo_workflow_sqlstore_bucket_001_buckets.sql
+wrote 022_ubgo_workflow_sqlstore_data_001_data.sql
+wrote 023_ubgo_workflow_sqlstore_inbox_001_inbox.sql
 started on a schema applied without Migrate
 ledger after UniqueStore.Migrate:
   ubgo/workflow/sqlstore/unique 001_unique
   ubgo/workflow/sqlstore/unique 002_unique_holder
 migrations per owner:
-  ubgo/workflow/sqlstore: 14 in Client.Migrate
+  ubgo/workflow/sqlstore: 15 in Client.Migrate
   ubgo/workflow/sqlstore/unique: 2 in Client.Migrate
   ubgo/workflow/sqlstore/debounce: 1 in Client.Migrate
   ubgo/workflow/sqlstore/outbox: 0 in Client.Migrate

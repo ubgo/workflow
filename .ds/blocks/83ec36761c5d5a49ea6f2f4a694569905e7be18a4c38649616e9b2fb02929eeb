@@ -1,0 +1,63 @@
+func (c *Client) insertRun(ctx context.Context, tx *sql.Tx, reg *registered, job workflow.Job, key, id string) (*runRow, error) {
+	if id == "" {
+		var err error
+		if id, err = c.st.newID(IDRun); err != nil {
+			return nil, err
+		}
+	}
+	now := c.nowNanos()
+	status, runAt := runPending, now
+	var sid, idem any // NULL unless set
+	if !job.RunAt.IsZero() && job.RunAt.UnixNano() > now {
+		scheduled, err := c.st.newID(IDScheduled)
+		if err != nil {
+			return nil, err
+		}
+		status, runAt, sid = runScheduled, job.RunAt.UnixNano(), scheduled
+	}
+	if key != "" {
+		idem = key
+	}
+	labels, err := json.Marshal(nonNil(job.Labels))
+	if err != nil {
+		return nil, fmt.Errorf("sqlstore: encode labels: %w", err)
+	}
+	bucket, rk := "", unevaluatedKeys // a stand-in's keys are the admitting worker's (evaluateKeys)
+	if !reg.stub {
+		if bucket, rk, err = runKeys(reg, job); err != nil {
+			return nil, err
+		}
+	}
+	// The signal floor is read by the INSERT itself, so the statement that
+	// opens the transaction is a write: SQLite then takes its write lock
+	// up front (waiting out busy_timeout) instead of failing a read-to-write
+	// upgrade with SQLITE_BUSY.
+	_, err = c.st.exec(ctx, tx, `INSERT INTO {runs} (id, scheduled_id, workflow, payload, labels, idem_active, priority, bucket,
+		rate_keys, status, run_at, sig_floor, created_at, finished_at, fail_until, notified, notify_until, ver)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(id), 0) FROM {signals}), ?, 0, 0, 0, 0, 0)`,
+		id, sid, reg.wf.Name, job.Payload, string(labels), idem, job.Priority, bucket, rk, status, runAt, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.insertRunExt(ctx, tx, reg, job, key, id); err != nil {
+		return nil, err
+	}
+	if err := c.insertRunInfo(ctx, tx, job, id); err != nil {
+		return nil, err
+	}
+	if err := c.insertVersion(ctx, tx, reg, id); err != nil {
+		return nil, err
+	}
+	if err := c.insertScopes(ctx, tx, reg, job, id); err != nil {
+		return nil, err
+	}
+	if err := c.insertLabels(ctx, tx, id, job.Labels); err != nil {
+		return nil, err
+	}
+	if len(job.Chain) > 0 {
+		if err := c.saveChain(ctx, tx, id, job.Chain); err != nil {
+			return nil, err
+		}
+	}
+	return c.loadRun(ctx, tx, "id", id)
+}

@@ -9,7 +9,7 @@ go run ./run-all
 
 ```text
 succeeded=2 failed=0 waiting=1 sends=2 clock=Oct 14 09:00
-after the signal: succeeded=1 waiting=0
+after the signal: approve succeeded, waiting=0
 paused: stalled=true succeeded=0
 ```
 
@@ -24,11 +24,16 @@ jobs := []workflow.Job{
 	{Workflow: "trial-ending"},                                  // sleeps a week
 	{Workflow: "approve"},                                       // waits for an event
 }
+refs := map[string]workflow.RunRef{}
 for _, job := range jobs {
-	if _, err := c.Enqueue(ctx, job); err != nil {
+	ref, err := c.Enqueue(ctx, job)
+	if err != nil {
 		return err
 	}
+	refs[job.Workflow] = ref
 }
+// The counts are exact here: no run can end before RunAll is called,
+// since each is delayed, asleep or waiting for an event.
 rep, err := c.RunAll(ctx) // returns when no run can move any further
 if err != nil {
 	return err
@@ -37,7 +42,7 @@ fmt.Printf("succeeded=%d failed=%d waiting=%d sends=%d clock=%s\n",
 	rep.Succeeded, rep.Failed, rep.Waiting, sends.Load(), clk.Now().Format("Jan 2 15:04"))
 ```
 
-A run waiting for an event moves only when the test signals it:
+A run waiting for an event moves only when the test signals it. Once signalled it can end on a worker before `RunAll` is called, and `RunAll` counts only the runs unfinished at the call, so the program reads the run's status instead of `rep.Succeeded` ([Count only what the report covers](../../docs/testing/run-all.md#count-only-what-the-report-covers)):
 
 <!-- snippet: examples/run-all/main.go#signal -->
 ```go
@@ -50,7 +55,14 @@ rep, err = c.RunAll(ctx)
 if err != nil {
 	return err
 }
-fmt.Printf("after the signal: succeeded=%d waiting=%d\n", rep.Succeeded, rep.Waiting)
+// The started client's workers may finish the woken run before RunAll
+// is called, and the report leaves out a run already finished then:
+// read the run's own status, not rep.Succeeded. Waiting is exact.
+st, err := c.Status(ctx, refs["approve"])
+if err != nil {
+	return err
+}
+fmt.Printf("after the signal: approve %s, waiting=%d\n", st, rep.Waiting)
 ```
 
 A paused workflow makes RunAll give up instead of hanging:

@@ -1,0 +1,22 @@
+func (s *store) migrations() []migrate.Migration {
+	return []migrate.Migration{
+		{Owner: s.owner(MigrationOwner), Name: "001_initial", Script: s.script(s.ddl())},
+		{Owner: s.owner(MigrationOwner), Name: "002_schedule_misfire", Script: s.script(s.render(misfireDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "003_queues_admin", Script: s.script(append(s.render(adminDefs(typesFor(s.engine))), backfillRunExt))},
+		{Owner: s.owner(MigrationOwner), Name: "004_run_states_chain", Script: s.script(append(s.render(statesChainDefs(typesFor(s.engine))), discardedStatus))},
+		// 005's backfill decodes each run's JSON labels, which no statement
+		// does portably, so it runs in Go: Client.IndexLabels, called by
+		// Migrate after this script.
+		{Owner: s.owner(MigrationOwner), Name: "005_run_labels", Script: s.script(s.render(labelDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "006_schedule_history", Script: s.script(append(s.render(historyDefs(typesFor(s.engine))), backfillScheduleLast))},
+		{Owner: s.owner(MigrationOwner), Name: "007_leader_archive", Script: s.script(s.render(append(leaderDefs(typesFor(s.engine)), archiveDefs(typesFor(s.engine))...)))},
+		{Owner: s.owner(MigrationOwner), Name: "008_run_info_nodes", Script: s.script(append(s.render(runInfoDefs(typesFor(s.engine))), backfillRunInfo))},
+		{Owner: s.owner(MigrationOwner), Name: "009_schedule_tenant", Script: s.script(s.render(scheduleTenantDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "010_run_version", Script: s.script(s.render(runVersionDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "011_fair_turns", Script: s.script(s.render(fairDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "012_concurrency_limits", Script: s.script(s.render(limitDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "013_run_hold", Script: s.script(s.render(holdDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "014_checkpoints_coalesce_schedule_idempotency", Script: s.script(s.render(gapDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "015_run_scopes", Script: s.script(s.render(scopeDefs(typesFor(s.engine))))},
+	}
+}

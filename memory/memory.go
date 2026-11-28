@@ -43,6 +43,7 @@ var caps = workflow.CapsOf(
 	workflow.CapRoundRobin, workflow.CapKeyWeights,
 	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning,
 	workflow.CapScheduleKey, workflow.CapCheckpoint, workflow.CapCoalesce,
+	workflow.CapConcurrencyScope,
 )
 
 // defaultWorkers is the step-execution pool size when WithWorkers is not
@@ -407,6 +408,15 @@ func (c *Client) Register(wf workflow.Workflow) error {
 	defer c.mu.Unlock()
 	if c.started {
 		return workflow.ErrAlreadyStarted
+	}
+	if workflow.ConcurrencyScoped(wf) {
+		others := make([]workflow.Workflow, 0, len(c.wfs))
+		for _, o := range c.wfs {
+			others = append(others, o.wf)
+		}
+		if err := workflow.CheckConcurrencyScopes(wf, others); err != nil {
+			return err
+		}
 	}
 	c.wfs[wf.Name] = reg
 	return nil

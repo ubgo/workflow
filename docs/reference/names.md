@@ -33,7 +33,7 @@ The SQL driver and its stores create these tables in your database. `<prefix>` i
 | [`<prefix>consumed`](ds:block?id=sql-tblconsumed-fr8wadgj) | `Client.Migrate` | Which run took which signal |
 | [`<prefix>schedules`](ds:block?id=sql-tblschedules-da7nr9br) | `Client.Migrate` | Declared crons and `Schedule` calls |
 | [`<prefix>ticks`](ds:block?id=sql-tblticks-gwfthj6n) | `Client.Migrate` | One row per cron tick, so a tick fires once across nodes |
-| [`<prefix>locks`](ds:block?id=sql-tbllocks-639vb69r) | `Client.Migrate` | Lock rows that serialise admission per workflow; on SQLite also `claim:fair`, created at `Start` when a round-robin workflow is registered, which queues fair claims on SQLite's one writer |
+| [`<prefix>locks`](ds:block?id=sql-tbllocks-639vb69r) | `Client.Migrate` | Lock rows that serialise admission per workflow (`admit:<workflow>`) and per shared concurrency scope (`admit-scope:<scope>`, taken after the workflow's); on SQLite also `claim:fair`, created at `Start` when a round-robin workflow is registered, which queues fair claims on SQLite's one writer |
 | [`<prefix>starts`](ds:block?id=sql-tblstarts-9p5vzj2d) | `Client.Migrate` | Start times for rate limits |
 | [`<prefix>batches`](ds:block?id=sql-tblbatches-w54n66kh) | `Client.Migrate` | The durable `batch.Store` (`Client.BatchStore`) |
 | [`<prefix>schedule_misfire`](ds:block?id=sql-tblmisfire-wzsef3uz) | `Client.Migrate` | The misfire policy of schedules that set one |
@@ -55,6 +55,7 @@ The SQL driver and its stores create these tables in your database. `<prefix>` i
 | `<prefix>checkpoints` | `Client.Migrate` (`014_checkpoints_coalesce_schedule_idempotency`) | Per step of an unfinished run: its saved checkpoint and expiry (`SaveCheckpoint`); deleted when the run ends |
 | `<prefix>run_next` | `Client.Migrate` (`014_checkpoints_coalesce_schedule_idempotency`) | Per held key of a `Workflow.Coalesce` workflow: the run pending behind the holder and its own `RunAt`; deleted when it is promoted or ends |
 | `<prefix>schedule_key` | `Client.Migrate` (`014_checkpoints_coalesce_schedule_idempotency`) | Per schedule with `IdempotencyKey`: the key template and `OnHeld` |
+| [`<prefix>run_scopes`](ds:block?id=sql-tblrunscopes-rv2shref) | `Client.Migrate` (`015_run_scopes`) | Per run of a workflow with a limit that names a `Scope`: its key value under each scope, written at insert, rewritten while the run waits and replaced at admission; counted across workflows while the run holds a slot, read as waiting while it is pending, pruned with the run |
 | [`<prefix>schedule_last`](ds:block?id=sql-tblschedulelast-kpdez43k) | `Client.Migrate` (`006_schedule_history`) | Per schedule: its overlap policy, last fire time and last run, backfilled for existing schedules |
 | [`<prefix>attempt_errors`](ds:block?id=sql-tblattempterr-y8ddesqf) | `Client.Migrate` (`006_schedule_history`) | Per-attempt error history (`RunInfo.Errors`), bounded per run by `WithErrorHistory`, deleted with the run |
 | [`<prefix>run_forced`](ds:block?id=sql-tblrunforced-v6wrmhzw) | `Client.Migrate` (`006_schedule_history`) | Runs ended by `ForceFail`, so their error matches [`workflow.ErrForced`](ds:block?id=errforced-2cdhp8xs) by a flag, not by text; cleared by `Retry` and `ForceComplete` |
