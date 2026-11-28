@@ -9,12 +9,12 @@ require (
 	github.com/ubgo/sqlb/contrib/driver-mysql v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-pgx v0.1.0
 	github.com/ubgo/sqlb/contrib/driver-sqlite v0.1.0
-	github.com/ubgo/workflow v0.2.3
-	github.com/ubgo/workflow/hatchet v0.2.3
-	github.com/ubgo/workflow/recorder v0.2.3
-	github.com/ubgo/workflow/recorder/sqlrecorder v0.2.3
-	github.com/ubgo/workflow/redis v0.2.3
-	github.com/ubgo/workflow/sqlstore v0.2.3
+	github.com/ubgo/workflow v0.2.5
+	github.com/ubgo/workflow/hatchet v0.2.5
+	github.com/ubgo/workflow/recorder v0.2.5
+	github.com/ubgo/workflow/recorder/sqlrecorder v0.2.5
+	github.com/ubgo/workflow/redis v0.2.5
+	github.com/ubgo/workflow/sqlstore v0.2.5
 )
 
 require (
