@@ -25,6 +25,11 @@ several keys:
   acme-1 finished, started: acme-2
   widgets-1 finished, started: widgets-2
   hatchet: true | missing: ConcurrencyLimits
+shared scope:
+  started sync-acme; check-acme queued; started check-widgets
+  sync-acme finished, started: check-acme
+  invalid: true
+  workflow: invalid spec: workflow "check": ConcurrencyLimits[0] names Scope "account" with MaxRuns 2, but workflow "sync" ConcurrencyLimits[0] names it with MaxRuns 1: workflows sharing a scope must declare the same MaxRuns
 release while waiting:
   whole_run: acme-1 retrying in an hour; acme-2 queued
     an hour later: acme-1 succeeded, then acme-2 succeeded

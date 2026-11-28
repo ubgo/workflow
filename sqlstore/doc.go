@@ -503,7 +503,22 @@
 // the run's row in its claim transaction and gives up when the run is
 // parked, and parking writes the row before it checks the run, so a park
 // and a claim of one run are serialised by the row's lock on every
-// engine.
+// engine. Migration 015 adds run_scopes (CapConcurrencyScope; scope.go):
+// for each run of a workflow with a limit that names a Scope, its key
+// value under each scope, written when a client that has the workflow
+// inserts the run, rewritten by each admission pass while the run waits,
+// and replaced when it is admitted. A scoped bucket's count is the rows
+// of the scope and key value whose run, of any workflow, is active or
+// failing. The admission pass takes the workflow's lock row and then one
+// lock row per scope (admit-scope:<scope>), in name order, and treats the
+// runs of other workflows that wait on a scoped bucket (pending, or parked
+// and ready again) as ahead of its own runs by priority, then seq, so a
+// worker that has only one of the workflows still keeps the no-overtake
+// rule across them. Register refuses a workflow whose MaxRuns or Hold for
+// a scope differs from a workflow registered on the same client
+// (workflow.CheckConcurrencyScopes); clients that each register only one
+// of the workflows must be given the same values, since nothing in the
+// database records them.
 //
 // # Database policies
 //

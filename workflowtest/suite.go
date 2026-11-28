@@ -95,6 +95,7 @@ func allGroups() []suiteGroup {
 		{"concurrency", concurrencyCases},
 		{"concurrencylimits", concurrencyLimitCases},
 		{"concurrencyhold", concurrencyHoldCases},
+		{"concurrencyscope", concurrencyScopeCases},
 		{"ratelimit", rateLimitCases},
 		{"cron", cronCases},
 		{"misfire", misfireCases},

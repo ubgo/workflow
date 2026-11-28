@@ -334,6 +334,11 @@ func checkSupported(wf workflow.Workflow) error {
 			return unsupported("Workflow.Concurrency.Hold", workflow.CapHoldWhileRunning, "workflow "+wf.Name+": the engine holds a run's concurrency slot until the run ends, retry backoffs and durable waits included, and offers no way to give it back while the run waits")
 		}
 	}
+	for i, l := range wf.ConcurrencyLimits {
+		if l.Scope != "" {
+			return unsupported(fmt.Sprintf("Workflow.ConcurrencyLimits[%d].Scope", i), workflow.CapsOf(workflow.CapConcurrencyLimits, workflow.CapConcurrencyScope), "workflow "+wf.Name+": the driver gives the engine a workflow's concurrency expressions as part of that workflow, which the engine counts per workflow, so a cap shared with other workflows cannot be expressed; the driver refuses it rather than cap each workflow on its own")
+		}
+	}
 	if len(wf.ConcurrencyLimits) > 0 {
 		return unsupported("Workflow.ConcurrencyLimits", workflow.CapConcurrencyLimits, "workflow "+wf.Name+": the engine takes several concurrency expressions per workflow, but that it admits a run on all of them at once and never lets a later run overtake a waiting one on a shared key is not proven against a live engine, so the driver refuses them rather than honour only part of the contract")
 	}

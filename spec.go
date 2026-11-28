@@ -713,7 +713,8 @@ func HoldsWhileRunning(wf Workflow) bool {
 // ConcurrencyLimit is one more concurrency key of a workflow
 // (Workflow.ConcurrencyLimits): each distinct key value is its own bucket
 // of MaxRuns, counted apart from Workflow.Concurrency and from the other
-// limits, and scoped to the workflow like Concurrency's buckets.
+// limits, and scoped to the workflow like Concurrency's buckets, unless
+// Scope names a set of buckets several workflows share.
 //
 // A run that finds any of its buckets full waits; it is never dropped or
 // cancelled for it. Admission is all or nothing: a run takes a slot in
@@ -740,6 +741,21 @@ type ConcurrencyLimit struct {
 	// a backoff gives back the keys set to HoldWhileRunning and keeps the
 	// others.
 	Hold ConcurrencyHold
+
+	// Scope shares this limit's buckets with every workflow whose limit
+	// names the same Scope: a run of any of them counts against the
+	// bucket of its key value, so with MaxRuns 1 at most one run of all
+	// those workflows holds one key value at a time (a sync and a check
+	// workflow that call the same account, say). Each workflow keeps its
+	// own Key, so they may read the value from different labels or
+	// payloads. Empty keeps the buckets to this workflow. MaxRuns and
+	// Hold belong to the scope: every workflow naming it must declare the
+	// same ones, and one workflow names a scope once
+	// (CheckConcurrencyScopes). The fairness rule of ConcurrencyLimit
+	// holds across the workflows: in admission order, a waiting run is
+	// never overtaken on a shared key by a run of any workflow behind
+	// it. Needs CapConcurrencyScope.
+	Scope string
 }
 
 // MaxKeyWeight is the largest Concurrency.Weight a driver honours; larger

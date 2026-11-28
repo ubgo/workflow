@@ -83,6 +83,7 @@ func (s *store) migrations() []migrate.Migration {
 		{Owner: s.owner(MigrationOwner), Name: "012_concurrency_limits", Script: s.script(s.render(limitDefs(typesFor(s.engine))))},
 		{Owner: s.owner(MigrationOwner), Name: "013_run_hold", Script: s.script(s.render(holdDefs(typesFor(s.engine))))},
 		{Owner: s.owner(MigrationOwner), Name: "014_checkpoints_coalesce_schedule_idempotency", Script: s.script(s.render(gapDefs(typesFor(s.engine))))},
+		{Owner: s.owner(MigrationOwner), Name: "015_run_scopes", Script: s.script(s.render(scopeDefs(typesFor(s.engine))))},
 	}
 }
 

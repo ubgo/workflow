@@ -390,6 +390,7 @@ func validateConcurrencyLimits(wf Workflow) error {
 	if len(wf.ConcurrencyLimits) == 0 {
 		return nil
 	}
+	scopes := map[string]int{}
 	for i, l := range wf.ConcurrencyLimits {
 		if l.MaxRuns < 1 {
 			return invalidf("workflow %q: ConcurrencyLimits[%d].MaxRuns must be at least 1", wf.Name, i)
@@ -397,6 +398,13 @@ func validateConcurrencyLimits(wf Workflow) error {
 		if l.Key.Func != nil && l.Key.Expr != "" {
 			return invalidf("workflow %q: ConcurrencyLimits[%d].Key sets both Func and Expr", wf.Name, i)
 		}
+		if l.Scope == "" {
+			continue
+		}
+		if j, ok := scopes[l.Scope]; ok {
+			return invalidf("workflow %q: ConcurrencyLimits[%d] and [%d] both name Scope %q: a run would take two slots of one shared bucket", wf.Name, j, i, l.Scope)
+		}
+		scopes[l.Scope] = i
 	}
 	if c := wf.Concurrency; c != nil && c.Strategy != "" && c.Strategy != ConcurrencyQueueNewest {
 		return invalidf("workflow %q: ConcurrencyLimits need Concurrency.Strategy ConcurrencyQueueNewest, not %q", wf.Name, c.Strategy)

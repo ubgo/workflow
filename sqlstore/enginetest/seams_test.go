@@ -74,6 +74,7 @@ var frozenChecksums = map[string]string{
 	"sqlite ubgo/workflow/sqlstore 012_concurrency_limits":                          "f89e423c06374ae21679abd03bda95bedcd5feea38d3d89219a9a939f76b0c57",
 	"sqlite ubgo/workflow/sqlstore 013_run_hold":                                    "2a3ae8d1cf7eb276e469fe884c90c7f624d293351c0a7bbe6b54e9181e862bd0",
 	"sqlite ubgo/workflow/sqlstore 014_checkpoints_coalesce_schedule_idempotency":   "3d02fb1fee3334ce688e1b99498cdc56551db998275ddf5a5574bfe1a0093d16",
+	"sqlite ubgo/workflow/sqlstore 015_run_scopes":                                  "9da30776f10a0ced675d8d76a745554e990754c32573cb1ddec3f828fabf38eb",
 	"sqlite ubgo/workflow/sqlstore/journal 001_journal":                             "2a559bdaaa463913a28d2c5d72bd350609b0dc2d2b38245a85c2a53ec301bcdb",
 	"sqlite ubgo/workflow/sqlstore/bucket 001_buckets":                              "d1d74bc8f75b17ada1cf5fe4fc716e68646fdda36c712f83fb56d3c4f8da08fa",
 	"sqlite ubgo/workflow/sqlstore/data 001_data":                                   "42ad4aab91f9d4d7a9169fde5cf791adbb0872380e942ef73cdc49cfeacd85d6",
@@ -84,6 +85,7 @@ var frozenChecksums = map[string]string{
 	"postgres ubgo/workflow/sqlstore 012_concurrency_limits":                        "3bbee71b6be01b39745385afe5e708b483a3787abbf49d4d6b1a1eecf7dfba27",
 	"postgres ubgo/workflow/sqlstore 013_run_hold":                                  "f67bf34dcdfd776441805c76bdcafebc57d221207ce9b860c9ba2d8a1d1c58d9",
 	"postgres ubgo/workflow/sqlstore 014_checkpoints_coalesce_schedule_idempotency": "51a3df5b50f6865f290ba8f4f2a9449484d914696d8be2f4246f2ac3dc807d99",
+	"postgres ubgo/workflow/sqlstore 015_run_scopes":                                "f69e60ccd39eb5775231aceb7bc1e973a20fe96b37b4c5a109d304775bb73bfa",
 	"postgres ubgo/workflow/sqlstore/journal 001_journal":                           "88daf7de07728cd1bb358518f3294495f91f264bc94b63382584ad10b45a1f7a",
 	"postgres ubgo/workflow/sqlstore/bucket 001_buckets":                            "6aef137b46458c4029373aa0228aa73e3b46ea666dc10597a385804e62638a99",
 	"postgres ubgo/workflow/sqlstore/data 001_data":                                 "075b8ff10da2e595954a16e823be39c13d2fcb3e4e1124d94ff5f42724e0149b",
@@ -94,6 +96,7 @@ var frozenChecksums = map[string]string{
 	"mysql ubgo/workflow/sqlstore 012_concurrency_limits":                           "d1a3881f96ea78bfe71d5f1ebad8122c557afd252e3e51550a0a3f39ed4284d7",
 	"mysql ubgo/workflow/sqlstore 013_run_hold":                                     "a3972bd754bfcd14467c35170999520c3236e7378dfec739d67dd5353d83838a",
 	"mysql ubgo/workflow/sqlstore 014_checkpoints_coalesce_schedule_idempotency":    "ca9e9091ed5c3e443988021512c9f879a2ab0aeac7d4e0dc63380477655c08df",
+	"mysql ubgo/workflow/sqlstore 015_run_scopes":                                   "7a028d69b1f655b8fb6892bc5be369099ace575b9dc4ed583f9f87e87331416e",
 	"mysql ubgo/workflow/sqlstore/journal 001_journal":                              "15848682e620817a67d8ecd16d913e24625af32f406af928b63b119d5f7eb4ec",
 	"mysql ubgo/workflow/sqlstore/bucket 001_buckets":                               "4740aa81988d327e2c9f1764807d053c7b3e1c53688b6a38aebab25d839ac1a6",
 	"mysql ubgo/workflow/sqlstore/data 001_data":                                    "a98f0bd29e481302e69eedf954df1b61bb44fa7cd462219073aa1d03a0be713b",
@@ -321,6 +324,15 @@ func TestSchemaAppliedElsewhereStarts(t *testing.T) {
 			applyScripts(t, e, db, prefix, func(m sqlstore.MigrationScript) bool {
 				return m.Name == "014_checkpoints_coalesce_schedule_idempotency"
 			})
+			pre15, err := sqlstore.New(db, e.dialect, sqlstore.WithTablePrefix(prefix))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := pre15.Start(ctx); err == nil || !strings.Contains(err.Error(), "run_scopes") {
+				pre15.Stop()
+				t.Fatalf("Start on a schema up to 014: %v, want an error naming run_scopes", err)
+			}
+			applyScripts(t, e, db, prefix, func(m sqlstore.MigrationScript) bool { return m.Name == "015_run_scopes" })
 			c, err := sqlstore.New(db, e.dialect, sqlstore.WithTablePrefix(prefix), sqlstore.WithPollInterval(testPoll))
 			if err != nil {
 				t.Fatal(err)

@@ -1,7 +1,8 @@
 // Command concurrency caps how many runs of a workflow execute at once per
 // key (one report per tenant at a time), shows what each strategy does to
 // the run over the cap, rate-limits starts per key, orders waiting work by
-// priority, caps one workflow on two keys at once, lets a run waiting to
+// priority, caps one workflow on two keys at once, caps two workflows
+// together through a shared scope, lets a run waiting to
 // retry give its slot back (Concurrency.Hold), and shows which key form
 // each driver refuses.
 //
@@ -204,6 +205,9 @@ func run(ctx context.Context) error {
 	if err := severalKeys(ctx); err != nil {
 		return err
 	}
+	if err := sharedScope(ctx); err != nil {
+		return err
+	}
 	if err := releaseWhileWaiting(ctx); err != nil {
 		return err
 	}
@@ -277,6 +281,82 @@ func severalKeys(ctx context.Context) error {
 	}
 	err := hatchet.New(hatchet.Config{}).Register(byExpr)
 	fmt.Println("  hatchet:", errors.Is(err, workflow.ErrUnsupported), "| missing:", missingOf(err))
+	return nil
+}
+
+// sharedScope caps two workflows together: a sync and a check of one
+// account call the same external account, so at most one run of either
+// may touch an account at a time. Both limits name the scope "account";
+// each workflow still reads the account its own way.
+func sharedScope(ctx context.Context) error {
+	fmt.Println("shared scope:")
+	g := gated{started: make(chan string, 8), gates: map[string]chan struct{}{}}
+	for _, n := range []string{"sync-acme", "check-acme", "check-widgets"} {
+		g.gates[n] = make(chan struct{})
+	}
+	// snippet:shared-scope
+	account := workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["account"] })
+	perAccount := workflow.ConcurrencyLimit{
+		Key:     account,
+		MaxRuns: 1,         // one run per account at a time
+		Scope:   "account", // counted across every workflow naming this scope
+	}
+	sync := workflow.Workflow{
+		Name:              "sync",
+		ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+		Steps:             []workflow.Step{{Name: "pull", Run: g.handler}},
+	}
+	check := workflow.Workflow{
+		Name:              "check",
+		ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+		Steps:             []workflow.Step{{Name: "verify", Run: g.handler}},
+	}
+	// snippet:end
+	c := memory.New()
+	for _, wf := range []workflow.Workflow{sync, check} {
+		if err := c.Register(wf); err != nil {
+			return err
+		}
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer c.Stop()
+	defer cancel()
+	if err := c.Start(ctx); err != nil {
+		return err
+	}
+	enqueue := func(wf, name, acct string) (workflow.RunRef, error) {
+		return c.Enqueue(ctx, workflow.Job{Workflow: wf, Labels: map[string]string{"name": name, "account": acct}})
+	}
+	if _, err := enqueue("sync", "sync-acme", "acme"); err != nil {
+		return err
+	}
+	first := <-g.started
+	checkAcme, err := enqueue("check", "check-acme", "acme")
+	if err != nil {
+		return err
+	}
+	if _, err := enqueue("check", "check-widgets", "widgets"); err != nil {
+		return err
+	}
+	second := <-g.started
+	st, _ := c.Status(ctx, checkAcme)
+	fmt.Printf("  started %s; check-acme %s; started %s\n", first, st, second)
+	close(g.gates["sync-acme"])
+	fmt.Println("  sync-acme finished, started:", <-g.started)
+	close(g.gates["check-acme"])
+	close(g.gates["check-widgets"])
+
+	// snippet:scope-mismatch
+	lighter := check
+	lighter.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: account, MaxRuns: 2, Scope: "account"}}
+	m := memory.New()
+	if err := m.Register(sync); err != nil {
+		return err
+	}
+	err = m.Register(lighter) // the scope's cap is the account's, not the workflow's
+	// snippet:end
+	fmt.Println("  invalid:", errors.Is(err, workflow.ErrInvalid))
+	fmt.Println(" ", err)
 	return nil
 }
 

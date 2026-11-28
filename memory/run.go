@@ -23,11 +23,24 @@ type eventKey struct{ name, key string }
 type bucketKey struct{ workflow, key string }
 
 // limitKey is one bucket of one Workflow.ConcurrencyLimits entry: the
-// workflow, the index of the limit and the key value.
+// workflow, the index of the limit and the key value; for a limit with a
+// Scope, the scope and the key value only, so every workflow naming the
+// scope counts against the same bucket (workflow.CapConcurrencyScope).
 type limitKey struct {
 	workflow string
 	limit    int
+	scope    string
 	key      string
+}
+
+// limitKeyOf is the bucket of key value key under limit i of wf.
+//
+//ds:def id=memory-limitkeyof-9nn9qdbp owner=@khanakia stability=stable
+func limitKeyOf(wf workflow.Workflow, i int, key string) limitKey {
+	if s := wf.ConcurrencyLimits[i].Scope; s != "" {
+		return limitKey{scope: s, key: key}
+	}
+	return limitKey{workflow: wf.Name, limit: i, key: key}
 }
 
 // rateKey is one rate-limit bucket: the workflow, the index of the limit in
@@ -344,7 +357,7 @@ func (c *Client) limitRoomLocked(r *run, bk bucketKey) bool {
 		return false
 	}
 	for i, l := range wf.ConcurrencyLimits {
-		if r.needs(i) && c.limitRuns[limitKey{workflow: wf.Name, limit: i, key: r.limitKeys[i]}] >= l.MaxRuns {
+		if r.needs(i) && c.limitRuns[limitKeyOf(wf, i, r.limitKeys[i])] >= l.MaxRuns {
 			return false
 		}
 	}
@@ -383,7 +396,7 @@ func (c *Client) takeLocked(r *run, rejoin bool) {
 	}
 	for i, k := range r.limitKeys {
 		if !rejoin || holdOf(wf, i).WhileRunning() {
-			c.limitRuns[limitKey{workflow: wf.Name, limit: i, key: k}]++
+			c.limitRuns[limitKeyOf(wf, i, k)]++
 		}
 	}
 }
@@ -410,7 +423,7 @@ func (c *Client) giveBackLocked(r *run, parking bool) {
 		if !drop(i) {
 			continue
 		}
-		lk := limitKey{workflow: wf.Name, limit: i, key: k}
+		lk := limitKeyOf(wf, i, k)
 		if c.limitRuns[lk]--; c.limitRuns[lk] <= 0 {
 			delete(c.limitRuns, lk)
 		}
@@ -459,7 +472,7 @@ func (h *limitHolds) any(r *run, bk bucketKey) bool {
 		return true
 	}
 	for i, k := range r.limitKeys {
-		if r.needs(i) && h.limits[limitKey{workflow: r.reg.wf.Name, limit: i, key: k}] {
+		if r.needs(i) && h.limits[limitKeyOf(r.reg.wf, i, k)] {
 			return true
 		}
 	}
@@ -474,7 +487,7 @@ func (h *limitHolds) hold(r *run, bk bucketKey) {
 	}
 	for i, k := range r.limitKeys {
 		if r.needs(i) {
-			h.limits[limitKey{workflow: r.reg.wf.Name, limit: i, key: k}] = true
+			h.limits[limitKeyOf(r.reg.wf, i, k)] = true
 		}
 	}
 }

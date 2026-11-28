@@ -381,6 +381,9 @@ var capsCases = []testCase{
 			{workflow.CapConcurrencyLimits, func(w *workflow.Workflow) {
 				w.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: e.h.keyFromLabel("k"), MaxRuns: 1}, {Key: e.h.keyFromLabel("j"), MaxRuns: 1}}
 			}},
+			{workflow.CapConcurrencyScope, func(w *workflow.Workflow) {
+				w.ConcurrencyLimits = []workflow.ConcurrencyLimit{{Key: e.h.keyFromLabel("k"), MaxRuns: 1, Scope: "shared"}}
+			}},
 			{workflow.CapHoldWhileRunning, func(w *workflow.Workflow) {
 				w.Concurrency = &workflow.Concurrency{Key: e.h.keyFromLabel("k"), MaxRuns: 1, Hold: workflow.HoldWhileRunning}
 			}},

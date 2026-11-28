@@ -55,6 +55,18 @@ func (c *Client) holderOf(ctx context.Context, tx *sql.Tx, wf, key string) (*run
 // RunID (empty: generated). A race that inserts a holder meanwhile fails
 // with a unique violation the caller retries.
 func (c *Client) placeRun(ctx context.Context, tx *sql.Tx, reg *registered, job workflow.Job, key, id string) (placement, error) {
+	if c.st.engine == engineSQLite {
+		// Write first. The holder is read before anything is written, and
+		// a SQLite transaction that reads and then writes must upgrade its
+		// read lock, which fails at once with SQLITE_BUSY whenever another
+		// connection committed in between (busy_timeout does not apply to
+		// the upgrade), so concurrent enqueuers of one key could use up
+		// every transaction attempt. A write that changes nothing takes the
+		// write lock up front, waiting out the timeout instead.
+		if _, err := c.st.exec(ctx, tx, "UPDATE {runs} SET status = status WHERE workflow = ? AND idem_active = ?", reg.wf.Name, key); err != nil {
+			return placement{}, err
+		}
+	}
 	holder, held, err := c.holderOf(ctx, tx, reg.wf.Name, key)
 	if err != nil {
 		return placement{}, err

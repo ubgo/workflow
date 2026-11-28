@@ -89,6 +89,7 @@ var p5Caps = workflow.CapsOf(
 	workflow.CapRoundRobin, workflow.CapKeyWeights, // fair_keys and run_fair (migration 011)
 	workflow.CapConcurrencyLimits, // run_limits (migration 012)
 	workflow.CapHoldWhileRunning,  // run_hold (migration 013)
+	workflow.CapConcurrencyScope,  // run_scopes (migration 015)
 )
 
 // Run states as stored in runs.status. Scheduled, the three terminal ones
@@ -795,6 +796,15 @@ func (c *Client) Register(wf workflow.Workflow) error {
 	if c.started {
 		return workflow.ErrAlreadyStarted
 	}
+	if workflow.ConcurrencyScoped(wf) {
+		others := make([]workflow.Workflow, 0, len(c.wfs))
+		for _, o := range c.wfs {
+			others = append(others, o.wf)
+		}
+		if err := workflow.CheckConcurrencyScopes(wf, others); err != nil {
+			return err
+		}
+	}
 	c.wfs[wf.Name] = reg
 	return nil
 }
@@ -970,7 +980,8 @@ func (c *Client) Start(ctx context.Context) error {
 }
 
 // prepare writes what Start needs before any worker runs: a lock row per
-// workflow with an admission policy and the declared cron schedules.
+// workflow with an admission policy and per shared concurrency scope, and
+// the declared cron schedules.
 func (c *Client) prepare(ctx context.Context) error {
 	if c.fairAny && c.st.engine == engineSQLite {
 		if err := c.ensureLock(ctx, fairClaimLock); err != nil {
@@ -980,6 +991,11 @@ func (c *Client) prepare(ctx context.Context) error {
 	for _, reg := range c.wfs {
 		if hasAdmissionPolicy(reg.wf) {
 			if err := c.ensureLock(ctx, lockName(reg.wf.Name)); err != nil {
+				return err
+			}
+		}
+		for _, s := range scopesOf(reg.wf) {
+			if err := c.ensureLock(ctx, scopeLockName(s)); err != nil {
 				return err
 			}
 		}

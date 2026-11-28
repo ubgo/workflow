@@ -1,6 +1,6 @@
 # concurrency
 
-One run at a time per tenant, what each strategy does to the run over the cap, a rate limit per recipient domain, priorities among waiting runs, one workflow capped on two keys at once, a run that waits to retry giving its slot back, and the key form each driver refuses. It runs on the in-memory driver with a fake clock, so the one-minute rate window passes when the program moves the clock; the Hatchet refusal needs no server, because the Hatchet client connects only at `Start`.
+One run at a time per tenant, what each strategy does to the run over the cap, a rate limit per recipient domain, priorities among waiting runs, one workflow capped on two keys at once, two workflows capped together through a shared scope, a run that waits to retry giving its slot back, and the key form each driver refuses. It runs on the in-memory driver with a fake clock, so the one-minute rate window passes when the program moves the clock; the Hatchet refusal needs no server, because the Hatchet client connects only at `Start`.
 
 ```sh
 cd examples
@@ -25,6 +25,11 @@ several keys:
   acme-1 finished, started: acme-2
   widgets-1 finished, started: widgets-2
   hatchet: true | missing: ConcurrencyLimits
+shared scope:
+  started sync-acme; check-acme queued; started check-widgets
+  sync-acme finished, started: check-acme
+  invalid: true
+  workflow: invalid spec: workflow "check": ConcurrencyLimits[0] names Scope "account" with MaxRuns 2, but workflow "sync" ConcurrencyLimits[0] names it with MaxRuns 1: workflows sharing a scope must declare the same MaxRuns
 release while waiting:
   whole_run: acme-1 retrying in an hour; acme-2 queued
     an hour later: acme-1 succeeded, then acme-2 succeeded
@@ -124,6 +129,28 @@ syncAccount := workflow.Workflow{
 }
 ```
 
+A sync and a check of one account, one run of either at a time, through one shared scope:
+
+<!-- snippet: examples/concurrency/main.go#shared-scope -->
+```go
+account := workflow.KeyFunc(func(j workflow.Job) string { return j.Labels["account"] })
+perAccount := workflow.ConcurrencyLimit{
+	Key:     account,
+	MaxRuns: 1,         // one run per account at a time
+	Scope:   "account", // counted across every workflow naming this scope
+}
+sync := workflow.Workflow{
+	Name:              "sync",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+	Steps:             []workflow.Step{{Name: "pull", Run: g.handler}},
+}
+check := workflow.Workflow{
+	Name:              "check",
+	ConcurrencyLimits: []workflow.ConcurrencyLimit{perAccount},
+	Steps:             []workflow.Step{{Name: "verify", Run: g.handler}},
+}
+```
+
 One sync per account, except while a sync waits an hour to retry: under `HoldWhileRunning` it gives the account back and takes it again when the hour has passed. The program runs the same two syncs under each policy and prints the default first:
 
 <!-- snippet: examples/concurrency/main.go#release-while-waiting -->
@@ -173,5 +200,5 @@ fmt.Println("  hatchet, KeyFunc:", err, "| unsupported:", errors.Is(err, workflo
 
 ## Guides
 
-- [Concurrency and rate limits](../../docs/jobs/concurrency.md), [Choose how long a run holds its slot](../../docs/jobs/concurrency.md#choose-how-long-a-run-holds-its-slot)
+- [Concurrency and rate limits](../../docs/jobs/concurrency.md), [Share a limit between workflows](../../docs/jobs/concurrency.md#share-a-limit-between-workflows), [Choose how long a run holds its slot](../../docs/jobs/concurrency.md#choose-how-long-a-run-holds-its-slot)
 - [Enqueue › Priority](../../docs/jobs/enqueue.md#priority)

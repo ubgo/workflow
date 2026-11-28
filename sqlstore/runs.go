@@ -171,6 +171,9 @@ func (c *Client) insertRun(ctx context.Context, tx *sql.Tx, reg *registered, job
 	if err := c.insertVersion(ctx, tx, reg, id); err != nil {
 		return nil, err
 	}
+	if err := c.insertScopes(ctx, tx, reg, job, id); err != nil {
+		return nil, err
+	}
 	if err := c.insertLabels(ctx, tx, id, job.Labels); err != nil {
 		return nil, err
 	}

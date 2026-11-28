@@ -9,7 +9,7 @@ import (
 
 // sqlOut is what the program prints on SQLite: the tables of each
 // namespace, what each client sees, and the settings New refuses.
-const sqlOut = `tables: 47 staging_*, 47 prod_*
+const sqlOut = `tables: 48 staging_*, 48 prod_*
 staging worker: staging run scheduled, 1 schedule(s)
 prod: staging run not found, 0 schedule(s)
 bad prefix: invalid true

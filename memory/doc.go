@@ -81,7 +81,13 @@
 //     Workflow.ConcurrencyLimits (CapConcurrencyLimits) a run is admitted
 //     only when its Concurrency bucket and its bucket of every limit have
 //     room, taking them all at once, and an admission pass lets no later
-//     run take a key an earlier waiting run needs. A key set to
+//     run take a key an earlier waiting run needs. A limit with a Scope
+//     (CapConcurrencyScope) counts against one bucket per scope and key
+//     value shared by every workflow naming the scope; one pass over the
+//     pending runs of every workflow, in priority then enqueue order, makes
+//     the no-overtake rule hold across them, and Register refuses a
+//     workflow whose MaxRuns or Hold for a scope differs from a registered
+//     one (workflow.CheckConcurrencyScopes). A key set to
 //     HoldWhileRunning (CapHoldWhileRunning) is given back when the run's
 //     coordinator finds nothing executing, nothing queued for a worker and
 //     no result to apply (every step in a backoff, snoozed, asleep or
@@ -245,7 +251,10 @@
 // snoozes and sleeps end at once, and it returns once no run can move
 // (finished or waiting for an event), with a RunAllReport, or with
 // ErrRunAllStalled when runs are left that only the clock, a resume or a
-// free slot can move. Timeouts keep following the clock.
+// free slot can move. Timeouts keep following the clock. The report
+// covers the runs unfinished at the call and those enqueued during it; a
+// run the workers ended before the call is not counted, so a test checks
+// such a run's Status rather than the report's terminal counts.
 //
 // Schedule.IdempotencyKey keys every fired and triggered run
 // (CapScheduleKey); Workflow.Coalesce keeps one run pending behind a key

@@ -22,8 +22,8 @@ import (
 // the driver apps test against, so a test on a default Fake accepts what
 // the memory driver accepts. It includes the declarative fields the Fake
 // only validates (queues, per-job retry, Discard, DiscardOnExhaust,
-// Step.Slots, round-robin concurrency, concurrency limits and hold
-// policies, schedule conditions) and the calls it records (RunRetrier, RunDeleter, Pauser).
+// Step.Slots, round-robin concurrency, concurrency limits, their shared
+// scopes and hold policies, schedule conditions) and the calls it records (RunRetrier, RunDeleter, Pauser).
 // TestFakeDefaultCapsFollowMemory fails when memory claims a capability
 // that is in neither list.
 //
@@ -44,7 +44,7 @@ var fakeDefaultCaps = workflow.CapsOf(
 	workflow.CapCronSeconds, workflow.CapScheduleActive, workflow.CapScheduleKeep,
 	workflow.CapWorkflowVersion, workflow.CapWaitOwnRun, workflow.CapKeyWeights,
 	workflow.CapDiscardExhausted, workflow.CapSlotCost, workflow.CapRoundRobin,
-	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning,
+	workflow.CapConcurrencyLimits, workflow.CapHoldWhileRunning, workflow.CapConcurrencyScope,
 )
 
 // fakeUnserved are the capabilities the Fake never claims, whatever
@@ -317,6 +317,12 @@ func (f *Fake) Register(wf workflow.Workflow) error {
 	defer f.mu.Unlock()
 	if f.started {
 		return workflow.ErrAlreadyStarted
+	}
+	if workflow.ConcurrencyScoped(wf) && f.caps.Has(workflow.CapConcurrencyScope) {
+		// The scopes the memory driver refuses, refused here too.
+		if err := workflow.CheckConcurrencyScopes(wf, slices.Collect(maps.Values(f.wfs))); err != nil {
+			return err
+		}
 	}
 	f.wfs[wf.Name] = wf
 	return nil

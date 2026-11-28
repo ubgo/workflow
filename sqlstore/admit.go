@@ -129,12 +129,39 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 	if _, err := c.st.exec(ctx, tx, "UPDATE {locks} SET n = n + 1 WHERE name = ?", lockName(wf.Name)); err != nil {
 		return 0, err
 	}
+	// A workflow with a scoped limit also takes the lock row of each of
+	// its scopes, after its own and in name order (scope.go).
+	scoped := workflow.ConcurrencyScoped(wf)
+	if scoped {
+		if err := c.scopeLock(ctx, tx, wf); err != nil {
+			return 0, err
+		}
+	}
 	pending, err := c.pendingRuns(ctx, tx, wf)
 	if err != nil {
 		return 0, err
 	}
 	for _, r := range pending {
 		if err := c.evaluateKeys(ctx, tx, reg, r); err != nil {
+			return 0, err
+		}
+	}
+	// keysOf holds each run's key value under every limit, evaluated
+	// once per pass when a limit is scoped: the waiting runs' rows are
+	// brought in line with them, so the other workflows' passes see
+	// where they wait.
+	keysOf := map[string][]string{}
+	if scoped {
+		ids := make([]string, 0, len(pending))
+		for _, r := range pending {
+			k, err := limitKeys(wf, r)
+			if err != nil {
+				return 0, err
+			}
+			keysOf[r.id] = k
+			ids = append(ids, r.id)
+		}
+		if err := c.scopeSync(ctx, tx, wf, ids, keysOf); err != nil {
 			return 0, err
 		}
 	}
@@ -150,6 +177,11 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 		}
 		for _, r := range back {
 			rejoin[r.id] = true
+			if scoped {
+				if keysOf[r.id], err = c.storedLimitKeys(ctx, tx, wf, r.id); err != nil {
+					return 0, err
+				}
+			}
 		}
 		pending = append(pending, back...)
 		slices.SortStableFunc(pending, func(a, b *runRow) int {
@@ -208,9 +240,23 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 			return 0, err
 		}
 	}
+	if scoped {
+		wanted := map[int]map[string]bool{}
+		for _, keys := range keysOf {
+			for i, k := range keys {
+				if wanted[i] == nil {
+					wanted[i] = map[string]bool{}
+				}
+				wanted[i][k] = true
+			}
+		}
+		if err := c.scopeBegin(ctx, tx, limits, wanted); err != nil {
+			return 0, err
+		}
+	}
 	for _, r := range pending {
 		if rejoin[r.id] {
-			if err := c.rejoinOne(ctx, tx, limits, active, r, out); err != nil {
+			if err := c.rejoinOne(ctx, tx, limits, active, r, keysOf[r.id], out); err != nil {
 				return 0, err
 			}
 			continue
@@ -220,11 +266,13 @@ func (c *Client) admitLocked(ctx context.Context, tx *sql.Tx, reg *registered, o
 		}
 		var lkeys []string
 		if limits != nil {
-			if lkeys, err = limitKeys(wf, r); err != nil {
-				return 0, err
+			if lkeys = keysOf[r.id]; lkeys == nil {
+				if lkeys, err = limitKeys(wf, r); err != nil {
+					return 0, err
+				}
 			}
 			full := wf.Concurrency != nil && len(active[r.bucket]) >= wf.Concurrency.MaxRuns
-			if limits.blocked(r.bucket, full, lkeys) {
+			if limits.blocked(r.bucket, full, lkeys) || limits.behind(r, lkeys, nil) {
 				limits.hold(r.bucket, lkeys)
 				held[r.bucket] = true
 				continue
@@ -325,18 +373,22 @@ func rateAllows(limits []workflow.RateLimit, windows []map[string][]int64, keys 
 // earlier waiting run holds one of them, else it holds those keys against
 // the runs behind it. Its HoldWholeRun keys are still its own, so they are
 // neither checked nor held. Rate limits are not counted again: a rejoin is
-// not a start.
+// not a start. keys are r's stored key values when the pass read them
+// already (nil: read here). Under a scoped limit a waiting run of another
+// workflow ahead of r on a key it needs holds it back too (behind).
 //
 //ds:def id=sql-client-rejoinone-z4h8ps6w owner=@khanakia stability=stable
-func (c *Client) rejoinOne(ctx context.Context, tx *sql.Tx, lp *limitPass, active map[string][]*runRow, r *runRow, out *txOut) error {
+func (c *Client) rejoinOne(ctx context.Context, tx *sql.Tx, lp *limitPass, active map[string][]*runRow, r *runRow, keys []string, out *txOut) error {
 	wf := lp.wf
-	keys, err := c.storedLimitKeys(ctx, tx, wf, r.id)
-	if err != nil {
-		return err
+	if keys == nil {
+		var err error
+		if keys, err = c.storedLimitKeys(ctx, tx, wf, r.id); err != nil {
+			return err
+		}
 	}
 	need := func(limit int) bool { return holdOf(wf, limit).WhileRunning() }
 	full := wf.Concurrency != nil && len(active[r.bucket]) >= wf.Concurrency.MaxRuns
-	if lp.blockedNeed(r.bucket, full, keys, need) {
+	if lp.blockedNeed(r.bucket, full, keys, need) || lp.behind(r, keys, need) {
 		lp.holdNeed(r.bucket, keys, need)
 		return nil
 	}
