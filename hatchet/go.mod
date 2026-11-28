@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hatchet-dev/hatchet v0.107.1
 	github.com/oapi-codegen/runtime v1.7.0
-	github.com/ubgo/workflow v0.2.2
+	github.com/ubgo/workflow v0.2.3
 	google.golang.org/grpc v1.83.2
 )
 
