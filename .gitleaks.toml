@@ -1,0 +1,16 @@
+# The default gitleaks rules, plus one allowance that a line number cannot express.
+# Line-pinned exceptions live in .gitleaksignore.
+[extend]
+useDefault = true
+
+# .ds/ledger.tsv is docsync's generated index of code blocks: ids, hashes and symbol names.
+# A row of an api-stability block reads "api<TAB><TAB>id=<symbol>-<suffix>", which the
+# generic-api-key rule takes for a key assignment. Rows are re-sorted whenever a block is
+# added, so the line moves; the allowance matches the row's shape instead.
+[[allowlists]]
+description = "docsync ledger rows: generated block ids, not keys"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^\.ds/ledger\.tsv$''']
+regexTarget = "line"
+regexes = ['''\tapi\t[^\t]*\tid=[a-z0-9-]+ owner=@[A-Za-z0-9_-]+ stability=api$''']

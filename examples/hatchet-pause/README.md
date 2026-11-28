@@ -13,7 +13,7 @@ Without an engine only the refusals run:
 without API: PauseWorkflow=false SchedulePause=false
 Pause: ErrUnsupported=true
 PauseSchedule: ErrUnsupported=true
-NewAPI with a bad token: ErrInvalid=true
+NewAPI(bad token): ErrInvalid=true
 HATCHET_CLIENT_TOKEN is not set: the live run is skipped
 ```
 

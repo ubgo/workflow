@@ -380,9 +380,9 @@ func TestSecretGuard(t *testing.T) {
 		{Payload: []byte(`{"user":{"password":"hunter2"}}`)},
 		{Payload: []byte(`{"api_key":"abc"}`)},
 		{Payload: []byte(`{"Client-Secret":"abc"}`)},
-		{Payload: []byte(`{"note":"AKIAABCDEFGHIJKLMNOP"}`)},
+		{Payload: []byte(`{"note":"AKIAIOSFODNN7EXAMPLE"}`)},
 		{Payload: []byte(`{"k":["-----BEGIN RSA PRIVATE KEY-----"]}`)},
-		{Payload: []byte(`raw sk_live_abcdefghijklmnop`)},
+		{Payload: []byte(`raw sk_live_EXAMPLEEXAMPLE`)}, // gitleaks:allow: a made-up live key; the scanner flags every sk_live_ value
 		{Labels: map[string]string{"token": "x"}},
 		{Chain: []workflow.Job{{Payload: []byte(`{"passwd":"x"}`)}}},
 	}
@@ -391,7 +391,7 @@ func TestSecretGuard(t *testing.T) {
 		if !errors.Is(err, workflow.ErrSecretInPayload) || !errors.Is(err, workflow.ErrInvalid) {
 			t.Errorf("job %s %v: err = %v, want ErrSecretInPayload", j.Payload, j.Labels, err)
 		}
-		if err != nil && (strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "AKIAABCD")) {
+		if err != nil && (strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "AKIAIOSF")) {
 			t.Errorf("error leaks the value: %v", err)
 		}
 	}

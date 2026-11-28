@@ -139,11 +139,28 @@ func run(ctx context.Context) error {
 			return err
 		}
 		// snippet:end
-		rep, err := c.RunAll(ctx) // every service reacts, hop by hop
+		// RunAll returns once every service has reacted, hop by hop. Its
+		// report is not the order's count: it covers only the runs still
+		// unfinished when it is called, and the started client's workers may
+		// have finished the first hop already. The order's trail holds every
+		// run of the chain, so the runs are counted from it.
+		if _, err := c.RunAll(ctx); err != nil {
+			return err
+		}
+		runs, err := events.Trail(ctx, c, fmt.Sprintf("order-%d", o.ID), workflow.RunQuery{})
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(w, "order %d (card %s): %d runs succeeded, %d failed\n", o.ID, o.Card, rep.Succeeded, rep.Failed)
+		var succeeded, failed int
+		for _, r := range runs {
+			switch r.Status {
+			case workflow.StatusSucceeded:
+				succeeded++
+			case workflow.StatusFailed:
+				failed++
+			}
+		}
+		fmt.Fprintf(w, "order %d (card %s): %d runs succeeded, %d failed\n", o.ID, o.Card, succeeded, failed)
 	}
 	fmt.Fprintf(w, "inventory: reserved %d, released %d\n", inv.reserved.Load(), inv.released.Load())
 

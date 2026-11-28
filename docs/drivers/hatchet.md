@@ -304,7 +304,7 @@ fmt.Printf("PauseSchedule: ErrUnsupported=%v\n", errors.Is(err, workflow.ErrUnsu
 // NewAPI reads the tenant from the token, so a value that is not one
 // is refused at once.
 _, err = hatchet.NewAPI("not-a-token", "")
-fmt.Printf("NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
+fmt.Printf("NewAPI(bad token): ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
 ```
 
 With it, after `Start`, pause a workflow and resume it:

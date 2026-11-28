@@ -79,6 +79,16 @@ tasks:
     desc: Fail when any Go file is not gofmt clean
     cmds: ['test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)']
 
+  # A `go build` inside a folder with a main package writes a program named
+  # after the folder; .gitignore lists every such folder, and this catches
+  # the one a new folder's missing line lets through, before it is
+  # committed. It reads the first bytes of each file git tracks or would
+  # track, so it costs about a second.
+  bin:check:
+    desc: Fail when a file git tracks or would track is a compiled program (ELF, Mach-O, PE or WebAssembly), such as the binary a go build in a main folder leaves behind
+    cmds:
+      - git ls-files --cached --others --exclude-standard -z | xargs -0 go run ./examples/internal/bincheck
+
   gomin:
     desc: Vet every module, test files included, under the Go toolchain its go.mod declares (core, sqlstore and its pgnotify, pgxtx and enginetest modules, admin, redis and cli go 1.24.0, otel, otel/sdktest and sentry go 1.25.0, hatchet, bench and examples go 1.26.0), so a stated minimum is proven rather than claimed; downloads a missing toolchain once
     cmds: ['{{.LOCK}} task gomin:run']
@@ -115,13 +125,14 @@ tasks:
         done
 
   check:
-    desc: The gate - gofmt check, vet, race tests of every module (the examples module included), the Go minimum per module, the dependency rule (deps:check), then the doc checks (wrap, links, snippets, words, drift)
+    desc: The gate - gofmt check, no compiled program in the tree (bin:check), vet, race tests of every module (the examples module included), the Go minimum per module, the dependency rule (deps:check), then the doc checks (wrap, links, snippets, words, drift)
     cmds: ['{{.LOCK}} task check:run']
 
   # Called through testlock by the public task above; no desc keeps it off task --list.
   check:run:
     cmds:
       - task: fmt:check
+      - task: bin:check
       - task: vet:run
       - task: test:run
       - task: gomin:run

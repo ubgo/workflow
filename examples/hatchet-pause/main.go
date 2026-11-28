@@ -79,7 +79,7 @@ func refusals(ctx context.Context) error {
 	// NewAPI reads the tenant from the token, so a value that is not one
 	// is refused at once.
 	_, err = hatchet.NewAPI("not-a-token", "")
-	fmt.Printf("NewAPI with a bad token: ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
+	fmt.Printf("NewAPI(bad token): ErrInvalid=%v\n", errors.Is(err, workflow.ErrInvalid))
 	// snippet:end
 	return nil
 }

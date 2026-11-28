@@ -12,7 +12,7 @@ import (
 const offline = `without API: PauseWorkflow=false SchedulePause=false
 Pause: ErrUnsupported=true
 PauseSchedule: ErrUnsupported=true
-NewAPI with a bad token: ErrInvalid=true
+NewAPI(bad token): ErrInvalid=true
 `
 
 // TestRefusals runs the program without an engine: without Config.API

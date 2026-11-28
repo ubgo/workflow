@@ -59,7 +59,7 @@ If you want a single backend you already run and never expect to change, a dedic
 - **[Learning path](docs/README.md#learning-path)**: thirteen steps from a first job on the memory driver to the full production setup (several workers on one database, one fire node, clean shutdown, retention, health probes, failover), each with its guide and a runnable example.
 - **[Start from your goal](docs/README.md#start-from-your-goal)**: about a hundred tasks an app has ("retry a flaky API call", "fire crons on one node", "test code that forks runs"), each with the guide and the program that does it.
 - **[Choosing](docs/choosing/README.md)**: decision tables for [which driver or wrapper](docs/choosing/drivers.md), [which method](docs/choosing/methods.md) (a job, a workflow, a schedule, a batch, a state machine or events; waits, signals or promises; retries, snooze or release; `Enqueue`, `EnqueueTx` or the outbox) and [which setup for your kind of app](docs/choosing/app-types.md) (one binary, a web fleet with workers, several regions or tenants, tests).
-- **[Feature index](docs/reference/features.md)**: every feature, 555 rows across the API, the `workflow` command, the admin HTTP routes and the repository tasks, each with its package, guide section and a runnable example.
+- **[Feature index](docs/reference/features.md)**: every feature, 562 rows across the API, the `workflow` command, the admin HTTP routes and the repository tasks, each with its package, guide section and a runnable example.
 - **[Examples](examples/README.md)**: 165 runnable programs, each run by `go test`; every Go block in the guides is copied from one of them and checked by `task docs:snippets`.
 - **[Run history](docs/observability/run-recorder.md)**: the `recorder` module keeps a runs table your app owns on any driver, with each run's [trigger source](docs/concepts/trigger-source.md), every step attempt with its [events](docs/concepts/step-events.md), and the [outcome](docs/concepts/run-outcome.md), kept after the engine prunes the run ([what differs per driver](docs/observability/run-recorder.md#per-driver)).
 - **[Benchmarks](docs/reference/benchmarks.md)**: enqueue throughput, end-to-end throughput and pickup latency for each driver, and how to reproduce them. On one laptop with 10 workers and a separate producer, sqlstore on Postgres picks up a new job in 7 ms median with LISTEN/NOTIFY against 415 ms when it only polls, and runs about 1,100 to 1,200 jobs/s end to end at 10 to 100 workers; the Redis driver picks up in under 1 ms and runs about 5,500 jobs/s end to end; Hatchet picks up in about 13 ms.
@@ -144,10 +144,11 @@ Commands use [Task](https://taskfile.dev). The heavy tasks (`test`, `vet`, `chec
 
 | Command | What it does |
 |---|---|
-| `task check` | The gate: gofmt check, vet, race tests of every module (the examples module included), `gomin`, `deps:check`, then the doc checks `docs:wrap`, `docs:links`, `docs:snippets`, `docs:words` and `docs:drift` |
+| `task check` | The gate: gofmt check, `bin:check`, vet, race tests of every module (the examples module included), `gomin`, `deps:check`, then the doc checks `docs:wrap`, `docs:links`, `docs:snippets`, `docs:words` and `docs:drift` |
 | `task build` | Compile every package of every module in `go.work` |
 | `task vet` | `go vet` over every module in `go.work` |
 | `task fmt` | Format every Go file with gofmt; `task fmt:check` fails when one is not gofmt clean |
+| `task bin:check` | Fail when a file git tracks or would track is a compiled program (ELF, Mach-O, PE or WebAssembly), such as the binary a `go build` in a main folder leaves behind |
 | `task test` | Race tests of every module in `go.work` (the Hatchet live suite skips without a token) |
 | `task gomin` | Vet each module, test files included, under the Go version its `go.mod` declares (1.24 for the core, sqlstore, admin, redis and cli; 1.25 for otel and sentry; 1.26 for hatchet, bench and examples) |
 | `task deps:check` | Fail when a released module's `go.mod` is not tidy without `go.work`, or requires a module none of its library packages import |

@@ -1,7 +1,18 @@
-# Test and example fixtures, not credentials.
-# The hatchet-pause hits are the expected program output line about a rejected bad API credential.
-examples/hatchet-pause/README.md:generic-api-key:16
-examples/hatchet-pause/main_test.go:generic-api-key:14
-# Made-up AWS and Stripe key shapes that the SecretGuard test must refuse.
-flow_test.go:aws-access-token:382
-flow_test.go:stripe-access-token:384
+# Secret-scanner exceptions, each a test fixture, never a credential.
+# The current tree needs none of these lines: the fixtures there are documented fake values,
+# and the one made-up Stripe key shape left in flow_test.go carries an inline gitleaks:allow.
+# The docsync ledger's generated ids are allowed by rule in .gitleaks.toml, since its line numbers move.
+
+# Docsync's copy of TestSecretGuard's body from before the fixtures were replaced. A block file is
+# named by the hash of its content, so these line numbers never move; the file stays while the
+# committed ledger still names that hash.
+.ds/blocks/721e860fbb2b076d88fa6548c2881dffff142ea7aea7236cb7a4fb8dfb4a3ea0:aws-access-token:8
+.ds/blocks/721e860fbb2b076d88fa6548c2881dffff142ea7aea7236cb7a4fb8dfb4a3ea0:stripe-access-token:10
+
+# History only (gitleaks detect over git): the commit that first published these lines.
+# The made-up AWS and Stripe key shapes TestSecretGuard used to refuse.
+305ec482e276990f7ef6e0d05030156788e8058d:flow_test.go:aws-access-token:382
+305ec482e276990f7ef6e0d05030156788e8058d:flow_test.go:stripe-access-token:384
+# The hatchet-pause example's expected output line about a rejected bad API token, since reworded.
+305ec482e276990f7ef6e0d05030156788e8058d:examples/hatchet-pause/README.md:generic-api-key:16
+305ec482e276990f7ef6e0d05030156788e8058d:examples/hatchet-pause/main_test.go:generic-api-key:14
