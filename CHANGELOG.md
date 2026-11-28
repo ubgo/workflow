@@ -4,6 +4,8 @@ All notable changes to `github.com/ubgo/workflow` and its modules (`admin`, `cli
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-28
+
 ### Added
 
 - `Workflow.ConcurrencyLimits` and `workflow.ConcurrencyLimit`: more concurrency keys per workflow beside `Concurrency`, each with its own `MaxRuns` (one per connection and one per account, say). A run is admitted only when every one of its buckets has room and takes them all at once, so no run holds one key while it waits for another; in admission order a waiting run is never overtaken on any of its keys by a run behind it, so a run that needs two keys is not starved by runs that need one. Beside a limit, `Concurrency.Strategy` may only be `ConcurrencyQueueNewest` (`Register` refuses another with `ErrInvalid`). Needs the new `workflow.CapConcurrencyLimits` (number 67), which `Requires` asks for and `CheckCaps` enforces.
