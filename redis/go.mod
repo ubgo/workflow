@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/ubgo/workflow v0.2.3
+	github.com/ubgo/workflow v0.2.5
 )
 
 require (
@@ -12,3 +12,5 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 )
+
+retract v0.2.4

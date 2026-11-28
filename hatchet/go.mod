@@ -6,7 +6,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hatchet-dev/hatchet v0.107.1
 	github.com/oapi-codegen/runtime v1.7.0
-	github.com/ubgo/workflow v0.2.3
+	github.com/ubgo/workflow v0.2.5
 	google.golang.org/grpc v1.83.2
 )
 
@@ -93,3 +93,5 @@ require (
 // against the split genproto modules grpc uses. Excluding it lifts the
 // selection to a later monolithic version without those packages.
 exclude google.golang.org/genproto v0.0.0-20230410155749-daa745c078e1
+
+retract v0.2.4
